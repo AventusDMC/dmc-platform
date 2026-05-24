@@ -20,7 +20,7 @@ type VoucherSnapshot = {
   dropoff?: string | null;
   supplier?: { id?: string | null; name?: string | null } | null;
   paxCount?: number | null;
-  passengerManifest?: { total?: number; namesPending?: number; complete?: boolean } | null;
+  passengerManifest?: { total?: number; expected?: number; namesPending?: number; complete?: boolean } | null;
   rooming?: { roomCount?: number; assignedPax?: number } | null;
   operationalNotes?: string | null;
   confirmationReference?: string | null;
@@ -54,11 +54,16 @@ function formatDateTime(value: string | null | undefined) {
   }
 }
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+function Detail({ label, children, hideIfEmpty = false }: { label: string; children: React.ReactNode; hideIfEmpty?: boolean }) {
+  const isEmpty = children === null || children === undefined || children === '';
+  if (hideIfEmpty && isEmpty) return null;
+  // Inline label / value rendering — no .voucher-detail-row CSS exists in
+  // globals.css, so without an explicit separator the <span> and <strong>
+  // rendered inline with no space, producing "Booking refBK-2026-0004".
   return (
-    <div className="voucher-detail-row">
-      <span>{label}</span>
-      <strong>{children ?? '-'}</strong>
+    <div className="voucher-detail-row" style={{ display: 'flex', gap: '0.75rem', alignItems: 'baseline', padding: '0.35rem 0', borderBottom: '1px solid #eef0f3' }}>
+      <span style={{ color: '#667085', minWidth: '11rem', flexShrink: 0 }}>{label}</span>
+      <strong>{isEmpty ? '-' : children}</strong>
     </div>
   );
 }
@@ -123,7 +128,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
         <div className="voucher-detail-grid">
           <Detail label="Booking ref">{snapshot.bookingRef}</Detail>
           <Detail label="Client name">{snapshot.client?.name}</Detail>
-          <Detail label="Client company">{snapshot.client?.companyName}</Detail>
+          <Detail label="Client company" hideIfEmpty>{snapshot.client?.companyName}</Detail>
           <Detail label="Pax count">{snapshot.paxCount}</Detail>
         </div>
       </section>
@@ -137,10 +142,10 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
           <Detail label="Voucher type">{snapshot.voucherType}</Detail>
           <Detail label="Date">{snapshot.date}</Detail>
           <Detail label="Time">{snapshot.time}</Detail>
-          <Detail label="Pickup location">{snapshot.pickup?.location}</Detail>
-          <Detail label="Pickup time">{snapshot.pickup?.time}</Detail>
-          <Detail label="Meeting point">{snapshot.meetingPoint}</Detail>
-          <Detail label="Dropoff">{snapshot.dropoff}</Detail>
+          <Detail label="Pickup location" hideIfEmpty>{snapshot.pickup?.location}</Detail>
+          <Detail label="Pickup time" hideIfEmpty>{snapshot.pickup?.time}</Detail>
+          <Detail label="Meeting point" hideIfEmpty>{snapshot.meetingPoint}</Detail>
+          <Detail label="Dropoff" hideIfEmpty>{snapshot.dropoff}</Detail>
         </div>
       </section>
 
@@ -149,7 +154,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
         <h2>{snapshot.supplier?.name || voucher.supplier?.name || 'Unassigned'}</h2>
         <div className="voucher-detail-grid">
           <Detail label="Supplier id">{snapshot.supplier?.id || voucher.supplier?.id}</Detail>
-          <Detail label="Confirmation reference">{snapshot.confirmationReference}</Detail>
+          <Detail label="Confirmation reference" hideIfEmpty>{snapshot.confirmationReference}</Detail>
         </div>
       </section>
 
@@ -157,7 +162,10 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
         <p className="eyebrow">Passengers & rooming</p>
         <h2>Manifest status</h2>
         <div className="voucher-detail-grid">
-          <Detail label="Total passengers">{snapshot.passengerManifest?.total}</Detail>
+          <Detail label="Passenger records">
+            {snapshot.passengerManifest?.total ?? 0}
+            {snapshot.passengerManifest?.expected ? ` of ${snapshot.passengerManifest.expected} expected` : ''}
+          </Detail>
           <Detail label="Names pending">{snapshot.passengerManifest?.namesPending}</Detail>
           <Detail label="Manifest complete">{snapshot.passengerManifest?.complete ? 'Yes' : 'No'}</Detail>
           {snapshot.rooming ? (
