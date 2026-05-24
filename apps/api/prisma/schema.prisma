@@ -48,6 +48,7 @@ model Booking {
   payments              Payment[]
   roomingEntries        BookingRoomingEntry[]
   seriesDeparture       SeriesDeparture?
+  dispatchEvents        DispatchEvent[]
 
   @@index([bookingType])
   @@index([clientCompanyId])
@@ -2337,6 +2338,10 @@ model BookingService {
   // previous free-text `assignedTo` field for transport (which we keep for
   // backwards compatibility on non-transport ops).
   driverId                   String?                       @db.Uuid
+  // Operational delay marker (minutes). Set by simulation scenarios or by the
+  // operator when reporting an issue. Drives the "Delayed Xm" badge on
+  // dispatch cards and the delayedOperationsCount dashboard counter.
+  delayMinutes               Int?
   serviceDate                DateTime?
   startTime                  String?
   pickupTime                 String?
@@ -2413,6 +2418,7 @@ model BookingService {
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   driver                     Driver?                       @relation(fields: [driverId], references: [id], onDelete: SetNull)
   guide                      Guide?                        @relation(fields: [guideId], references: [id], onDelete: SetNull)
+  dispatchEvents             DispatchEvent[]
   restaurant                 Restaurant?                   @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
 
   @@index([bookingDayId])
@@ -2471,6 +2477,31 @@ model GuideBlockedDate {
 
   @@index([guideId, startDate, endDate])
   @@map("guide_blocked_dates")
+}
+
+// Append-only operational event stream. Drives the replay log on
+// /operations/simulation and feeds the live activity feeds on the dispatch
+// dashboard. Cheap to write (single insert), never updated, never deleted
+// outside booking cascade.
+model DispatchEvent {
+  id               String                 @id @default(uuid()) @db.Uuid
+  bookingId        String                 @db.Uuid
+  bookingServiceId String?                @db.Uuid
+  eventType        DispatchEventType
+  severity         DispatchEventSeverity?
+  occurredAt       DateTime               @default(now())
+  actor            String?
+  payload          Json?
+  notes            String?
+  createdAt        DateTime               @default(now())
+  booking          Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingService   BookingService?        @relation(fields: [bookingServiceId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, occurredAt])
+  @@index([bookingServiceId, occurredAt])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@map("dispatch_events")
 }
 
 model Restaurant {
@@ -2714,7 +2745,31 @@ enum BookingServiceIssueType {
   ROOM_PROBLEM
   GUEST_MISSING
   OVERBOOKING
+  GUIDE_LATE
   OTHER
+}
+
+enum DispatchEventType {
+  SIMULATION_SCENARIO_APPLIED
+  ISSUE_RAISED
+  ISSUE_ESCALATED
+  ISSUE_RESOLVED
+  DISPATCHED
+  STARTED
+  COMPLETED
+  CANCELLED
+  DELAYED
+  REASSIGNED_SUPPLIER
+  REASSIGNED_DRIVER
+  REASSIGNED_VEHICLE
+  REASSIGNED_GUIDE
+  NOTE_ADDED
+}
+
+enum DispatchEventSeverity {
+  INFO
+  WARNING
+  CRITICAL
 }
 
 enum BookingServiceIssueSeverity {

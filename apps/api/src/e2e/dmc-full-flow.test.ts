@@ -403,7 +403,7 @@ function createDmcFlowHarness() {
     {},
     new QuotePricingService(),
   );
-  const bookingsService = new BookingsService(prisma, { log: async () => null });
+  const bookingsService = new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
   createPdfTextCapture(bookingsService);
 
   (quotesService as any).recalculateQuoteTotals = async (quoteId: string) => {
