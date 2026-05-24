@@ -11693,20 +11693,107 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const tomorrowStart = new Date(today.getTime() + oneDay);
     const tomorrowEnd = new Date(today.getTime() + 2 * oneDay);
 
+    // Imminence buckets — drive the time-aware severity classifier below.
+    // A "missing supplier" 5 days out is a Tuesday task; the same gap 5 hours
+    // out is a five-alarm fire. Without this, every row with any prep gap
+    // gets CRITICAL and operators go red-blind.
+    //   <= today: imminent
+    //   tomorrow: near
+    //   2-7 days: medium
+    //   >7 days:  far
+    const daysUntilService = (r: any): number => {
+      if (!r.date) return Number.POSITIVE_INFINITY;
+      const d = new Date(r.date);
+      const startOfServiceDay = this.startOfUtcDay(d).getTime();
+      return Math.round((startOfServiceDay - today.getTime()) / oneDay);
+    };
+
+    type Imminence = 'imminent' | 'near' | 'medium' | 'far';
+    const imminenceOf = (r: any): Imminence => {
+      const d = daysUntilService(r);
+      if (d <= 0) return 'imminent';
+      if (d === 1) return 'near';
+      if (d <= 7) return 'medium';
+      return 'far';
+    };
+
+    // Time-aware severity classifier — single source of truth for both the
+    // "critical issues" banner and per-lane severity badges. Returns the
+    // computed severity and the human-readable reasons that drove it.
+    //
+    // Rules:
+    //   - confirmation REJECTED  → CRITICAL (always — actively broken)
+    //   - executionStatus ISSUE  → CRITICAL (always — operator reported it)
+    //   - executionStatus COMPLETED/CANCELLED → INFO (no longer blocking)
+    //   - hard blocker + imminent (today/past)         → CRITICAL
+    //   - hard blocker + near/medium/far               → ACTION REQUIRED
+    //   - soft gap + imminent (today/past) or near     → ACTION REQUIRED
+    //   - soft gap + medium/far                        → INFO (handle later)
+    //
+    // Hard blockers: things that prevent the service from being performed.
+    //   - no supplier, no transport pickup, no activity meeting point,
+    //     no guide assigned.
+    // Soft gaps: prep work that can land in the 48h before service.
+    //   - confirmation pending, voucher not generated, driver/vehicle missing,
+    //     guide reporting time, guide language.
+    const classifyRowSeverityTimed = (
+      r: any,
+    ): { severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL'; reasons: string[] } => {
+      const execStatus = String((r as any).executionStatus || 'READY').toUpperCase();
+      // Already completed or cancelled — never block dispatch.
+      if (execStatus === 'COMPLETED' || execStatus === 'CANCELLED') {
+        return { severity: 'INFO', reasons: [] };
+      }
+      // Operator-reported live issue beats any time-based logic.
+      if (execStatus === 'ISSUE') {
+        const reason = (r as any).issueNotes || `Active ${(r as any).issueSeverity || ''} issue`.trim();
+        return { severity: 'CRITICAL', reasons: [reason || 'Active issue reported'] };
+      }
+
+      const imm = imminenceOf(r);
+      const hardBlockers: string[] = [];
+      const softGaps: string[] = [];
+
+      if (isConfirmationRejected(r)) hardBlockers.push('Supplier confirmation rejected');
+      if (!isAssigned(r)) hardBlockers.push('No supplier assigned');
+      if (isTransport(r) && !r.pickupLocation) hardBlockers.push('Pickup location missing');
+      if ((isActivity(r) || isGuide(r)) && !r.meetingPoint) hardBlockers.push('Meeting point missing');
+      if (isGuide(r) && !r.guideName) hardBlockers.push('Guide not assigned');
+
+      if (isTransport(r) && !r.vehicleName) softGaps.push('Vehicle not assigned');
+      if (isTransport(r) && !r.driverName) softGaps.push('Driver not assigned');
+      if (isGuide(r) && !r.guideReportingTime) softGaps.push('Guide reporting time not set');
+      if (isGuide(r) && Array.isArray(r.guideLanguages) && r.guideLanguages.length === 0) {
+        softGaps.push('Guide language not set');
+      }
+      if (!isConfirmationConfirmed(r) && !isConfirmationRejected(r)) softGaps.push('Confirmation pending');
+      if (!hasVoucher(r)) softGaps.push('Voucher not generated');
+
+      // Confirmation rejected is always CRITICAL regardless of imminence.
+      if (hardBlockers.includes('Supplier confirmation rejected')) {
+        return { severity: 'CRITICAL', reasons: [...hardBlockers, ...softGaps] };
+      }
+
+      let severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL' = 'INFO';
+      if (hardBlockers.length > 0) {
+        severity = imm === 'imminent' ? 'CRITICAL' : 'ACTION REQUIRED';
+      } else if (softGaps.length > 0) {
+        severity = imm === 'imminent' || imm === 'near' ? 'ACTION REQUIRED' : 'INFO';
+      }
+      return { severity, reasons: [...hardBlockers, ...softGaps] };
+    };
+
     for (const row of rows) {
       const reasons: string[] = [];
       let severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL' = 'INFO';
 
-      // Critical issues — collect any rows with hard blockers regardless of date
-      // (the date window already constrains to the user's chosen range).
-      const criticalReasons: string[] = [];
-      if (isConfirmationRejected(row)) criticalReasons.push('Supplier confirmation rejected');
-      if (!isAssigned(row)) criticalReasons.push('No supplier assigned');
-      if (isTransport(row) && !row.pickupLocation) criticalReasons.push('Pickup location missing');
-      if ((isActivity(row) || isGuide(row)) && !row.meetingPoint)
-        criticalReasons.push('Meeting point missing');
-      if (criticalReasons.length > 0) {
-        sections.criticalIssues.rows.push({ ...row, severity: 'CRITICAL', reasons: criticalReasons });
+      // Critical issues — only rows whose time-aware classifier returns
+      // CRITICAL land here. A "missing supplier" 5 days out is no longer in
+      // this banner; it surfaces in lanes/timeline with ACTION REQUIRED until
+      // it becomes imminent.
+      const rowClassification = classifyRowSeverityTimed(row);
+      if (rowClassification.severity === 'CRITICAL') {
+        sections.criticalIssues.rows.push({ ...row, severity: 'CRITICAL', reasons: rowClassification.reasons });
       }
 
       // Today's Arrivals — restricted to today's window, transport/arrival-shaped.
@@ -11864,28 +11951,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     // ready). The frontend renders chronological sub-groups (Morning /
     // Afternoon / Evening) and lets the operator collapse lanes that are
     // already operationally ready.
-    const classifyRowSeverity = (r: any): { severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL'; reasons: string[] } => {
-      const critical: string[] = [];
-      const action: string[] = [];
-      if (isConfirmationRejected(r)) critical.push('Confirmation rejected');
-      if (!isAssigned(r)) critical.push('No supplier assigned');
-      if (isTransport(r)) {
-        if (!r.pickupLocation) critical.push('Pickup location missing');
-        if (!r.vehicleName) action.push('Vehicle not assigned');
-        if (!r.driverName) action.push('Driver not assigned');
-      }
-      if (isGuide(r)) {
-        if (!r.guideName) critical.push('Guide not assigned');
-        if (!r.guideReportingTime) action.push('Reporting time not set');
-        if (Array.isArray(r.guideLanguages) && r.guideLanguages.length === 0) action.push('Guide language not set');
-      }
-      if (isActivity(r) && !r.meetingPoint) critical.push('Meeting point missing');
-      if (!isConfirmationConfirmed(r) && !isConfirmationRejected(r)) action.push('Confirmation pending');
-      if (!hasVoucher(r)) action.push('Voucher not generated');
-      const reasons = [...critical, ...action];
-      const severity = critical.length > 0 ? 'CRITICAL' : reasons.length > 0 ? 'ACTION REQUIRED' : 'INFO';
-      return { severity, reasons };
-    };
+    // Lane severity delegates to the same time-aware classifier so the
+    // "Critical · resolve first" banner and the per-lane critical counts
+    // can never disagree.
+    const classifyRowSeverity = classifyRowSeverityTimed;
 
     type LaneRow = any & { severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL'; reasons: string[] };
     const lanes: Record<'arrivals' | 'departures' | 'hotels' | 'transport' | 'activities' | 'guides', LaneRow[]> = {
