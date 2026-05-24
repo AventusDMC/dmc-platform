@@ -856,6 +856,13 @@ function renderDispatchBody({
             />
           </section>
 
+          {/* Live Operations command panel — drawn FIRST because what's
+              happening right now beats what's still being prepared. Type-split
+              into transfers / check-ins / guides / activities so the desk can
+              scan by domain. Delayed/Issue rows get their own dominant block
+              inside the same panel. */}
+          <ExecutionSections data={data} returnTo={returnTo} />
+
           {/* Critical Issues — dominant red banner if any */}
           {criticalRows.length > 0 ? (
             <section
@@ -902,15 +909,12 @@ function renderDispatchBody({
             </section>
           )}
 
-          {/* Execution lifecycle sections — In Progress / Delayed-Issues /
-              Completed Today. These represent what's actively running, what's
-              drifting, and what's already done. Each renders only when it has
-              rows; full visibility of preparation rows still lives in the
-              timeline/lane view below. */}
-          <ExecutionSections data={data} returnTo={returnTo} />
-
           {/* View body: timeline-first (default) or lane-based */}
           {view === 'timeline' ? <TimelineView data={data} returnTo={returnTo} /> : <LanesView data={data} returnTo={returnTo} />}
+
+          {/* Completed Today — compact summary at the bottom. Doesn't compete
+              for top-of-page attention with live ops or critical prep. */}
+          <CompletedTodaySummary data={data} />
         </div>
 
         {/* STICKY SIDEBAR */}
@@ -942,50 +946,289 @@ function renderDispatchBody({
   );
 }
 
-// Live execution sections — drawn above the lane/timeline view so operators
-// see what's actively running before they triage what's still being prepared.
-function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
-  // Defensive: if an older backend response is in flight (no `execution`
-  // block yet) just render nothing instead of crashing the page.
-  if (!data.execution) return null;
-  const sections: Array<{
-    key: keyof DispatchResponse['execution'];
-    label: string;
-    accent: { bg: string; border: string; text: string };
-  }> = [
-    { key: 'inProgress', label: 'In Progress', accent: { bg: '#eff8ff', border: '#84caff', text: '#175cd3' } },
-    { key: 'delayedIssues', label: 'Delayed / Issues', accent: { bg: '#fef3f2', border: '#f04438', text: '#b42318' } },
-    { key: 'completedToday', label: 'Completed Today', accent: { bg: '#ecfdf3', border: '#12b76a', text: '#067647' } },
-  ];
-  const anyVisible = sections.some((s) => (data.execution[s.key]?.rows?.length ?? 0) > 0);
-  if (!anyVisible) return null;
+// Operation-type bucket helper. Splits in-progress (or completed) rows into
+// the operational sub-groups the dispatch desk actually thinks in: transfers,
+// hotel check-ins, guides, activities, other. The order of returned groups
+// is fixed so the layout is stable across refreshes.
+type ExecGroupKey = 'transfers' | 'checkIns' | 'guides' | 'activities' | 'other';
+const EXEC_GROUP_META: Record<ExecGroupKey, { label: string; icon: string; accent: string }> = {
+  transfers: { label: 'Transfers', icon: '🚐', accent: '#175cd3' },
+  checkIns: { label: 'Check-ins', icon: '🏨', accent: '#7e22ce' },
+  guides: { label: 'Guides', icon: '🧭', accent: '#b54708' },
+  activities: { label: 'Activities', icon: '🎟', accent: '#067647' },
+  other: { label: 'Other', icon: '·', accent: '#475467' },
+};
+function execGroupOf(row: DispatchRow): ExecGroupKey {
+  const t = String(row.operationType || row.serviceType || '').toUpperCase();
+  if (t === 'TRANSPORT' || /TRANSFER|TRANSPORT/.test(t)) return 'transfers';
+  if (t === 'HOTEL' || /ACCOMMODATION|LODGING/.test(t)) return 'checkIns';
+  if (t === 'GUIDE' || /GUIDE|GUIDING/.test(t)) return 'guides';
+  if (['ACTIVITY', 'EXCURSION', 'TICKET'].includes(t) || /ACTIVITY|EXCURSION|TICKET|MUSEUM/.test(t)) return 'activities';
+  return 'other';
+}
+function groupByExecType(rows: DispatchRow[]): Record<ExecGroupKey, DispatchRow[]> {
+  const out: Record<ExecGroupKey, DispatchRow[]> = {
+    transfers: [], checkIns: [], guides: [], activities: [], other: [],
+  };
+  for (const r of rows) {
+    if (r) out[execGroupOf(r)].push(r);
+  }
+  return out;
+}
+
+// "Started 12 min ago" / "Dispatched 1h 23m ago". Server-rendered, so we
+// snap to the SSR moment — refreshing updates it.
+function formatTimeAgo(iso: string | null, prefix: string): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (minutes < 1) return `${prefix} just now`;
+  if (minutes < 60) return `${prefix} ${minutes} min ago`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${prefix} ${h}h${m > 0 ? ` ${m}m` : ''} ago`;
+}
+
+// Time-in-state badge — surfaces how long this row has been in its current
+// execution state. Drift on operations becomes visible as the number climbs.
+function TimeInStateBadge({ row }: { row: DispatchRow }) {
+  let text: string | null = null;
+  let tone = '#175cd3';
+  if (row.executionStatus === 'IN_PROGRESS') {
+    text = formatTimeAgo(row.startedAt, 'Started');
+    tone = '#b54708';
+  } else if (row.executionStatus === 'DISPATCHED') {
+    text = formatTimeAgo(row.dispatchedAt, 'Dispatched');
+    tone = '#175cd3';
+  } else if (row.executionStatus === 'ISSUE') {
+    text = formatTimeAgo(row.issueReportedAt, 'Issue raised');
+    tone = '#b42318';
+  } else if (row.executionStatus === 'COMPLETED') {
+    text = formatTimeAgo(row.completedAt, 'Completed');
+    tone = '#067647';
+  }
+  if (!text) return null;
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      {sections.map((s) => {
-        const section = data.execution[s.key];
-        if (!section || !section.rows || section.rows.length === 0) return null;
-        return (
-          <div
-            key={s.key}
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.3rem',
+        background: '#ffffff',
+        color: tone,
+        border: `1px solid ${tone}`,
+        padding: '0.1rem 0.45rem',
+        borderRadius: 999,
+        fontSize: '0.72rem',
+        fontWeight: 700,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      ⏱ {text}
+    </span>
+  );
+}
+
+// Live execution sections — split In Progress into operational sub-groups
+// (transfers / check-ins / guides / activities) so the dispatch desk can
+// scan by domain. Delayed/Issues stays as its own dominant block. Completed
+// Today renders below the timeline as a daily summary rather than competing
+// for top-of-page attention.
+function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
+  if (!data.execution) return null;
+
+  const inProgressRows = data.execution.inProgress?.rows ?? [];
+  const delayedRows = data.execution.delayedIssues?.rows ?? [];
+  const groups = groupByExecType(inProgressRows);
+  const anyInProgress = inProgressRows.length > 0;
+  const anyDelayed = delayedRows.length > 0;
+  if (!anyInProgress && !anyDelayed) return null;
+
+  const order: ExecGroupKey[] = ['transfers', 'checkIns', 'guides', 'activities', 'other'];
+
+  return (
+    <section
+      style={{
+        background: 'linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)',
+        border: '1px solid #84caff',
+        borderRadius: 12,
+        padding: '0.85rem 1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.85rem',
+        boxShadow: '0 2px 6px rgba(23, 92, 211, 0.08)',
+      }}
+      aria-label="Live operations"
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p
             style={{
-              background: '#ffffff',
-              border: `1px solid ${s.accent.border}`,
-              borderLeft: `6px solid ${s.accent.border}`,
-              borderRadius: 10,
-              padding: '0.85rem 1rem',
+              margin: 0,
+              color: '#175cd3',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
               display: 'flex',
-              flexDirection: 'column',
-              gap: '0.6rem',
+              alignItems: 'center',
+              gap: '0.35rem',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
-              <h3 style={{ margin: 0, color: s.accent.text }}>{section.label}</h3>
-              <strong style={{ color: s.accent.text, fontSize: '1.25rem' }}>{section.count}</strong>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              {section.rows.map((row) => <DispatchCard key={`exec-${s.key}-${row.serviceId}`} row={row} returnTo={returnTo} />)}
-            </div>
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#175cd3',
+                boxShadow: '0 0 0 4px rgba(23, 92, 211, 0.18)',
+              }}
+            />
+            Live Operations · happening now
+          </p>
+          <h2 style={{ margin: 0, color: '#101828' }}>
+            {inProgressRows.length} in progress
+            {anyDelayed ? ` · ${delayedRows.length} delayed / issue` : ''}
+          </h2>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          {order.map((key) => {
+            const count = groups[key].length;
+            if (count === 0) return null;
+            const meta = EXEC_GROUP_META[key];
+            return (
+              <span
+                key={key}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  background: '#ffffff',
+                  color: meta.accent,
+                  border: `1px solid ${meta.accent}`,
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: 999,
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                }}
+              >
+                <span aria-hidden>{meta.icon}</span> {meta.label} · {count}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {anyInProgress
+        ? order.map((key) => {
+            const rows = groups[key];
+            if (rows.length === 0) return null;
+            const meta = EXEC_GROUP_META[key];
+            return (
+              <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontSize: '1rem' }} aria-hidden>{meta.icon}</span>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', color: meta.accent }}>
+                    Active {meta.label.toLowerCase()}
+                  </h3>
+                  <span style={{ color: '#667085', fontSize: '0.8rem' }}>· {rows.length}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  {rows.map((row) => (
+                    <div key={`live-${key}-${row.serviceId}`} style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: '0.5rem', right: '0.65rem', zIndex: 1 }}>
+                        <TimeInStateBadge row={row} />
+                      </div>
+                      <DispatchCard row={row} returnTo={returnTo} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        : null}
+
+      {anyDelayed ? (
+        <div
+          style={{
+            background: '#fef3f2',
+            border: '1px solid #f04438',
+            borderRadius: 10,
+            padding: '0.75rem 0.85rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span aria-hidden style={{ fontSize: '1rem' }}>⚠</span>
+            <h3 style={{ margin: 0, color: '#b42318', fontSize: '1rem' }}>
+              Delayed / Issue · resolve now
+            </h3>
+            <span style={{ color: '#7a271a', fontSize: '0.85rem' }}>· {delayedRows.length}</span>
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            {delayedRows.map((row) => (
+              <div key={`delayed-${row.serviceId}`} style={{ position: 'relative' }}>
+                <div style={{ position: 'absolute', top: '0.5rem', right: '0.65rem', zIndex: 1 }}>
+                  <TimeInStateBadge row={row} />
+                </div>
+                <DispatchCard row={row} returnTo={returnTo} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+// Compact "completed today" summary — lives below the timeline so the dispatch
+// desk can see what already shipped without it competing for top-of-page
+// attention with live ops + critical prep.
+function CompletedTodaySummary({ data }: { data: DispatchResponse }) {
+  const rows = data.execution?.completedToday?.rows ?? [];
+  if (rows.length === 0) return null;
+  const groups = groupByExecType(rows);
+  const order: ExecGroupKey[] = ['transfers', 'checkIns', 'guides', 'activities', 'other'];
+  return (
+    <section
+      style={{
+        background: '#ecfdf3',
+        border: '1px solid #12b76a',
+        borderRadius: 10,
+        padding: '0.65rem 0.9rem',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: '0.75rem',
+      }}
+      aria-label="Completed today"
+    >
+      <strong style={{ color: '#067647', fontSize: '0.95rem' }}>
+        ✓ {rows.length} completed today
+      </strong>
+      {order.map((key) => {
+        const count = groups[key].length;
+        if (count === 0) return null;
+        const meta = EXEC_GROUP_META[key];
+        return (
+          <span
+            key={key}
+            style={{
+              color: '#067647',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+            }}
+          >
+            <span aria-hidden>{meta.icon}</span> {meta.label.toLowerCase()}: {count}
+          </span>
         );
       })}
     </section>
