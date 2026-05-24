@@ -10564,6 +10564,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         ? await (tx.voucher as any).update({ where: { id: existing.id }, data: baseData })
         : await (tx.voucher as any).create({ data: { bookingId, bookingServiceId, ...baseData } });
 
+      // Mirror to the legacy BookingService.voucherStatus / voucherGeneratedAt
+      // columns. The operations-grid serializer at bookings.service.ts:585 reads
+      // those (not the Voucher relation) to drive the status pill + timestamp on
+      // the operations grid card. Without this update the pill would say
+      // GENERATED but the timestamp would stay null.
+      await (tx.bookingService as any).update({
+        where: { id: bookingServiceId },
+        data: {
+          voucherStatus: 'GENERATED',
+          voucherGeneratedAt: now,
+        },
+      });
+
       await this.createAuditLog(tx, {
         bookingId,
         bookingServiceId,
