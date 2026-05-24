@@ -77,55 +77,81 @@ export class IntelligenceService {
     const forecastEnd = new Date(todayStart.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     // ---- Pull the data we need in parallel --------------------------------
+    // Defensive: each fetch wrapped so a single failure (missing relation,
+    // empty table, etc.) doesn't blank the entire dashboard.
+    const safe = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`[intelligence] ${label} failed`, err);
+        return fallback;
+      }
+    };
     const [historical, forecast, events, activeCounts] = await Promise.all([
-      // Historical window — drives performance / bottleneck / trend / heatmap.
-      (this.prisma.bookingService as any).findMany({
-        where: {
-          OR: [
-            { serviceDate: { gte: since, lt: todayStart } },
-            { operationalDate: { gte: since, lt: todayStart } },
-          ],
-        },
-        include: {
-          supplier: { select: { id: true, name: true, type: true } },
-          assignedSupplier: { select: { id: true, name: true, type: true } },
-          driver: { select: { id: true, fullName: true } },
-          guide: { select: { id: true, fullName: true } },
-          touringRoute: { select: { id: true, name: true } },
-        },
-      }),
-      // Forecast window — next 14 days, all assigned services.
-      (this.prisma.bookingService as any).findMany({
-        where: {
-          OR: [
-            { serviceDate: { gte: todayStart, lt: forecastEnd } },
-            { operationalDate: { gte: todayStart, lt: forecastEnd } },
-          ],
-          executionStatus: { notIn: ['CANCELLED'] as any },
-        },
-        select: {
-          id: true,
-          serviceType: true,
-          operationType: true,
-          serviceDate: true,
-          operationalDate: true,
-          driverId: true,
-          vehicleId: true,
-          guideId: true,
-        },
-      }),
-      // DispatchEvent slice for SLA + recovery metrics.
-      (this.prisma as any).dispatchEvent.findMany({
-        where: { occurredAt: { gte: since } },
-        select: { bookingServiceId: true, eventType: true, occurredAt: true, payload: true, severity: true },
-        orderBy: [{ occurredAt: 'asc' }],
-      }),
-      // Active resource pool counts for forecast denominators.
-      Promise.all([
-        (this.prisma as any).driver.count({ where: { active: true } }),
-        (this.prisma as any).vehicle.count({}),
-        (this.prisma.guide as any).count({ where: { active: true } }),
-      ]).then(([drivers, vehicles, guides]) => ({ drivers, vehicles, guides })),
+      safe(
+        'historical',
+        () =>
+          (this.prisma.bookingService as any).findMany({
+            where: {
+              OR: [
+                { serviceDate: { gte: since, lt: todayStart } },
+                { operationalDate: { gte: since, lt: todayStart } },
+              ],
+            },
+            include: {
+              supplier: { select: { id: true, name: true, type: true } },
+              assignedSupplier: { select: { id: true, name: true, type: true } },
+              driver: { select: { id: true, fullName: true } },
+              guide: { select: { id: true, fullName: true } },
+              touringRoute: { select: { id: true, name: true } },
+            },
+          }),
+        [] as any[],
+      ),
+      safe(
+        'forecast',
+        () =>
+          (this.prisma.bookingService as any).findMany({
+            where: {
+              OR: [
+                { serviceDate: { gte: todayStart, lt: forecastEnd } },
+                { operationalDate: { gte: todayStart, lt: forecastEnd } },
+              ],
+              executionStatus: { notIn: ['CANCELLED'] as any },
+            },
+            select: {
+              id: true,
+              serviceType: true,
+              operationType: true,
+              serviceDate: true,
+              operationalDate: true,
+              driverId: true,
+              vehicleId: true,
+              guideId: true,
+            },
+          }),
+        [] as any[],
+      ),
+      safe(
+        'events',
+        () =>
+          (this.prisma as any).dispatchEvent.findMany({
+            where: { occurredAt: { gte: since } },
+            select: { bookingServiceId: true, eventType: true, occurredAt: true, payload: true, severity: true },
+            orderBy: [{ occurredAt: 'asc' }],
+          }),
+        [] as any[],
+      ),
+      safe(
+        'activeCounts',
+        () =>
+          Promise.all([
+            (this.prisma as any).driver.count({ where: { active: true } }),
+            (this.prisma as any).vehicle.count({}),
+            (this.prisma.guide as any).count({ where: { active: true } }),
+          ]).then(([drivers, vehicles, guides]: any[]) => ({ drivers, vehicles, guides })),
+        { drivers: 0, vehicles: 0, guides: 0 },
+      ),
     ]);
 
     const total = historical.length;
