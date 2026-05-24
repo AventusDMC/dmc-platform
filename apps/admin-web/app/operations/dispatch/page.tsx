@@ -102,6 +102,9 @@ type DispatchResponse = {
     delayedOperationsCount: number;
     escalatedIssuesCount: number;
     resolutionQueueCount: number;
+    resourceConflictsCount?: number;
+    overbookedResourcesCount?: number;
+    dispatchCapacityWarningsCount?: number;
   };
   execution: {
     inProgress: { label: string; count: number; rows: DispatchRow[] };
@@ -866,6 +869,13 @@ function renderDispatchBody({
               🛠 Recovery
             </Link>
             <Link
+              href="/operations/resources/conflicts"
+              className="button button-secondary"
+              title="Cross-booking resource conflict detection (drivers / vehicles / guides)"
+            >
+              ⚙ Resources
+            </Link>
+            <Link
               href="/operations/simulation"
               className="button button-secondary"
               style={{ borderStyle: 'dashed' }}
@@ -953,6 +963,31 @@ function renderDispatchBody({
               <CounterCard label="Delayed Operations" value={c.delayedOperationsCount} tone={c.delayedOperationsCount > 0 ? 'action' : 'ready'} />
               <CounterCard label="Escalated Issues" value={c.escalatedIssuesCount} tone={c.escalatedIssuesCount > 0 ? 'critical' : 'ready'} sub="HIGH or CRITICAL" />
               <CounterCard label="Resolution Queue" value={c.resolutionQueueCount} tone={c.resolutionQueueCount > 0 ? 'critical' : 'ready'} sub="Open > 30 min" />
+            </section>
+          ) : null}
+
+          {/* Resource-orchestration counters. Quick-scan from this window;
+              full per-conflict detail at /operations/resources/conflicts. */}
+          {(c.resourceConflictsCount ?? 0) > 0 || (c.overbookedResourcesCount ?? 0) > 0 || (c.dispatchCapacityWarningsCount ?? 0) > 0 ? (
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '0.6rem' }}>
+              <CounterCard
+                label="Resource Conflicts"
+                value={c.resourceConflictsCount ?? 0}
+                tone={(c.resourceConflictsCount ?? 0) > 0 ? 'critical' : 'ready'}
+                sub="Driver / vehicle / guide"
+              />
+              <CounterCard
+                label="Overbooked Resources"
+                value={c.overbookedResourcesCount ?? 0}
+                tone={(c.overbookedResourcesCount ?? 0) > 0 ? 'critical' : 'ready'}
+                sub="Overlapping windows"
+              />
+              <CounterCard
+                label="Capacity Warnings"
+                value={c.dispatchCapacityWarningsCount ?? 0}
+                tone={(c.dispatchCapacityWarningsCount ?? 0) > 0 ? 'action' : 'ready'}
+                sub="Tight turnaround"
+              />
             </section>
           ) : null}
 

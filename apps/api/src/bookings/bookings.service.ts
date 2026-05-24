@@ -5875,6 +5875,86 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return 'system';
   }
 
+  // Quick-scan resource conflict counters for the dispatch dashboard. Counts
+  // resources (drivers, vehicles, guides) that appear on ≥2 services with
+  // overlapping or near-overlapping (<30 min gap) windows in the current
+  // dispatch window. The full per-conflict detail lives at
+  // /operations/resources/conflicts via the ResourcesService.
+  private computeResourceConflictCounters(rows: any[]) {
+    type W = { resId: string; resType: 'driver' | 'vehicle' | 'guide'; start: number; end: number };
+    const DURATION_MS: Record<string, number> = {
+      TRANSPORT: 1.5 * 3600_000,
+      TRANSFER: 1.5 * 3600_000,
+      HOTEL: 12 * 3600_000,
+      ACCOMMODATION: 12 * 3600_000,
+      GUIDE: 4 * 3600_000,
+      GUIDING: 4 * 3600_000,
+      ACTIVITY: 3 * 3600_000,
+      EXCURSION: 3 * 3600_000,
+      TICKET: 1.5 * 3600_000,
+    };
+    const windows: W[] = [];
+    for (const r of rows) {
+      const status = String(r.executionStatus || '').toUpperCase();
+      if (status === 'COMPLETED' || status === 'CANCELLED') continue;
+      const dateStr: string | null = r.date || null;
+      const timeStr: string | null = r.time || null;
+      if (!dateStr || !timeStr) continue;
+      const m = String(timeStr).match(/(\d{1,2}):(\d{2})/);
+      if (!m) continue;
+      const start = new Date(dateStr);
+      start.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
+      if (!Number.isFinite(start.getTime())) continue;
+      const type = String(r.operationType || r.serviceType || '').toUpperCase();
+      const dur = DURATION_MS[type] || 2 * 3600_000;
+      const end = start.getTime() + dur;
+      const startMs = start.getTime();
+      // Need the FK resource ids — but the dispatch row builder doesn't
+      // surface vehicleId/driverId/guideId directly. Use the proxy fields
+      // we DO emit: vehicleName + driverName + guideName as cheap keys.
+      // Two different drivers with the same name would collide here (very
+      // unusual), but the full conflict center uses the real FKs.
+      if (r.driverName) windows.push({ resId: `D:${r.driverName}`, resType: 'driver', start: startMs, end });
+      if (r.vehicleName) windows.push({ resId: `V:${r.vehicleName}`, resType: 'vehicle', start: startMs, end });
+      if (r.guideName) windows.push({ resId: `G:${r.guideName}`, resType: 'guide', start: startMs, end });
+    }
+    // Group by resource id, sweep for overlaps.
+    const byRes = new Map<string, W[]>();
+    for (const w of windows) {
+      const list = byRes.get(w.resId) || [];
+      list.push(w);
+      byRes.set(w.resId, list);
+    }
+    let resourceConflicts = 0;
+    let overbookedResources = 0;
+    let capacityWarnings = 0;
+    for (const list of byRes.values()) {
+      if (list.length < 2) continue;
+      list.sort((a, b) => a.start - b.start);
+      let overlapping = false;
+      let tight = false;
+      for (let i = 0; i < list.length - 1; i++) {
+        const gap = list[i + 1].start - list[i].end;
+        if (gap < 0) {
+          overlapping = true;
+        } else if (gap < 30 * 60_000) {
+          tight = true;
+        }
+      }
+      if (overlapping) {
+        resourceConflicts += 1;
+        overbookedResources += 1;
+      } else if (tight) {
+        capacityWarnings += 1;
+      }
+    }
+    return {
+      resourceConflictsCount: resourceConflicts,
+      overbookedResourcesCount: overbookedResources,
+      dispatchCapacityWarningsCount: capacityWarnings,
+    };
+  }
+
   async updateOperationalServiceStatus(
     bookingServiceId: string,
     data: {
@@ -12285,6 +12365,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           const sev = String(r.issueEffectiveSeverity || r.issueSeverity || '').toUpperCase();
           return String(r.executionStatus || '').toUpperCase() === 'ISSUE' && (sev === 'HIGH' || sev === 'CRITICAL');
         }).length,
+        // Resource-orchestration counters (v1). Quick same-window scan of the
+        // dispatch dataset for driver/vehicle/guide double-bookings — the
+        // full Resource Conflict Center lives at /operations/resources/conflicts
+        // and uses a longer rangeDays window.
+        ...this.computeResourceConflictCounters(rows),
       },
       sections: {
         arrivals: { ...sections.arrivals, count: sections.arrivals.rows.length },
