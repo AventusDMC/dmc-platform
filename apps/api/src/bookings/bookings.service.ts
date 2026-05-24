@@ -621,6 +621,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           dropoffLocation: service.dropoffLocation || null,
           assignedVehicleId: service.assignedVehicleId || service.vehicleId || null,
           assignedGuideId: service.assignedGuideId || service.guideId || null,
+          nights: (service as any).nights ?? null,
         };
       });
     const passengerManifest = this.buildPassengerManifestSummary(booking);
@@ -5380,6 +5381,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       participantCount?: number | null;
       adultCount?: number | null;
       childCount?: number | null;
+      nights?: number | string | null;
       supplierReference?: string | null;
       reconfirmationRequired?: boolean;
       reconfirmationDueAt?: string | null;
@@ -5418,6 +5420,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         participantCount: true,
         adultCount: true,
         childCount: true,
+        nights: true,
         supplierReference: true,
         sourceMetadata: true,
         reconfirmationRequired: true,
@@ -5453,6 +5456,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.meetingPoint === undefined ? bookingService.meetingPoint : this.normalizeOptionalText(data.meetingPoint);
     const supplierReference =
       data.supplierReference === undefined ? bookingService.supplierReference : this.normalizeOptionalText(data.supplierReference);
+    // nights is HOTEL-specific; nullable so non-hotel rows leave it null.
+    // Accept empty string / null / undefined gracefully.
+    const nights =
+      data.nights === undefined || data.nights === null || data.nights === ''
+        ? (bookingService as any).nights ?? null
+        : (() => {
+            const n = Number(data.nights);
+            return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+          })();
     const hotelReservationMetadata = this.isHotelService(bookingService.serviceType, bookingService.operationType)
       ? this.buildHotelReservationMetadata(bookingService.sourceMetadata, data)
       : bookingService.sourceMetadata;
@@ -5496,6 +5508,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           participantCount: counts.participantCount,
           adultCount: counts.adultCount,
           childCount: counts.childCount,
+          nights,
           supplierReference,
           confirmationNumber: supplierReference ?? null,
           sourceMetadata: hotelReservationMetadata as Prisma.InputJsonValue,
@@ -10542,21 +10555,33 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           }
         : null,
       hotel: isHotel
-        ? {
-            confirmationNumber: service.confirmationNumber || service.confirmationReference || null,
-            checkIn: operationalDate ? new Date(operationalDate).toISOString().slice(0, 10) : null,
-            // Hotel check-out is not modelled on BookingService directly. Fall
-            // back to sourceMetadata.hotelReservation.checkOut if a quote
-            // captured it; otherwise leave null and the detail page hides it.
-            checkOut: hotelMetadata?.checkOut || hotelMetadata?.releaseDate || null,
-            mealPlan: hotelMetadata?.mealPlan || hotelMetadata?.boardBasis || null,
-            roomCount: roomingEntries.length,
-            assignedPax,
-            occupancy: occupancyBreakdown,
-            specialRequests:
-              hotelMetadata?.specialRequests || hotelMetadata?.notes || null,
-            emergencyContact: supplierContact,
-          }
+        ? (() => {
+            const checkInDate = operationalDate ? new Date(operationalDate) : null;
+            const nights = Number(service.nights || 0);
+            // Derive checkOut = checkIn + nights days when both are present.
+            // Fall back to sourceMetadata.hotelReservation.checkOut for legacy
+            // rows where the quote captured an explicit checkout but the
+            // operator hasn't yet set the structured nights field.
+            const derivedCheckOut =
+              checkInDate && nights > 0
+                ? new Date(checkInDate.getTime() + nights * 24 * 60 * 60 * 1000)
+                : null;
+            return {
+              confirmationNumber: service.confirmationNumber || service.confirmationReference || null,
+              checkIn: checkInDate ? checkInDate.toISOString().slice(0, 10) : null,
+              checkOut: derivedCheckOut
+                ? derivedCheckOut.toISOString().slice(0, 10)
+                : hotelMetadata?.checkOut || hotelMetadata?.releaseDate || null,
+              nights: nights > 0 ? nights : null,
+              mealPlan: hotelMetadata?.mealPlan || hotelMetadata?.boardBasis || null,
+              roomCount: roomingEntries.length,
+              assignedPax,
+              occupancy: occupancyBreakdown,
+              specialRequests:
+                hotelMetadata?.specialRequests || hotelMetadata?.notes || null,
+              emergencyContact: supplierContact,
+            };
+          })()
         : null,
       activity: isActivity
         ? {
