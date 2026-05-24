@@ -4,6 +4,52 @@ import { AdminBackButton } from '../../../../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../../../../lib/operations-timezone';
+import { PrintVoucherButton } from './PrintVoucherButton';
+
+type SupplierContact = { email?: string | null; phone?: string | null } | null;
+
+type TransportSnapshot = {
+  routeName?: string | null;
+  routeCode?: string | null;
+  vehicleType?: string | null;
+  vehicleName?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  emergencyContact?: SupplierContact;
+  operationalRemarks?: string | null;
+} | null;
+
+type HotelSnapshot = {
+  confirmationNumber?: string | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  mealPlan?: string | null;
+  roomCount?: number | null;
+  assignedPax?: number | null;
+  occupancy?: Array<{ roomType?: string | null; occupancy?: string | null; paxCount?: number }> | null;
+  specialRequests?: string | null;
+  emergencyContact?: SupplierContact;
+} | null;
+
+type ActivitySnapshot = {
+  meetingPoint?: string | null;
+  startTime?: string | null;
+  participants?: { total?: number | null; adults?: number | null; children?: number | null } | null;
+  inclusions?: string[] | null;
+  exclusions?: string[] | null;
+  assignedGuide?: string | null;
+  assignedGuidePhone?: string | null;
+  operationalNotes?: string | null;
+} | null;
+
+type GuideSnapshot = {
+  guideName?: string | null;
+  guideLanguages?: string[] | null;
+  reportingTime?: string | null;
+  workingHours?: string | null;
+  phone?: string | null;
+  email?: string | null;
+} | null;
 
 type VoucherSnapshot = {
   voucherVersion?: number;
@@ -25,6 +71,13 @@ type VoucherSnapshot = {
   rooming?: { roomCount?: number; assignedPax?: number } | null;
   operationalNotes?: string | null;
   confirmationReference?: string | null;
+  // v2 per-type sub-blocks. Older v1 snapshots have these missing — the
+  // detail page renders them only when present, so v1 vouchers keep
+  // working with just the generic fields above.
+  transport?: TransportSnapshot;
+  hotel?: HotelSnapshot;
+  activity?: ActivitySnapshot;
+  guide?: GuideSnapshot;
   warnings?: string[] | null;
 };
 
@@ -89,7 +142,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
   const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings : [];
 
   return (
-    <main className="admin-page-shell">
+    <main className="admin-page-shell operational-voucher-page">
       <div className="admin-page-heading">
         <AdminBreadcrumbs
           items={[
@@ -110,6 +163,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
           <div className="admin-heading-actions">
             <AdminBackButton fallbackHref={`/bookings/${id}/operations`} label="Back to operations" />
             <Link className="button button-secondary" href={`/bookings/${id}`}>Booking</Link>
+            <PrintVoucherButton />
           </div>
         </div>
       </div>
@@ -162,6 +216,109 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
           <Detail label="Confirmation reference" hideIfEmpty>{snapshot.confirmationReference}</Detail>
         </div>
       </section>
+
+      {/* v2 per-type sub-blocks. Each section only renders when the
+          matching snapshot block is present, so v1 vouchers continue to
+          render with just the generic sections above. */}
+      {snapshot.transport ? (
+        <section className="admin-card">
+          <p className="eyebrow">Transport</p>
+          <h2>Route & vehicle</h2>
+          <div className="voucher-detail-grid">
+            <Detail label="Route name" hideIfEmpty>{snapshot.transport.routeName}</Detail>
+            <Detail label="Route code" hideIfEmpty>{snapshot.transport.routeCode}</Detail>
+            <Detail label="Vehicle type" hideIfEmpty>{snapshot.transport.vehicleType}</Detail>
+            <Detail label="Vehicle name" hideIfEmpty>{snapshot.transport.vehicleName}</Detail>
+            <Detail label="Driver" hideIfEmpty>{snapshot.transport.driverName}</Detail>
+            <Detail label="Driver phone" hideIfEmpty>{snapshot.transport.driverPhone}</Detail>
+            <Detail label="Emergency contact" hideIfEmpty>
+              {[snapshot.transport.emergencyContact?.phone, snapshot.transport.emergencyContact?.email].filter(Boolean).join(' · ') || null}
+            </Detail>
+            <Detail label="Operational remarks" hideIfEmpty>{snapshot.transport.operationalRemarks}</Detail>
+          </div>
+        </section>
+      ) : null}
+
+      {snapshot.hotel ? (
+        <section className="admin-card">
+          <p className="eyebrow">Hotel</p>
+          <h2>Stay details</h2>
+          <div className="voucher-detail-grid">
+            <Detail label="Hotel confirmation" hideIfEmpty>{snapshot.hotel.confirmationNumber}</Detail>
+            <Detail label="Check-in" hideIfEmpty>{snapshot.hotel.checkIn}</Detail>
+            <Detail label="Check-out" hideIfEmpty>{snapshot.hotel.checkOut}</Detail>
+            <Detail label="Meal plan" hideIfEmpty>{snapshot.hotel.mealPlan}</Detail>
+            <Detail label="Rooms" hideIfEmpty>{snapshot.hotel.roomCount}</Detail>
+            <Detail label="Assigned pax" hideIfEmpty>{snapshot.hotel.assignedPax}</Detail>
+            <Detail label="Special requests" hideIfEmpty>{snapshot.hotel.specialRequests}</Detail>
+            <Detail label="Emergency contact" hideIfEmpty>
+              {[snapshot.hotel.emergencyContact?.phone, snapshot.hotel.emergencyContact?.email].filter(Boolean).join(' · ') || null}
+            </Detail>
+          </div>
+          {snapshot.hotel.occupancy && snapshot.hotel.occupancy.length > 0 ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <p className="eyebrow" style={{ fontSize: '0.75rem' }}>Occupancy breakdown</p>
+              <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {snapshot.hotel.occupancy.map((room, idx) => (
+                  <li key={idx}>
+                    {[room.roomType, room.occupancy, `${room.paxCount ?? 0} pax`].filter(Boolean).join(' · ')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {snapshot.activity ? (
+        <section className="admin-card">
+          <p className="eyebrow">Activity</p>
+          <h2>Activity details</h2>
+          <div className="voucher-detail-grid">
+            <Detail label="Meeting point" hideIfEmpty>{snapshot.activity.meetingPoint}</Detail>
+            <Detail label="Start time" hideIfEmpty>{snapshot.activity.startTime}</Detail>
+            <Detail label="Total participants" hideIfEmpty>{snapshot.activity.participants?.total}</Detail>
+            <Detail label="Adults" hideIfEmpty>{snapshot.activity.participants?.adults}</Detail>
+            <Detail label="Children" hideIfEmpty>{snapshot.activity.participants?.children}</Detail>
+            <Detail label="Assigned guide" hideIfEmpty>{snapshot.activity.assignedGuide}</Detail>
+            <Detail label="Guide phone" hideIfEmpty>{snapshot.activity.assignedGuidePhone}</Detail>
+          </div>
+          {snapshot.activity.inclusions && snapshot.activity.inclusions.length > 0 ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <p className="eyebrow" style={{ fontSize: '0.75rem' }}>Inclusions</p>
+              <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {snapshot.activity.inclusions.map((item, idx) => <li key={idx}>{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {snapshot.activity.exclusions && snapshot.activity.exclusions.length > 0 ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <p className="eyebrow" style={{ fontSize: '0.75rem' }}>Exclusions</p>
+              <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {snapshot.activity.exclusions.map((item, idx) => <li key={idx}>{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {snapshot.guide ? (
+        <section className="admin-card">
+          <p className="eyebrow">Guide</p>
+          <h2>{snapshot.guide.guideName || 'Guide'}</h2>
+          <div className="voucher-detail-grid">
+            <Detail label="Languages" hideIfEmpty>
+              {Array.isArray(snapshot.guide.guideLanguages) && snapshot.guide.guideLanguages.length > 0
+                ? snapshot.guide.guideLanguages.join(', ')
+                : null}
+            </Detail>
+            <Detail label="Reporting time" hideIfEmpty>{snapshot.guide.reportingTime}</Detail>
+            <Detail label="Working hours" hideIfEmpty>{snapshot.guide.workingHours}</Detail>
+            <Detail label="Phone" hideIfEmpty>{snapshot.guide.phone}</Detail>
+            <Detail label="Email" hideIfEmpty>{snapshot.guide.email}</Detail>
+          </div>
+        </section>
+      ) : null}
 
       <section className="admin-card">
         <p className="eyebrow">Passengers & rooming</p>

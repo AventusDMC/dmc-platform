@@ -27288,3 +27288,46 @@ video {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Browser-print styles for the operational voucher detail page. No PDF
+   engine yet — operators can hit Print and the page reflows to a clean
+   single-column, black-on-white layout suitable for handing to a driver
+   or hotel front desk. Scoped to .operational-voucher-page so other
+   admin pages aren't affected. */
+@media print {
+  .operational-voucher-page {
+    background: #ffffff;
+    color: #000000;
+    padding: 0;
+    max-width: 100%;
+  }
+  body:has(.operational-voucher-page) {
+    background: #ffffff;
+  }
+  .operational-voucher-page .admin-heading-actions,
+  .voucher-print-control,
+  body:has(.operational-voucher-page) .admin-shell-sidebar,
+  body:has(.operational-voucher-page) .admin-shell-header,
+  body:has(.operational-voucher-page) nav[aria-label="Primary"] {
+    display: none !important;
+  }
+  .operational-voucher-page .admin-card {
+    break-inside: avoid;
+    border: 1px solid #cccccc;
+    box-shadow: none;
+    margin-bottom: 0.5rem;
+    padding: 0.75rem;
+    background: #ffffff;
+  }
+  .operational-voucher-page .warning-banner {
+    border: 1px solid #999;
+    background: #f5f5f5;
+    color: #000;
+    page-break-inside: avoid;
+  }
+  .operational-voucher-page h1,
+  .operational-voucher-page h2,
+  .operational-voucher-page .eyebrow {
+    color: #000;
+  }
+}
