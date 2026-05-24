@@ -579,7 +579,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
   );
 }
 
-function LaneBlock({ lane, startOpen }: { lane: Lane; startOpen: boolean }) {
+function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boolean; returnTo: string }) {
   const buckets: Record<string, DispatchRow[]> = {
     morning: [],
     afternoon: [],
@@ -643,7 +643,7 @@ function LaneBlock({ lane, startOpen }: { lane: Lane; startOpen: boolean }) {
                   {bucketLabel} · {rows.length}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {rows.map((row) => <DispatchCard key={`${lane.label}-${row.serviceId}`} row={row} />)}
+                  {rows.map((row) => <DispatchCard key={`${lane.label}-${row.serviceId}`} row={row} returnTo={returnTo} />)}
                 </div>
               </div>
             ),
@@ -661,6 +661,13 @@ export default async function DispatchPage({ searchParams }: PageProps) {
 
   const query = new URLSearchParams();
   query.set('range', range);
+  // Preserve range + view across execution action redirects so the operator
+  // lands back on the same dispatch view they were just looking at, not the
+  // default today/timeline.
+  const returnQuery = new URLSearchParams();
+  returnQuery.set('range', range);
+  if (view !== 'timeline') returnQuery.set('view', view);
+  const returnTo = `/operations/dispatch?${returnQuery.toString()}`;
 
   let data: DispatchResponse | null = null;
   let fetchError: string | null = null;
@@ -827,7 +834,7 @@ export default async function DispatchPage({ searchParams }: PageProps) {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {criticalRows.slice(0, 10).map((row) => (
-                  <DispatchCard key={`crit-${row.serviceId}`} row={{ ...row, severity: 'CRITICAL' }} />
+                  <DispatchCard key={`crit-${row.serviceId}`} row={{ ...row, severity: 'CRITICAL' }} returnTo={returnTo} />
                 ))}
                 {criticalRows.length > 10 ? (
                   <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
@@ -855,10 +862,10 @@ export default async function DispatchPage({ searchParams }: PageProps) {
               drifting, and what's already done. Each renders only when it has
               rows; full visibility of preparation rows still lives in the
               timeline/lane view below. */}
-          <ExecutionSections data={data} />
+          <ExecutionSections data={data} returnTo={returnTo} />
 
           {/* View body: timeline-first (default) or lane-based */}
-          {view === 'timeline' ? <TimelineView data={data} /> : <LanesView data={data} />}
+          {view === 'timeline' ? <TimelineView data={data} returnTo={returnTo} /> : <LanesView data={data} returnTo={returnTo} />}
         </div>
 
         {/* STICKY SIDEBAR */}
@@ -892,7 +899,7 @@ export default async function DispatchPage({ searchParams }: PageProps) {
 
 // Live execution sections — drawn above the lane/timeline view so operators
 // see what's actively running before they triage what's still being prepared.
-function ExecutionSections({ data }: { data: DispatchResponse }) {
+function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
   const sections: Array<{
     key: keyof DispatchResponse['execution'];
     label: string;
@@ -928,7 +935,7 @@ function ExecutionSections({ data }: { data: DispatchResponse }) {
               <strong style={{ color: s.accent.text, fontSize: '1.25rem' }}>{section.count}</strong>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              {section.rows.map((row) => <DispatchCard key={`exec-${s.key}-${row.serviceId}`} row={row} />)}
+              {section.rows.map((row) => <DispatchCard key={`exec-${s.key}-${row.serviceId}`} row={row} returnTo={returnTo} />)}
             </div>
           </div>
         );
@@ -941,7 +948,7 @@ function ExecutionSections({ data }: { data: DispatchResponse }) {
 // (Morning/Afternoon/Evening/Unscheduled), critical rows pinned to top of each
 // bucket. The dispatch team thinks "08:30 airport pickup → 11:00 hotel
 // check-in → 17:00 departure transfer", not by data type. This is the default.
-function TimelineView({ data }: { data: DispatchResponse }) {
+function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
   // Deduplicate rows across lanes (a transport row that's also an arrival
   // shows in both lanes; here it should appear once on the timeline).
   const seen = new Set<string>();
@@ -1003,7 +1010,7 @@ function TimelineView({ data }: { data: DispatchResponse }) {
               ) : null}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              {rows.map((row) => <DispatchCard key={`tl-${row.serviceId}`} row={row} />)}
+              {rows.map((row) => <DispatchCard key={`tl-${row.serviceId}`} row={row} returnTo={returnTo} />)}
             </div>
           </div>
         );
@@ -1015,15 +1022,15 @@ function TimelineView({ data }: { data: DispatchResponse }) {
   );
 }
 
-function LanesView({ data }: { data: DispatchResponse }) {
+function LanesView({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-      <LaneBlock lane={data.lanes.arrivals} startOpen={data.lanes.arrivals.total > 0} />
-      <LaneBlock lane={data.lanes.departures} startOpen={data.lanes.departures.total > 0} />
-      <LaneBlock lane={data.lanes.hotels} startOpen={data.lanes.hotels.critical > 0 || data.lanes.hotels.actionRequired > 0} />
-      <LaneBlock lane={data.lanes.transport} startOpen={data.lanes.transport.critical > 0 || data.lanes.transport.actionRequired > 0} />
-      <LaneBlock lane={data.lanes.activities} startOpen={data.lanes.activities.critical > 0} />
-      <LaneBlock lane={data.lanes.guides} startOpen={data.lanes.guides.critical > 0} />
+      <LaneBlock lane={data.lanes.arrivals} startOpen={data.lanes.arrivals.total > 0} returnTo={returnTo} />
+      <LaneBlock lane={data.lanes.departures} startOpen={data.lanes.departures.total > 0} returnTo={returnTo} />
+      <LaneBlock lane={data.lanes.hotels} startOpen={data.lanes.hotels.critical > 0 || data.lanes.hotels.actionRequired > 0} returnTo={returnTo} />
+      <LaneBlock lane={data.lanes.transport} startOpen={data.lanes.transport.critical > 0 || data.lanes.transport.actionRequired > 0} returnTo={returnTo} />
+      <LaneBlock lane={data.lanes.activities} startOpen={data.lanes.activities.critical > 0} returnTo={returnTo} />
+      <LaneBlock lane={data.lanes.guides} startOpen={data.lanes.guides.critical > 0} returnTo={returnTo} />
     </section>
   );
 }
