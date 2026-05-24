@@ -44,6 +44,8 @@ import { DispatchEventsController } from './dispatch-events/dispatch-events.cont
 import { DispatchEventsService } from './dispatch-events/dispatch-events.service';
 import { DriversController } from './drivers/drivers.controller';
 import { DriversService } from './drivers/drivers.service';
+import { IntelligenceController } from './intelligence/intelligence.controller';
+import { IntelligenceService } from './intelligence/intelligence.service';
 import { RecoveryController, RecoveryMetricsController } from './recovery/recovery.controller';
 import { RecoveryService } from './recovery/recovery.service';
 import { ResourcesController } from './resources/resources.controller';
@@ -146,6 +148,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     DispatchEventsController,
     DriversController,
     GuidesController,
+    IntelligenceController,
     RecoveryController,
     RecoveryMetricsController,
     ResourcesController,
@@ -216,6 +219,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     DispatchEventsService,
     DriversService,
     GuidesService,
+    IntelligenceService,
     RecoveryService,
     ResourcesService,
     SimulationsService,
