@@ -260,26 +260,30 @@ function getAffectedHref(rows: OperationsGridRow[]) {
 // Transport-only: vehicle + driver picker. Renders as a separate inline form
 // alongside the supplier assignment so operators can update either side
 // independently without touching the supplier confirmation flow.
+//
+// Driver/vehicle lists are NOT filtered by the row's supplier — operators
+// regularly cross-assign (e.g. a freelance driver covering for a different
+// supplier on a given day, or a vehicle on hire). The list shows
+// matching-supplier items first as a hint, then the rest under "Other".
 function renderTransportForm(
   bookingId: string,
   row: OperationsGridRow,
   vehicles: VehicleOption[],
   drivers: DriverOption[],
 ) {
-  // Scope vehicle list to the supplier already assigned (or all vehicles if
-  // no supplier yet). Driver list is filtered the same way. The dropdown
-  // ALWAYS includes any current selection even if it falls outside the
-  // filter, so we never accidentally hide an existing assignment.
   const supplierId = row.assignedSupplierId || row.supplierId || null;
-  const filterBySupplier = <T extends { supplierId?: string | null; id: string }>(items: T[], currentId?: string | null) =>
-    items.filter((item) => {
-      if (currentId && item.id === currentId) return true;
-      if (!supplierId) return true;
-      if (!item.supplierId) return true;
-      return item.supplierId === supplierId;
-    });
-  const visibleVehicles = filterBySupplier(vehicles, row.vehicleId);
-  const visibleDrivers = filterBySupplier(drivers, row.driverId);
+  function partition<T extends { supplierId?: string | null }>(items: T[]) {
+    if (!supplierId) return { matching: items, other: [] as T[] };
+    const matching: T[] = [];
+    const other: T[] = [];
+    for (const item of items) {
+      if (item.supplierId === supplierId) matching.push(item);
+      else other.push(item);
+    }
+    return { matching, other };
+  }
+  const vehicleSplit = partition(vehicles);
+  const driverSplit = partition(drivers);
   return (
     <form
       className="operations-inline-form"
@@ -292,11 +296,24 @@ function renderTransportForm(
         aria-label={`Vehicle for ${row.description || row.serviceType}`}
       >
         <option value="">No vehicle</option>
-        {visibleVehicles.map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.name}{v.plateNumber ? ` · ${v.plateNumber}` : ''}{v.vehicleType ? ` (${v.vehicleType})` : ''}
-          </option>
-        ))}
+        {vehicleSplit.matching.length > 0 ? (
+          <optgroup label="Same supplier">
+            {vehicleSplit.matching.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}{v.plateNumber ? ` · ${v.plateNumber}` : ''}{v.vehicleType ? ` (${v.vehicleType})` : ''}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {vehicleSplit.other.length > 0 ? (
+          <optgroup label={supplierId ? 'Other suppliers' : 'All vehicles'}>
+            {vehicleSplit.other.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}{v.plateNumber ? ` · ${v.plateNumber}` : ''}{v.vehicleType ? ` (${v.vehicleType})` : ''}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
       </select>
       <select
         name="driverId"
@@ -304,11 +321,29 @@ function renderTransportForm(
         aria-label={`Driver for ${row.description || row.serviceType}`}
       >
         <option value="">No driver</option>
-        {visibleDrivers.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.fullName}{d.phone ? ` · ${d.phone}` : ''}
+        {driverSplit.matching.length > 0 ? (
+          <optgroup label="Same supplier">
+            {driverSplit.matching.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.fullName}{d.phone ? ` · ${d.phone}` : ''}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {driverSplit.other.length > 0 ? (
+          <optgroup label={supplierId ? 'Other suppliers' : 'All drivers'}>
+            {driverSplit.other.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.fullName}{d.phone ? ` · ${d.phone}` : ''}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {drivers.length === 0 ? (
+          <option value="" disabled>
+            No drivers in system — add one at /drivers
           </option>
-        ))}
+        ) : null}
       </select>
       <button type="submit" className="button button-secondary">Assign vehicle / driver</button>
     </form>
