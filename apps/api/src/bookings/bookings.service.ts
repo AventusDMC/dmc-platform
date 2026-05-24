@@ -5751,6 +5751,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (current === 'COMPLETED' || current === 'CANCELLED') {
         throw new BadRequestException(`Cannot dispatch: row is already ${current}`);
       }
+      // Operational safety guard: refuse to dispatch a service without a
+      // supplier assigned. Operator can override by setting assignmentStatus
+      // first via the operations grid. Spec #5: prevent dispatch without
+      // supplier.
+      const hasSupplier =
+        Boolean((bookingService as any).assignedSupplierId) ||
+        Boolean((bookingService as any).supplierId);
+      if (!hasSupplier) {
+        throw new BadRequestException(
+          'Cannot dispatch a service without a supplier assigned. Assign a supplier first via the operations grid.',
+        );
+      }
       nextStatus = 'DISPATCHED';
       updateData.dispatchedAt = (bookingService as any).dispatchedAt || now;
       if (notes !== undefined) updateData.dispatchNotes = notes;
