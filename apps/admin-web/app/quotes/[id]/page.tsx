@@ -22,6 +22,7 @@ import { QuoteHotelOptionSets } from './QuoteHotelOptionSets';
 import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
+import { QuoteOperationalInsights } from './QuoteOperationalInsights';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import type { QuotePassenger } from './QuotePassengersPanel';
 import type { QuoteRoomingGroup } from './QuoteRoomingPanel';
@@ -2619,6 +2620,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               This is an older quote revision. Open the latest revision to edit, accept, or convert it to a booking.
             </div>
           ) : null}
+
+          {/* Operational intelligence overlay — collapsed by default, calm
+              commercial-toned. Loads lazily on first expand. */}
+          <QuoteOperationalInsights quoteId={quote.id} />
 
           <section className="quote-dashboard-workflow" aria-label="Quote workflow">
             {QUOTE_DASHBOARD_WORKFLOW.map((label) => {
