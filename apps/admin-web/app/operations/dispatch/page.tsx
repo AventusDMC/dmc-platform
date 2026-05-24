@@ -249,11 +249,41 @@ export default async function DispatchPage({ searchParams }: PageProps) {
   if (serviceType) query.set('serviceType', serviceType);
   if (supplier) query.set('supplier', supplier);
 
-  const data = await adminPageFetchJson<DispatchResponse>(
-    `${ADMIN_API_BASE_URL}/operations/dispatch?${query.toString()}`,
-    'Operations dispatch',
-    { cache: 'no-store' },
-  );
+  let data: DispatchResponse | null = null;
+  let fetchError: string | null = null;
+  try {
+    data = await adminPageFetchJson<DispatchResponse>(
+      `${ADMIN_API_BASE_URL}/operations/dispatch?${query.toString()}`,
+      'Operations dispatch',
+      { cache: 'no-store' },
+    );
+  } catch (error) {
+    fetchError = error instanceof Error ? error.message : String(error);
+  }
+
+  if (!data) {
+    return (
+      <main className="admin-page-shell">
+        <div className="admin-page-heading">
+          <AdminBreadcrumbs
+            items={[
+              { label: 'Operations', href: '/operations' },
+              { label: 'Dispatch' },
+            ]}
+          />
+          <h1>Operations Dispatch</h1>
+        </div>
+        <section className="warning-banner" aria-label="Dispatch fetch error">
+          <p className="form-error">
+            <strong>Could not load dispatch data.</strong>
+          </p>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem', background: '#fbfcfd', padding: '0.75rem', border: '1px solid #d8e0eb', borderRadius: 6 }}>
+            {fetchError || 'Unknown error'}
+          </pre>
+        </section>
+      </main>
+    );
+  }
 
   const c = data.counters;
 
