@@ -697,8 +697,46 @@ export default async function DispatchPage({ searchParams }: PageProps) {
   }
 
   const c = data.counters;
-  const criticalRows = data.sections.criticalIssues.rows;
+  const criticalRows = data.sections?.criticalIssues?.rows ?? [];
 
+  try {
+    return renderDispatchBody({ data, c, criticalRows, range, view, returnTo });
+  } catch (renderError) {
+    const msg = renderError instanceof Error ? `${renderError.message}\n\n${renderError.stack || ''}` : String(renderError);
+    return (
+      <main className="admin-page-shell">
+        <div className="admin-page-heading">
+          <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Dispatch' }]} />
+          <h1>Operations Dispatch</h1>
+        </div>
+        <section className="warning-banner" aria-label="Dispatch render error">
+          <p className="form-error"><strong>Dispatch loaded but failed to render. Backend response sample below.</strong></p>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', maxHeight: '20rem', overflow: 'auto' }}>{msg}</pre>
+          <details style={{ marginTop: '0.5rem' }}>
+            <summary>Raw response (first 8KB)</summary>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.75rem', maxHeight: '20rem', overflow: 'auto' }}>{JSON.stringify(data, null, 2).slice(0, 8000)}</pre>
+          </details>
+        </section>
+      </main>
+    );
+  }
+}
+
+function renderDispatchBody({
+  data,
+  c,
+  criticalRows,
+  range,
+  view,
+  returnTo,
+}: {
+  data: DispatchResponse;
+  c: DispatchResponse['counters'];
+  criticalRows: DispatchRow[];
+  range: string;
+  view: 'timeline' | 'lanes';
+  returnTo: string;
+}) {
   return (
     <main className="admin-page-shell">
       <div className="admin-page-heading">
@@ -900,6 +938,9 @@ export default async function DispatchPage({ searchParams }: PageProps) {
 // Live execution sections — drawn above the lane/timeline view so operators
 // see what's actively running before they triage what's still being prepared.
 function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
+  // Defensive: if an older backend response is in flight (no `execution`
+  // block yet) just render nothing instead of crashing the page.
+  if (!data.execution) return null;
   const sections: Array<{
     key: keyof DispatchResponse['execution'];
     label: string;
@@ -909,13 +950,13 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
     { key: 'delayedIssues', label: 'Delayed / Issues', accent: { bg: '#fef3f2', border: '#f04438', text: '#b42318' } },
     { key: 'completedToday', label: 'Completed Today', accent: { bg: '#ecfdf3', border: '#12b76a', text: '#067647' } },
   ];
-  const anyVisible = sections.some((s) => data.execution[s.key].rows.length > 0);
+  const anyVisible = sections.some((s) => (data.execution[s.key]?.rows?.length ?? 0) > 0);
   if (!anyVisible) return null;
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {sections.map((s) => {
         const section = data.execution[s.key];
-        if (section.rows.length === 0) return null;
+        if (!section || !section.rows || section.rows.length === 0) return null;
         return (
           <div
             key={s.key}
