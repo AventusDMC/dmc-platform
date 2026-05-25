@@ -1,7 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { FinancialIntelligenceService } from './financial-intelligence.service';
-import { IntelligenceService } from './intelligence.service';
 
 // Quote Intelligence v1 — lightweight operational overlay for the quote
 // engine. Tells sales whether the quote they're building will be hard or
@@ -28,11 +26,7 @@ const HIGH_RECOVERY_COST_DESTINATIONS = ['petra', 'dead sea', 'wadi rum', 'airpo
 
 @Injectable()
 export class QuoteIntelligenceService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly intelligence: IntelligenceService,
-    private readonly financial: FinancialIntelligenceService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getIntelligence(quoteId: string) {
     // Quote + its accepted version + items + supplier refs. We pull just
@@ -79,62 +73,78 @@ export class QuoteIntelligenceService {
       });
     }
 
-    // --- Factor 3: supplier reliability ---
-    // Pull the supplier reliability landscape from the financial-intel
-    // service. Match suppliers by name appearing anywhere in quote text.
-    const financial = await this.safe('financial', () => this.financial.getDashboard({ rangeDays: 30 }), null as any);
-    if (financial?.riskSuppliers?.length) {
-      const referencedRiskySuppliers = financial.riskSuppliers.filter((s: any) =>
-        text.includes(String(s.name || '').toLowerCase()),
-      );
-      for (const s of referencedRiskySuppliers) {
-        warnings.push({
-          category: 'supplier',
-          severity: s.reliabilityScore < 50 ? 'CRITICAL' : 'WARN',
-          message: `${s.name} reliability ${s.reliabilityScore}/100 over last 30 days (${s.incidentCount} incidents). Flag operations team before booking conversion.`,
-        });
-      }
+    // --- Factor 3: supplier reliability (lightweight direct query) ---
+    // Instead of running the full FinancialIntelligence dashboard (which
+    // loads 30 days of bookings + events — too heavy per quote view), we
+    // count ISSUE-state services per supplier directly. Suppliers with ≥3
+    // active incidents in the last 30 days surface as a warning.
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const supplierIncidents = await this.safe(
+      'supplier-incidents',
+      async () =>
+        await this.prisma.$queryRawUnsafe<Array<{ supplierId: string; name: string; incidentCount: bigint }>>(
+          `SELECT s.id AS "supplierId", s.name, COUNT(*)::bigint AS "incidentCount"
+           FROM "booking_services" bs
+           JOIN "suppliers" s ON s.id = COALESCE(bs."assignedSupplierId", bs."supplierId")
+           WHERE bs."issueReportedAt" >= $1
+           GROUP BY s.id, s.name
+           HAVING COUNT(*) >= 3
+           ORDER BY COUNT(*) DESC
+           LIMIT 10`,
+          since30d,
+        ),
+      [] as Array<{ supplierId: string; name: string; incidentCount: bigint }>,
+    );
+    for (const s of supplierIncidents) {
+      if (!text.includes(String(s.name || '').toLowerCase())) continue;
+      const incidentCount = Number(s.incidentCount);
+      warnings.push({
+        category: 'supplier',
+        severity: incidentCount >= 5 ? 'CRITICAL' : 'WARN',
+        message: `${s.name}: ${incidentCount} incidents in the last 30 days. Flag operations team before booking conversion.`,
+      });
     }
 
-    // --- Factor 4: dispatch saturation on quote dates ---
-    // Cross-ref against the next-14-day capacity forecast. Quote doesn't
-    // store specific dates the same way, so for v1 we just surface
-    // *general* capacity pressure for the booking window if any forecast
-    // day is overloaded.
-    const opsDashboard = await this.safe('ops', () => this.intelligence.getDashboard({ rangeDays: 30 }), null as any);
-    const overloadedDays = (opsDashboard?.capacityForecast || []).filter((d: any) => d.loadLevel === 'overloaded');
-    const highLoadDays = (opsDashboard?.capacityForecast || []).filter((d: any) => d.loadLevel === 'high');
-    if (overloadedDays.length > 0) {
+    // --- Factor 4: dispatch saturation (lightweight count query) ---
+    // Count services scheduled in next 14 days that already have heavy
+    // assignment. If we're nearing the active-driver pool size for any
+    // day, that's overload — but counting per-day is more expensive than
+    // the warning is worth. v1 surface: simple total count vs threshold.
+    const next14d = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const upcomingActiveCount = await this.safe(
+      'upcoming-count',
+      () =>
+        (this.prisma.bookingService as any).count({
+          where: {
+            OR: [
+              { serviceDate: { gte: new Date(), lt: next14d } },
+              { operationalDate: { gte: new Date(), lt: next14d } },
+            ],
+            executionStatus: { notIn: ['CANCELLED'] as any },
+          },
+        }),
+      0,
+    );
+    const activeDriverCount = await this.safe(
+      'active-drivers',
+      () => (this.prisma as any).driver.count({ where: { active: true } }),
+      0,
+    );
+    // Rule of thumb: more than 30 services per active driver in the next
+    // 14 days = systemic saturation pressure.
+    const servicesPerDriver = activeDriverCount > 0 ? upcomingActiveCount / activeDriverCount : 0;
+    if (servicesPerDriver > 30) {
       warnings.push({
         category: 'saturation',
         severity: 'CRITICAL',
-        message: `${overloadedDays.length} day${overloadedDays.length === 1 ? '' : 's'} in the next 14 days projected overloaded (${overloadedDays
-          .slice(0, 3)
-          .map((d: any) => d.dayLabel)
-          .join(', ')}). If this quote operates in that window, expect dispatch saturation.`,
+        message: `Platform-wide dispatch saturation: ${upcomingActiveCount} services across ${activeDriverCount} active drivers over the next 14 days. New bookings will add pressure.`,
       });
-    } else if (highLoadDays.length > 0) {
+    } else if (servicesPerDriver > 15) {
       warnings.push({
         category: 'capacity',
         severity: 'WARN',
-        message: `${highLoadDays.length} high-load day${highLoadDays.length === 1 ? '' : 's'} in the next 14 days (${highLoadDays
-          .slice(0, 3)
-          .map((d: any) => d.dayLabel)
-          .join(', ')}). Capacity pressure if this quote operates then.`,
+        message: `Capacity pressure: ${upcomingActiveCount} services across ${activeDriverCount} active drivers. Plan ahead before adding this booking.`,
       });
-    }
-
-    // --- Factor 5: operational bottleneck routes ---
-    const bottleneckRoutes = (opsDashboard?.bottlenecks || []).filter((b: any) => b.category === 'route');
-    if (bottleneckRoutes.length > 0) {
-      const matchedBottlenecks = bottleneckRoutes.filter((b: any) => text.includes(String(b.label || '').toLowerCase()));
-      for (const b of matchedBottlenecks) {
-        warnings.push({
-          category: 'leakage',
-          severity: 'WARN',
-          message: `Route "${b.label}" flagged as bottleneck — ${b.insight}.`,
-        });
-      }
     }
 
     // --- Factor 6: passenger count + complexity ---

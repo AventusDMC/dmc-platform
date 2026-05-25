@@ -105,7 +105,13 @@ export function QuoteOperationalInsights({ quoteId }: { quoteId: string }) {
             Quote Readiness
           </span>
           <strong style={{ color: tone.text, fontSize: '0.95rem' }}>
-            {data ? data.summary.feasibility : 'Loading insights…'}
+            {data
+              ? data.summary.feasibility
+              : loading
+              ? 'Loading insights…'
+              : open
+              ? 'Loading insights…'
+              : 'Click to view operational overlay'}
           </strong>
           {data && data.summary.warningCount > 0 ? (
             <span style={{ color: tone.muted, fontSize: '0.8rem' }}>
