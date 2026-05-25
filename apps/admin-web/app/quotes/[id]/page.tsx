@@ -23,6 +23,7 @@ import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuoteJourneyFlow } from './QuoteJourneyFlow';
+import { QuoteJourneyHighlights } from './QuoteJourneyHighlights';
 import { QuoteOperationalInsights } from './QuoteOperationalInsights';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import type { QuotePassenger } from './QuotePassengersPanel';
@@ -2625,8 +2626,14 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           {/* Journey flow visualization — horizontal city timeline rendered
               from the itinerary days. Heuristic destination extraction;
               compresses consecutive same-city days into one marker with
-              night count. */}
+              night count. Arrival/departure markers frame the trip. */}
           <QuoteJourneyFlow itineraries={quote.itineraries} />
+
+          {/* Journey highlights — core experiences (activities/excursions)
+              pulled out of the quote items into a calm summary card.
+              Visually separates "what the guest will do" from operational
+              detail in the day cards below. */}
+          <QuoteJourneyHighlights items={quote.quoteItems} />
 
           {/* Operational intelligence overlay — collapsed by default, calm
               commercial-toned. Loads lazily on first expand. */}
