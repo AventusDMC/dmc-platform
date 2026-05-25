@@ -3284,22 +3284,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     />
                   </div>
 
-                  <aside className="quote-pricing-review-sidebar">
-                    <QuotePricingSummaryCard
-                      className="quote-pricing-context-panel app-financial-panel"
-                      eyebrow="Pricing Check"
-                      title="Commercial totals"
-                      items={[
-                        { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client-facing total' },
-                        { label: 'Service subtotal', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
-                        { label: 'Gross profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Sell less subtotal' },
-                        { label: 'Margin', value: formatMarginPercent(quoteMarginPercent), helper: 'Profit / sell' },
-                        { label: 'Markup', value: formatMarginPercent(quoteMarkupPercent), helper: 'Profit / cost' },
-                        { label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: `${totalPax} traveler${totalPax === 1 ? '' : 's'}` },
-                        { label: 'Pricing status', value: quoteProgressLabel, helper: readiness.unpricedServices > 0 ? `${readiness.unpricedServices} unpriced` : 'Pricing rows ready' },
-                      ]}
-                    />
-                  </aside>
+                  {/* Consolidation pass 2/N: removed the "Pricing Check"
+                      sidebar that lived here. It repeated Total Sell /
+                      Cost / Profit / Margin from the right-rail Financial
+                      Summary card. Markup % was promoted into the
+                      Financial Summary so operators keep both metrics
+                      visible across every tab. Price-per-pax is on the
+                      Quote Status card in the same sidebar. Pricing
+                      status (X unpriced) is covered by the SummaryStrip
+                      directly above the pricing table and by the
+                      Pricing Audit panel above the day cards. */}
                 </div>
               )}
               {guidedStepFooter}
@@ -3798,6 +3792,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   { label: 'Total Cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier cost' },
                   { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Sell less cost' },
                   { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Profit / sell' },
+                  // Markup % promoted from the removed Pricing Check sidebar
+                  // (consolidation pass 2/N) so the operator keeps both
+                  // margin AND markup visible on every tab, not just Pricing.
+                  { label: 'Markup %', value: formatMarginPercent(quoteMarkupPercent), helper: 'Profit / cost' },
                 ]}
               />
 
