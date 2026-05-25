@@ -2550,19 +2550,35 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             if (label === 'entrance') return 'entrances';
             return `${label}s`;
           };
+          // Natural action phrases per category — avoids awkward
+          // "Item needs other" or "5 items need operational fields" by
+          // substituting an operator-friendly verb phrase. Keyed by the same
+          // category key as groupKeyFor.
+          const ACTION_PHRASE: Record<string, string> = {
+            status: 'status review',
+            'pricing-timing': 'pricing and timing review',
+            pricing: 'pricing review',
+            timing: 'timing review',
+            'operational-fields': 'operational details',
+            supplier: 'supplier assignment',
+            voucher: 'voucher generation',
+            'other-blocking': 'coordination',
+            other: 'a quick review',
+          };
           // Build the consolidated headline for a group.
           const buildHeadline = (group: Group): string => {
+            const action = ACTION_PHRASE[group.categoryKey] || group.categoryLabel.toLowerCase();
             // If all items share the same item type, emit "N <type>s need
             // <action>". Otherwise generic count.
             const types = [...new Set(group.items.map((i) => i.itemTypeLabel))];
             if (group.items.length === 1) {
               const it = group.items[0];
-              return `${it.itemTypeLabel === 'item' ? 'Item' : titleCase(it.itemTypeLabel)} needs ${group.categoryLabel.toLowerCase()}`;
+              return `${it.itemTypeLabel === 'item' ? 'Item' : titleCase(it.itemTypeLabel)} needs ${action}`;
             }
             if (types.length === 1) {
-              return `${group.items.length} ${pluralise(types[0], group.items.length)} need ${group.categoryLabel.toLowerCase()}`;
+              return `${group.items.length} ${pluralise(types[0], group.items.length)} need ${action}`;
             }
-            return `${group.items.length} items need ${group.categoryLabel.toLowerCase()}`;
+            return `${group.items.length} items need ${action}`;
           };
           return groups.map((group) => {
             const tone = SEVERITY_TONE[group.severity];

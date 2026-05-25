@@ -50,6 +50,29 @@ describe('quote auto itinerary builder logic', () => {
     assert.equal(assignedDays.some((day) => day.city === 'Dead Sea'), false);
   });
 
+  it('interleaves the assigned city into each generated day title as a journey', () => {
+    const days = generateItineraryDays('2026-05-10', 3);
+    const assignedDays = assignGeneratedItineraryCities(days, ['Amman', 'Petra', 'Wadi Rum']);
+
+    // Mid-trip "Day N" titles become just the city (formatDayHeading already
+    // prepends "Day 02 -"), while Arrival/Departure markers keep their label
+    // with the city appended for context.
+    assert.deepEqual(
+      assignedDays.map((day) => day.title),
+      ['Arrival · Amman', 'Petra', 'Wadi Rum', 'Departure · Wadi Rum'],
+    );
+  });
+
+  it('leaves the title untouched when no cities are provided', () => {
+    const days = generateItineraryDays('2026-05-10', 3);
+    const assignedDays = assignGeneratedItineraryCities(days, []);
+
+    assert.deepEqual(
+      assignedDays.map((day) => day.title),
+      ['Arrival', 'Day 2', 'Day 3', 'Departure'],
+    );
+  });
+
   it('leaves generated day cities blank when no destinations are provided', () => {
     const days = assignGeneratedItineraryCities(generateItineraryDays('2026-05-10', 3), []);
 
