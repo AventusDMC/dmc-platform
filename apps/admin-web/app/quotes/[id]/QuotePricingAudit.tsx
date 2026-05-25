@@ -65,15 +65,44 @@ function marginPercent(cost: number, sell: number) {
   return ((sell - cost) / sell) * 100;
 }
 
+type SlabSummary = {
+  minPax: number;
+  maxPax: number | null;
+  price: number;
+  focPax?: number | null;
+  label?: string | null;
+};
+
 export function QuotePricingAudit({
   quoteId,
   quoteCurrency,
   items,
+  pricingMode = 'FIXED',
+  pricingSlabs = [],
+  totalPax = 0,
+  quoteTotalSell = null,
+  quoteTotalCost = null,
 }: {
   quoteId: string;
   quoteCurrency: string;
   items: PricingAuditItem[];
+  // Optional SLAB context — when pricingMode === 'SLAB' the canonical sell
+  // is the matched slab × paying-pax, not the sum of item sells, so the
+  // audit suppresses per-item sell checks (which all fire false positives
+  // on SLAB quotes) and surfaces slab-specific findings instead.
+  pricingMode?: 'FIXED' | 'SLAB';
+  pricingSlabs?: SlabSummary[];
+  totalPax?: number;
+  quoteTotalSell?: number | null;
+  quoteTotalCost?: number | null;
 }) {
+  const isSlabQuote = pricingMode === 'SLAB';
+  const matchedSlab =
+    isSlabQuote && totalPax > 0
+      ? pricingSlabs.find(
+          (slab) => totalPax >= slab.minPax && (slab.maxPax === null || slab.maxPax === undefined || totalPax <= slab.maxPax),
+        ) || null
+      : null;
   // Empty-quote case — keep the surface present so operators know this
   // panel exists, but skip the heavy analysis.
   if (!items || items.length === 0) {
@@ -137,27 +166,39 @@ export function QuotePricingAudit({
       missingCostCount += 1;
       flags.push('No cost');
     }
-    if (sell <= 0) {
-      missingSellCount += 1;
-      flags.push('No sell');
+    // Per-item sell checks are FIXED-mode only. SLAB quotes set client sell
+    // at the slab level — individual items keep cost (for margin) but
+    // their sell column is operator-discretion, not the canonical client
+    // price. Running these checks on SLAB floods the audit with false
+    // positives (every item flagged "sell below cost", "math mismatch")
+    // and trains operators to ignore the panel.
+    if (!isSlabQuote) {
+      if (sell <= 0) {
+        missingSellCount += 1;
+        flags.push('No sell');
+      }
+      if (cost > 0 && sell > 0 && sell < cost) {
+        sellBelowCostCount += 1;
+        flags.push('Sell below cost');
+      }
+      // Sync check — buildPricingDiagnostics already computes saved vs
+      // calculated totals using the pricing mode + units (per-pax/per-room
+      // etc.). If it reports "Mismatch" the math doesn't reconcile.
+      const diagnostics = buildPricingDiagnostics(item);
+      const statusRow = diagnostics.rows.find((row) => row.label === 'Status');
+      const rawStatus = statusRow?.value || 'Pending';
+      const syncStatus: 'Synced' | 'Mismatch' | 'Pending' =
+        rawStatus === 'Synced' || rawStatus === 'Mismatch' ? rawStatus : 'Pending';
+      if (syncStatus === 'Mismatch' && sell > 0) {
+        mismatchCount += 1;
+        flags.push('Math mismatch');
+      }
     }
-    if (cost > 0 && sell > 0 && sell < cost) {
-      sellBelowCostCount += 1;
-      flags.push('Sell below cost');
-    }
-
-    // Sync check — buildPricingDiagnostics already computes saved vs
-    // calculated totals using the pricing mode + units (per-pax/per-room
-    // etc.). If it reports "Mismatch" the math doesn't reconcile.
-    const diagnostics = buildPricingDiagnostics(item);
-    const statusRow = diagnostics.rows.find((row) => row.label === 'Status');
-    const rawStatus = statusRow?.value || 'Pending';
+    const diagnosticsForRow = buildPricingDiagnostics(item);
+    const statusRowForRow = diagnosticsForRow.rows.find((row) => row.label === 'Status');
+    const rawStatusForRow = statusRowForRow?.value || 'Pending';
     const syncStatus: 'Synced' | 'Mismatch' | 'Pending' =
-      rawStatus === 'Synced' || rawStatus === 'Mismatch' ? rawStatus : 'Pending';
-    if (syncStatus === 'Mismatch' && sell > 0) {
-      mismatchCount += 1;
-      flags.push('Math mismatch');
-    }
+      rawStatusForRow === 'Synced' || rawStatusForRow === 'Mismatch' ? rawStatusForRow : 'Pending';
 
     itemRows.push({
       id: item.id,
@@ -172,10 +213,42 @@ export function QuotePricingAudit({
     });
   }
 
-  const quoteMarginPct = marginPercent(totalCost, totalSell);
+  // For SLAB quotes the canonical sell comes from the matched slab × paying
+  // pax (set on the quote after recalculateQuoteTotals). Override the
+  // item-sum so margin computations use the real client price.
+  const effectiveTotalSell = isSlabQuote && quoteTotalSell !== null ? quoteTotalSell : totalSell;
+  const effectiveTotalCost = isSlabQuote && quoteTotalCost !== null ? quoteTotalCost : totalCost;
+  const quoteMarginPct = marginPercent(effectiveTotalCost, effectiveTotalSell);
 
   // Build the plain-language findings list.
   const findings: AuditFinding[] = [];
+
+  // SLAB-specific findings first (the per-item sell checks below are
+  // skipped for SLAB quotes since item.totalSell isn't the canonical
+  // client-facing price).
+  if (isSlabQuote) {
+    if (pricingSlabs.length === 0) {
+      findings.push({
+        severity: 'review',
+        headline: 'No pricing slabs configured',
+        detail: 'Open Step 5 (Group Pricing) to add slab tiers before sending.',
+      });
+    } else if (totalPax > 0 && !matchedSlab) {
+      findings.push({
+        severity: 'review',
+        headline: `Current pax (${totalPax}) doesn't fall into any configured slab`,
+        detail: `Add a slab covering ${totalPax} pax in Step 5, or adjust the existing slab ranges.`,
+      });
+    } else if (matchedSlab) {
+      const slabLabel = matchedSlab.label || `${matchedSlab.minPax}-${matchedSlab.maxPax ?? '∞'} pax`;
+      findings.push({
+        severity: 'info',
+        headline: `Matched slab: ${slabLabel} @ ${formatMoney(matchedSlab.price, quoteCurrency)}/pax`,
+        detail: `Client total = ${formatMoney(effectiveTotalSell, quoteCurrency)} (${totalPax} pax, ${matchedSlab.focPax ?? 0} FOC). Item cost subtotal = ${formatMoney(totalCost, quoteCurrency)}.`,
+      });
+    }
+  }
+
   if (missingCostCount > 0) {
     findings.push({
       severity: 'review',
@@ -183,21 +256,21 @@ export function QuotePricingAudit({
       detail: 'Item totals are USD 0.00. Add supplier cost before sending the quote.',
     });
   }
-  if (missingSellCount > 0) {
+  if (!isSlabQuote && missingSellCount > 0) {
     findings.push({
       severity: 'review',
       headline: `${missingSellCount} item${missingSellCount === 1 ? '' : 's'} need sell price`,
       detail: 'Sell will default to cost on send. Run Pricing Review (Step 4) to apply markup.',
     });
   }
-  if (mismatchCount > 0) {
+  if (!isSlabQuote && mismatchCount > 0) {
     findings.push({
       severity: 'caution',
       headline: `${mismatchCount} item${mismatchCount === 1 ? '' : 's'} have a math mismatch`,
       detail: 'Saved total does not match cost × units. Common cause: per-pax vs per-room confusion.',
     });
   }
-  if (sellBelowCostCount > 0) {
+  if (!isSlabQuote && sellBelowCostCount > 0) {
     findings.push({
       severity: 'caution',
       headline: `${sellBelowCostCount} item${sellBelowCostCount === 1 ? '' : 's'} sell below cost`,
@@ -268,8 +341,9 @@ export function QuotePricingAudit({
         </span>
         <strong style={{ color: headlineTone.text, fontSize: '0.92rem' }}>{headlineLabel}</strong>
         <span style={{ color: headlineTone.text, fontSize: '0.78rem', opacity: 0.8 }}>
-          · {items.length} item{items.length === 1 ? '' : 's'} · {formatMoney(totalSell, quoteCurrency)} sell ·{' '}
+          · {items.length} item{items.length === 1 ? '' : 's'} · {formatMoney(effectiveTotalSell, quoteCurrency)} sell ·{' '}
           {quoteMarginPct === null ? '—' : `${quoteMarginPct.toFixed(1)}%`} margin
+          {isSlabQuote ? ' · slab pricing' : ''}
         </span>
         <span style={{ marginLeft: 'auto', color: headlineTone.text, fontSize: '0.78rem', fontWeight: 600 }}>
           Show ▾
@@ -342,16 +416,18 @@ export function QuotePricingAudit({
           }}
         >
           <span>
-            <strong>Items sum</strong> · cost {formatMoney(totalCost, quoteCurrency)} · sell {formatMoney(totalSell, quoteCurrency)}
+            <strong>{isSlabQuote ? 'Client total' : 'Items sum'}</strong> · cost {formatMoney(effectiveTotalCost, quoteCurrency)} · sell {formatMoney(effectiveTotalSell, quoteCurrency)}
           </span>
           <span>
             <strong>Margin</strong> · {quoteMarginPct === null ? '—' : `${quoteMarginPct.toFixed(1)}%`}
             {quoteMarginPct !== null
-              ? ` (${formatMoney(totalSell - totalCost, quoteCurrency)} profit)`
+              ? ` (${formatMoney(effectiveTotalSell - effectiveTotalCost, quoteCurrency)} profit)`
               : ''}
           </span>
           <span style={{ marginLeft: 'auto', color: '#6b7a6b', fontSize: '0.74rem' }}>
-            This matches the Financial Summary panel — diverges only if scope filters apply.
+            {isSlabQuote
+              ? 'Sell = matched slab × paying pax. Item sells are operator-discretion, not the client price.'
+              : 'This matches the Financial Summary panel — diverges only if scope filters apply.'}
           </span>
         </div>
 

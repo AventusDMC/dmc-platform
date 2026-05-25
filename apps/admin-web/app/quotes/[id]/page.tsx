@@ -2899,6 +2899,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             quoteId={quote.id}
             quoteCurrency={quote.quoteCurrency}
             items={quote.quoteItems}
+            pricingMode={quote.pricingMode}
+            pricingSlabs={(quote.pricingSlabs || []).map((slab) => ({
+              minPax: slab.minPax,
+              maxPax: slab.maxPax,
+              price: slab.price,
+              focPax: (slab as { focPax?: number | null }).focPax ?? null,
+              label: (slab as { label?: string | null }).label ?? null,
+            }))}
+            totalPax={totalPax}
+            quoteTotalSell={quote.totalSell}
+            quoteTotalCost={quote.totalCost}
           />
 
           <section className="quote-dashboard-workflow" aria-label="Quote workflow">
@@ -3035,6 +3046,15 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                         minPax: String(slab.minPax),
                         maxPax: String(slab.maxPax),
                         price: String(slab.price),
+                        // Hydrate focPax + notes so the Overview-form
+                        // POST preserves per-slab FOC counts and notes
+                        // configured in Step 5. Without these the slab
+                        // payload would arrive with focPax:null + notes:
+                        // null on every save and wipe out Step-5 work.
+                        focPax: (slab as { focPax?: number | null }).focPax === null || (slab as { focPax?: number | null }).focPax === undefined
+                          ? ''
+                          : String((slab as { focPax?: number | null }).focPax),
+                        notes: (slab as { notes?: string | null }).notes || '',
                       })),
                       fixedPricePerPerson: String(quote.fixedPricePerPerson ?? 0),
                       focType: quote.focType,
