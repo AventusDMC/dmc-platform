@@ -8,6 +8,7 @@ import {
   generateItineraryDays,
   getAutoItineraryDayTitle,
   mergeExistingItineraryDays,
+  reconstructNightStopsFromDayTitles,
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
@@ -204,5 +205,54 @@ describe('quote auto itinerary builder logic', () => {
     assert.equal(assigned[0].title, 'Arrival · Amman');
     assert.equal(assigned[3].title, 'Petra');
     assert.equal(assigned[7].title, 'Departure · Dead Sea');
+  });
+
+  it('reconstructs night stops from PR-#74-style saved day titles', () => {
+    const stops = reconstructNightStopsFromDayTitles([
+      { dayNumber: 1, title: 'Arrival · Amman' },
+      { dayNumber: 2, title: 'Amman' },
+      { dayNumber: 3, title: 'Amman' },
+      { dayNumber: 4, title: 'Petra' },
+      { dayNumber: 5, title: 'Petra' },
+      { dayNumber: 6, title: 'Wadi Rum' },
+      { dayNumber: 7, title: 'Dead Sea' },
+      { dayNumber: 8, title: 'Departure · Dead Sea' },
+    ]);
+
+    assert.deepEqual(stops, [
+      { name: 'Amman', nights: 3 },
+      { name: 'Petra', nights: 2 },
+      { name: 'Wadi Rum', nights: 1 },
+      { name: 'Dead Sea', nights: 1 },
+    ]);
+  });
+
+  it('reconstruction handles "Day N · City" prefixed titles', () => {
+    const stops = reconstructNightStopsFromDayTitles([
+      { dayNumber: 1, title: 'Arrival · Amman' },
+      { dayNumber: 2, title: 'Day 2 · Amman' },
+      { dayNumber: 3, title: 'Day 3 · Petra' },
+      { dayNumber: 4, title: 'Departure · Petra' },
+    ]);
+
+    assert.deepEqual(stops, [
+      { name: 'Amman', nights: 2 },
+      { name: 'Petra', nights: 1 },
+    ]);
+  });
+
+  it('reconstruction returns null when titles are bare "Day N" only (pre-#74)', () => {
+    const stops = reconstructNightStopsFromDayTitles([
+      { dayNumber: 1, title: 'Arrival' },
+      { dayNumber: 2, title: 'Day 2' },
+      { dayNumber: 3, title: 'Day 3' },
+      { dayNumber: 4, title: 'Departure' },
+    ]);
+
+    assert.equal(stops, null);
+  });
+
+  it('reconstruction returns null on empty input', () => {
+    assert.equal(reconstructNightStopsFromDayTitles([]), null);
   });
 });

@@ -16,6 +16,7 @@ import {
   getAutoItineraryDayCount,
   generateItineraryDays,
   mergeExistingItineraryDays,
+  reconstructNightStopsFromDayTitles,
   type AutoItineraryExistingDay,
   type NightStop,
 } from './QuoteAutoItineraryBuilder.logic';
@@ -429,6 +430,24 @@ function findService(services: SupplierService[], category: 'hotel' | 'transport
   return services.find((service) => getQuoteServiceCategoryKey(service) === category) || null;
 }
 
+/**
+ * Locate the first Meet & Assist (or equivalent operational-assistance)
+ * service in the catalog. The auto-builder inserts this on Day 1 (arrival)
+ * and the last day (departure) so the proposal shows airport-meet coverage
+ * by default — a standard DMC inclusion the operator otherwise had to add
+ * manually every quote.
+ */
+function findMeetAssistService(services: SupplierService[]) {
+  return (
+    services.find((service) => {
+      const code = String(service.serviceType?.code || '').trim().toUpperCase();
+      if (code === 'MEET_ASSIST' || code === 'AIRPORT_ASSISTANCE') return true;
+      const haystack = `${service.category || ''} ${service.name || ''} ${service.serviceType?.name || ''}`.toLowerCase();
+      return haystack.includes('meet') && haystack.includes('assist');
+    }) || null
+  );
+}
+
 function findHotelSetup(values: {
   city: string;
   travelDate: string | null;
@@ -820,7 +839,7 @@ async function buildPreviewDraft(values: {
             : `Selected ${selectedCandidate.vehicle.name} as best value at ${selectedCandidate.currency} ${selectedCandidate.price}.`
           : route
             ? 'Route matched, but transport pricing is not configured yet.'
-            : 'No active route matched these cities.',
+            : `No catalog route from ${city} to ${toCity}. Add it in Transfer Routes admin.`,
       };
     }),
   );
@@ -839,13 +858,28 @@ async function buildPreviewDraft(values: {
   }));
 
   const activityService = findService(values.services, 'activity');
-  const activities = values.includeActivities
-    ? days.slice(0, -1).map((day) => ({
-        dayNumber: day.dayNumber,
-        city: day.city,
-        service: activityService,
-      }))
-    : [];
+  const meetAssistService = findMeetAssistService(values.services);
+  const activities: Array<{ dayNumber: number; city: string; service: SupplierService | null }> = [];
+
+  // Meet & Assist on arrival (Day 1) and departure (last day) — operator
+  // gets airport-meet coverage by default instead of having to add it
+  // manually on every quote. Only fires if the catalog actually has a
+  // matching service; otherwise the entries are skipped silently and the
+  // existing "needs catalog" empty-state surfaces.
+  if (meetAssistService && days.length > 0) {
+    const firstDay = days[0];
+    const lastDay = days[days.length - 1];
+    activities.push({ dayNumber: firstDay.dayNumber, city: firstDay.city, service: meetAssistService });
+    if (lastDay.dayNumber !== firstDay.dayNumber) {
+      activities.push({ dayNumber: lastDay.dayNumber, city: lastDay.city, service: meetAssistService });
+    }
+  }
+
+  if (values.includeActivities) {
+    for (const day of days.slice(0, -1)) {
+      activities.push({ dayNumber: day.dayNumber, city: day.city, service: activityService });
+    }
+  }
 
   const warnings = buildItineraryWarnings({
     days,
@@ -929,11 +963,36 @@ export function QuoteAutoItineraryBuilder({
     }
     guidedPrefillAppliedRef.current = true;
   }, [searchParams]);
+
+  // Fallback persistence: when the URL doesn't have source=guided (operator
+  // navigated away and came back), reconstruct the per-city night
+  // distribution from the SAVED day titles. PR #74 standardised titles on
+  // "Arrival · Amman" / "Petra" / "Departure · Dead Sea" so the city
+  // sequence is recoverable. Without this fallback, the operator who clicks
+  // Generate Full Itinerary on a returned-to quote got all-Amman hotels
+  // because routeText was empty and findHotelSetup matched everything to
+  // the first hotel.
+  const reconstructedAppliedRef = useRef(false);
+  useEffect(() => {
+    if (reconstructedAppliedRef.current) return;
+    if (guidedPrefillAppliedRef.current && guidedNightStops) return;
+    if (!quote.itineraries || quote.itineraries.length === 0) return;
+    const reconstructed = reconstructNightStopsFromDayTitles(quote.itineraries);
+    if (!reconstructed || reconstructed.length === 0) return;
+    setGuidedNightStops(reconstructed);
+    setRouteText(reconstructed.map((stop) => stop.name).join(' -> '));
+    reconstructedAppliedRef.current = true;
+  }, [quote.itineraries, guidedNightStops]);
+
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [pax, setPax] = useState(String(Math.max(totalPax || quote.adults + quote.children || 1, 1)));
   const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(quote.quoteType || 'FIT');
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('cost');
-  const [includeActivities, setIncludeActivities] = useState(false);
+  // Default includeActivities=true so Generate Full Itinerary actually
+  // populates activities. Operator can uncheck if they only want hotels +
+  // transport. Previously default false meant activities never auto-pulled,
+  // surprising operators who clicked the "Full Itinerary" button.
+  const [includeActivities, setIncludeActivities] = useState(true);
   const [preview, setPreview] = useState<PreviewDraft | null>(null);
   const [comparison, setComparison] = useState<ComparisonState | null>(null);
   const [manualDayOverrides, setManualDayOverrides] = useState<ManualDayOverrides>({});
@@ -1857,7 +1916,23 @@ export function QuoteAutoItineraryBuilder({
                 <strong>
                   Day {item.dayNumber}: {item.fromCity} to {item.toCity}
                 </strong>
-                <em>{item.route ? formatRouteLabel(item.route) : 'Needs matching active route'}</em>
+                {/* When no route matches, name the missing city pair and
+                    link straight to the Transfer Routes admin so the
+                    operator can add it without leaving context. Previously
+                    this said the generic "Needs matching active route"
+                    which left the operator wondering why or what to do. */}
+                {item.route ? (
+                  <em>{formatRouteLabel(item.route)}</em>
+                ) : item.fromCity && item.toCity ? (
+                  <em>
+                    No route from {item.fromCity} to {item.toCity} —{' '}
+                    <Link href="/routes" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                      add it in Transfer Routes
+                    </Link>
+                  </em>
+                ) : (
+                  <em>Needs city assignment before a route can be matched</em>
+                )}
                 {item.selectedCandidate ? (
                   <em>
                     {formatTransportVehicleDisplay(item.selectedCandidate.vehicle)} | {item.selectedCandidate.currency} {item.selectedCandidate.price}

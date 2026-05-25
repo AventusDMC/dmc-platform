@@ -79,6 +79,67 @@ export type NightStop = {
  * cards labelled "Amman, Amman, Amman, Petra, Petra, Wadi Rum, Dead Sea,
  * Dead Sea (Departure)" rather than the naive index-clamp default.
  */
+/**
+ * Inverse of expandNightStopsToDayCities — given the saved day titles
+ * (which PR #74 standardised on "Arrival · Amman" / "Petra" / "Departure
+ * · Dead Sea") reconstruct the per-city night distribution so the Auto
+ * Builder can re-use it on subsequent generations after the operator
+ * has navigated away and lost the URL params. Returns null when the
+ * titles aren't recognisable (e.g., a quote built before the city-led
+ * titles landed) so the caller can fall back to other sources.
+ */
+export function reconstructNightStopsFromDayTitles(
+  days: Array<{ dayNumber: number; title: string | null }>,
+): NightStop[] | null {
+  if (!days || days.length === 0) return null;
+  const sorted = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
+  const cities: string[] = [];
+  for (const day of sorted) {
+    const title = (day.title || '').trim();
+    if (!title) {
+      cities.push('');
+      continue;
+    }
+    // Patterns we saved post-PR #74:
+    //   "Arrival · Amman" / "Departure · Dead Sea" — bookend markers
+    //   "Petra" / "Wadi Rum" — mid-trip city-only
+    //   "Day N" — legacy stale title (operator skipped the wizard)
+    const bookendMatch = title.match(/^(?:Arrival|Departure)\s*·\s*(.+)$/i);
+    if (bookendMatch) {
+      cities.push(bookendMatch[1].trim());
+      continue;
+    }
+    const dayPrefixMatch = title.match(/^Day\s+\d+\s*·\s*(.+)$/i);
+    if (dayPrefixMatch) {
+      cities.push(dayPrefixMatch[1].trim());
+      continue;
+    }
+    // Bare "Day N" — pre-city-led titles, can't infer city.
+    if (/^day\s+\d+$/i.test(title) || /^(arrival|departure)$/i.test(title)) {
+      cities.push('');
+      continue;
+    }
+    // Otherwise treat the whole title as a city name (mid-trip "Petra").
+    cities.push(title);
+  }
+  // Drop the departure day (last entry) — Departure shares the last city
+  // but should not contribute an extra night.
+  const nightCities = cities.slice(0, -1);
+  if (nightCities.every((city) => !city)) return null;
+
+  const stops: NightStop[] = [];
+  for (const city of nightCities) {
+    if (!city) continue;
+    const last = stops[stops.length - 1];
+    if (last && last.name === city) {
+      last.nights += 1;
+    } else {
+      stops.push({ name: city, nights: 1 });
+    }
+  }
+  return stops.length > 0 ? stops : null;
+}
+
 export function expandNightStopsToDayCities(stops: NightStop[]): string[] {
   const dayCities: string[] = [];
   for (const stop of stops) {
