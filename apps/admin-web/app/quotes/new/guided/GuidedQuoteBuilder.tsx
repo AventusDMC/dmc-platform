@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 // 7-step linear wizard. Step 1 + Step 2 are real (form + city picker).
 // Steps 3-6 are scaffolded with friendly placeholder content + Continue
@@ -171,7 +171,7 @@ export function GuidedQuoteBuilder() {
 
         {step === 1 ? <Step1TripSetup trip={trip} setTrip={setTrip} /> : null}
         {step === 2 ? <Step2Journey journey={journey} setJourney={setJourney} tripNights={tripNights} totalNights={totalNights} /> : null}
-        {step === 3 ? <ScaffoldStep title="Recommended Hotels" detail="In v2, this will surface hotels per city ranked by supplier reliability + meal plan + operational confidence — pulled from the existing supplier intelligence engine." /> : null}
+        {step === 3 ? <Step3Hotels journey={journey} /> : null}
         {step === 4 ? <ScaffoldStep title="Suggested Experiences" detail="In v2, this will group activities by destination (Petra, Wadi Rum, Dead Sea, Jerash …) and surface the most popular guided experiences per city." /> : null}
         {step === 5 ? <ScaffoldStep title="Transport Suggestions" detail="In v2, the platform will auto-propose a transfer flow based on the journey (Amman → Petra → Wadi Rum → …) using the existing transport-pricing rules. Operationally safe routing by default — no manual route configuration required." /> : null}
         {step === 6 ? <Step6Review trip={trip} journey={journey} totalPax={totalPax} totalNights={totalNights} /> : null}
@@ -423,6 +423,129 @@ function navBtn(disabled: boolean) {
     fontSize: '0.78rem',
     cursor: disabled ? 'not-allowed' : 'pointer',
   } as const;
+}
+
+type HotelOption = { id: string; name: string; city: string; category: string };
+
+function Step3Hotels({ journey }: { journey: JourneyCity[] }) {
+  const [hotels, setHotels] = useState<HotelOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/hotels', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: HotelOption[]) => {
+        if (!cancelled) setHotels(Array.isArray(data) ? data : []);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message || String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (journey.length === 0) {
+    return (
+      <div
+        style={{
+          background: '#fbf9f4',
+          border: '1px dashed #e8dcc4',
+          borderRadius: 10,
+          padding: '1.25rem 1.5rem',
+          textAlign: 'center',
+          color: '#6b5933',
+        }}
+      >
+        <strong>Add cities in Step 2 first</strong>
+        <p style={{ margin: '0.4rem 0 0', fontSize: '0.88rem' }}>
+          Recommendations group hotels by the cities you've chosen for the journey.
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ background: '#fef3f2', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: '#b42318' }}>
+        Could not load hotel catalogue: {error}
+      </div>
+    );
+  }
+  if (hotels === null) {
+    return <p style={{ color: '#667085', fontSize: '0.9rem' }}>Loading hotel catalogue…</p>;
+  }
+
+  const byCity = new Map<string, HotelOption[]>();
+  for (const h of hotels) {
+    const city = (h.city || '').trim();
+    if (!city) continue;
+    byCity.set(city, [...(byCity.get(city) || []), h]);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+        Hotels from the platform catalogue, grouped by the cities in your journey. Operator picks during the final advanced workspace step.
+      </p>
+      {journey.map((j) => {
+        // Match case-insensitive, allow partial (e.g. "Mount Nebo" matching "Madaba/Nebo region").
+        const matches = [...byCity.entries()]
+          .filter(([city]) => city.toLowerCase().includes(j.name.toLowerCase()) || j.name.toLowerCase().includes(city.toLowerCase()))
+          .flatMap(([, list]) => list)
+          .slice(0, 6);
+        return (
+          <div
+            key={j.name}
+            style={{
+              background: '#f5f8f5',
+              border: '1px solid #cdd7cd',
+              borderRadius: 10,
+              padding: '0.75rem 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.75rem' }}>
+              <strong style={{ color: '#3a5a3a', fontSize: '0.95rem' }}>{j.name}</strong>
+              <span style={{ color: '#6b7a6b', fontSize: '0.78rem' }}>
+                {j.nights} night{j.nights === 1 ? '' : 's'} · {matches.length} hotel{matches.length === 1 ? '' : 's'} in catalogue
+              </span>
+            </div>
+            {matches.length === 0 ? (
+              <p style={{ margin: 0, color: '#94a395', fontSize: '0.85rem' }}>
+                No hotels matching "{j.name}" in the catalogue. Add hotels via Product Catalog → Hotels.
+              </p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {matches.map((h) => (
+                  <li
+                    key={h.id}
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #cdd7cd',
+                      borderRadius: 6,
+                      padding: '0.4rem 0.7rem',
+                      fontSize: '0.85rem',
+                      color: '#3a5a3a',
+                    }}
+                  >
+                    <strong style={{ fontWeight: 600 }}>{h.name}</strong>
+                    {h.category ? <span style={{ color: '#6b7a6b', marginLeft: '0.4rem', fontSize: '0.78rem' }}>· {h.category}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+      <p style={{ margin: 0, color: '#94a395', fontSize: '0.75rem', fontStyle: 'italic' }}>
+        Operator finalises hotel selection in the advanced workspace at Step 7. Supplier reliability scoring lands in v2.
+      </p>
+    </div>
+  );
 }
 
 function ScaffoldStep({ title, detail }: { title: string; detail: string }) {
