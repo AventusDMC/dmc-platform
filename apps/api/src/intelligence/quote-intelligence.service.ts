@@ -73,27 +73,40 @@ export class QuoteIntelligenceService {
       });
     }
 
-    // --- Factor 3: supplier reliability (lightweight direct query) ---
-    // Instead of running the full FinancialIntelligence dashboard (which
-    // loads 30 days of bookings + events — too heavy per quote view), we
-    // count ISSUE-state services per supplier directly. Suppliers with ≥3
-    // active incidents in the last 30 days surface as a warning.
+    // --- Factor 3: supplier reliability (Prisma groupBy — safer than raw SQL) ---
+    // Replaced the raw $queryRawUnsafe with Prisma's groupBy to avoid
+    // dialect/column-quoting surprises. Same logic: suppliers with ≥3
+    // incidents in last 30d that are referenced in the quote text.
     const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const supplierIncidents = await this.safe(
       'supplier-incidents',
-      async () =>
-        await this.prisma.$queryRawUnsafe<Array<{ supplierId: string; name: string; incidentCount: bigint }>>(
-          `SELECT s.id AS "supplierId", s.name, COUNT(*)::bigint AS "incidentCount"
-           FROM "booking_services" bs
-           JOIN "suppliers" s ON s.id = COALESCE(bs."assignedSupplierId", bs."supplierId")
-           WHERE bs."issueReportedAt" >= $1
-           GROUP BY s.id, s.name
-           HAVING COUNT(*) >= 3
-           ORDER BY COUNT(*) DESC
-           LIMIT 10`,
-          since30d,
-        ),
-      [] as Array<{ supplierId: string; name: string; incidentCount: bigint }>,
+      async () => {
+        const groups = await (this.prisma.bookingService as any).groupBy({
+          by: ['assignedSupplierId'],
+          where: { issueReportedAt: { gte: since30d }, assignedSupplierId: { not: null } },
+          _count: { _all: true },
+          having: { assignedSupplierId: { _count: { gte: 3 } } },
+          orderBy: { _count: { assignedSupplierId: 'desc' } },
+          take: 10,
+        });
+        const supplierIds = groups
+          .map((g: any) => g.assignedSupplierId)
+          .filter((id: string | null): id is string => Boolean(id));
+        if (supplierIds.length === 0) return [];
+        const suppliers = await (this.prisma.supplier as any).findMany({
+          where: { id: { in: supplierIds } },
+          select: { id: true, name: true },
+        });
+        return groups.map((g: any) => {
+          const sup = suppliers.find((s: any) => s.id === g.assignedSupplierId);
+          return {
+            supplierId: g.assignedSupplierId,
+            name: sup?.name || 'Unknown supplier',
+            incidentCount: g._count?._all || 0,
+          };
+        });
+      },
+      [] as Array<{ supplierId: string; name: string; incidentCount: number }>,
     );
     for (const s of supplierIncidents) {
       if (!text.includes(String(s.name || '').toLowerCase())) continue;
