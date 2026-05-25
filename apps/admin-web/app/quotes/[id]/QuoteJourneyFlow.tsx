@@ -171,6 +171,26 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
           alignItems: 'center',
         }}
       >
+        {/* Arrival marker — spec #1: arrival/departure markers frame the journey */}
+        <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          <div
+            style={{
+              background: '#3a5a3a',
+              color: '#ffffff',
+              borderRadius: 999,
+              padding: '0.4rem 0.7rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              minWidth: '4.5rem',
+            }}
+            title="Trip start"
+          >
+            <span style={{ fontWeight: 800, fontSize: '0.85rem', lineHeight: 1.1 }}>✈ Arrival</span>
+            <span style={{ fontSize: '0.68rem', opacity: 0.85, marginTop: '0.1rem' }}>Day 1</span>
+          </div>
+          <span aria-hidden style={{ color: '#94a395', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.05em' }}>→</span>
+        </li>
         {markers.map((m, idx) => (
           <li key={`${m.city}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
             <div
@@ -193,21 +213,30 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
                 {m.nights === 1 ? `Day ${m.firstDay}` : `${m.nights} nights`}
               </span>
             </div>
-            {idx < markers.length - 1 ? (
-              <span
-                aria-hidden
-                style={{
-                  color: '#94a395',
-                  fontSize: '1.1rem',
-                  fontWeight: 700,
-                  letterSpacing: '-0.05em',
-                }}
-              >
-                →
-              </span>
-            ) : null}
+            <span aria-hidden style={{ color: '#94a395', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.05em' }}>→</span>
           </li>
         ))}
+        {/* Departure marker */}
+        <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          <div
+            style={{
+              background: '#3a5a3a',
+              color: '#ffffff',
+              borderRadius: 999,
+              padding: '0.4rem 0.7rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              minWidth: '4.5rem',
+            }}
+            title="Trip end"
+          >
+            <span style={{ fontWeight: 800, fontSize: '0.85rem', lineHeight: 1.1 }}>✈ Departure</span>
+            <span style={{ fontSize: '0.68rem', opacity: 0.85, marginTop: '0.1rem' }}>
+              Day {stops[stops.length - 1]?.dayNumber || itineraries.length}
+            </span>
+          </div>
+        </li>
       </ol>
     </section>
   );
