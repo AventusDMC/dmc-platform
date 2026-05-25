@@ -9,6 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import type { RouteStandardSummary } from '../../lib/route-standards';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { DayNavigation, DrawerPanel } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
@@ -409,6 +410,11 @@ type QuoteServicePlannerProps = {
   excursionTemplates: ExcursionTemplate[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
+  // Route Standards (Phase 2A) — canonical distance/duration/timing
+  // looked up by routeCode in the auto-builder preview + quote diagnostics.
+  // Optional + defaults to [] so older callers / quotes without standards
+  // seeded continue to work via the existing Route fallback.
+  routeStandards?: RouteStandardSummary[];
   vehicles: TransportVehicle[];
   supplierRateCards: TransportSupplierRateCard[];
   transportDataStatus: TransportDataStatus;
@@ -4676,6 +4682,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           services={props.services}
           transportServiceTypes={props.transportServiceTypes}
           routes={props.routes}
+          routeStandards={props.routeStandards || []}
           hotels={props.hotels}
           hotelContracts={props.hotelContracts}
           hotelRates={props.hotelRates}

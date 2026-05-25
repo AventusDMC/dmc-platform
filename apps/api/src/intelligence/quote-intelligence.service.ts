@@ -167,6 +167,92 @@ export class QuoteIntelligenceService {
       });
     }
 
+    // --- Factor 7: Route Standards risk flags (Phase 2A) ---
+    // For each transport quote item carrying a routeId, look up the
+    // matching route's code, then look up the RouteStandard by routeCode.
+    // Surface long-distance / border / mountain / overnight risk so the
+    // operator sees the timing implications without opening every day card.
+    const transportItems = await this.safe(
+      'transport-items-for-route-standards',
+      () =>
+        (this.prisma.quoteItem as any).findMany({
+          where: { quoteId, routeId: { not: null } },
+          select: { routeId: true },
+        }),
+      [] as Array<{ routeId: string | null }>,
+    );
+    const distinctRouteIds = [...new Set(transportItems.map((item: any) => item.routeId).filter(Boolean))] as string[];
+    if (distinctRouteIds.length > 0) {
+      const routes = await this.safe(
+        'routes-for-standard-lookup',
+        () =>
+          (this.prisma.route as any).findMany({
+            where: { id: { in: distinctRouteIds } },
+            select: { id: true, code: true, normalizedKey: true },
+          }),
+        [] as Array<{ id: string; code?: string | null; normalizedKey: string }>,
+      );
+      const routeCodes = [
+        ...new Set(
+          (routes as any[])
+            .map((r) => String(r.code || r.normalizedKey || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))
+            .filter(Boolean),
+        ),
+      ];
+      if (routeCodes.length > 0) {
+        const standards = await this.safe(
+          'route-standards-for-quote',
+          () =>
+            (this.prisma as any).routeStandard.findMany({
+              where: { routeCode: { in: routeCodes }, isActive: true },
+            }),
+          [] as Array<any>,
+        );
+        const longDistance = standards.filter((s: any) => s.longDistanceFlag || (s.standardDurationHours ?? 0) >= 5);
+        const border = standards.filter((s: any) => s.borderCrossingFlag);
+        const mountain = standards.filter((s: any) => s.mountainRoadFlag);
+        const overnight = standards.filter((s: any) => s.overnightRisk);
+        const airport = standards.filter((s: any) => s.airportRouteFlag);
+        if (border.length > 0) {
+          warnings.push({
+            category: 'complexity',
+            severity: 'WARN',
+            message: `${border.length} transfer${border.length === 1 ? '' : 's'} cross a border (${border.map((s: any) => s.routeCode).join(', ')}) — schedule with 1-3 hour wait buffer.`,
+          });
+        }
+        if (mountain.length > 0) {
+          warnings.push({
+            category: 'complexity',
+            severity: 'WARN',
+            message: `${mountain.length} mountain-road transfer${mountain.length === 1 ? '' : 's'} (${mountain.map((s: any) => s.routeCode).join(', ')}) — weather-sensitive, slower in winter.`,
+          });
+        }
+        if (longDistance.length > 0) {
+          warnings.push({
+            category: 'complexity',
+            severity: 'WARN',
+            message: `${longDistance.length} long-distance drive${longDistance.length === 1 ? '' : 's'} (${longDistance.map((s: any) => s.routeCode).join(', ')}) — 5+ hours, plan rest stops or consider an overnight.`,
+          });
+        }
+        if (overnight.length > 0) {
+          warnings.push({
+            category: 'complexity',
+            severity: 'INFO',
+            message: `${overnight.length} transfer${overnight.length === 1 ? '' : 's'} flagged with overnight risk — day may roll over if departure pushed late.`,
+          });
+        }
+        if (airport.length >= 3) {
+          // Only surface when multiple airport routes — single airport
+          // transfers are normal and don't need an explicit warning.
+          warnings.push({
+            category: 'complexity',
+            severity: 'INFO',
+            message: `${airport.length} airport routes — peak-hour traffic may add 30-60 min per leg. Verify flight times.`,
+          });
+        }
+      }
+    }
+
     // --- Aggregate the score ---
     const criticalCount = warnings.filter((w) => w.severity === 'CRITICAL').length;
     const warnCount = warnings.filter((w) => w.severity === 'WARN').length;

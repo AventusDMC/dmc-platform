@@ -23,6 +23,7 @@ import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuoteJourneyFlow } from './QuoteJourneyFlow';
+import type { RouteStandardSummary } from '../../lib/route-standards';
 import { QuotePricingAudit } from './QuotePricingAudit';
 import { QuoteWorkspaceGuide } from './QuoteWorkspaceGuide';
 import { QuoteJourneyHighlights } from './QuoteJourneyHighlights';
@@ -924,6 +925,17 @@ async function getExcursionTemplates(): Promise<ExcursionTemplate[]> {
 
 async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
   return adminPageFetchJson<TransportServiceType[]>(`${DATA_API_BASE_URL}/transport-service-types`, 'Quote detail transport service types', {
+    cache: 'no-store',
+  });
+}
+
+// Route Standards (Phase 2A) — canonical distance/duration/timing for each
+// operational route. Load alongside the rest of the quote-detail reference
+// data so the auto-builder + intelligence layer can look up by routeCode.
+// Soft failure: empty array means "no standards seeded yet" and downstream
+// rendering falls back to existing Route distance/duration.
+async function getRouteStandards(): Promise<RouteStandardSummary[]> {
+  return adminPageFetchJson<RouteStandardSummary[]>(`${API_BASE_URL}/route-standards`, 'Quote detail route standards', {
     cache: 'no-store',
   });
 }
@@ -1985,6 +1997,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     excursionTemplatesSettled,
     transportServiceTypesSettled,
     routesSettled,
+    routeStandardsSettled,
     vehiclesSettled,
     supplierRateCardsSettled,
     hotelsSettled,
@@ -2011,6 +2024,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       : skippedQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[]),
     safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
     safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
+    safeQuoteDetailFetch('route standards', [] as RouteStandardSummary[], getRouteStandards),
     safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
     safeQuoteDetailTransportFetch('supplier rate cards', [] as TransportSupplierRateCard[], getSupplierRateCards),
     shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels) : skippedQuoteDetailFetch('hotels', [] as Hotel[]),
@@ -2037,6 +2051,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const excursionTemplatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<ExcursionTemplate[]>>(excursionTemplatesSettled, { status: 'error', label: 'excursion templates', data: [], message: 'Excursion templates unavailable' }, 'excursion templates');
   const transportServiceTypesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportServiceType[]>>(transportServiceTypesSettled, { status: 'error', label: 'transport service types', data: [], message: 'Transport service types unavailable' }, 'transport service types');
   const routesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteOption[]>>(routesSettled, { status: 'error', label: 'routes', data: [], message: 'Routes unavailable' }, 'routes');
+  const routeStandardsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteStandardSummary[]>>(
+    routeStandardsSettled,
+    { status: 'error', label: 'route standards', data: [], message: 'Route standards unavailable' },
+    'route standards',
+  );
   const vehiclesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportVehicle[]>>(vehiclesSettled, { status: 'error', label: 'vehicles', data: [], message: 'Vehicles unavailable' }, 'vehicles');
   const supplierRateCardsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportSupplierRateCard[]>>(supplierRateCardsSettled, { status: 'error', label: 'supplier rate cards', data: [], message: 'Supplier rate cards unavailable' }, 'supplier rate cards');
   const hotelsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Hotel[]>>(hotelsSettled, { status: 'error', label: 'hotels', data: [], message: 'Hotels unavailable' }, 'hotels');
@@ -2057,6 +2076,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const excursionTemplates = excursionTemplatesResult.data;
   const transportServiceTypes = transportServiceTypesResult.data;
   const routes = routesResult.data;
+  const routeStandards = routeStandardsResult.data;
   const vehicles = vehiclesResult.data;
   const supplierRateCards = supplierRateCardsResult.data;
   const transportDataStatus = {
@@ -2762,6 +2782,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       excursionTemplates={excursionTemplates}
       transportServiceTypes={transportServiceTypes}
       routes={routes}
+      routeStandards={routeStandards}
       vehicles={vehicles}
       supplierRateCards={supplierRateCards}
       transportDataStatus={transportDataStatus}

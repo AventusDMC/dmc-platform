@@ -7,6 +7,13 @@ import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
+import {
+  buildRouteStandardLookup,
+  lookupRouteStandardByCode,
+  presentRouteTimingConfidence,
+  type RouteStandardSummary,
+  type TimingConfidencePresentation,
+} from '../../lib/route-standards';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 import {
@@ -233,6 +240,10 @@ type QuoteAutoItineraryBuilderProps = {
   services: SupplierService[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
+  // Route Standards (Phase 2A): canonical per-route distance/duration/
+  // risk-flags lookup. Optional + defaults to []; when empty, the preview
+  // falls back to the existing Route distance/duration estimate.
+  routeStandards?: RouteStandardSummary[];
   hotels: Hotel[];
   hotelContracts: HotelContract[];
   hotelRates: HotelRate[];
@@ -917,6 +928,11 @@ async function buildPreviewDraft(values: {
   // 3 days with Amman + 2 with Petra rather than collapsing one day per
   // unique city.
   nightStops?: NightStop[] | null;
+  // Route Standards lookup (Phase 2A) — when present, each transport
+  // entry gets a routeStandard reference attached for canonical distance/
+  // duration/risk-flag rendering. Empty map means no standards available
+  // and the preview falls back to per-route distanceKm/durationMinutes.
+  routeStandardLookup?: Map<string, RouteStandardSummary>;
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
@@ -998,6 +1014,13 @@ async function buildPreviewDraft(values: {
     } else {
       optimizationReason = `No catalog route from ${fromCity} to ${toCity}. Add it in Transfer Routes admin.`;
     }
+    // Route Standards lookup (Phase 2A): attach the canonical
+    // distance/duration/risk-flag profile when a standard exists for the
+    // matched route's code. Display layer prefers these values over the
+    // per-route distanceKm/durationMinutes when present.
+    const routeStandard = route && values.routeStandardLookup
+      ? lookupRouteStandardByCode(values.routeStandardLookup, (route as { code?: string | null }).code || null)
+      : null;
     return {
       dayNumber,
       fromCity,
@@ -1006,6 +1029,7 @@ async function buildPreviewDraft(values: {
       travelTimeHours: distanceEstimate?.travelTimeHours ?? null,
       isTravelHeavy: (distanceEstimate?.travelTimeHours ?? 0) > 4,
       route,
+      routeStandard,
       selectedCandidate,
       optimizationReason,
     };
@@ -1116,6 +1140,7 @@ export function QuoteAutoItineraryBuilder({
   services,
   transportServiceTypes,
   routes,
+  routeStandards = [],
   hotels,
   hotelContracts,
   hotelRates,
@@ -1224,6 +1249,11 @@ export function QuoteAutoItineraryBuilder({
   const hotelService = useMemo(() => findService(services, 'hotel'), [services]);
   const transportService = useMemo(() => findService(services, 'transport'), [services]);
   const activityService = useMemo(() => findService(services, 'activity'), [services]);
+  // Route Standards lookup — built once per render from the loaded
+  // route-standards array. Keyed by normalized routeCode so per-leg
+  // lookups are O(1). When the catalog is empty the map is empty and the
+  // preview transparently falls back to existing Route distance/duration.
+  const routeStandardLookup = useMemo(() => buildRouteStandardLookup(routeStandards), [routeStandards]);
   const transportServiceType = useMemo(
     () =>
       transportServiceTypes.find((serviceType) => /transfer|transport|vehicle/i.test(`${serviceType.name} ${serviceType.code}`)) ||
@@ -1280,6 +1310,7 @@ export function QuoteAutoItineraryBuilder({
             hotelRates,
             services,
             nightStops: guidedNightStops,
+            routeStandardLookup,
           }),
         ),
       );
@@ -1356,6 +1387,7 @@ export function QuoteAutoItineraryBuilder({
           hotelContracts,
           hotelRates,
           services,
+          routeStandardLookup,
           }),
           manualDayOverrides,
         ),
@@ -2222,6 +2254,39 @@ export function QuoteAutoItineraryBuilder({
                     {formatTransportVehicleDisplay(item.selectedCandidate.vehicle)} | {item.selectedCandidate.currency} {item.selectedCandidate.price}
                   </em>
                 ) : null}
+                {/* Route Standards (Phase 2A): when a canonical standard is
+                    available for the matched route, render its distance/
+                    duration/confidence as the authoritative operational
+                    profile. Falls back silently when no standard exists. */}
+                {(() => {
+                  const standard = (item as { routeStandard?: RouteStandardSummary | null }).routeStandard;
+                  if (!standard) return null;
+                  const confidence: TimingConfidencePresentation = presentRouteTimingConfidence(standard);
+                  const distance = standard.standardDistanceKm !== null ? `${standard.standardDistanceKm} km` : null;
+                  const duration = standard.standardDurationHours !== null ? `${standard.standardDurationHours} h` : null;
+                  const buffer = standard.operationalBufferMinutes !== null ? `+${standard.operationalBufferMinutes} min buffer` : null;
+                  const bits = [distance, duration, buffer].filter(Boolean);
+                  return (
+                    <em style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                      <span
+                        style={{
+                          background: confidence.bg,
+                          color: confidence.text,
+                          padding: '0.1rem 0.5rem',
+                          borderRadius: 999,
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.02em',
+                        }}
+                        title={confidence.detail}
+                      >
+                        {confidence.label}
+                      </span>
+                      {bits.length > 0 ? <span style={{ color: '#475467' }}>{bits.join(' · ')}</span> : null}
+                      {standard.notes ? <span style={{ color: '#6b7a6b' }}>· {standard.notes}</span> : null}
+                    </em>
+                  );
+                })()}
                 <em>{item.optimizationReason}</em>
               </div>
             ))}

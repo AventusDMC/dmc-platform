@@ -53,9 +53,13 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
     isActive: standard.isActive,
   });
 
+  // overnightRisk is intentionally NOT a confidence-classifier input —
+  // it's a separate operational flag surfaced as an INFO warning in the
+  // backend intelligence layer rather than a Heavy/Border/Mountain
+  // confidence band. The classifier in lib/route-standards.ts only reads
+  // longDistance / mountain / border / airport + durationHours.
   const confidence = computeTimingConfidenceLabel({
     longDistanceFlag: state.longDistanceFlag,
-    overnightRisk: state.overnightRisk,
     mountainRoadFlag: state.mountainRoadFlag,
     borderCrossingFlag: state.borderCrossingFlag,
     airportRouteFlag: state.airportRouteFlag,
