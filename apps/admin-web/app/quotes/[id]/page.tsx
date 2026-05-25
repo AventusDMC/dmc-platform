@@ -24,6 +24,7 @@ import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuoteJourneyFlow } from './QuoteJourneyFlow';
 import { QuotePricingAudit } from './QuotePricingAudit';
+import { QuoteWorkspaceGuide } from './QuoteWorkspaceGuide';
 import { QuoteJourneyHighlights } from './QuoteJourneyHighlights';
 import { QuoteOperationalInsights } from './QuoteOperationalInsights';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
@@ -2861,6 +2862,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               This is an older quote revision. Open the latest revision to edit, accept, or convert it to a booking.
             </div>
           ) : null}
+
+          {/* Workspace guide — first thing the operator sees on every
+              quote. Collapsed by default; one click opens the 5-step
+              path through the workspace + same-thing-different-names
+              vocabulary disambiguation. Designed for new operators and
+              for anyone returning to a quote after a break. */}
+          <QuoteWorkspaceGuide />
 
           {/* Journey flow visualization — horizontal city timeline rendered
               from the itinerary days. Heuristic destination extraction;
