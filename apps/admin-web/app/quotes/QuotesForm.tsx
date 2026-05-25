@@ -59,6 +59,14 @@ type QuotesFormProps = {
       minPax: string;
       maxPax: string;
       price: string;
+      // focPax + notes added 2026-05 to plug a silent-data-loss bug:
+      // when an operator reopened a GROUP quote from the Overview tab to
+      // edit any unrelated field, the form's POST body omitted these two
+      // fields and the backend replaced all slabs — wiping per-slab FOC
+      // counts and operator notes set in Step 5 (Group Pricing). Carry
+      // them through so the Overview form preserves Step-5 work.
+      focPax?: string;
+      notes?: string;
     }>;
     fixedPricePerPerson: string;
     focType: 'none' | 'ratio' | 'fixed';
@@ -81,6 +89,12 @@ type PricingSlabFormValue = {
   minPax: string;
   maxPax: string;
   price: string;
+  // See the comment in QuotesFormProps.initialValues.pricingSlabs — these
+  // fields are NOT edited in the Overview/Setup form's slab table (Step 5
+  // owns the rich editor), but they must round-trip through this form so
+  // a Step-1 edit doesn't wipe Step-5 work.
+  focPax: string;
+  notes: string;
 };
 
 function createPricingSlabValue(values?: Partial<PricingSlabFormValue>): PricingSlabFormValue {
@@ -90,6 +104,8 @@ function createPricingSlabValue(values?: Partial<PricingSlabFormValue>): Pricing
     minPax: values?.minPax || '',
     maxPax: values?.maxPax || '',
     price: values?.price || '',
+    focPax: values?.focPax || '',
+    notes: values?.notes || '',
   };
 }
 
@@ -239,6 +255,11 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
                 minPax: slab.minPax.trim(),
                 maxPax: slab.maxPax.trim(),
                 price: slab.price.trim(),
+                // Round-trip focPax + notes so editing the quote from the
+                // Overview tab doesn't reset per-slab FOC and notes that
+                // were configured in Step 5 (Group Pricing).
+                focPax: slab.focPax.trim(),
+                notes: slab.notes,
               }))
               .filter((slab) => slab.minPax || slab.maxPax || slab.price)
           : [];
@@ -296,9 +317,15 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
           fixedPricePerPerson:
             pricingMode === 'FIXED' ? (fixedPricePerPerson.trim() ? Number(fixedPricePerPerson) : null) : 0,
           pricingSlabs: normalizedPricingSlabs.map((slab) => ({
+            id: slab.id,
             minPax: Number(slab.minPax),
             maxPax: Number(slab.maxPax),
             price: Number(slab.price),
+            // Pass focPax + notes through. focPax: blank string -> null so
+            // backend's normalizePricingSlabInput preserves quote-level FOC
+            // ratio fallback rather than coercing to 0.
+            focPax: slab.focPax ? Number(slab.focPax) : null,
+            notes: slab.notes || null,
           })),
           focType,
           focRatio: focType === 'ratio' ? Number(focRatio) : null,

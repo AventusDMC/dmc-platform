@@ -8667,8 +8667,57 @@ export class QuotesService {
     );
     const passTotals = await this.calculateJordanPassTotals(quote);
     const totalCost = Number((itemTotals.totalCost + passTotals.totalCost).toFixed(2));
-    const totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
-    const pricePerPax = quote.adults + quote.children > 0 ? Number((totalSell / (quote.adults + quote.children)).toFixed(2)) : 0;
+    // For FIXED-mode quotes the client price is the sum of per-item sells
+    // (markup-derived). For SLAB quotes the client price is determined by
+    // the matched pricing slab × paying-pax — NOT the sum of items. Before
+    // this fix, totalSell always summed items, so every commercial surface
+    // (Financial Summary, Pricing Audit, Step 4 grid, Proposal PDF totals,
+    // and the booking pricingSnapshot on convert) showed the wrong number
+    // for SLAB quotes.
+    const isSlabMode =
+      this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB';
+
+    let totalSell: number;
+    let pricePerPax: number;
+    if (isSlabMode) {
+      const totalPax = quote.adults + quote.children;
+      const matchedSlab =
+        quote.pricingSlabs?.find(
+          (slab: any) => totalPax >= slab.minPax && (slab.maxPax === null || slab.maxPax === undefined || totalPax <= slab.maxPax),
+        ) || null;
+      if (matchedSlab) {
+        // Apply the per-slab focPax if set, otherwise fall back to the
+        // quote-level FOC ratio/count. Matches buildQuotePricingSlabRecord's
+        // resolution order so the displayed total agrees with the slab grid.
+        // Cast through `any` because the local quote type declaration here
+        // doesn't include focPax on PricingSlab — the underlying Prisma
+        // model does. See PricingSlab Prisma schema.
+        const slabFocPax = (matchedSlab as any).focPax as number | null | undefined;
+        const focPax = Math.min(
+          totalPax,
+          slabFocPax ??
+            this.resolveQuoteFoc({
+              adults: totalPax,
+              children: 0,
+              focType: quote.focType,
+              focRatio: quote.focRatio,
+              focCount: quote.focCount,
+              focRoomType: quote.focRoomType,
+            }).resolvedFocCount,
+        );
+        const payingPax = Math.max(totalPax - focPax, 0);
+        totalSell = Number((matchedSlab.price * payingPax + passTotals.totalSell).toFixed(2));
+        pricePerPax = Number(matchedSlab.price.toFixed(2));
+      } else {
+        // No slab covers current pax count — fall back to item sum (and the
+        // Pricing Audit will flag the missing slab separately).
+        totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
+        pricePerPax = totalPax > 0 ? Number((totalSell / totalPax).toFixed(2)) : 0;
+      }
+    } else {
+      totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
+      pricePerPax = quote.adults + quote.children > 0 ? Number((totalSell / (quote.adults + quote.children)).toFixed(2)) : 0;
+    }
 
     const updatedQuote = await this.prisma.quote.update({
       where: { id: quoteId },

@@ -802,9 +802,37 @@ async function buildPreviewDraft(values: {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
   const generatedDays = generateItineraryDays(values.travelStartDate, values.nightCount);
+
+  // When the operator switches to "comfort" mode the optimizer reorders
+  // cities to favor shorter drive times. The Guided-Builder nightStops
+  // path was bypassing that reorder — using the operator's original
+  // stop sequence regardless of optimization mode. Apply the same
+  // reorder to nightStops so a "comfort" run respects both per-city
+  // night durations AND the optimized stop order.
+  const reorderedNightStops = (() => {
+    if (!values.nightStops || values.nightStops.length === 0) return values.nightStops || null;
+    if (cities.length === 0) return values.nightStops;
+    const byCity = new Map<string, NightStop>();
+    for (const stop of values.nightStops) {
+      byCity.set(stop.name.trim().toLowerCase(), stop);
+    }
+    const ordered: NightStop[] = [];
+    for (const city of cities) {
+      const found = byCity.get(city.trim().toLowerCase());
+      if (found) {
+        ordered.push(found);
+        byCity.delete(city.trim().toLowerCase());
+      }
+    }
+    // Append any stops the optimizer dropped (shouldn't happen with the
+    // current optimizer, but defensive — preserves original durations).
+    for (const remaining of byCity.values()) ordered.push(remaining);
+    return ordered;
+  })();
+
   const days: PreviewDay[] =
-    values.nightStops && values.nightStops.some((stop) => stop.nights > 0)
-      ? assignGeneratedItineraryCitiesByNights(generatedDays, values.nightStops)
+    reorderedNightStops && reorderedNightStops.some((stop) => stop.nights > 0)
+      ? assignGeneratedItineraryCitiesByNights(generatedDays, reorderedNightStops)
       : assignGeneratedItineraryCities(generatedDays, cities);
 
   const itineraryCities = days.map((day) => day.city);
