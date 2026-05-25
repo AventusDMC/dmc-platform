@@ -2386,34 +2386,134 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     ).length,
     missingOperationalFields: activeConvertBlockers.filter((blocker) => blocker.blockerType === 'workflow-fields').length,
   };
+  // Calm wording translation — replace ERP-style "Missing workflow fields"
+  // language with operator-friendly phrases per spec task #6. Each entry
+  // matches the start of a blocker.reason and returns a calmer label.
+  const calmWording = (reason: string): string => {
+    const lower = String(reason || '').toLowerCase();
+    if (lower.includes('cost/sell pricing') && (lower.includes('start time') || lower.includes('pickup'))) {
+      return 'Pricing and timing review needed';
+    }
+    if (lower.includes('cost/sell pricing')) return 'Pricing review needed';
+    if (lower.includes('start time') || lower.includes('pickup time') || lower.includes('pickup')) {
+      return 'Transfer or activity timing pending';
+    }
+    if (lower.includes('meeting point')) return 'Meeting point pending';
+    if (lower.includes('location')) return 'Location detail pending';
+    if (lower.includes('supplier')) return 'Supplier assignment pending';
+    if (lower.includes('voucher')) return 'Voucher generation pending';
+    // Fall back to a trimmed original — drop the "[Source] " prefix etc.
+    return String(reason || '').replace(/^\[.*?\]\s*/, '').replace(/^Missing\s+/i, '').replace(/^Quote Item\s+/i, '');
+  };
+  // Calm severity colour map — sand-amber for review, soft red ONLY for
+  // genuinely blocking items. Per spec #5: only truly blocking issues
+  // should become visually strong.
+  const blockerCalmTone = (source: string) => {
+    const s = String(source || '').toLowerCase();
+    if (s.includes('blocker') || s.includes('error')) {
+      return { bg: '#faf2f2', text: '#7a4242', dot: '#a85454' };
+    }
+    return { bg: '#fbf9f4', text: '#6b5933', dot: '#c7956b' };
+  };
+  // Compact headline tone for the collapsed chip.
+  const headlineTone =
+    conversionBlockerSummary.unresolvedItems > 10
+      ? { bg: '#fbf9f4', border: '#e8dcc4', text: '#6b5933' }
+      : conversionBlockerSummary.unresolvedItems > 0
+      ? { bg: '#fbf9f4', border: '#e8dcc4', text: '#6b5933' }
+      : { bg: '#f5f8f5', border: '#cdd7cd', text: '#3a5a3a' };
   const conversionBlockerDetails = convertBlocked ? (
-    <div className="section-stack">
-      <div className="quote-preview-total-list">
-        <div>
-          <span>Unresolved items</span>
-          <strong>{conversionBlockerSummary.unresolvedItems}</strong>
-        </div>
-        <div>
-          <span>Pricing mismatches</span>
-          <strong>{conversionBlockerSummary.pricingMismatches}</strong>
-        </div>
-        <div>
-          <span>Missing operational fields</span>
-          <strong>{conversionBlockerSummary.missingOperationalFields}</strong>
-        </div>
-      </div>
-      <div>
-        <strong>Active convert blockers</strong>
-        {activeConvertBlockers.map((blocker) => (
-          <p key={`${blocker.blockerType}-${blocker.itemId || 'quote'}-${blocker.reason}`} className="form-error">
-            <Link href={blocker.href}>
-              {blocker.itemName ? `${blocker.itemName}${blocker.itemId ? ` (${blocker.itemId})` : ''}` : titleCase(blocker.blockerType)}
+    <details
+      style={{
+        background: headlineTone.bg,
+        border: `1px solid ${headlineTone.border}`,
+        borderRadius: 10,
+        padding: '0.65rem 0.85rem',
+        marginBottom: '0.75rem',
+      }}
+    >
+      <summary
+        style={{
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: '0.75rem',
+          listStyle: 'none',
+        }}
+      >
+        <span
+          style={{
+            color: headlineTone.text,
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Operational Review
+        </span>
+        <strong style={{ color: headlineTone.text, fontSize: '0.92rem' }}>
+          {conversionBlockerSummary.unresolvedItems} item
+          {conversionBlockerSummary.unresolvedItems === 1 ? '' : 's'} need review
+        </strong>
+        {conversionBlockerSummary.pricingMismatches > 0 ? (
+          <span style={{ color: headlineTone.text, fontSize: '0.78rem', opacity: 0.8 }}>
+            · {conversionBlockerSummary.pricingMismatches} pricing
+          </span>
+        ) : null}
+        {conversionBlockerSummary.missingOperationalFields > 0 ? (
+          <span style={{ color: headlineTone.text, fontSize: '0.78rem', opacity: 0.8 }}>
+            · {conversionBlockerSummary.missingOperationalFields} operational fields
+          </span>
+        ) : null}
+        <span style={{ marginLeft: 'auto', color: headlineTone.text, fontSize: '0.78rem', fontWeight: 600 }}>
+          Show ▾
+        </span>
+      </summary>
+      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+        {activeConvertBlockers.map((blocker) => {
+          const tone = blockerCalmTone(blocker.source);
+          return (
+            <Link
+              key={`${blocker.blockerType}-${blocker.itemId || 'quote'}-${blocker.reason}`}
+              href={blocker.href}
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'flex-start',
+                padding: '0.4rem 0.6rem',
+                background: tone.bg,
+                border: '1px solid #efe7d4',
+                borderRadius: 6,
+                textDecoration: 'none',
+                fontSize: '0.83rem',
+                color: tone.text,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  display: 'inline-block',
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: tone.dot,
+                  marginTop: '0.5rem',
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ flex: 1 }}>
+                <strong style={{ fontWeight: 600 }}>
+                  {blocker.itemName ? blocker.itemName : titleCase(blocker.blockerType)}
+                </strong>
+                {' — '}
+                {calmWording(blocker.reason)}
+              </span>
             </Link>
-            : [{blocker.source}] {blocker.reason}
-          </p>
-        ))}
+          );
+        })}
       </div>
-    </div>
+    </details>
   ) : null;
   const itineraryExists = quote.itineraries.length > 0 || quoteItinerary.days.length > 0;
   const servicesReadyForNext = itineraryExists;
