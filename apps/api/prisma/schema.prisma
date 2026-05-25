@@ -1711,6 +1711,44 @@ model Route {
   @@map("routes")
 }
 
+// Route Standards — canonical, single source of truth for route distance,
+// duration, operational buffers, and risk flags. Keyed by routeCode (the
+// existing touringRoute.code or transfer-route operational code). Does
+// NOT replace the Route or TouringRoute models — those keep their
+// operational pricing/relationship metadata. RouteStandard provides the
+// numbers and risk profile that exports / quote engine / dispatch engine
+// / voucher layer should read from instead of any per-row freeform value.
+// Phase 1: model + admin + import/export. Phase 2 will wire engines to it.
+model RouteStandard {
+  id                        String   @id @default(uuid()) @db.Uuid
+  routeCode                 String   @unique
+  routeName                 String
+  fromCity                  String?
+  toCity                    String?
+  // toCity may be null when destinationArea describes a region rather
+  // than a single city (e.g., "Dead Sea Resorts", "Wadi Rum Camps").
+  destinationArea           String?
+  standardDistanceKm        Float?
+  standardDurationHours     Float?
+  // Buffer minutes added to operational scheduling for prep/loading/etc.
+  // Dispatch engine reads this when checking turnaround between back-to-
+  // back operations on the same vehicle/driver.
+  operationalBufferMinutes  Int?
+  longDistanceFlag          Boolean  @default(false)
+  overnightRisk             Boolean  @default(false)
+  mountainRoadFlag          Boolean  @default(false)
+  borderCrossingFlag        Boolean  @default(false)
+  airportRouteFlag          Boolean  @default(false)
+  notes                     String?
+  isActive                  Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([isActive, routeCode])
+  @@index([fromCity, toCity])
+  @@map("route_standards")
+}
+
 model ServiceType {
   id               String            @id @default(uuid()) @db.Uuid
   name             String
