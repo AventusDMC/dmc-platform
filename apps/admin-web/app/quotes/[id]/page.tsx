@@ -23,6 +23,7 @@ import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuoteJourneyFlow } from './QuoteJourneyFlow';
+import { QuotePricingAudit } from './QuotePricingAudit';
 import { QuoteJourneyHighlights } from './QuoteJourneyHighlights';
 import { QuoteOperationalInsights } from './QuoteOperationalInsights';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
@@ -2881,6 +2882,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           {/* Operational intelligence overlay — collapsed by default, calm
               commercial-toned. Loads lazily on first expand. */}
           <QuoteOperationalInsights quoteId={quote.id} />
+
+          {/* Pricing audit — calm sage panel that surfaces zero-priced rows,
+              math mismatches, currency mix, and margin-floor breaches in
+              plain language. Server-rendered; runs on already-loaded quote
+              data so it adds no extra fetch. */}
+          <QuotePricingAudit
+            quoteId={quote.id}
+            quoteCurrency={quote.quoteCurrency}
+            items={quote.quoteItems}
+          />
 
           <section className="quote-dashboard-workflow" aria-label="Quote workflow">
             {QUOTE_DASHBOARD_WORKFLOW.map((label) => {
