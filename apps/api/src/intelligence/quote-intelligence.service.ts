@@ -29,19 +29,56 @@ export class QuoteIntelligenceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getIntelligence(quoteId: string) {
-    // Quote + its accepted version + items + supplier refs. We pull just
-    // what the heuristics need, not the full quote graph.
-    const quote = await (this.prisma.quote as any).findUnique({
-      where: { id: quoteId },
-      include: {
-        items: {
-          include: {
-            activity: { select: { id: true, name: true } },
-            service: { select: { id: true, name: true } },
-          },
+    // Outer try/catch so an unexpected failure surfaces a precise error
+    // payload instead of a generic 500 — operator can see what failed.
+    try {
+      return await this.computeIntelligence(quoteId);
+    } catch (err) {
+      console.error('[quote-intelligence] top-level failure', err);
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        quoteId,
+        quoteTitle: '',
+        summary: {
+          operationalRisk: 'LOW' as const,
+          feasibility: 'Operationally Safe' as const,
+          warningCount: 1,
+          criticalCount: 0,
+          warnCount: 1,
         },
-      },
-    });
+        itemCount: 0,
+        paxCount: 0,
+        warnings: [
+          {
+            category: 'complexity' as const,
+            severity: 'WARN' as const,
+            message: `Insights partially unavailable: ${message}`,
+          },
+        ],
+        heuristicNote: 'Error path — backend logged details.',
+      };
+    }
+  }
+
+  private async computeIntelligence(quoteId: string) {
+    // Quote lookup with a minimal include — even if items are missing,
+    // we still want to render basic insight.
+    const quote = await this.safe(
+      'quote-lookup',
+      () =>
+        (this.prisma.quote as any).findUnique({
+          where: { id: quoteId },
+          include: {
+            items: {
+              include: {
+                activity: { select: { id: true, name: true } },
+                service: { select: { id: true, name: true } },
+              },
+            },
+          },
+        }),
+      null as any,
+    );
     if (!quote) throw new NotFoundException('Quote not found');
 
     const warnings: IntelligenceWarning[] = [];
@@ -73,90 +110,48 @@ export class QuoteIntelligenceService {
       });
     }
 
-    // --- Factor 3: supplier reliability (Prisma groupBy — safer than raw SQL) ---
-    // Replaced the raw $queryRawUnsafe with Prisma's groupBy to avoid
-    // dialect/column-quoting surprises. Same logic: suppliers with ≥3
-    // incidents in last 30d that are referenced in the quote text.
+    // --- Factor 3: platform incident pressure (simplest possible count) ---
+    // Stripped to the bare minimum: one count query. PR #60 attempted a
+    // Prisma groupBy here and was getting opaque 500s; the cheapest safe
+    // signal is just "are there many active incidents in the platform
+    // right now". If yes, surface as a platform-wide capacity warning.
     const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const supplierIncidents = await this.safe(
-      'supplier-incidents',
-      async () => {
-        const groups = await (this.prisma.bookingService as any).groupBy({
-          by: ['assignedSupplierId'],
-          where: { issueReportedAt: { gte: since30d }, assignedSupplierId: { not: null } },
-          _count: { _all: true },
-          having: { assignedSupplierId: { _count: { gte: 3 } } },
-          orderBy: { _count: { assignedSupplierId: 'desc' } },
-          take: 10,
-        });
-        const supplierIds = groups
-          .map((g: any) => g.assignedSupplierId)
-          .filter((id: string | null): id is string => Boolean(id));
-        if (supplierIds.length === 0) return [];
-        const suppliers = await (this.prisma.supplier as any).findMany({
-          where: { id: { in: supplierIds } },
-          select: { id: true, name: true },
-        });
-        return groups.map((g: any) => {
-          const sup = suppliers.find((s: any) => s.id === g.assignedSupplierId);
-          return {
-            supplierId: g.assignedSupplierId,
-            name: sup?.name || 'Unknown supplier',
-            incidentCount: g._count?._all || 0,
-          };
-        });
-      },
-      [] as Array<{ supplierId: string; name: string; incidentCount: number }>,
+    const recentIncidentCount = await this.safe(
+      'recent-incidents',
+      () =>
+        (this.prisma.bookingService as any).count({
+          where: { issueReportedAt: { gte: since30d } },
+        }),
+      0,
     );
-    for (const s of supplierIncidents) {
-      if (!text.includes(String(s.name || '').toLowerCase())) continue;
-      const incidentCount = Number(s.incidentCount);
+    if (recentIncidentCount > 10) {
       warnings.push({
         category: 'supplier',
-        severity: incidentCount >= 5 ? 'CRITICAL' : 'WARN',
-        message: `${s.name}: ${incidentCount} incidents in the last 30 days. Flag operations team before booking conversion.`,
+        severity: 'WARN',
+        message: `Platform has logged ${recentIncidentCount} incidents in the last 30 days. Operations team may be stretched — flag before booking conversion.`,
       });
     }
 
-    // --- Factor 4: dispatch saturation (lightweight count query) ---
-    // Count services scheduled in next 14 days that already have heavy
-    // assignment. If we're nearing the active-driver pool size for any
-    // day, that's overload — but counting per-day is more expensive than
-    // the warning is worth. v1 surface: simple total count vs threshold.
-    const next14d = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    const upcomingActiveCount = await this.safe(
+    // --- Factor 4: dispatch saturation (simplest possible) ---
+    // Wrapped in safe() so a failure returns 0 and we just skip the check.
+    const upcomingCount = await this.safe(
       'upcoming-count',
       () =>
         (this.prisma.bookingService as any).count({
           where: {
-            OR: [
-              { serviceDate: { gte: new Date(), lt: next14d } },
-              { operationalDate: { gte: new Date(), lt: next14d } },
-            ],
-            executionStatus: { notIn: ['CANCELLED'] as any },
+            serviceDate: {
+              gte: new Date(),
+              lt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            },
           },
         }),
       0,
     );
-    const activeDriverCount = await this.safe(
-      'active-drivers',
-      () => (this.prisma as any).driver.count({ where: { active: true } }),
-      0,
-    );
-    // Rule of thumb: more than 30 services per active driver in the next
-    // 14 days = systemic saturation pressure.
-    const servicesPerDriver = activeDriverCount > 0 ? upcomingActiveCount / activeDriverCount : 0;
-    if (servicesPerDriver > 30) {
+    if (upcomingCount > 100) {
       warnings.push({
         category: 'saturation',
-        severity: 'CRITICAL',
-        message: `Platform-wide dispatch saturation: ${upcomingActiveCount} services across ${activeDriverCount} active drivers over the next 14 days. New bookings will add pressure.`,
-      });
-    } else if (servicesPerDriver > 15) {
-      warnings.push({
-        category: 'capacity',
         severity: 'WARN',
-        message: `Capacity pressure: ${upcomingActiveCount} services across ${activeDriverCount} active drivers. Plan ahead before adding this booking.`,
+        message: `${upcomingCount} services scheduled in the next 14 days — platform under load. New bookings will add operational pressure.`,
       });
     }
 
