@@ -11,11 +11,13 @@ import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 import {
   assignGeneratedItineraryCities,
+  assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
   getAutoItineraryDayCount,
   generateItineraryDays,
   mergeExistingItineraryDays,
   type AutoItineraryExistingDay,
+  type NightStop,
 } from './QuoteAutoItineraryBuilder.logic';
 
 type SupplierService = {
@@ -755,11 +757,19 @@ async function buildPreviewDraft(values: {
   hotelRates: HotelRate[];
   services: SupplierService[];
   transportServiceType: TransportServiceType | null;
+  // When the Guided Builder hands off a per-city night distribution, use
+  // it for day-to-city assignment so a "Amman:3, Petra:2" stop list fills
+  // 3 days with Amman + 2 with Petra rather than collapsing one day per
+  // unique city.
+  nightStops?: NightStop[] | null;
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
   const generatedDays = generateItineraryDays(values.travelStartDate, values.nightCount);
-  const days: PreviewDay[] = assignGeneratedItineraryCities(generatedDays, cities);
+  const days: PreviewDay[] =
+    values.nightStops && values.nightStops.some((stop) => stop.nights > 0)
+      ? assignGeneratedItineraryCitiesByNights(generatedDays, values.nightStops)
+      : assignGeneratedItineraryCities(generatedDays, cities);
 
   const itineraryCities = days.map((day) => day.city);
   const transports = await Promise.all(
@@ -854,19 +864,39 @@ export function QuoteAutoItineraryBuilder({
   // drives a one-time banner so the operator sees that the form was primed.
   const guidedPrefillAppliedRef = useRef(false);
   const [guidedPrefillBanner, setGuidedPrefillBanner] = useState<{ cities: string[]; nights: number } | null>(null);
+  // Per-city night distribution from the Guided Builder, e.g.
+  // [{name:'Amman', nights:3}, {name:'Petra', nights:2}, ...]. When present,
+  // the day-by-city assignment uses this directly so Amman occupies its 3
+  // consecutive days rather than collapsing to a single day. Reset to null
+  // once the operator edits the routeText so we don't keep overriding their
+  // manual changes.
+  const [guidedNightStops, setGuidedNightStops] = useState<NightStop[] | null>(null);
   useEffect(() => {
     if (guidedPrefillAppliedRef.current) return;
     if (!searchParams) return;
     if (searchParams.get('source') !== 'guided') return;
     const citiesParam = searchParams.get('cities');
     let cities: string[] = [];
+    let nightStops: NightStop[] = [];
     if (citiesParam) {
-      cities = citiesParam
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean);
+      // Parse "Amman:3,Petra:2,Wadi Rum:1,Dead Sea:1" → cities (just names,
+      // for the routeText input) + nightStops (per-city nights, for the
+      // day-by-day assignment). Falls back gracefully when the segment lacks
+      // a :N suffix (older URLs / manual entry).
+      for (const entry of citiesParam.split(',').map((value) => value.trim()).filter(Boolean)) {
+        const colonIndex = entry.indexOf(':');
+        const name = (colonIndex >= 0 ? entry.slice(0, colonIndex) : entry).trim();
+        const rawNights = colonIndex >= 0 ? entry.slice(colonIndex + 1).trim() : '';
+        if (!name) continue;
+        cities.push(name);
+        const parsedNights = Math.max(0, Math.floor(Number(rawNights) || 0));
+        nightStops.push({ name, nights: parsedNights });
+      }
       if (cities.length > 0) {
         setRouteText(cities.join(' -> '));
+      }
+      if (nightStops.some((stop) => stop.nights > 0)) {
+        setGuidedNightStops(nightStops);
       }
     }
     const nightsParam = searchParams.get('nights');
@@ -954,6 +984,7 @@ export function QuoteAutoItineraryBuilder({
             hotelContracts,
             hotelRates,
             services,
+            nightStops: guidedNightStops,
           }),
         ),
       );
@@ -1395,8 +1426,16 @@ export function QuoteAutoItineraryBuilder({
   }
 
   function buildDaysOnlyPreview(): PreviewDraft {
-    const cities = parseRouteText(routeText);
-    const days = assignGeneratedItineraryCities(generateItineraryDays(travelStartDate, numericNightCount), cities);
+    const generatedDays = generateItineraryDays(travelStartDate, numericNightCount);
+    // Prefer the per-city night distribution from the Guided Builder when
+    // available — that way a 3-night Amman / 2-night Petra / 1-night Wadi
+    // Rum / 1-night Dead Sea stop list produces 8 day cards that respect
+    // the requested stay durations, rather than the naive index-clamp that
+    // would collapse 5 days into the last city.
+    const useGuidedNights = guidedNightStops && guidedNightStops.some((stop) => stop.nights > 0);
+    const days = useGuidedNights
+      ? assignGeneratedItineraryCitiesByNights(generatedDays, guidedNightStops!)
+      : assignGeneratedItineraryCities(generatedDays, parseRouteText(routeText));
 
     return {
       days,
@@ -1425,6 +1464,7 @@ export function QuoteAutoItineraryBuilder({
         hotelContracts,
         hotelRates,
         services,
+        nightStops: guidedNightStops,
       }),
       manualDayOverrides,
     );
