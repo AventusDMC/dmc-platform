@@ -60,13 +60,23 @@ export function GuidedQuoteBuilder() {
     budgetLevel: '',
     travelStyle: '',
   });
-  const [journey, setJourney] = useState<JourneyCity[]>([
-    { name: 'Amman', nights: 2 },
-    { name: 'Petra', nights: 2 },
-  ]);
+  // Empty default — user builds the journey explicitly in Step 2. Hardcoded
+  // defaults previously leaked into the footer counts before the user had
+  // even reached Step 2 (Amman 2 + Petra 2 = 4 nights appeared even when
+  // dates implied 9 nights).
+  const [journey, setJourney] = useState<JourneyCity[]>([]);
 
   const totalPax = trip.adults + trip.children;
   const totalNights = journey.reduce((s, c) => s + c.nights, 0);
+  // Compute trip duration from dates as the operator's "target" night count
+  // — shown alongside configured nights so the discrepancy is visible.
+  const tripNights = (() => {
+    if (!trip.arrivalDate || !trip.departureDate) return null;
+    const a = new Date(trip.arrivalDate).getTime();
+    const d = new Date(trip.departureDate).getTime();
+    if (!Number.isFinite(a) || !Number.isFinite(d) || d <= a) return null;
+    return Math.round((d - a) / (24 * 60 * 60 * 1000));
+  })();
   const stepIdx = STEPS.findIndex((s) => s.id === step);
   const canGoNext = step < 7;
   const canGoBack = step > 1;
@@ -160,7 +170,7 @@ export function GuidedQuoteBuilder() {
         </header>
 
         {step === 1 ? <Step1TripSetup trip={trip} setTrip={setTrip} /> : null}
-        {step === 2 ? <Step2Journey journey={journey} setJourney={setJourney} /> : null}
+        {step === 2 ? <Step2Journey journey={journey} setJourney={setJourney} tripNights={tripNights} totalNights={totalNights} /> : null}
         {step === 3 ? <ScaffoldStep title="Recommended Hotels" detail="In v2, this will surface hotels per city ranked by supplier reliability + meal plan + operational confidence — pulled from the existing supplier intelligence engine." /> : null}
         {step === 4 ? <ScaffoldStep title="Suggested Experiences" detail="In v2, this will group activities by destination (Petra, Wadi Rum, Dead Sea, Jerash …) and surface the most popular guided experiences per city." /> : null}
         {step === 5 ? <ScaffoldStep title="Transport Suggestions" detail="In v2, the platform will auto-propose a transfer flow based on the journey (Amman → Petra → Wadi Rum → …) using the existing transport-pricing rules. Operationally safe routing by default — no manual route configuration required." /> : null}
@@ -186,7 +196,15 @@ export function GuidedQuoteBuilder() {
             ← Back
           </button>
           <span style={{ color: '#667085', fontSize: '0.85rem' }}>
-            {totalPax} pax · {totalNights || '—'} nights · {journey.length} stops
+            {totalPax} pax · {journey.length} stop{journey.length === 1 ? '' : 's'}
+            {' · '}
+            {tripNights != null && tripNights !== totalNights ? (
+              <span>
+                {totalNights || 0}/{tripNights} nights configured
+              </span>
+            ) : (
+              <span>{totalNights || '—'} nights</span>
+            )}
           </span>
           {canGoNext ? (
             <button
@@ -257,7 +275,17 @@ function Step1TripSetup({ trip, setTrip }: { trip: TripSetup; setTrip: (next: Tr
   );
 }
 
-function Step2Journey({ journey, setJourney }: { journey: JourneyCity[]; setJourney: (next: JourneyCity[]) => void }) {
+function Step2Journey({
+  journey,
+  setJourney,
+  tripNights,
+  totalNights,
+}: {
+  journey: JourneyCity[];
+  setJourney: (next: JourneyCity[]) => void;
+  tripNights: number | null;
+  totalNights: number;
+}) {
   const addCity = (city: typeof CITY_LIBRARY[number]) => {
     if (journey.find((c) => c.name === city.name)) return;
     setJourney([...journey, { name: city.name, nights: city.suggestedNights }]);
@@ -277,11 +305,51 @@ function Step2Journey({ journey, setJourney }: { journey: JourneyCity[]; setJour
     setJourney(next);
   };
 
+  // Surface the trip duration so the operator has a target to fill toward.
+  // Calm tone — sage when matched, sand when over/under, dashed neutral
+  // when dates aren't set yet.
+  const nightsBanner = (() => {
+    if (tripNights == null) {
+      return { bg: '#fafbfc', border: '#d0d5dd', text: '#667085', text2: 'Set arrival + departure dates in Step 1 to see the target.' };
+    }
+    if (totalNights === tripNights) {
+      return { bg: '#f5f8f5', border: '#cdd7cd', text: '#3a5a3a', text2: `Matches the trip duration (${tripNights} nights).` };
+    }
+    const diff = totalNights - tripNights;
+    const word = diff > 0 ? 'over' : 'under';
+    return {
+      bg: '#fbf9f4',
+      border: '#e8dcc4',
+      text: '#6b5933',
+      text2: `${Math.abs(diff)} night${Math.abs(diff) === 1 ? '' : 's'} ${word} the trip duration of ${tripNights}.`,
+    };
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div
+        style={{
+          background: nightsBanner.bg,
+          border: `1px solid ${nightsBanner.border}`,
+          borderRadius: 8,
+          padding: '0.55rem 0.85rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <strong style={{ color: nightsBanner.text, fontSize: '0.9rem' }}>
+          {tripNights == null
+            ? 'Trip duration · pending'
+            : `Journey nights: ${totalNights}${tripNights != null ? ` / ${tripNights} target` : ''}`}
+        </strong>
+        <span style={{ color: nightsBanner.text, fontSize: '0.8rem', opacity: 0.85 }}>{nightsBanner.text2}</span>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
-          Add cities in the order the guests will travel. Recommended night counts are pre-filled — adjust as needed.
+          Add cities in the order the guests will travel. Recommended night counts are pre-filled — adjust to match the trip duration.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
           {CITY_LIBRARY.map((c) => {
