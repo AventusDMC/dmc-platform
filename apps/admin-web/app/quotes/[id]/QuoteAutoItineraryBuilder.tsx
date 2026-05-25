@@ -743,39 +743,58 @@ async function resolveTransportCandidate(values: {
     return null;
   }
 
-  const response = await fetch(`${values.apiBaseUrl}/transport-pricing/calculate`, {
-    method: 'POST',
-    headers: buildAuthHeaders({
-      'Content-Type': 'application/json',
-    }),
-    body: JSON.stringify({
-      serviceTypeId: values.transportServiceType.id,
-      routeId: values.route.id,
-      normalizedKey: values.route.normalizedKey,
-      routeName: '',
-      paxCount: values.pax,
-    }),
-  });
+  // Bulletproof against any throw — the per-leg vehicle-rate lookup can
+  // fail in a dozen ways (404 when no rate exists for the route+vehicle+
+  // pax combo, content-type mismatch, network blip) and any of those used
+  // to bubble up as a verbose backend error message ("No matching vehicle
+  // rate found for serviceTypeId=da11e15-...") right in the operator's
+  // preview area. Per-leg failures are NOT a preview-level error — the
+  // transport row just shows the "Route matched, but pricing not
+  // configured yet" cue. Log the detail to console for debugging.
+  try {
+    const response = await fetch(`${values.apiBaseUrl}/transport-pricing/calculate`, {
+      method: 'POST',
+      headers: buildAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        serviceTypeId: values.transportServiceType.id,
+        routeId: values.route.id,
+        normalizedKey: values.route.normalizedKey,
+        routeName: '',
+        paxCount: values.pax,
+      }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      const bodyPreview = await response.text().catch(() => '');
+      if (bodyPreview) {
+        // eslint-disable-next-line no-console
+        console.warn(`[Auto Builder] transport-pricing/calculate ${response.status}:`, bodyPreview.slice(0, 200));
+      }
+      return null;
+    }
+
+    const result = await readJsonResponse<TransportPricingResult>(response, 'Could not resolve transport pricing.');
+    const candidates = result.candidates?.length
+      ? result.candidates
+      : [
+          {
+            routeId: values.route.id,
+            routeName: formatRouteLabel(values.route),
+            price: result.price,
+            currency: result.currency,
+            vehicle: result.vehicle,
+            serviceType: result.serviceType,
+          },
+        ];
+
+    return chooseTransportCandidate(candidates, values.optimizationMode, values.quoteType, values.pax);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('[Auto Builder] transport-pricing/calculate threw:', error);
     return null;
   }
-
-  const result = await readJsonResponse<TransportPricingResult>(response, 'Could not resolve transport pricing.');
-  const candidates = result.candidates?.length
-    ? result.candidates
-    : [
-        {
-          routeId: values.route.id,
-          routeName: formatRouteLabel(values.route),
-          price: result.price,
-          currency: result.currency,
-          vehicle: result.vehicle,
-          serviceType: result.serviceType,
-        },
-      ];
-
-  return chooseTransportCandidate(candidates, values.optimizationMode, values.quoteType, values.pax);
 }
 
 async function buildPreviewDraft(values: {
@@ -836,9 +855,20 @@ async function buildPreviewDraft(values: {
       : assignGeneratedItineraryCities(generatedDays, cities);
 
   const itineraryCities = days.map((day) => day.city);
-  const transports = await Promise.all(
+  // Skip same-city day pairs entirely — no inter-city transport needed
+  // when the operator stays in the same city (e.g., a 3-night Amman stay
+  // shouldn't produce two phantom "Amman -> Amman" transport rows
+  // flagging "No route from Amman to Amman, add it in Transfer Routes").
+  // For in-city tours operators add Transport rows manually on the day
+  // card or use the Touring Routes mode.
+  const transports = (await Promise.all(
     itineraryCities.slice(0, -1).map(async (city, index) => {
       const toCity = itineraryCities[index + 1];
+      const normalizedFrom = normalizeText(city);
+      const normalizedTo = normalizeText(toCity);
+      if (normalizedFrom && normalizedTo && normalizedFrom === normalizedTo) {
+        return null;
+      }
       const route = findRoute(values.routes, city, toCity);
       const distanceEstimate = getRouteDistanceEstimate(route, city, toCity);
       const selectedCandidate = route
@@ -870,7 +900,7 @@ async function buildPreviewDraft(values: {
             : `No catalog route from ${city} to ${toCity}. Add it in Transfer Routes admin.`,
       };
     }),
-  );
+  )).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
   const hotels = days.slice(0, values.nightCount).map((day) => ({
     dayNumber: day.dayNumber,
@@ -1462,13 +1492,49 @@ export function QuoteAutoItineraryBuilder({
     }
 
     if (hotelService) {
+      // Group consecutive same-hotel/same-contract/same-rate nights into a
+      // single quote item with nightCount=N. Previously a 3-night Amman
+      // stay produced 3 separate hotel rows on 3 separate days, which made
+      // the Pricing tab look fragmented ("3 distinct bookings") and the
+      // client-facing proposal showed the same hotel three times. Anchor
+      // each grouped item on the FIRST night's day (operationally that's
+      // the check-in day) and skip the follow-on nights' day attachments.
+      const groupedHotels: Array<{
+        firstDayNumber: number;
+        nightCount: number;
+        hotel: NonNullable<typeof draft.hotels[number]['hotel']>;
+        contract: NonNullable<typeof draft.hotels[number]['contract']>;
+        rate: NonNullable<typeof draft.hotels[number]['rate']>;
+        city: string;
+      }> = [];
       for (const item of draft.hotels) {
-        const day = savedDays.get(item.dayNumber);
-
-        if (!day || !item.hotel || !item.contract || !item.rate) {
-          continue;
+        if (!item.hotel || !item.contract || !item.rate) continue;
+        const last = groupedHotels[groupedHotels.length - 1];
+        if (
+          last &&
+          last.hotel.id === item.hotel.id &&
+          last.contract.id === item.contract.id &&
+          last.rate.roomCategoryId === item.rate.roomCategoryId &&
+          last.rate.occupancyType === item.rate.occupancyType &&
+          last.rate.mealPlan === item.rate.mealPlan &&
+          item.dayNumber === last.firstDayNumber + last.nightCount
+        ) {
+          last.nightCount += 1;
+        } else {
+          groupedHotels.push({
+            firstDayNumber: item.dayNumber,
+            nightCount: 1,
+            hotel: item.hotel,
+            contract: item.contract,
+            rate: item.rate,
+            city: item.city,
+          });
         }
+      }
 
+      for (const group of groupedHotels) {
+        const day = savedDays.get(group.firstDayNumber);
+        if (!day) continue;
         await postJson(
           `${apiBaseUrl}/quotes/${quote.id}/items`,
           {
@@ -1477,16 +1543,16 @@ export function QuoteAutoItineraryBuilder({
             quantity: numericRoomCount,
             paxCount: numericPax,
             roomCount: numericRoomCount,
-            nightCount: 1,
+            nightCount: group.nightCount,
             markupPercent: 20,
-            hotelId: item.hotel.id,
-            contractId: item.contract.id,
-            seasonName: item.rate.seasonName,
-            roomCategoryId: item.rate.roomCategoryId,
-            occupancyType: item.rate.occupancyType,
-            mealPlan: item.rate.mealPlan,
+            hotelId: group.hotel.id,
+            contractId: group.contract.id,
+            seasonName: group.rate.seasonName,
+            roomCategoryId: group.rate.roomCategoryId,
+            occupancyType: group.rate.occupancyType,
+            mealPlan: group.rate.mealPlan,
           },
-          `Could not add hotel placeholder for ${item.city}.`,
+          `Could not add hotel placeholder for ${group.city}.`,
         );
         createdItems += 1;
       }
