@@ -4108,8 +4108,12 @@ export class QuotesService {
       return this.prisma.itinerary.update({
         where: { id: existingDay.id },
         data: {
-          title: existingDay.title || packageDay.title || `Day ${packageDay.dayNumber}`,
-          description: existingDay.description || packageDay.description || null,
+          // Package re-apply must win: the operator chose this package as the
+          // source of truth, so an existing stale "Day N" placeholder should
+          // be replaced by the package's title. Same precedence as the
+          // non-legacy upsertPackageQuoteItineraryDay path above.
+          title: packageDay.title || existingDay.title || `Day ${packageDay.dayNumber}`,
+          description: packageDay.description || existingDay.description || null,
         },
       });
     }

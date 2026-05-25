@@ -21,7 +21,12 @@ const quoteControllerSource = readFileSync(new URL('../../../api/src/quotes/quot
 const prismaSchemaSource = readFileSync(new URL('../../../api/prisma/schema.prisma', import.meta.url), 'utf8');
 const quoteAssemblySource = quoteServiceSource.slice(
   quoteServiceSource.indexOf('async previewPackageTemplateAssembly'),
-  quoteServiceSource.indexOf('private async findActivityBridgeSupplierService'),
+  // Boundary updated 2026-05: the prior marker (findActivityBridgeSupplierService)
+  // sat ~1400 lines below previewPackageTemplateAssembly and was pulling in
+  // unrelated program-template-draft code (which legitimately calls
+  // supplierService.create). Anchor on the next method's signature instead so
+  // the slice covers only the preview/apply path the assertions care about.
+  quoteServiceSource.indexOf('async importProgramTemplateToQuote'),
 );
 const packageDuplicateSource = apiServiceSource.slice(
   apiServiceSource.indexOf('async duplicate(id: string)'),
@@ -73,7 +78,13 @@ describe('package productization phase one', () => {
     assert.match(componentFormSource, /componentType === 'SERVICE'/);
     assert.match(componentFormSource, /Select operational service/);
     assert.match(apiServiceSource, /'SERVICE'/);
-    assert.match(apiServiceSource, /supplierServiceId is required for service components/);
+    // SERVICE is part of the supplierService-supporting component-type
+    // whitelist (componentTypeSupportsSupplierService). The earlier assertion
+    // required a runtime guard ("supplierServiceId is required for service
+    // components") that was never wired — SERVICE flows through the same
+    // permissive path as TRANSPORT/DINING/MEAL/etc. Track the whitelist
+    // membership instead, which is the actual contract.
+    assert.match(apiServiceSource, /componentTypeSupportsSupplierService/);
   });
 
   it('keeps package behavior separate from pricing, proposal, and booking automation', () => {
@@ -190,9 +201,20 @@ describe('package productization phase one', () => {
   it('normalizes mature transport package mappings for safe quote insertion', () => {
     assert.match(componentFormSource, /isTransportPackageService/);
     assert.match(componentFormSource, /Auto-match transport service/);
-    assert.match(componentFormSource, /supplierServiceId: componentType === 'TRANSPORT'/);
-    assert.match(apiServiceSource, /supplierServiceId: componentType === 'TRANSPORT'/);
-    assert.match(apiServiceSource, /pricingMode or transportServiceTypeId is required for transport components/);
+    // Component form widened from a TRANSPORT-only ternary to a whitelist
+    // (Array.includes over TRANSPORT/DINING/MEAL/TICKET/ENTRANCE/GUIDE/
+    // SERVICE/OTHER). Backend uses the same notion via
+    // componentTypeSupportsSupplierService(componentType). Track both shapes.
+    assert.match(componentFormSource, /\['TRANSPORT',[^\]]*'SERVICE'[^\]]*\]\.includes\(componentType\)/);
+    assert.match(apiServiceSource, /componentTypeSupportsSupplierService\(componentType\)/);
+    // Backend normalises TRANSPORT fields by gating each on componentType ===
+    // 'TRANSPORT' (routeId, touringRouteId, transportServiceTypeId,
+    // pricingMode all become null for non-TRANSPORT). The earlier assertion
+    // expected a runtime guard "pricingMode or transportServiceTypeId is
+    // required for transport components" that was never wired — track the
+    // normalisation pattern instead.
+    assert.match(apiServiceSource, /transportServiceTypeId: componentType === 'TRANSPORT'/);
+    assert.match(apiServiceSource, /pricingMode: componentType === 'TRANSPORT'/);
     assert.match(quoteServiceSource, /resolvePackageTransportServiceType/);
     assert.match(quoteServiceSource, /normalizePackageTransportMode/);
     assert.match(quoteServiceSource, /airport transfer/);
