@@ -117,6 +117,8 @@ import { SeasonsController } from './seasons/seasons.controller';
 import { SeasonsService } from './seasons/seasons.service';
 import { SuppliersController } from './suppliers/suppliers.controller';
 import { SuppliersService } from './suppliers/suppliers.service';
+import { RouteStandardsController } from './route-standards/route-standards.controller';
+import { RouteStandardsService } from './route-standards/route-standards.service';
 import { ServiceTypesController } from './service-types/service-types.controller';
 import { ServiceTypesService } from './service-types/service-types.service';
 import { SupportTextTemplatesController } from './support-text-templates/support-text-templates.controller';
@@ -192,6 +194,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     PublicProposalsController,
     ReportsController,
     RoutesController,
+    RouteStandardsController,
     SeasonsController,
     ItinerariesController,
     ServicesController,
@@ -268,6 +271,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     QuotesService,
     ReportsService,
     RoutesService,
+    RouteStandardsService,
     SeasonsService,
     ItinerariesService,
     ServicesService,
