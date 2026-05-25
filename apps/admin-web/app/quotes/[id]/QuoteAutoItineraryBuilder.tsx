@@ -287,6 +287,34 @@ function isValidRoute(route: RouteOption) {
   return route.isActive !== false && !INVALID_ROUTE_PATTERNS.some((pattern) => pattern.test(label));
 }
 
+/**
+ * Locate an airport-arrival or airport-departure route for a given city.
+ * Used by buildPreviewDraft to auto-generate Day 1 (Airport → first city)
+ * and last-day (last city → Airport) transfers — both are standard DMC
+ * inclusions that operators previously had to add manually on every
+ * quote. Matches against the seed catalog's "Queen Alia International
+ * Airport" / "King Hussein International Airport" entries, plus any
+ * other route where the appropriate endpoint contains "airport" in its
+ * normalized text.
+ */
+function findAirportRoute(routes: RouteOption[], city: string, direction: 'arrival' | 'departure') {
+  const cityKey = normalizeText(city);
+  if (!cityKey) return null;
+  return (
+    routes.find((route) => {
+      if (!isValidRoute(route)) return false;
+      const routeFrom = routeEndpointText(route, 'fromPlace');
+      const routeTo = routeEndpointText(route, 'toPlace');
+      if (direction === 'arrival') {
+        // Airport → city: fromPlace has "airport", toPlace contains the city
+        return routeFrom.includes('airport') && routeTo.includes(cityKey);
+      }
+      // city → Airport: fromPlace contains the city, toPlace has "airport"
+      return routeFrom.includes(cityKey) && routeTo.includes('airport');
+    }) || null
+  );
+}
+
 function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
   const from = normalizeText(fromCity);
   const to = normalizeText(toCity);
@@ -885,13 +913,70 @@ async function buildPreviewDraft(values: {
       : assignGeneratedItineraryCities(generatedDays, cities);
 
   const itineraryCities = days.map((day) => day.city);
-  // Skip same-city day pairs entirely — no inter-city transport needed
-  // when the operator stays in the same city (e.g., a 3-night Amman stay
-  // shouldn't produce two phantom "Amman -> Amman" transport rows
-  // flagging "No route from Amman to Amman, add it in Transfer Routes").
-  // For in-city tours operators add Transport rows manually on the day
-  // card or use the Touring Routes mode.
-  const transports = (await Promise.all(
+
+  // Helper for both inter-city and airport transfers — builds the
+  // PreviewTransport shape with all the optimization metadata.
+  const buildTransportEntry = async (
+    dayNumber: number,
+    fromCity: string,
+    toCity: string,
+    routeOverride?: ReturnType<typeof findRoute>,
+  ) => {
+    const route = routeOverride !== undefined ? routeOverride : findRoute(values.routes, fromCity, toCity);
+    const distanceEstimate = getRouteDistanceEstimate(route, fromCity, toCity);
+    const selectedCandidate = route
+      ? await resolveTransportCandidate({
+          apiBaseUrl: values.apiBaseUrl,
+          route,
+          transportServiceType: values.transportServiceType,
+          pax: values.pax,
+          quoteType: values.quoteType,
+          optimizationMode: values.optimizationMode,
+        })
+      : null;
+    return {
+      dayNumber,
+      fromCity,
+      toCity,
+      distanceKm: distanceEstimate?.distanceKm ?? null,
+      travelTimeHours: distanceEstimate?.travelTimeHours ?? null,
+      isTravelHeavy: (distanceEstimate?.travelTimeHours ?? 0) > 4,
+      route,
+      selectedCandidate,
+      optimizationReason: selectedCandidate
+        ? values.optimizationMode === 'comfort'
+          ? `Selected ${selectedCandidate.vehicle.name} for comfort, luggage space, and fit for ${values.pax} pax.`
+          : `Selected ${selectedCandidate.vehicle.name} as best value at ${selectedCandidate.currency} ${selectedCandidate.price}.`
+        : route
+          ? 'Route matched, but transport pricing is not configured yet.'
+          : `No catalog route from ${fromCity} to ${toCity}. Add it in Transfer Routes admin.`,
+    };
+  };
+
+  // Day 1 ARRIVAL transfer: airport -> first city. Auto-generated because
+  // every DMC quote needs an airport pickup. Previously this slot was
+  // either generating "Amman -> Amman" (suppressed in PR #87) or
+  // missing entirely — operators had to add it manually on every quote.
+  const firstCity = days[0]?.city || '';
+  const arrivalRoute = firstCity ? findAirportRoute(values.routes, firstCity, 'arrival') : null;
+  const arrivalFromLabel = arrivalRoute?.fromPlace?.name?.trim() || 'Airport';
+  const arrivalTransfer = firstCity
+    ? await buildTransportEntry(1, arrivalFromLabel, firstCity, arrivalRoute)
+    : null;
+
+  // Last day DEPARTURE transfer: last city -> airport.
+  const lastDay = days[days.length - 1];
+  const lastCity = lastDay?.city || '';
+  const departureRoute = lastCity ? findAirportRoute(values.routes, lastCity, 'departure') : null;
+  const departureToLabel = departureRoute?.toPlace?.name?.trim() || 'Airport';
+  const departureTransfer = lastDay && lastCity
+    ? await buildTransportEntry(lastDay.dayNumber, lastCity, departureToLabel, departureRoute)
+    : null;
+
+  // Inter-city transit transfers — skip same-city pairs entirely (real
+  // in-city stays don't need a transfer row, and arrival/departure are
+  // already handled separately above).
+  const interCityTransports = (await Promise.all(
     itineraryCities.slice(0, -1).map(async (city, index) => {
       const toCity = itineraryCities[index + 1];
       const normalizedFrom = normalizeText(city);
@@ -899,38 +984,22 @@ async function buildPreviewDraft(values: {
       if (normalizedFrom && normalizedTo && normalizedFrom === normalizedTo) {
         return null;
       }
-      const route = findRoute(values.routes, city, toCity);
-      const distanceEstimate = getRouteDistanceEstimate(route, city, toCity);
-      const selectedCandidate = route
-        ? await resolveTransportCandidate({
-            apiBaseUrl: values.apiBaseUrl,
-            route,
-            transportServiceType: values.transportServiceType,
-            pax: values.pax,
-            quoteType: values.quoteType,
-            optimizationMode: values.optimizationMode,
-          })
-        : null;
-
-      return {
-        dayNumber: index + 1,
-        fromCity: city,
-        toCity,
-        distanceKm: distanceEstimate?.distanceKm ?? null,
-        travelTimeHours: distanceEstimate?.travelTimeHours ?? null,
-        isTravelHeavy: (distanceEstimate?.travelTimeHours ?? 0) > 4,
-        route,
-        selectedCandidate,
-        optimizationReason: selectedCandidate
-          ? values.optimizationMode === 'comfort'
-            ? `Selected ${selectedCandidate.vehicle.name} for comfort, luggage space, and fit for ${values.pax} pax.`
-            : `Selected ${selectedCandidate.vehicle.name} as best value at ${selectedCandidate.currency} ${selectedCandidate.price}.`
-          : route
-            ? 'Route matched, but transport pricing is not configured yet.'
-            : `No catalog route from ${city} to ${toCity}. Add it in Transfer Routes admin.`,
-      };
+      // The transit transfer happens on the ARRIVAL day (index+1+1 because
+      // arrays are 0-indexed and the new city is the second day in the
+      // pair). That matches operator intuition — "Day 3 Petra" includes
+      // the transfer from Amman.
+      return buildTransportEntry(index + 2, city, toCity);
     }),
   )).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  // Compose final transports: arrival (Day 1) + transit (intermediate)
+  // + departure (last day). Operators see the full transport chain
+  // covering airport pickup, every city transition, and airport dropoff.
+  const transports = [
+    ...(arrivalTransfer ? [arrivalTransfer] : []),
+    ...interCityTransports,
+    ...(departureTransfer ? [departureTransfer] : []),
+  ];
 
   const hotels = days.slice(0, values.nightCount).map((day) => ({
     dayNumber: day.dayNumber,
