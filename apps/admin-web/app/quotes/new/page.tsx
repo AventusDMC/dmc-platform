@@ -115,11 +115,19 @@ function buildGuidedHandoff(
   ].filter(Boolean);
 
   // Carry the city list onto /quotes/{id} so the Auto Itinerary Builder can
-  // pre-fill its routeText with "Amman -> Petra -> Wadi Rum".
+  // pre-fill its routeText with "Amman -> Petra -> Wadi Rum" AND, critically,
+  // preserve the per-city night distribution as "Name:N" pairs. Without the
+  // :N segment the auto-builder assigns cities to days by simple index,
+  // clamping extra days to the last city — so a 7-night journey of
+  // "3+2+1+1" got rendered as "1+1+1+5". The Auto Builder picks up the
+  // :N segments via the same `cities` query param.
   const redirectParams = new URLSearchParams();
   redirectParams.set('tab', 'services');
   redirectParams.set('source', 'guided');
-  if (cityList.length) {
+  if (journey.length) {
+    const citiesWithNights = journey.map((stop) => `${stop.name}:${stop.nights}`).join(',');
+    redirectParams.set('cities', citiesWithNights);
+  } else if (cityList.length) {
     redirectParams.set('cities', cityList.join(','));
   }
   if (resolvedNights > 0) {

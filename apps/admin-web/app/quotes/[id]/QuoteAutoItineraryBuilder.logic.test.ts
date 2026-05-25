@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   assignGeneratedItineraryCities,
+  assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
+  expandNightStopsToDayCities,
   generateItineraryDays,
   getAutoItineraryDayTitle,
   mergeExistingItineraryDays,
@@ -145,5 +147,62 @@ describe('quote auto itinerary builder logic', () => {
   it('still exposes the individual title helper used by generated days', () => {
     assert.equal(getAutoItineraryDayTitle(1, 5), 'Arrival');
     assert.equal(getAutoItineraryDayTitle(5, 5), 'Departure');
+  });
+
+  it('expands per-city night stops to per-day cities for the Guided Builder handoff', () => {
+    const expanded = expandNightStopsToDayCities([
+      { name: 'Amman', nights: 3 },
+      { name: 'Petra', nights: 2 },
+      { name: 'Wadi Rum', nights: 1 },
+      { name: 'Dead Sea', nights: 1 },
+    ]);
+
+    // 3 + 2 + 1 + 1 = 7 nights -> 7 nightly entries plus one Departure-day
+    // entry that shares the last city.
+    assert.deepEqual(expanded, ['Amman', 'Amman', 'Amman', 'Petra', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea']);
+  });
+
+  it('drops zero-night and empty-name stops while expanding', () => {
+    const expanded = expandNightStopsToDayCities([
+      { name: 'Amman', nights: 2 },
+      { name: '', nights: 3 },
+      { name: 'Petra', nights: 0 },
+      { name: 'Aqaba', nights: 1 },
+    ]);
+
+    assert.deepEqual(expanded, ['Amman', 'Amman', 'Aqaba', 'Aqaba']);
+  });
+
+  it('returns an empty array when no stops have nights', () => {
+    assert.deepEqual(expandNightStopsToDayCities([]), []);
+    assert.deepEqual(
+      expandNightStopsToDayCities([
+        { name: 'Amman', nights: 0 },
+        { name: 'Petra', nights: 0 },
+      ]),
+      [],
+    );
+  });
+
+  it('assigns generated days to cities by per-city night distribution', () => {
+    const days = generateItineraryDays('2026-05-10', 7);
+    const assigned = assignGeneratedItineraryCitiesByNights(days, [
+      { name: 'Amman', nights: 3 },
+      { name: 'Petra', nights: 2 },
+      { name: 'Wadi Rum', nights: 1 },
+      { name: 'Dead Sea', nights: 1 },
+    ]);
+
+    // 7 nights -> 8 day cards (arrival + 6 mid + departure).
+    assert.deepEqual(
+      assigned.map((day) => day.city),
+      ['Amman', 'Amman', 'Amman', 'Petra', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea'],
+    );
+
+    // Mid-trip "Day N" titles become the city name; bookends keep the
+    // marker with the city appended.
+    assert.equal(assigned[0].title, 'Arrival · Amman');
+    assert.equal(assigned[3].title, 'Petra');
+    assert.equal(assigned[7].title, 'Departure · Dead Sea');
   });
 });
