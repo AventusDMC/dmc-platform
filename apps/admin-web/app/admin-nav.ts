@@ -31,6 +31,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     helper: 'Quotes, leads, contacts, and client companies',
     children: [
       { label: 'Quotes', href: '/quotes' },
+      { label: 'Guided Builder', href: '/quotes/new/guided' },
       { label: 'DMC Quote Engine', href: '/quote-engine' },
       { label: 'Leads', href: '/leads' },
       { label: 'Contacts', href: '/contacts' },
