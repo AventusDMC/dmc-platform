@@ -269,7 +269,15 @@ describe('package productization phase one', () => {
 
   it('renders explicit quote day titles before hotel or city fallback headings in the itinerary UI', () => {
     assert.match(quoteServicePlannerSource, /function formatDayHeading\(day: QuoteReadinessDay, inferredCity\?: string \| null\)/);
-    assert.match(quoteServicePlannerSource, /const locationLabel = day\.title\?\.trim\(\) \|\| inferredCity \|\| `Day \$\{day\.dayNumber\}`/);
+    // Title precedence: real day.title > inferredCity > "Day N" fallback.
+    // A bare "Day N" string is treated as stale (saved by older quotes before
+    // the city-led title interleave) so the operator gets "Day 02 - Petra"
+    // instead of "Day 02 - Day 2". The contract is:
+    //   - rawTitle is the trimmed day.title
+    //   - inferredCity wins when rawTitle is empty OR is a stale "Day N"
+    assert.match(quoteServicePlannerSource, /const rawTitle = day\.title\?\.trim\(\) \|\| '';/);
+    assert.match(quoteServicePlannerSource, /const isStaleDayLabel = \/\^day\\s\+\\d\+\$\/i\.test\(rawTitle\);/);
+    assert.match(quoteServicePlannerSource, /const locationLabel = \(!isStaleDayLabel && rawTitle\) \|\| inferredCity \|\| `Day \$\{day\.dayNumber\}`;/);
     assert.doesNotMatch(quoteServicePlannerSource, /const locationLabel = inferredCity \|\| day\.title/);
     assert.match(quoteServicePlannerSource, /<h3>\{dayHeading\}<\/h3>/);
   });
