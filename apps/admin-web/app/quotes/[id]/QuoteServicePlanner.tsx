@@ -3894,16 +3894,24 @@ function ScopePlanner({
             tabIndex={-1}
             data-highlight={highlightedEditorPanelKey === activeServicePanel.key ? 'true' : undefined}
           >
-            <section className="quote-drawer-section quote-drawer-section-pricing">
-              <header className="quote-drawer-section-head">
-                <div>
-                  <p className="eyebrow">Pricing</p>
-                  <h3>Cost, sell, and margin</h3>
-                </div>
-              </header>
-              <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
-              <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
-            </section>
+            {/* Pricing chrome only makes sense when an item is actually
+                selected. On ADD the panel renders "Awaiting inputs /
+                Awaiting inputs / Pending save" before the operator has
+                even picked a hotel — pure noise. Hide it until the panel
+                switches to edit mode (after the item is saved, the panel
+                re-opens as kind === 'edit' with real numbers). */}
+            {activeServicePanel.kind === 'edit' ? (
+              <section className="quote-drawer-section quote-drawer-section-pricing">
+                <header className="quote-drawer-section-head">
+                  <div>
+                    <p className="eyebrow">Pricing</p>
+                    <h3>Cost, sell, and margin</h3>
+                  </div>
+                </header>
+                <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
+                <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
+              </section>
+            ) : null}
 
             <section className="quote-drawer-section quote-drawer-section-details">
               <header className="quote-drawer-section-head">
