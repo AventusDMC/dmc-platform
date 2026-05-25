@@ -172,8 +172,8 @@ export function GuidedQuoteBuilder() {
         {step === 1 ? <Step1TripSetup trip={trip} setTrip={setTrip} /> : null}
         {step === 2 ? <Step2Journey journey={journey} setJourney={setJourney} tripNights={tripNights} totalNights={totalNights} /> : null}
         {step === 3 ? <Step3Hotels journey={journey} /> : null}
-        {step === 4 ? <ScaffoldStep title="Suggested Experiences" detail="In v2, this will group activities by destination (Petra, Wadi Rum, Dead Sea, Jerash …) and surface the most popular guided experiences per city." /> : null}
-        {step === 5 ? <ScaffoldStep title="Transport Suggestions" detail="In v2, the platform will auto-propose a transfer flow based on the journey (Amman → Petra → Wadi Rum → …) using the existing transport-pricing rules. Operationally safe routing by default — no manual route configuration required." /> : null}
+        {step === 4 ? <Step4Experiences journey={journey} /> : null}
+        {step === 5 ? <Step5Transport journey={journey} /> : null}
         {step === 6 ? <Step6Review trip={trip} journey={journey} totalPax={totalPax} totalNights={totalNights} /> : null}
         {step === 7 ? <Step7Generate handoffHref={handoffHref} totalPax={totalPax} totalNights={totalNights} journey={journey} /> : null}
 
@@ -543,6 +543,169 @@ function Step3Hotels({ journey }: { journey: JourneyCity[] }) {
       })}
       <p style={{ margin: 0, color: '#94a395', fontSize: '0.75rem', fontStyle: 'italic' }}>
         Operator finalises hotel selection in the advanced workspace at Step 7. Supplier reliability scoring lands in v2.
+      </p>
+    </div>
+  );
+}
+
+type ActivityOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  supplierCompany?: { city?: string | null } | null;
+  durationMinutes?: number | null;
+};
+
+function Step4Experiences({ journey }: { journey: JourneyCity[] }) {
+  const [activities, setActivities] = useState<ActivityOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/activities', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: ActivityOption[]) => {
+        if (!cancelled) setActivities(Array.isArray(data) ? data : []);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message || String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (journey.length === 0) {
+    return (
+      <div style={{ background: '#fbf9f4', border: '1px dashed #e8dcc4', borderRadius: 10, padding: '1.25rem 1.5rem', textAlign: 'center', color: '#6b5933' }}>
+        <strong>Add cities in Step 2 first</strong>
+        <p style={{ margin: '0.4rem 0 0', fontSize: '0.88rem' }}>Experiences are grouped by the cities you've chosen for the journey.</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ background: '#fef3f2', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: '#b42318' }}>
+        Could not load activity catalogue: {error}
+      </div>
+    );
+  }
+  if (activities === null) {
+    return <p style={{ color: '#667085', fontSize: '0.9rem' }}>Loading activity catalogue…</p>;
+  }
+
+  // Match per journey city: prefer supplierCompany.city match, fall back to
+  // activity name containing the city (e.g. "Petra Full Day").
+  const matchActivities = (cityName: string) => {
+    const lower = cityName.toLowerCase();
+    return activities.filter((a) => {
+      const supplierCity = String(a.supplierCompany?.city || '').toLowerCase();
+      if (supplierCity && (supplierCity.includes(lower) || lower.includes(supplierCity))) return true;
+      const name = String(a.name || '').toLowerCase();
+      return name.includes(lower);
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+        Activities from the platform catalogue, grouped by the cities in your journey. Matched on supplier city or activity name.
+      </p>
+      {journey.map((j) => {
+        const matches = matchActivities(j.name).slice(0, 8);
+        return (
+          <div key={j.name} style={{ background: '#fbf9f4', border: '1px solid #e8dcc4', borderRadius: 10, padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.75rem' }}>
+              <strong style={{ color: '#6b5933', fontSize: '0.95rem' }}>{j.name}</strong>
+              <span style={{ color: '#8b7a55', fontSize: '0.78rem' }}>
+                {matches.length} experience{matches.length === 1 ? '' : 's'} in catalogue
+              </span>
+            </div>
+            {matches.length === 0 ? (
+              <p style={{ margin: 0, color: '#94a395', fontSize: '0.85rem' }}>
+                No activities matching "{j.name}" in the catalogue. Add experiences via Product Catalog → Activities.
+              </p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {matches.map((a) => (
+                  <li key={a.id} style={{ background: '#ffffff', border: '1px solid #e8dcc4', borderRadius: 6, padding: '0.4rem 0.7rem', fontSize: '0.85rem', color: '#6b5933' }}>
+                    <strong style={{ fontWeight: 600 }}>✦ {a.name}</strong>
+                    {a.durationMinutes ? (
+                      <span style={{ color: '#8b7a55', marginLeft: '0.4rem', fontSize: '0.78rem' }}>
+                        · {a.durationMinutes >= 60 ? `${Math.round(a.durationMinutes / 60)}h` : `${a.durationMinutes}m`}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+      <p style={{ margin: 0, color: '#94a395', fontSize: '0.75rem', fontStyle: 'italic' }}>
+        Operator finalises experience selection in the advanced workspace at Step 7.
+      </p>
+    </div>
+  );
+}
+
+function Step5Transport({ journey }: { journey: JourneyCity[] }) {
+  // v1 transport step — render the implied transfer flow from the journey
+  // (Amman → Petra → Wadi Rum → …) as a sequence of legs the operator
+  // will need to configure. Doesn't fetch route data yet; the existing
+  // transport-pricing engine fires up in the advanced workspace at Step 7
+  // where the operator picks vehicles + suppliers.
+  if (journey.length === 0) {
+    return (
+      <div style={{ background: '#eff8ff', border: '1px dashed #84caff', borderRadius: 10, padding: '1.25rem 1.5rem', textAlign: 'center', color: '#175cd3' }}>
+        <strong>Add cities in Step 2 first</strong>
+        <p style={{ margin: '0.4rem 0 0', fontSize: '0.88rem' }}>Transfer legs are derived from the journey sequence.</p>
+      </div>
+    );
+  }
+
+  // Build legs: Arrival → first city, between each consecutive city, last city → Departure.
+  type Leg = { from: string; to: string; note?: string };
+  const legs: Leg[] = [];
+  legs.push({ from: '✈ Arrival', to: journey[0].name, note: 'Airport pickup' });
+  for (let i = 0; i < journey.length - 1; i++) {
+    legs.push({ from: journey[i].name, to: journey[i + 1].name });
+  }
+  legs.push({ from: journey[journey.length - 1].name, to: '✈ Departure', note: 'Airport drop-off' });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+        Transfer legs derived from your journey. Vehicle types, suppliers, and pickup times are configured in the advanced workspace at Step 7 — the
+        platform's transport-pricing rules pre-fill the safe defaults.
+      </p>
+      <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        {legs.map((leg, idx) => (
+          <li
+            key={idx}
+            style={{
+              background: '#eff8ff',
+              border: '1px solid #84caff',
+              borderRadius: 8,
+              padding: '0.55rem 0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              fontSize: '0.92rem',
+              color: '#175cd3',
+            }}
+          >
+            <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: '1.5rem' }}>Leg {idx + 1}</span>
+            <strong>{leg.from}</strong>
+            <span aria-hidden style={{ color: '#84caff', fontWeight: 700 }}>→</span>
+            <strong>{leg.to}</strong>
+            {leg.note ? <span style={{ color: '#175cd3', opacity: 0.7, fontSize: '0.8rem', marginLeft: 'auto' }}>{leg.note}</span> : null}
+          </li>
+        ))}
+      </ol>
+      <p style={{ margin: 0, color: '#667085', fontSize: '0.78rem', fontStyle: 'italic' }}>
+        {legs.length} transfer leg{legs.length === 1 ? '' : 's'} total. Operator can override or add intermediate transfers in the advanced workspace.
       </p>
     </div>
   );
