@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DispatchEventsService } from '../dispatch-events/dispatch-events.service';
+import { loadRouteStandardsForBookingServices } from '../route-standards/route-standard-lookup';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
@@ -11823,11 +11824,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         supplier: { select: { id: true, name: true, phone: true } },
         assignedSupplier: { select: { id: true, name: true, phone: true } },
         guide: { select: { id: true, fullName: true, phone: true, languages: true } },
-        touringRoute: { select: { id: true, name: true } },
+        touringRoute: { select: { id: true, name: true, code: true } },
+        sourceQuoteItemId: true,
         vouchers: { select: { id: true, status: true, generatedAt: true, type: true } },
       },
       orderBy: [{ serviceDate: 'asc' }, { operationalTime: 'asc' }, { startTime: 'asc' }],
     });
+
+    // Phase 2B — batch-load RouteStandards for every service in this
+    // dispatch window so the row builder can attach canonical duration /
+    // confidence label / risk flags without an N+1 query per row. Soft
+    // fails to empty map if the table is unreachable or unseeded.
+    const routeStandardLookup = await loadRouteStandardsForBookingServices(this.prisma, services as any);
 
     const buildRow = (service: any) => {
       const supplierEntity = service.assignedSupplier || service.supplier || null;
@@ -11909,6 +11917,29 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         meetingPoint: service.meetingPoint || null,
         confirmationReference: service.confirmationReference || service.confirmationNumber || null,
         routeName: service.touringRoute?.name || null,
+        // Phase 2B — canonical route operational profile from
+        // RouteStandard. Drives dispatch confidence badges, SLA pressure
+        // calculations, and tight-turnaround risk annotations. Null when
+        // no standard is seeded for this route — UI shows the row without
+        // the badge strip and behaves as before.
+        routeStandard: (() => {
+          const standard = routeStandardLookup.get(service.id);
+          if (!standard) return null;
+          return {
+            routeCode: standard.routeCode,
+            routeName: standard.routeName,
+            standardDistanceKm: standard.standardDistanceKm,
+            standardDurationHours: standard.standardDurationHours,
+            operationalBufferMinutes: standard.operationalBufferMinutes,
+            longDistanceFlag: standard.longDistanceFlag,
+            overnightRisk: standard.overnightRisk,
+            mountainRoadFlag: standard.mountainRoadFlag,
+            borderCrossingFlag: standard.borderCrossingFlag,
+            airportRouteFlag: standard.airportRouteFlag,
+            notes: standard.notes,
+            confidenceLabel: standard.confidenceLabel,
+          };
+        })(),
       };
     };
 

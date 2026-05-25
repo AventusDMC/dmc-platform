@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  RouteStandardLookupValue,
+  bufferMinutesFor,
+  durationMsFor,
+  loadRouteStandardsForBookingServices,
+} from '../route-standards/route-standard-lookup';
 
-// v1 occupancy heuristics — every service occupies its assigned resource for
-// `start` (serviceDate + startTime|pickupTime) to `start + DURATION_HOURS`.
-// Defer per-service overrides to v2 (would need a `durationMinutes` field
-// on BookingService).
+// v1 occupancy heuristics — fallback when no RouteStandard is available
+// for a service's route. Phase 2B prefers RouteStandard.standardDurationHours
+// when present; these per-type defaults only kick in for services without
+// a matched canonical route standard.
 const DURATION_HOURS_BY_TYPE: Record<string, number> = {
   TRANSPORT: 1.5,
   TRANSFER: 1.5,
@@ -16,6 +22,9 @@ const DURATION_HOURS_BY_TYPE: Record<string, number> = {
   EXCURSION: 3,
   TICKET: 1.5,
 };
+// Fallback turnaround threshold when a service has no RouteStandard.
+// Phase 2B reads operationalBufferMinutes from the standard when available.
+const FALLBACK_TURNAROUND_MIN = 30;
 
 type ResourceKind = 'DRIVER' | 'VEHICLE' | 'GUIDE';
 
@@ -31,6 +40,11 @@ type ServiceWindow = {
   executionStatus: string;
   start: Date;
   end: Date;
+  // Phase 2B — canonical route standard for this service (when available).
+  // Drives end-time computation, turnaround threshold, and risk-flag
+  // annotations on conflict reasons. Null = no standard available, fall
+  // back to DURATION_HOURS_BY_TYPE + FALLBACK_TURNAROUND_MIN.
+  routeStandard?: RouteStandardLookupValue | null;
 };
 
 export type ResourceConflict = {
@@ -87,12 +101,19 @@ export class ResourcesService {
         driverId: true,
         vehicleId: true,
         guideId: true,
+        sourceQuoteItemId: true,
+        touringRoute: { select: { code: true } },
         booking: { select: { bookingRef: true } },
       },
     });
 
+    // Phase 2B — batch-load RouteStandards for the whole result set so the
+    // per-service window calculations and turnaround thresholds can use
+    // canonical duration/buffer values instead of the per-type heuristic.
+    const standardLookup = await loadRouteStandardsForBookingServices(this.prisma, services as any);
+
     const windows: ServiceWindow[] = services
-      .map((s: any) => this.toWindow(s))
+      .map((s: any) => this.toWindow(s, standardLookup.get(s.id) || null))
       .filter((w: ServiceWindow | null): w is ServiceWindow => w !== null);
 
     const [drivers, vehicles, guides] = await Promise.all([
@@ -186,25 +207,33 @@ export class ResourcesService {
         pickupTime: true,
         operationalTime: true,
         executionStatus: true,
+        sourceQuoteItemId: true,
+        touringRoute: { select: { code: true } },
         booking: { select: { bookingRef: true } },
       },
     });
 
+    const standardLookup = await loadRouteStandardsForBookingServices(this.prisma, services as any);
+
     const windows = services
-      .map((s: any) => this.toWindow(s))
+      .map((s: any) => this.toWindow(s, standardLookup.get(s.id) || null))
       .filter((w: ServiceWindow | null): w is ServiceWindow => w !== null)
       .sort((a: ServiceWindow, b: ServiceWindow) => a.start.getTime() - b.start.getTime());
 
     // Mark overlaps — for each window, is there a NEXT window whose start <
-    // this window's end?
+    // this window's end? Use the FIRST window's route-standard buffer for
+    // the TIGHT threshold (Phase 2B) so a long-distance / border / mountain
+    // route gets the wider buffer it actually needs.
     const items = windows.map((w: ServiceWindow, i: number) => {
       const next: ServiceWindow | undefined = windows[i + 1];
       let conflict: 'OVERLAP' | 'TIGHT' | 'OK' = 'OK';
       let gapMinutes = 0;
+      let requiredBuffer = FALLBACK_TURNAROUND_MIN;
       if (next) {
         gapMinutes = Math.round((next.start.getTime() - w.end.getTime()) / 60000);
+        requiredBuffer = bufferMinutesFor(w.routeStandard, FALLBACK_TURNAROUND_MIN);
         if (gapMinutes < 0) conflict = 'OVERLAP';
-        else if (gapMinutes < 30) conflict = 'TIGHT';
+        else if (gapMinutes < requiredBuffer) conflict = 'TIGHT';
       }
       return {
         bookingServiceId: w.bookingServiceId,
@@ -219,6 +248,20 @@ export class ResourcesService {
         windowEnd: w.end.toISOString(),
         gapToNextMinutes: next ? gapMinutes : null,
         conflictWithNext: conflict,
+        // Phase 2B annotations — exposed so the timeline UI can render a
+        // confidence badge per stop and explain why a TIGHT gap is tight.
+        routeCode: w.routeStandard?.routeCode || null,
+        confidenceLabel: w.routeStandard?.confidenceLabel || null,
+        requiredBufferMinutes: next ? requiredBuffer : null,
+        riskFlags: w.routeStandard
+          ? {
+              longDistance: w.routeStandard.longDistanceFlag,
+              overnight: w.routeStandard.overnightRisk,
+              mountainRoad: w.routeStandard.mountainRoadFlag,
+              borderCrossing: w.routeStandard.borderCrossingFlag,
+              airportRoute: w.routeStandard.airportRouteFlag,
+            }
+          : null,
       };
     });
 
@@ -259,15 +302,22 @@ export class ResourcesService {
           driverId: true,
           vehicleId: true,
           guideId: true,
+          sourceQuoteItemId: true,
+          touringRoute: { select: { code: true } },
         },
       }),
     ]);
+
+    // Phase 2B — use Route Standards for accurate utilization. A 6h Aqaba
+    // run committed to a driver is meaningfully different from a 1.5h
+    // city transfer; the per-type default would understate that load.
+    const standardLookup = await loadRouteStandardsForBookingServices(this.prisma, services as any);
 
     let driverHours = 0;
     let vehicleHours = 0;
     let guideHours = 0;
     for (const s of services) {
-      const w = this.toWindow(s);
+      const w = this.toWindow(s, standardLookup.get(s.id) || null);
       if (!w) continue;
       const hours = (w.end.getTime() - w.start.getTime()) / 3_600_000;
       if (s.driverId) driverHours += hours;
@@ -302,7 +352,7 @@ export class ResourcesService {
 
   // ---- Internals ---------------------------------------------------------
 
-  private toWindow(service: any): ServiceWindow | null {
+  private toWindow(service: any, routeStandard?: RouteStandardLookupValue | null): ServiceWindow | null {
     const serviceDate = service.serviceDate || service.operationalDate;
     if (!serviceDate) return null;
     const timeStr = service.startTime || service.pickupTime || service.operationalTime || null;
@@ -316,8 +366,12 @@ export class ResourcesService {
     const start = new Date(serviceDate);
     start.setUTCHours(hours, minutes, 0, 0);
     const opType = String(service.operationType || service.serviceType || '').toUpperCase();
-    const durationHours = DURATION_HOURS_BY_TYPE[opType] || 2;
-    const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+    // Phase 2B: prefer RouteStandard.standardDurationHours when available;
+    // fall back to the per-type heuristic for services without a standard
+    // (or non-transport types where a route standard wouldn't apply).
+    const fallbackHours = DURATION_HOURS_BY_TYPE[opType] || 2;
+    const durationMs = durationMsFor(routeStandard, fallbackHours);
+    const end = new Date(start.getTime() + durationMs);
 
     return {
       bookingServiceId: service.id,
@@ -331,6 +385,7 @@ export class ResourcesService {
       executionStatus: String(service.executionStatus || 'READY').toUpperCase(),
       start,
       end,
+      routeStandard: routeStandard ?? null,
     };
   }
 
@@ -376,11 +431,33 @@ export class ResourcesService {
             );
             worstSev = live ? 'CRITICAL' : 'BLOCKING';
             worstReason = live ? 'Overlapping windows; resource is actively committed' : 'Overlapping time windows';
-          } else if (gapMin >= 0 && gapMin < 30) {
-            cluster.push(list[j]);
-            if (worstSev === 'WARNING') worstReason = `Tight turnaround — ${gapMin} min gap (< 30 recommended)`;
           } else {
-            break;
+            // Phase 2B — use the FIRST window's route-standard buffer (the
+            // window the resource is finishing). That route's flagged risk
+            // dictates how much breathing room is appropriate before the
+            // next pickup. Falls back to the global 30-min threshold when
+            // no standard is attached.
+            const requiredBuffer = bufferMinutesFor(list[i].routeStandard, FALLBACK_TURNAROUND_MIN);
+            if (gapMin >= 0 && gapMin < requiredBuffer) {
+              cluster.push(list[j]);
+              if (worstSev === 'WARNING') {
+                const standard = list[i].routeStandard;
+                const flagNote = standard
+                  ? standard.borderCrossingFlag
+                    ? ' (border crossing — wider buffer required)'
+                    : standard.mountainRoadFlag
+                      ? ' (mountain road — weather-sensitive)'
+                      : standard.longDistanceFlag
+                        ? ' (long-distance route — driver fatigue risk)'
+                        : standard.airportRouteFlag
+                          ? ' (airport route — peak-hour traffic risk)'
+                          : ''
+                  : '';
+                worstReason = `Tight turnaround — ${gapMin} min gap (< ${requiredBuffer} required${flagNote})`;
+              }
+            } else {
+              break;
+            }
           }
         }
         if (cluster.length > 1) {

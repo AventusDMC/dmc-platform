@@ -6,6 +6,7 @@ import {
   isNextRedirectError,
 } from '../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../lib/operations-timezone';
+import { RouteConfidenceBadge } from './RouteConfidenceBadge';
 
 type Severity = 'INFO' | 'ACTION REQUIRED' | 'CRITICAL';
 
@@ -49,6 +50,23 @@ type DispatchRow = {
   meetingPoint: string | null;
   confirmationReference: string | null;
   routeName: string | null;
+  // Phase 2B — canonical route operational profile (when a RouteStandard
+  // is seeded for this service's route). Null when no standard available;
+  // the badge strip stays hidden and the card behaves as before.
+  routeStandard?: {
+    routeCode: string;
+    routeName: string;
+    standardDistanceKm: number | null;
+    standardDurationHours: number | null;
+    operationalBufferMinutes: number | null;
+    longDistanceFlag: boolean;
+    overnightRisk: boolean;
+    mountainRoadFlag: boolean;
+    borderCrossingFlag: boolean;
+    airportRouteFlag: boolean;
+    notes: string | null;
+    confidenceLabel: string;
+  } | null;
   // Execution lifecycle.
   executionStatus: ExecutionStatus;
   dispatchedAt: string | null;
@@ -647,7 +665,16 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
           {row.pickupLocation ? <div><span>Pickup:</span> <strong>{row.pickupLocation}</strong></div> : null}
           {row.dropoffLocation ? <div><span>Dropoff:</span> <strong>{row.dropoffLocation}</strong></div> : null}
           {row.meetingPoint ? <div><span>Meeting:</span> <strong>{row.meetingPoint}</strong></div> : null}
-          {row.routeName ? <div><span>Route:</span> <strong>{row.routeName}</strong></div> : null}
+          {row.routeName ? (
+            <div style={{ gridColumn: row.routeStandard ? '1 / -1' : undefined }}>
+              <span>Route:</span> <strong>{row.routeName}</strong>
+              {row.routeStandard ? (
+                <span style={{ marginLeft: '0.5rem' }}>
+                  <RouteConfidenceBadge standard={row.routeStandard} />
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {row.guideReportingTime ? <div><span>Reporting:</span> <strong>{row.guideReportingTime}</strong></div> : null}
           {row.guidePhone ? <div><span>Guide phone:</span> <strong>{row.guidePhone}</strong></div> : null}
           {row.supplierPhone ? <div><span>Supplier phone:</span> <strong>{row.supplierPhone}</strong></div> : null}
