@@ -209,7 +209,10 @@ describe('activities quote and booking UI integration regression', () => {
 
   it('keeps assign-service controls unlocked after Apply Itinerary refreshes', () => {
     expectSourceContains(quoteAutoItineraryBuilderSource, [
-      'Apply Itinerary',
+      // Button label clarified — "Apply Itinerary" became "Apply Previewed
+      // Itinerary" so the operator sees it's the follow-up to Preview
+      // Without Saving rather than a standalone primary action.
+      'Apply Previewed Itinerary',
       'notifySavedDaysReady(savedDays);',
       'router.refresh();',
     ]);

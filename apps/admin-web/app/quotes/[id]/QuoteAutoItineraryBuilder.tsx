@@ -1559,7 +1559,7 @@ export function QuoteAutoItineraryBuilder({
             {guidedPrefillBanner.nights > 0 ? ` · ${guidedPrefillBanner.nights} nights` : ''}
           </span>
           <span style={{ color: '#6b7a6b', fontSize: '0.82rem', marginLeft: 'auto' }}>
-            Review the inputs below, then click <strong>Generate & Save Draft Itinerary</strong>.
+            Review the inputs below, then click <strong>Generate Full Itinerary</strong> to populate hotels, transport, and activities.
           </span>
         </div>
       ) : null}
@@ -1614,18 +1614,31 @@ export function QuoteAutoItineraryBuilder({
         <span>Add optional activity placeholders where an activity service exists</span>
       </label>
 
+      {/* One-line helper that disambiguates the action group — the
+          previous labels ("Generate & Save Draft Itinerary") sounded like
+          they produced a populated draft, but secondary actually creates
+          empty day shells. Plain language up front fixes that. */}
+      <p
+        className="detail-copy"
+        style={{ marginTop: '0.6rem', marginBottom: '0.3rem', color: '#475467', fontSize: '0.82rem' }}
+      >
+        Pick how much of the itinerary the auto-builder should do for you.
+      </p>
+
       <div className="quote-auto-itinerary-actions">
         <button type="button" className="primary-button" onClick={() => void handleGenerateAndPrice()} disabled={isSaving || isGenerating}>
-          {isSaving && isGenerating ? 'Generating & Pricing...' : 'Generate & Price Itinerary'}
+          {isSaving && isGenerating
+            ? 'Generating & Pricing...'
+            : 'Generate Full Itinerary (hotels, transport, activities)'}
         </button>
         <button type="button" className="secondary-button" onClick={() => void handleGenerateDraftItinerary()} disabled={isSaving || isGenerating}>
-          {isSaving && !isGenerating ? 'Generating & Saving...' : 'Generate & Save Draft Itinerary'}
+          {isSaving && !isGenerating ? 'Creating Empty Days...' : 'Create Empty Day Shells Only'}
         </button>
         <button type="button" className="secondary-button" onClick={() => void generatePreview()} disabled={isGenerating}>
-          {isGenerating ? 'Optimizing...' : 'Preview Draft'}
+          {isGenerating ? 'Optimizing...' : 'Preview Without Saving'}
         </button>
         <button type="button" className="primary-button" onClick={handleSave} disabled={isSaving || isGenerating || !preview}>
-          {isSaving ? 'Applying Itinerary...' : 'Apply Itinerary'}
+          {isSaving ? 'Applying Itinerary...' : 'Apply Previewed Itinerary'}
         </button>
         {preview ? (
           <button type="button" className="secondary-button" onClick={cancelPreview} disabled={isSaving || isGenerating}>
