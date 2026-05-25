@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
@@ -842,9 +842,39 @@ export function QuoteAutoItineraryBuilder({
   totalPax,
 }: QuoteAutoItineraryBuilderProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [travelStartDate, setTravelStartDate] = useState(quote.travelStartDate?.slice(0, 10) || '');
   const [nightCount, setNightCount] = useState(String(Math.max(quote.nightCount ?? 1, 0)));
   const [routeText, setRouteText] = useState('');
+  // Guided Quote Builder handoff: when the wizard creates the quote it
+  // appends `?source=guided&cities=Amman,Petra,Wadi Rum&nights=5`. Read those
+  // once on mount and pre-fill the routeText input so the operator doesn't
+  // re-type cities they already configured in Step 2 of the wizard. We use a
+  // ref guard so this only fires once even if searchParams changes later.
+  const guidedPrefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (guidedPrefillAppliedRef.current) return;
+    if (!searchParams) return;
+    if (searchParams.get('source') !== 'guided') return;
+    const citiesParam = searchParams.get('cities');
+    if (citiesParam) {
+      const parts = citiesParam
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (parts.length > 0) {
+        setRouteText(parts.join(' -> '));
+      }
+    }
+    const nightsParam = searchParams.get('nights');
+    if (nightsParam) {
+      const parsed = Math.max(0, Math.floor(Number(nightsParam) || 0));
+      if (parsed > 0) {
+        setNightCount(String(parsed));
+      }
+    }
+    guidedPrefillAppliedRef.current = true;
+  }, [searchParams]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [pax, setPax] = useState(String(Math.max(totalPax || quote.adults + quote.children || 1, 1)));
   const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(quote.quoteType || 'FIT');
