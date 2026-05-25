@@ -54,20 +54,50 @@ export function QuoteOperationalInsights({ quoteId }: { quoteId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [retryCount, setRetryCount] = useState(0);
+
   // Lazy-fetch on first expand so the panel never adds cost to the quote
-  // page load when collapsed.
+  // page load when collapsed. AbortController gives us a 10s hard timeout.
+  // Critical: do NOT put `loading`, `data`, or `error` in the dependency
+  // array — they're set inside the effect, which would cause an infinite
+  // loop on any error response (observed: 42 requests in a few seconds
+  // returning 500, browser exhausted).
   useEffect(() => {
-    if (!open || data || loading) return;
+    if (!open) return;
+    if (data || error) return;
     setLoading(true);
-    fetch(`/api/quotes/${quoteId}/operational-intelligence`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    fetch(`/api/quotes/${quoteId}/operational-intelligence`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then(async (r) => {
+        if (r.ok) return r.json();
+        const body = await r.text().catch(() => '');
+        throw new Error(`HTTP ${r.status}: ${body.slice(0, 200) || r.statusText}`);
+      })
       .then((d: IntelligencePayload) => {
         setData(d);
         setError(null);
       })
-      .catch((e) => setError(e?.message || String(e)))
-      .finally(() => setLoading(false));
-  }, [open, data, loading, quoteId]);
+      .catch((e) => {
+        if (e.name === 'AbortError') {
+          setError('Insights took more than 10s to load. Backend may be cold-starting — click Retry in a moment.');
+        } else {
+          setError(e?.message || String(e));
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        setLoading(false);
+      });
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, quoteId, retryCount]);
 
   const feasibility = data?.summary?.feasibility || 'Operationally Safe';
   const tone = FEASIBILITY_TONE[feasibility];
@@ -129,9 +159,32 @@ export function QuoteOperationalInsights({ quoteId }: { quoteId: string }) {
           {loading ? (
             <p style={{ color: tone.muted, fontSize: '0.85rem', margin: 0 }}>Loading operational insights…</p>
           ) : error ? (
-            <p style={{ color: '#7a4242', fontSize: '0.85rem', margin: 0 }}>
-              Could not load insights: {error}
-            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <p style={{ color: '#7a4242', fontSize: '0.85rem', margin: 0 }}>
+                Could not load insights: {error}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setData(null);
+                  setError(null);
+                  setRetryCount((c) => c + 1);
+                }}
+                style={{
+                  background: '#7a4242',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                Retry
+              </button>
+            </div>
           ) : data ? (
             <>
               {/* Compact metric strip — commercial first, operations second */}
