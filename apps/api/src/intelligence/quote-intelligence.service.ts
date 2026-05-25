@@ -61,25 +61,26 @@ export class QuoteIntelligenceService {
   }
 
   private async computeIntelligence(quoteId: string) {
-    // Quote lookup with a minimal include — even if items are missing,
-    // we still want to render basic insight.
+    // Quote lookup — no relation includes for v1. Earlier attempt to
+    // include `items → { activity, service }` caused the whole findUnique
+    // to throw (relation shape mismatch in production schema), surfacing
+    // as "Quote not found" via the safe() fallback. Bare findUnique +
+    // separate items query keeps the failure surface tiny.
     const quote = await this.safe(
       'quote-lookup',
-      () =>
-        (this.prisma.quote as any).findUnique({
-          where: { id: quoteId },
-          include: {
-            items: {
-              include: {
-                activity: { select: { id: true, name: true } },
-                service: { select: { id: true, name: true } },
-              },
-            },
-          },
-        }),
+      () => (this.prisma.quote as any).findUnique({ where: { id: quoteId } }),
       null as any,
     );
     if (!quote) throw new NotFoundException('Quote not found');
+    // Fetch items separately — without nested includes. If this fails we
+    // just get 0 items and the text-match factor becomes title+description
+    // only, which is fine for v1.
+    const items = await this.safe(
+      'quote-items',
+      () => (this.prisma.quoteItem as any).findMany({ where: { quoteId } }),
+      [] as any[],
+    );
+    quote.items = items;
 
     const warnings: IntelligenceWarning[] = [];
 
@@ -98,7 +99,9 @@ export class QuoteIntelligenceService {
     warnings.push({ category: 'complexity', severity: movementSeverity, message: movementMessage });
 
     // --- Factor 2: high-recovery-cost destinations ---
-    const text = `${quote.title || ''} ${quote.description || ''} ${(quote.items || []).map((i: any) => i.activity?.name || i.service?.name || '').join(' ')}`.toLowerCase();
+    // Text match uses title + description only — items don't carry name
+    // text directly without the nested includes we removed for v1.
+    const text = `${quote.title || ''} ${quote.description || ''}`.toLowerCase();
     const matchedHighRiskDestinations = HIGH_RECOVERY_COST_DESTINATIONS.filter((d) => text.includes(d));
     if (matchedHighRiskDestinations.length > 0) {
       warnings.push({
