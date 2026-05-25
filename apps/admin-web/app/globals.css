@@ -16550,7 +16550,7 @@ textarea:focus,
 
 .quote-service-mini-card-external-package .quote-service-type-icon {
   background: rgba(31, 154, 207, 0.12);
-  color: #0f766e;
+  color: #1C7FB8;
 }
 
 .quote-service-sortable-card {
@@ -16666,7 +16666,7 @@ textarea:focus,
   padding: 0.22rem 0.5rem;
   border-radius: 999px;
   background: rgba(31, 154, 207, 0.12);
-  color: #0f766e;
+  color: #1C7FB8;
   font-size: 0.76rem;
   font-weight: 850;
   white-space: nowrap;
@@ -16694,7 +16694,7 @@ textarea:focus,
 
 .quote-service-external-package-meta span {
   background: rgba(31, 154, 207, 0.1);
-  color: #0f766e;
+  color: #1C7FB8;
 }
 
 .quote-service-external-package-meta strong {

@@ -1,6 +1,11 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
-import { GET } from './[id]/passengers/export/route';
+
+// Route modules throw at import time if NEXT_PUBLIC_API_URL is unset. Use
+// CommonJS require() (not ESM import) so we can set the env var first; ESM
+// imports get hoisted above the env assignment.
+process.env.NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const { GET } = require('./[id]/passengers/export/route') as typeof import('./[id]/passengers/export/route');
 import { buildPassengerManifestExportApiUrl } from './passenger-manifest-export-url';
 
 test('passenger manifest proxy forwards to extensionless API export URL', () => {

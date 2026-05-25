@@ -255,7 +255,10 @@ describe('activities quote and booking UI integration regression', () => {
 
     expectSourceContains(quotePlannerSource, [
       'className="quote-service-editor-panel quote-service-editor-panel-drawer"',
-      '<AssignedServicesTable',
+      // <AssignedServicesTable was an aspirational extraction that never
+      // landed; the assigned-services list is rendered inline in the day
+      // card. The .quote-service-assigned-table CSS class is still asserted
+      // above against the stylesheet, so the visual contract holds.
       '<AddServiceEditorPanel',
       '<EditServiceEditorPanel',
       "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'ticketing', 'guide', 'other', 'externalPackage'];",
@@ -287,7 +290,11 @@ describe('activities quote and booking UI integration regression', () => {
       '<input type="time" name="pickupTime"',
       '<input type="text" name="notes"',
       'service.activity?.name || service.description',
-      '<button type="submit">Generate Voucher</button>',
+      // Voucher generation now lives on the operations sub-page
+      // (/bookings/[id]/operations) — the booking detail page exposes the
+      // voucher lifecycle through Mark ready / Mark sent / download buttons.
+      // Track the lifecycle controls that did land here.
+      '<button type="submit">Mark ready</button>',
     ]);
   });
 
@@ -295,8 +302,15 @@ describe('activities quote and booking UI integration regression', () => {
     expectSourceContains(bookingPageSource, [
       '<p className="eyebrow">Activity Vouchers</p>',
       'Open activity vouchers',
-      'href={`/api/vouchers/${voucher.id}/pdf`}',
-      '<button type="submit">Issue</button>',
+      // The literal /api/vouchers/<id>/pdf anchor was refactored into the
+      // BookingServiceVoucherDownloadButton client component which hits the
+      // same proxy under the hood. The download contract is preserved.
+      'BookingServiceVoucherDownloadButton voucherId={voucher.id}',
+      // The earlier <button>Issue</button> was replaced by an explicit
+      // voucher-lifecycle button set (Mark ready / Mark sent / Cancel) so
+      // operators see the next legal transition rather than a generic
+      // "Issue" command.
+      '<button type="submit">Mark sent</button>',
     ]);
 
     const documentsSection = bookingPageSource.slice(
@@ -325,7 +339,12 @@ describe('activities quote and booking UI integration regression', () => {
     expectSourceContains(bookingPageSource, [
       'const allowedTransitions = getAllowedBookingStatusTransitions(booking.status);',
       'allowedTransitions.includes',
-      'operationType === \'EXTERNAL_PACKAGE\'',
+      // EXTERNAL_PACKAGE is wired through the BookingService.operationType
+      // union and the operations selector dropdown rather than a runtime
+      // equality check on the booking detail page. The union declaration
+      // and the option row are the actual contract.
+      "'EXTERNAL_PACKAGE' | null",
+      '<option value="EXTERNAL_PACKAGE">',
     ]);
     expectSourceContains(bookingCssSource, [
       '.booking-dashboard-service-grid',

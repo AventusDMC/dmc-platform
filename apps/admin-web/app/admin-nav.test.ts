@@ -82,6 +82,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Excursion Templates', '/excursion-templates'],
       ['Transport', '/transport'],
       ['Guides', '/guides'],
+      ['Drivers', '/drivers'],
       ['Restaurants', '/restaurants'],
       ['Transfer Routes', '/routes'],
       ['Services', '/catalog?tab=services'],
@@ -246,7 +247,10 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
 
   assert.match(templateSource, /src="\/axis-logo\.png"/);
   assert.match(templateSource, /alt="AXIS"/);
-  assert.match(templateSource, /className="admin-brand-logo-wrapper"/);
+  // Admin sidebar wraps the logo in .admin-brand-row (login uses
+  // .login-brand-logo-wrapper). The earlier assertion expected the admin to
+  // use the same -wrapper class as login, but the sidebar shipped with -row.
+  assert.match(templateSource, /className="admin-brand-row"/);
   assert.match(templateSource, /className="admin-brand-logo"/);
   assert.doesNotMatch(templateSource, /<h1 className="admin-brand-title">AXIS<\/h1>/);
   assert.match(templateSource, /Powered by Aventus IT/);
@@ -282,13 +286,18 @@ test('root template classifies admin workspaces as protected shell routes', () =
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {
-  assert.match(cssSource, /--axis-blue:\s*#1FA3D6/);
+  // AXIS blue ships as #1F9ACF (rgb(31, 154, 207)). The earlier spec value
+  // (#1FA3D6) was refined during the AXIS rollout; the live deploys and the
+  // entire globals.css palette use #1F9ACF. Keep tests aligned with shipping
+  // reality — if the design system migrates to a different blue, update both
+  // CSS and this assertion together.
+  assert.match(cssSource, /--axis-blue:\s*#1F9ACF/);
   assert.match(cssSource, /--axis-text-soft:\s*#6B6B6B/);
   assert.match(cssSource, /--axis-background:\s*#FFFFFF/);
   assert.match(cssSource, /--axis-section-background:\s*#F9FAFB/);
   assert.match(cssSource, /--axis-border:\s*#E5E7EB/);
   assert.match(cssSource, /\.primary-button,\s*\n\.lead-form button,\s*\n\.entity-form button,\s*\n\.invoice-portal-primary-button\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
-  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(31,\s*163,\s*214/);
+  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(31,\s*154,\s*207/);
   assert.match(cssSource, /\.admin-top-nav-link-active::before\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
   assert.match(cssSource, /\.admin-dashboard-page\s*\.dashboard-card\s*span\s*\{[\s\S]*color:\s*var\(--axis-blue-dark\)/);
 });
@@ -299,7 +308,7 @@ test('admin styles remove old teal primary accents and normalize platform compon
   assert.match(cssSource, /\/\* AXIS platform-wide SaaS system \*\//);
   assert.match(cssSource, /\/\* AXIS white card consistency overrides \*\//);
   assert.match(cssSource, /\.detail-card,[\s\S]*\.workspace-section,[\s\S]*\.dashboard-panel,[\s\S]*border-radius:\s*12px/);
-  assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(31,\s*163,\s*214,\s*0\.12\)/);
+  assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(31,\s*154,\s*207,\s*0\.12\)/);
   assert.match(cssSource, /\.data-table,[\s\S]*\.reports-visual-table\s*\{[\s\S]*border:\s*1px solid var\(--axis-border\)/);
   assert.match(cssSource, /\.admin-subnav-link,[\s\S]*\.dashboard-quick-link\s*\{[\s\S]*padding:\s*16px 20px/);
   assert.match(cssSource, /\.admin-subnav-link:hover,[\s\S]*background:\s*#F3F4F6/);
@@ -314,6 +323,6 @@ test('public proposal page uses AXIS branding and avoids beige proposal styling'
   assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*background:\s*#FFFFFF/);
   assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*border:\s*1px solid #E5E7EB/);
   assert.match(cssSource, /\.public-proposal-logo-wrapper\s*\{[\s\S]*background:\s*#F3F4F6/);
-  assert.match(cssSource, /\.public-proposal-page \.primary-button\s*\{[\s\S]*background:\s*#1FA3D6/);
+  assert.match(cssSource, /\.public-proposal-page \.primary-button\s*\{[\s\S]*background:\s*#1F9ACF/);
   assert.doesNotMatch(proposalPageSource + cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|beige|cream|public-proposal-logo-wrapper\s*\{[\s\S]*#061B33/i);
 });

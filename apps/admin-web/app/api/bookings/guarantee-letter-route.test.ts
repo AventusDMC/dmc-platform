@@ -1,7 +1,12 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
-import { GET } from './[id]/guarantee-letter/route';
-import { GET as GETVoucherPdf } from './[id]/voucher/pdf/route';
+
+// Route modules throw at import time if NEXT_PUBLIC_API_URL is unset. Use
+// CommonJS require() (not ESM import) so we can set the env var first; ESM
+// imports get hoisted above the env assignment.
+process.env.NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const { GET } = require('./[id]/guarantee-letter/route') as typeof import('./[id]/guarantee-letter/route');
+const { GET: GETVoucherPdf } = require('./[id]/voucher/pdf/route') as typeof import('./[id]/voucher/pdf/route');
 
 test('guarantee letter proxy returns binary PDF response with download headers', async () => {
   const originalFetch = globalThis.fetch;
