@@ -167,6 +167,12 @@ type PreviewActivity = {
   dayNumber: number;
   city: string;
   service: SupplierService | null;
+  // Touring routes (canonicalRouteType=TOURING_ROUTE) surface as activity
+  // entries with a touringRoute reference instead of a service. The Auto
+  // Builder includes them per-city so operators see the full touring
+  // catalog alongside the activity catalog. Saved as quote items via
+  // touringRouteId on apply.
+  touringRoute: RouteOption | null;
 };
 
 type ItineraryWarning = {
@@ -313,6 +319,42 @@ function findAirportRoute(routes: RouteOption[], city: string, direction: 'arriv
       return routeFrom.includes(cityKey) && routeTo.includes('airport');
     }) || null
   );
+}
+
+/**
+ * Locate touring routes operating out of (or named for) a given city.
+ * Touring routes are full-day or multi-day operator-led tours stored as
+ * RouteOption with canonicalRouteType=TOURING_ROUTE (or transportPickerMode
+ * =TOURING_ROUTE). E.g., "Amman City Tour", "Petra by Night". These are
+ * first-class in the data model with their own admin page at
+ * /transport/touring-routes and their own pricing structure
+ * (touringRoutePricings) — but the Auto Builder activities loop only
+ * ever pulled activity services until now. Surfacing them per city
+ * means operators see "you have a Petra City Tour available" without
+ * having to remember to add it manually.
+ */
+function findTouringRoutesForCity(routes: RouteOption[], city: string): RouteOption[] {
+  const cityKey = normalizeText(city);
+  if (!cityKey) return [];
+  return routes.filter((route) => {
+    if (!isValidRoute(route)) return false;
+    const isTouring =
+      route.canonicalRouteType === 'TOURING_ROUTE' ||
+      route.transportPickerMode === 'TOURING_ROUTE' ||
+      (route.routeType || '').toUpperCase() === 'TOURING_ROUTE';
+    if (!isTouring) return false;
+    const startCity = normalizeText(route.startCity || '');
+    const fromCity = normalizeText(route.fromPlace?.city || '');
+    const fromName = normalizeText(route.fromPlace?.name || '');
+    const routeName = normalizeText(route.name || '');
+    return (
+      startCity === cityKey ||
+      fromCity.includes(cityKey) ||
+      cityKey.includes(fromCity) ||
+      fromName.includes(cityKey) ||
+      routeName.includes(cityKey)
+    );
+  });
 }
 
 function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
@@ -1016,7 +1058,20 @@ async function buildPreviewDraft(values: {
 
   const activityService = findService(values.services, 'activity');
   const meetAssistService = findMeetAssistService(values.services);
-  const activities: Array<{ dayNumber: number; city: string; service: SupplierService | null }> = [];
+  // Activities array now carries TWO kinds of entries:
+  //   - service: an Activity-catalog SupplierService (e.g., "Petra Hiking
+  //     Experience"). Saved as a quote item via serviceId.
+  //   - touringRoute: a RouteOption with canonicalRouteType=TOURING_ROUTE
+  //     (e.g., "Amman City Tour"). Saved as a quote item via touringRouteId.
+  // Both surface in the activities section of the preview so the operator
+  // sees the full catalog of options for each city.
+  type ActivityEntry = {
+    dayNumber: number;
+    city: string;
+    service: SupplierService | null;
+    touringRoute: RouteOption | null;
+  };
+  const activities: ActivityEntry[] = [];
 
   // Meet & Assist on arrival (Day 1) and departure (last day) — operator
   // gets airport-meet coverage by default instead of having to add it
@@ -1026,15 +1081,22 @@ async function buildPreviewDraft(values: {
   if (meetAssistService && days.length > 0) {
     const firstDay = days[0];
     const lastDay = days[days.length - 1];
-    activities.push({ dayNumber: firstDay.dayNumber, city: firstDay.city, service: meetAssistService });
+    activities.push({ dayNumber: firstDay.dayNumber, city: firstDay.city, service: meetAssistService, touringRoute: null });
     if (lastDay.dayNumber !== firstDay.dayNumber) {
-      activities.push({ dayNumber: lastDay.dayNumber, city: lastDay.city, service: meetAssistService });
+      activities.push({ dayNumber: lastDay.dayNumber, city: lastDay.city, service: meetAssistService, touringRoute: null });
     }
   }
 
   if (values.includeActivities) {
     for (const day of days.slice(0, -1)) {
-      activities.push({ dayNumber: day.dayNumber, city: day.city, service: activityService });
+      // Touring routes for this city — show all available so the operator
+      // sees the full menu rather than only one auto-picked option.
+      const touringRoutes = findTouringRoutesForCity(values.routes, day.city);
+      for (const touringRoute of touringRoutes) {
+        activities.push({ dayNumber: day.dayNumber, city: day.city, service: null, touringRoute });
+      }
+      // Generic activity-service placeholder (legacy behavior).
+      activities.push({ dayNumber: day.dayNumber, city: day.city, service: activityService, touringRoute: null });
     }
   }
 
@@ -1657,34 +1719,63 @@ export function QuoteAutoItineraryBuilder({
       }
     }
 
-    if (activityService) {
-      for (const item of draft.activities) {
-        const day = savedDays.get(item.dayNumber);
-        const previewDay = draft.days.find((candidate) => candidate.dayNumber === item.dayNumber);
+    for (const item of draft.activities) {
+      const day = savedDays.get(item.dayNumber);
+      const previewDay = draft.days.find((candidate) => candidate.dayNumber === item.dayNumber);
 
-        if (!day || !item.service || !previewDay?.date) {
-          continue;
-        }
+      if (!day || !previewDay?.date) {
+        continue;
+      }
 
+      // Touring-route entry: save as a quote item with touringRouteId.
+      // No serviceId needed — backend infers the operational service type
+      // from the route's touringRoutePricings configuration.
+      if (item.touringRoute) {
+        if (!transportService) continue;
         await postJson(
           `${apiBaseUrl}/quotes/${quote.id}/items`,
           {
-            serviceId: item.service.id,
+            serviceId: transportService.id,
             itineraryId: day.id,
             serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
             startTime: '09:00',
             meetingPoint: item.city,
             participantCount: numericPax,
-            adultCount: Math.min(numericPax, Math.max(quote.adults, 0)),
-            childCount: Math.max(numericPax - Math.max(quote.adults, 0), 0),
             quantity: 1,
             paxCount: numericPax,
+            dayCount: 1,
             markupPercent: 20,
+            touringRouteId: item.touringRoute.id,
+            normalizedKey: item.touringRoute.normalizedKey,
           },
-          `Could not add activity placeholder for ${item.city}.`,
+          `Could not add touring route ${item.touringRoute.name} for ${item.city}.`,
         );
         createdItems += 1;
+        continue;
       }
+
+      // Activity-service entry (legacy path): standard activity placeholder.
+      if (!activityService || !item.service) {
+        continue;
+      }
+      await postJson(
+        `${apiBaseUrl}/quotes/${quote.id}/items`,
+        {
+          serviceId: item.service.id,
+          itineraryId: day.id,
+          serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
+          startTime: '09:00',
+          meetingPoint: item.city,
+          participantCount: numericPax,
+          adultCount: Math.min(numericPax, Math.max(quote.adults, 0)),
+          childCount: Math.max(numericPax - Math.max(quote.adults, 0), 0),
+          quantity: 1,
+          paxCount: numericPax,
+          markupPercent: 20,
+        },
+        `Could not add activity placeholder for ${item.city}.`,
+      );
+      createdItems += 1;
     }
 
     window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
@@ -2182,15 +2273,21 @@ export function QuoteAutoItineraryBuilder({
                 </div>
               );
             })}
-            {preview.activities.map((item) => (
-              <div key={`activity-${item.dayNumber}-${item.city}`}>
-                <span>Activity</span>
-                <strong>
-                  Day {item.dayNumber}: {item.city}
-                </strong>
-                <em>{item.service ? item.service.name : 'Needs activity service'}</em>
-              </div>
-            ))}
+            {preview.activities.map((item, activityIndex) => {
+              const touringRoute = (item as { touringRoute?: { id: string; name: string } | null }).touringRoute;
+              const label = touringRoute ? `Touring route · ${touringRoute.name}` : item.service?.name || 'Needs activity service';
+              const tagText = touringRoute ? 'Touring Route' : 'Activity';
+              const keySuffix = touringRoute ? touringRoute.id : item.service?.id || 'placeholder';
+              return (
+                <div key={`activity-${item.dayNumber}-${item.city}-${keySuffix}-${activityIndex}`}>
+                  <span>{tagText}</span>
+                  <strong>
+                    Day {item.dayNumber}: {item.city}
+                  </strong>
+                  <em>{label}</em>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}
