@@ -294,17 +294,34 @@ function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
     return null;
   }
 
-  return (
-    routes.find((route) => {
-      if (!isValidRoute(route)) {
-        return false;
-      }
+  // Bidirectional match. The seed catalog stores each road-transfer route
+  // in a single direction (e.g., "Amman City Center -> Petra Visitor
+  // Center") — but in DMC operations a transfer route runs both ways
+  // (you also drive Petra -> Amman to fly out). Previously findRoute
+  // returned null on every reverse leg, surfacing "No active route
+  // matched these cities" warnings on day cards that DO have a valid
+  // catalog route, just one stored in the opposite direction.
+  //
+  // Prefer the exact directional match when one exists (some routes
+  // legitimately have asymmetric pricing or different stops in each
+  // direction); fall back to the reverse-direction match.
+  let exactMatch: RouteOption | null = null;
+  let reverseMatch: RouteOption | null = null;
 
-      const routeFrom = routeEndpointText(route, 'fromPlace');
-      const routeTo = routeEndpointText(route, 'toPlace');
-      return routeFrom.includes(from) && routeTo.includes(to);
-    }) || null
-  );
+  for (const route of routes) {
+    if (!isValidRoute(route)) continue;
+    const routeFrom = routeEndpointText(route, 'fromPlace');
+    const routeTo = routeEndpointText(route, 'toPlace');
+    if (routeFrom.includes(from) && routeTo.includes(to)) {
+      exactMatch = route;
+      break;
+    }
+    if (!reverseMatch && routeFrom.includes(to) && routeTo.includes(from)) {
+      reverseMatch = route;
+    }
+  }
+
+  return exactMatch || reverseMatch;
 }
 
 function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
