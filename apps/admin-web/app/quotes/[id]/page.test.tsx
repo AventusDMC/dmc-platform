@@ -945,8 +945,11 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteAutoItineraryBuilderSource, [
       'async function applyItinerary(draft: PreviewDraft)',
       'await applyItinerary(draft);',
-      "Generate & Save Draft Itinerary",
-      "Generating & Saving...",
+      // Button label renamed for clarity — the old "Generate & Save Draft
+      // Itinerary" sounded like it produced a populated draft, but it only
+      // creates the day shells. New label says exactly what happens.
+      "Create Empty Day Shells Only",
+      "Creating Empty Days...",
       "window.dispatchEvent(new CustomEvent('dmc:quote-itinerary-days-ready', { detail: { quoteId: quote.id, days } }));",
       "document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView",
       'const expectedDays = draft.days.slice(0, expectedGeneratedDayCount);',
