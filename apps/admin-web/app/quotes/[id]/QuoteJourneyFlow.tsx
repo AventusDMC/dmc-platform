@@ -74,7 +74,42 @@ function buildJourney(itineraries: ItineraryDay[]): JourneyStop[] {
 }
 
 export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] }) {
-  if (!itineraries || itineraries.length === 0) return null;
+  // Empty-state: render a quiet placeholder so the feature is visible
+  // even when no itinerary days exist yet (operator knows it's coming
+  // once they add days to the itinerary).
+  if (!itineraries || itineraries.length === 0) {
+    return (
+      <section
+        style={{
+          background: '#f5f8f5',
+          border: '1px dashed #cdd7cd',
+          borderRadius: 10,
+          padding: '0.75rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span
+          style={{
+            color: '#6b7a6b',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Journey Flow
+        </span>
+        <span style={{ color: '#94a395', fontSize: '0.85rem' }}>
+          Add itinerary days to see the trip rendered as a city flow (Amman → Petra → Dead Sea …)
+        </span>
+      </section>
+    );
+  }
   const stops = buildJourney(itineraries);
   // Compress consecutive same-city stays into a single visual marker with
   // a night count — operator sees the journey, not Day-N noise.
