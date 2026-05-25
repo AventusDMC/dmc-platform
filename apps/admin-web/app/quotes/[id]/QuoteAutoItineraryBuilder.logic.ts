@@ -68,10 +68,28 @@ export function generateItineraryDays(startDate: string | null | undefined, nigh
 export function assignGeneratedItineraryCities(generatedDays: GeneratedItineraryDay[], cities: string[]): GeneratedItineraryDayWithCity[] {
   const providedCities = cities.map((city) => city.trim()).filter(Boolean);
 
-  return generatedDays.map((day, index) => ({
-    ...day,
-    city: providedCities.length > 0 ? providedCities[Math.min(index, providedCities.length - 1)] : '',
-  }));
+  return generatedDays.map((day, index) => {
+    const city = providedCities.length > 0 ? providedCities[Math.min(index, providedCities.length - 1)] : '';
+    // When a city is known for this day, prefer a city-led title so the
+    // itinerary reads as a journey:
+    //   - mid-trip "Day N" → just the city ("Petra"), since formatDayHeading
+    //     already prepends "Day 02 -" elsewhere (avoiding "Day 02 - Day 2 · Petra").
+    //   - bookends "Arrival" / "Departure" → keep the marker but tack on the
+    //     city so the operator sees "Arrival · Amman".
+    // If the title already names the city, leave it alone (no "Petra · Petra").
+    let title = day.title;
+    if (city && !day.title.toLowerCase().includes(city.toLowerCase())) {
+      const lower = day.title.toLowerCase();
+      if (lower === 'arrival' || lower === 'departure') {
+        title = `${day.title} · ${city}`;
+      } else if (/^day\s+\d+$/i.test(day.title)) {
+        title = city;
+      } else {
+        title = `${day.title} · ${city}`;
+      }
+    }
+    return { ...day, city, title };
+  });
 }
 
 export function mergeExistingItineraryDays(...dayGroups: AutoItineraryExistingDay[][]) {

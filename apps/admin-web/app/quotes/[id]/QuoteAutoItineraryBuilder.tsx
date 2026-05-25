@@ -849,29 +849,36 @@ export function QuoteAutoItineraryBuilder({
   // Guided Quote Builder handoff: when the wizard creates the quote it
   // appends `?source=guided&cities=Amman,Petra,Wadi Rum&nights=5`. Read those
   // once on mount and pre-fill the routeText input so the operator doesn't
-  // re-type cities they already configured in Step 2 of the wizard. We use a
-  // ref guard so this only fires once even if searchParams changes later.
+  // re-type cities they already configured in Step 2 of the wizard. A ref
+  // guards against re-firing if searchParams ever changes; the state flag
+  // drives a one-time banner so the operator sees that the form was primed.
   const guidedPrefillAppliedRef = useRef(false);
+  const [guidedPrefillBanner, setGuidedPrefillBanner] = useState<{ cities: string[]; nights: number } | null>(null);
   useEffect(() => {
     if (guidedPrefillAppliedRef.current) return;
     if (!searchParams) return;
     if (searchParams.get('source') !== 'guided') return;
     const citiesParam = searchParams.get('cities');
+    let cities: string[] = [];
     if (citiesParam) {
-      const parts = citiesParam
+      cities = citiesParam
         .split(',')
         .map((value) => value.trim())
         .filter(Boolean);
-      if (parts.length > 0) {
-        setRouteText(parts.join(' -> '));
+      if (cities.length > 0) {
+        setRouteText(cities.join(' -> '));
       }
     }
     const nightsParam = searchParams.get('nights');
+    let nights = 0;
     if (nightsParam) {
-      const parsed = Math.max(0, Math.floor(Number(nightsParam) || 0));
-      if (parsed > 0) {
-        setNightCount(String(parsed));
+      nights = Math.max(0, Math.floor(Number(nightsParam) || 0));
+      if (nights > 0) {
+        setNightCount(String(nights));
       }
+    }
+    if (cities.length || nights > 0) {
+      setGuidedPrefillBanner({ cities, nights });
     }
     guidedPrefillAppliedRef.current = true;
   }, [searchParams]);
@@ -1519,6 +1526,43 @@ export function QuoteAutoItineraryBuilder({
         </div>
         <span className="page-tab-badge">{quoteType}</span>
       </div>
+
+      {guidedPrefillBanner ? (
+        <div
+          style={{
+            background: '#f5f8f5',
+            border: '1px solid #cdd7cd',
+            borderRadius: 10,
+            padding: '0.65rem 0.9rem',
+            marginBottom: '0.85rem',
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '0.6rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span
+            style={{
+              color: '#3a5a3a',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Guided Builder ready
+          </span>
+          <span style={{ color: '#475467', fontSize: '0.88rem' }}>
+            {guidedPrefillBanner.cities.length > 0
+              ? `${guidedPrefillBanner.cities.join(' → ')}`
+              : 'Route pre-filled from the wizard.'}
+            {guidedPrefillBanner.nights > 0 ? ` · ${guidedPrefillBanner.nights} nights` : ''}
+          </span>
+          <span style={{ color: '#6b7a6b', fontSize: '0.82rem', marginLeft: 'auto' }}>
+            Review the inputs below, then click <strong>Generate & Save Draft Itinerary</strong>.
+          </span>
+        </div>
+      ) : null}
 
       <div className="quote-auto-itinerary-grid">
         <label>
