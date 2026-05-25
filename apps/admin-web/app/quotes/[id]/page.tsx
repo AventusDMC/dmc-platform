@@ -22,6 +22,7 @@ import { QuoteHotelOptionSets } from './QuoteHotelOptionSets';
 import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
+import { QuoteJourneyFlow } from './QuoteJourneyFlow';
 import { QuoteOperationalInsights } from './QuoteOperationalInsights';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import type { QuotePassenger } from './QuotePassengersPanel';
@@ -2620,6 +2621,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               This is an older quote revision. Open the latest revision to edit, accept, or convert it to a booking.
             </div>
           ) : null}
+
+          {/* Journey flow visualization — horizontal city timeline rendered
+              from the itinerary days. Heuristic destination extraction;
+              compresses consecutive same-city days into one marker with
+              night count. */}
+          <QuoteJourneyFlow itineraries={quote.itineraries} />
 
           {/* Operational intelligence overlay — collapsed by default, calm
               commercial-toned. Loads lazily on first expand. */}
