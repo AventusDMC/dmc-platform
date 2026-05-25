@@ -1382,62 +1382,81 @@ export function QuoteTransportPicker({
             <header className="quote-drawer-section-head">
               <div>
                 <p className="eyebrow">Pricing</p>
-                <h3>Live transport price</h3>
+                <h3>Transport price</h3>
               </div>
             </header>
 
-            <div className="quote-live-pricing-panel quote-transport-live-pricing-panel">
-              <div className="quote-live-pricing-head">
-                <div>
-                  <p className="eyebrow">Sell</p>
-                  <h3>{pricingReady ? formatRoute(selectedRoute) : 'Build transport price'}</h3>
+            {/* Until a route + rate + supplier are picked the live price
+                block reads USD 0.00 across every row, which looks like
+                missing data instead of a not-yet-priced flow. Render a
+                calm one-line cue until pricingReady, then the full live
+                panel appears with real numbers. */}
+            {!pricingReady ? (
+              <p
+                className="detail-copy"
+                style={{
+                  background: '#f5f8f5',
+                  border: '1px solid #cdd7cd',
+                  color: '#475467',
+                  borderRadius: 10,
+                  padding: '0.7rem 0.9rem',
+                  margin: 0,
+                }}
+              >
+                Pricing will appear once route, vehicle type, and supplier are selected below.
+              </p>
+            ) : (
+              <div className="quote-live-pricing-panel quote-transport-live-pricing-panel">
+                <div className="quote-live-pricing-head">
+                  <div>
+                    <p className="eyebrow">Sell</p>
+                    <h3>{formatRoute(selectedRoute)}</h3>
+                  </div>
+                  <span className="quote-live-pricing-status quote-live-pricing-status-active">Ready</span>
                 </div>
-                <span className={pricingReady ? 'quote-live-pricing-status quote-live-pricing-status-active' : 'quote-live-pricing-status'}>
-                  {pricingReady ? 'Ready' : 'Pending'}
-                </span>
-              </div>
 
-              <div className={`quote-live-pricing-profit ${getMarginTone(marginPercent)}`}>
-                <span>Selling price</span>
-                <strong>{formatMoney(sellingPrice, pricingCurrency)}</strong>
-                <em>{formatMoney(profit, pricingCurrency)} profit</em>
-              </div>
-
-              <div className="quote-live-pricing-list">
-                <div className="quote-live-pricing-row">
-                  <span>Cost</span>
-                  <strong>{formatMoney(costPrice, pricingCurrency)}</strong>
+                <div className={`quote-live-pricing-profit ${getMarginTone(marginPercent)}`}>
+                  <span>Selling price</span>
+                  <strong>{formatMoney(sellingPrice, pricingCurrency)}</strong>
+                  <em>{formatMoney(profit, pricingCurrency)} profit</em>
                 </div>
-                {usesBillableDaysInput(selectedPricingMode) ? (
+
+                <div className="quote-live-pricing-list">
+                  <div className="quote-live-pricing-row">
+                    <span>Cost</span>
+                    <strong>{formatMoney(costPrice, pricingCurrency)}</strong>
+                  </div>
+                  {usesBillableDaysInput(selectedPricingMode) ? (
+                    <label className="quote-live-pricing-row quote-transport-markup-row">
+                      <span>Billable days</span>
+                      <input
+                        value={billableDaysInput}
+                        onChange={(event) => setBillableDaysInput(event.target.value)}
+                        type="number"
+                        min="1"
+                        step="1"
+                        inputMode="numeric"
+                      />
+                    </label>
+                  ) : null}
                   <label className="quote-live-pricing-row quote-transport-markup-row">
-                    <span>Billable days</span>
-                    <input
-                      value={billableDaysInput}
-                      onChange={(event) => setBillableDaysInput(event.target.value)}
-                      type="number"
-                      min="1"
-                      step="1"
-                      inputMode="numeric"
-                    />
+                    <span>Markup %</span>
+                    <input value={markupPercent} onChange={(event) => setMarkupPercent(event.target.value)} type="number" min="0" step="0.01" />
                   </label>
-                ) : null}
-                <label className="quote-live-pricing-row quote-transport-markup-row">
-                  <span>Markup %</span>
-                  <input value={markupPercent} onChange={(event) => setMarkupPercent(event.target.value)} type="number" min="0" step="0.01" />
-                </label>
-                {selectedRate && isMinimumFullDayRate(selectedRate) ? (
-                  <p className="form-helper">Supplier minimum 3 full days may apply.</p>
-                ) : null}
-                <div className="quote-live-pricing-row">
-                  <span>Profit</span>
-                  <strong>{formatMoney(profit, pricingCurrency)}</strong>
-                </div>
-                <div className="quote-live-pricing-row">
-                  <span>Margin %</span>
-                  <strong>{formatMarginPercent(marginPercent)}</strong>
+                  {selectedRate && isMinimumFullDayRate(selectedRate) ? (
+                    <p className="form-helper">Supplier minimum 3 full days may apply.</p>
+                  ) : null}
+                  <div className="quote-live-pricing-row">
+                    <span>Profit</span>
+                    <strong>{formatMoney(profit, pricingCurrency)}</strong>
+                  </div>
+                  <div className="quote-live-pricing-row">
+                    <span>Margin %</span>
+                    <strong>{formatMarginPercent(marginPercent)}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </section>
 
           <section className="quote-drawer-section quote-drawer-section-details">
