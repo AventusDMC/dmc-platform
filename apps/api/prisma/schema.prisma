@@ -1741,11 +1741,17 @@ model RouteStandard {
   airportRouteFlag          Boolean  @default(false)
   notes                     String?
   isActive                  Boolean  @default(true)
+  // Provenance — distinguishes operator-created standards from auto-
+  // bootstrapped ones so the admin UI can show a "draft from existing
+  // route" tag and ops know which rows still need a review pass. Values:
+  // 'AUTO_BOOTSTRAP' | 'IMPORTED' | 'MANUAL' (or null for legacy rows).
+  source                    String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
   @@index([isActive, routeCode])
   @@index([fromCity, toCity])
+  @@index([source])
   @@map("route_standards")
 }
 

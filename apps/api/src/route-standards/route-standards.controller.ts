@@ -90,6 +90,17 @@ export class RouteStandardsController {
   }
 
   /**
+   * Auto-bootstrap RouteStandard rows from existing TouringRoute +
+   * TRANSFER_ROUTE entries. Never overwrites existing standards. Returns
+   * a summary the admin UI surfaces to the operator.
+   */
+  @Post('bootstrap')
+  @Roles('admin', 'operations')
+  bootstrap() {
+    return this.routeStandardsService.bootstrapFromExistingRoutes();
+  }
+
+  /**
    * Excel export — one row per route standard. Sheet name fixed at
    * "Route Standards" so the import path can validate it.
    */

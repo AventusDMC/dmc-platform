@@ -110,6 +110,141 @@ test('route standards service: bulkUpsert rejects duplicate codes within upload'
   );
 });
 
+test('route standards service: bootstrapFromExistingRoutes creates missing standards from both catalogs', async () => {
+  const prismaStore: any[] = [];
+  const fakePrisma = {
+    routeStandard: {
+      findMany: async (args: any) => {
+        if (args?.select?.routeCode === true) {
+          return prismaStore.map((r) => ({ routeCode: r.routeCode }));
+        }
+        return prismaStore;
+      },
+      findUnique: async ({ where }: any) => prismaStore.find((r) => r.routeCode === where.routeCode) || null,
+      create: async ({ data }: any) => {
+        if (prismaStore.some((r) => r.routeCode === data.routeCode)) {
+          const err: any = new Error('Unique constraint failed');
+          err.code = 'P2002';
+          throw err;
+        }
+        const row = { id: `id-${prismaStore.length + 1}`, ...data };
+        prismaStore.push(row);
+        return row;
+      },
+    },
+    touringRoute: {
+      findMany: async () => [
+        // Will create
+        {
+          code: 'AMM_PET',
+          name: 'Amman to Petra',
+          startCity: 'Amman',
+          estimatedDistanceKm: 235,
+          estimatedDriveHours: 3.5,
+          longDistance: false,
+          mountainRoad: false,
+          overnightRisk: false,
+        },
+        // Should be skipped — already exists
+        {
+          code: 'PET_WR',
+          name: 'Petra to Wadi Rum',
+          startCity: 'Petra',
+          estimatedDistanceKm: 110,
+          estimatedDriveHours: 1.5,
+        },
+        // Missing data — created with warning
+        {
+          code: 'WR_AQ',
+          name: 'Wadi Rum to Aqaba',
+          startCity: 'Wadi Rum',
+          estimatedDistanceKm: null,
+          estimatedDriveHours: null,
+        },
+        // No code — skipped
+        {
+          code: null,
+          name: 'Orphan touring route',
+          startCity: 'Amman',
+        },
+      ],
+    },
+    route: {
+      findMany: async () => [
+        // Transfer route — will create
+        {
+          name: 'King Hussein Airport to Aqaba',
+          normalizedKey: 'aqj_aqaba',
+          distanceKm: 12,
+          durationMinutes: 20,
+          isActive: true,
+          fromPlace: { name: 'King Hussein International Airport', city: 'Aqaba' },
+          toPlace: { name: 'Aqaba City Center', city: 'Aqaba' },
+        },
+      ],
+    },
+  };
+  // Seed an existing PET_WR standard so it gets skipped
+  prismaStore.push({ id: 'existing-1', routeCode: 'PET_WR' });
+
+  const service = new RouteStandardsService(fakePrisma as any);
+  const result = await service.bootstrapFromExistingRoutes();
+
+  assert.equal(result.touringRoutesScanned, 4);
+  assert.equal(result.transferRoutesScanned, 1);
+  assert.equal(result.createdFromTouring, 2); // AMM_PET + WR_AQ
+  assert.equal(result.createdFromTransfer, 1); // AQJ_AQABA
+  assert.equal(result.createdTotal, 3);
+  assert.equal(result.skippedExistingByCode, 1); // PET_WR
+  assert.equal(result.skippedWithoutCode, 1); // touring route with no code
+
+  // WR_AQ should be flagged with missing data
+  assert.equal(result.missingDataWarnings.length, 1);
+  assert.equal(result.missingDataWarnings[0].routeCode, 'WR_AQ');
+  assert.ok(result.missingDataWarnings[0].missing.includes('distance'));
+  assert.ok(result.missingDataWarnings[0].missing.includes('duration'));
+
+  // Created rows should be tagged AUTO_BOOTSTRAP
+  const ammPet = prismaStore.find((r) => r.routeCode === 'AMM_PET');
+  assert.equal(ammPet?.source, 'AUTO_BOOTSTRAP');
+  const aqjAqaba = prismaStore.find((r) => r.routeCode === 'AQJ_AQABA');
+  assert.equal(aqjAqaba?.source, 'AUTO_BOOTSTRAP');
+  // Transfer-route airport detection: AQJ matches the airport heuristic
+  assert.equal(aqjAqaba?.airportRouteFlag, true);
+});
+
+test('route standards service: bootstrap never overwrites operator-curated standards', async () => {
+  // Existing standard with operator-curated buffer + notes
+  const prismaStore: any[] = [
+    {
+      id: 'existing-1',
+      routeCode: 'AMM_PET',
+      operationalBufferMinutes: 45,
+      notes: 'Operator-curated: construction zone 60-80km',
+      source: 'MANUAL',
+    },
+  ];
+  const fakePrisma = {
+    routeStandard: {
+      findMany: async (args: any) => (args?.select?.routeCode ? prismaStore.map((r) => ({ routeCode: r.routeCode })) : prismaStore),
+      create: async () => {
+        throw new Error('Should not have been called — standard exists');
+      },
+    },
+    touringRoute: {
+      findMany: async () => [{ code: 'AMM_PET', name: 'Amman to Petra', startCity: 'Amman' }],
+    },
+    route: { findMany: async () => [] },
+  };
+  const service = new RouteStandardsService(fakePrisma as any);
+  const result = await service.bootstrapFromExistingRoutes();
+  assert.equal(result.createdTotal, 0);
+  assert.equal(result.skippedExistingByCode, 1);
+  // Existing row untouched
+  assert.equal(prismaStore[0].operationalBufferMinutes, 45);
+  assert.equal(prismaStore[0].notes, 'Operator-curated: construction zone 60-80km');
+});
+
 test('computeRouteTimingConfidence: priority order border > mountain > long > airport > normal', () => {
   assert.equal(computeRouteTimingConfidence({ borderCrossingFlag: true, mountainRoadFlag: true }), 'Border Delay Risk');
   assert.equal(computeRouteTimingConfidence({ mountainRoadFlag: true, longDistanceFlag: true }), 'Mountain Road Delay Risk');

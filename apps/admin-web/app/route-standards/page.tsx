@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { AdminBreadcrumbs } from '../components/AdminBreadcrumbs';
+import { RouteStandardBootstrapPanel } from './RouteStandardBootstrapPanel';
 import { RouteStandardImportPanel } from './RouteStandardImportPanel';
 import { computeTimingConfidenceLabel } from './route-standard-display';
 
@@ -23,6 +24,7 @@ type RouteStandard = {
   airportRouteFlag: boolean;
   notes: string | null;
   isActive: boolean;
+  source: string | null;
 };
 
 async function loadStandards(): Promise<RouteStandard[]> {
@@ -75,6 +77,8 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
           <p className="form-error">{resolved.error}</p>
         </section>
       ) : null}
+
+      <RouteStandardBootstrapPanel />
 
       <RouteStandardImportPanel />
 
@@ -164,7 +168,45 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                   const confidence = computeTimingConfidenceLabel(s);
                   return (
                     <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
-                      <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}><strong>{s.routeCode}</strong></td>
+                      <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>
+                        <strong>{s.routeCode}</strong>
+                        {s.source === 'AUTO_BOOTSTRAP' ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#f5f8f5',
+                              color: '#3a5a3a',
+                              padding: '0.05rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              fontFamily: 'inherit',
+                              textTransform: 'uppercase',
+                            }}
+                            title="Auto-generated from existing route data. Refine distance/duration/risk flags as needed."
+                          >
+                            Auto draft
+                          </span>
+                        ) : s.source === 'IMPORTED' ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#f0f4f8',
+                              color: '#475467',
+                              padding: '0.05rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              fontFamily: 'inherit',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Imported
+                          </span>
+                        ) : null}
+                      </td>
                       <td style={{ padding: '0.5rem' }}>{s.routeName}</td>
                       <td style={{ padding: '0.5rem', color: '#475467' }}>
                         {s.fromCity || <em style={{ color: '#98a2b3' }}>—</em>}
