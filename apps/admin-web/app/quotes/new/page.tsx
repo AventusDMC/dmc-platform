@@ -37,8 +37,125 @@ type Lead = {
 type NewQuotePageProps = {
   searchParams?: Promise<{
     leadId?: string;
+    // Guided Quote Builder hand-off params. The wizard at /quotes/new/guided
+    // builds a city journey + pax + dates client-side, then deep-links here so
+    // QuotesForm initialValues can pre-fill nightCount/adults/children/dates/
+    // title without the operator re-typing. cities is "Name:Nights,Name:Nights".
+    source?: string;
+    arrivalCity?: string;
+    arrivalDate?: string;
+    departureDate?: string;
+    adults?: string;
+    children?: string;
+    market?: string;
+    budget?: string;
+    style?: string;
+    cities?: string;
   }>;
 };
+
+type GuidedHandoff = {
+  initialValues: NonNullable<Parameters<typeof QuotesForm>[0]['initialValues']>;
+  redirectQuery: string;
+};
+
+function buildGuidedHandoff(
+  params: NonNullable<Awaited<NewQuotePageProps['searchParams']>>,
+  defaults: { clientCompanyId: string; brandCompanyId: string; contactId: string },
+): GuidedHandoff | null {
+  if (params.source !== 'guided') {
+    return null;
+  }
+
+  // Parse "Amman:2,Petra:2,Wadi Rum:1" -> [{name, nights}, ...]
+  const journey = (params.cities || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [rawName, rawNights] = entry.split(':');
+      const name = (rawName || '').trim();
+      const nights = Math.max(0, Math.floor(Number(rawNights) || 0));
+      return { name, nights };
+    })
+    .filter((stop) => stop.name);
+
+  const summedNights = journey.reduce((sum, stop) => sum + stop.nights, 0);
+
+  // Fall back to arrival/departure date diff if nights aren't carried per-city.
+  const dateDiffNights = (() => {
+    if (!params.arrivalDate || !params.departureDate) return 0;
+    const a = new Date(`${params.arrivalDate}T00:00:00.000Z`).getTime();
+    const d = new Date(`${params.departureDate}T00:00:00.000Z`).getTime();
+    if (!Number.isFinite(a) || !Number.isFinite(d) || d <= a) return 0;
+    return Math.round((d - a) / (24 * 60 * 60 * 1000));
+  })();
+
+  const resolvedNights = Math.max(1, summedNights || dateDiffNights || 1);
+
+  const adultsParsed = Math.max(0, Math.floor(Number(params.adults) || 0));
+  const childrenParsed = Math.max(0, Math.floor(Number(params.children) || 0));
+  const totalPax = Math.max(1, adultsParsed + childrenParsed || 2);
+  const resolvedAdults = adultsParsed > 0 ? adultsParsed : 2;
+  const roomCountGuess = Math.max(1, Math.ceil(totalPax / 2));
+
+  const cityList = journey.map((stop) => stop.name);
+  const titleCore = cityList.length ? cityList.join(' + ') : params.arrivalCity || 'Jordan trip';
+  const styleLabel = params.style ? ` · ${params.style}` : '';
+  const guidedTitle = `${titleCore} (${resolvedNights} nights)${styleLabel}`.slice(0, 96);
+
+  const descriptionLines = [
+    `Built via Guided Quote Builder.`,
+    cityList.length ? `Cities: ${cityList.join(' → ')}` : null,
+    `Pax: ${resolvedAdults} adults${childrenParsed ? ` + ${childrenParsed} children` : ''}`,
+    `Nights: ${resolvedNights}`,
+    params.market ? `Market: ${params.market}` : null,
+    params.budget ? `Budget: ${params.budget}` : null,
+    params.style ? `Style: ${params.style}` : null,
+  ].filter(Boolean);
+
+  // Carry the city list onto /quotes/{id} so the Auto Itinerary Builder can
+  // pre-fill its routeText with "Amman -> Petra -> Wadi Rum".
+  const redirectParams = new URLSearchParams();
+  redirectParams.set('tab', 'services');
+  redirectParams.set('source', 'guided');
+  if (cityList.length) {
+    redirectParams.set('cities', cityList.join(','));
+  }
+  if (resolvedNights > 0) {
+    redirectParams.set('nights', String(resolvedNights));
+  }
+
+  return {
+    initialValues: {
+      clientCompanyId: defaults.clientCompanyId,
+      brandCompanyId: defaults.brandCompanyId,
+      contactId: defaults.contactId,
+      agentId: '',
+      quoteType: 'FIT',
+      jordanPassType: 'NONE',
+      bookingType: 'FIT',
+      title: guidedTitle,
+      description: descriptionLines.join('\n'),
+      quoteCurrency: 'USD',
+      pricingMode: 'FIXED',
+      pricingSlabs: [],
+      fixedPricePerPerson: '',
+      focType: 'none',
+      focRatio: '',
+      focCount: '',
+      focRoomType: '',
+      adults: String(resolvedAdults),
+      children: String(childrenParsed),
+      roomCount: String(roomCountGuess),
+      nightCount: String(resolvedNights),
+      singleSupplement: '',
+      travelStartDate: params.arrivalDate || '',
+      validUntil: '',
+    },
+    redirectQuery: `?${redirectParams.toString()}`,
+  };
+}
 
 async function getCompanies(): Promise<Company[]> {
   return adminPageFetchJson<Company[]>('/api/companies', 'New quote companies', {
@@ -100,6 +217,13 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
   const defaultCompanyId = companies[0]?.id || '';
   const defaultContactId = contacts.find((contact) => contact.companyId === defaultCompanyId)?.id || contacts[0]?.id || '';
   const leadQuoteTitle = buildLeadQuoteTitle(leadPrefill);
+  const guidedHandoff = resolvedSearchParams
+    ? buildGuidedHandoff(resolvedSearchParams, {
+        clientCompanyId: defaultCompanyId,
+        brandCompanyId: defaultCompanyId,
+        contactId: defaultContactId,
+      })
+    : null;
 
   return (
     <main className="page">
@@ -122,6 +246,36 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
               title="Initial quote details"
               description="Use the same quote workspace pattern for setup, review, and builder handoff."
             />
+
+            {guidedHandoff ? (
+              <div
+                style={{
+                  background: '#f5f8f5',
+                  border: '1px solid #cdd7cd',
+                  borderRadius: 10,
+                  padding: '0.75rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.3rem',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#3a5a3a',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Guided Builder handoff
+                </span>
+                <span style={{ color: '#475467', fontSize: '0.88rem' }}>
+                  Pre-filled from the wizard: <strong>{guidedHandoff.initialValues.title}</strong>. Confirm the commercial baseline below — nights,
+                  pax, dates, and the city sequence carry through to the day-by-day builder.
+                </span>
+              </div>
+            ) : null}
 
             {companies.length === 0 ? (
               <EmptyState
@@ -146,8 +300,11 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
                 contacts={contacts}
                 agents={activeAgents}
                 submitLabel="Create quote"
+                postCreateQuery={guidedHandoff?.redirectQuery}
                 initialValues={
-                  leadPrefill
+                  guidedHandoff
+                    ? guidedHandoff.initialValues
+                    : leadPrefill
                     ? {
                         clientCompanyId: defaultCompanyId,
                         brandCompanyId: defaultCompanyId,

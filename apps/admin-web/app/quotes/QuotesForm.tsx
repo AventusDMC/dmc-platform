@@ -34,6 +34,14 @@ type QuotesFormProps = {
   agents?: AgentOption[];
   quoteId?: string;
   submitLabel?: string;
+  /**
+   * Query string (including leading "?") appended to the post-create
+   * redirect URL. The Guided Quote Builder passes `?tab=services&source=guided
+   * &cities=Amman,Petra,Wadi Rum&nights=5` here so the detail page Auto
+   * Itinerary Builder can pre-fill its route + nights inputs. Defaults to
+   * `?tab=services` when omitted.
+   */
+  postCreateQuery?: string;
   initialValues?: {
     clientCompanyId: string;
     brandCompanyId: string;
@@ -109,7 +117,7 @@ function formatCount(value: number, singular: string, plural = `${singular}s`) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
-export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quoteId, submitLabel, initialValues }: QuotesFormProps) {
+export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quoteId, submitLabel, postCreateQuery, initialValues }: QuotesFormProps) {
   const router = useRouter();
   const defaultBrandCompanyId = initialValues?.brandCompanyId || companies[0]?.id || '';
   const [clientCompanyId, setClientCompanyId] = useState(initialValues?.clientCompanyId || companies[0]?.id || '');
@@ -315,7 +323,8 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
       const payload = (await response.json().catch(() => null)) as { id?: string } | null;
 
       if (!isEditing && payload?.id && payload.id !== '[id]') {
-        router.push(`/quotes/${payload.id}?tab=services`);
+        const redirectSuffix = postCreateQuery && postCreateQuery.startsWith('?') ? postCreateQuery : '?tab=services';
+        router.push(`/quotes/${payload.id}${redirectSuffix}`);
         router.refresh();
         return;
       }
