@@ -5,8 +5,28 @@ import { AdminBreadcrumbs } from '../../../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../../../../lib/operations-timezone';
 import { PrintVoucherButton } from './PrintVoucherButton';
+import { presentRouteTimingConfidence } from '../../../../../lib/route-standards';
 
 type SupplierContact = { email?: string | null; phone?: string | null } | null;
+
+// Phase 2C — canonical RouteStandard sub-block attached to the transport
+// snapshot. Drives the "Operational route reference" card on the voucher
+// (distance / duration / +buffer / risk flags / notes) so suppliers see
+// the operator-curated numbers, not whatever the quote happened to estimate.
+type RouteStandardSnapshot = {
+  routeCode?: string | null;
+  routeName?: string | null;
+  standardDistanceKm?: number | null;
+  standardDurationHours?: number | null;
+  operationalBufferMinutes?: number | null;
+  longDistanceFlag?: boolean;
+  overnightRisk?: boolean;
+  mountainRoadFlag?: boolean;
+  borderCrossingFlag?: boolean;
+  airportRouteFlag?: boolean;
+  notes?: string | null;
+  confidenceLabel?: string | null;
+} | null;
 
 type TransportSnapshot = {
   routeName?: string | null;
@@ -17,6 +37,10 @@ type TransportSnapshot = {
   driverPhone?: string | null;
   emergencyContact?: SupplierContact;
   operationalRemarks?: string | null;
+  // Phase 2C — canonical operational reference for this route. Null when
+  // no RouteStandard is seeded yet (silent fallback — supplier-facing
+  // document, not an operations dashboard).
+  routeStandard?: RouteStandardSnapshot;
 } | null;
 
 type RoomSnapshot = {
@@ -160,6 +184,128 @@ function Detail({ label, children, hideIfEmpty = false }: { label: string; child
   );
 }
 
+/**
+ * Phase 2C — operational route reference block rendered at the top of the
+ * Transport section. Shows the operator-curated canonical numbers
+ * (distance / duration / +buffer) and the timing-confidence badge so
+ * suppliers know the realistic drive profile (e.g. "3.5 h + 30 min
+ * operational buffer / Mountain Road Delay Risk") instead of generic
+ * estimates. When the RouteStandard has notes, surfaces them as a
+ * dedicated "Operational notes" line below the headline grid.
+ */
+function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<RouteStandardSnapshot> }) {
+  const confidence = presentRouteTimingConfidence({
+    longDistanceFlag: standard.longDistanceFlag,
+    mountainRoadFlag: standard.mountainRoadFlag,
+    borderCrossingFlag: standard.borderCrossingFlag,
+    airportRouteFlag: standard.airportRouteFlag,
+    standardDurationHours: standard.standardDurationHours,
+  });
+  const distance = standard.standardDistanceKm != null ? `${standard.standardDistanceKm} km` : null;
+  const duration = standard.standardDurationHours != null ? `${standard.standardDurationHours} h` : null;
+  const buffer =
+    standard.operationalBufferMinutes != null && standard.operationalBufferMinutes > 0
+      ? `+${standard.operationalBufferMinutes} min operational buffer`
+      : null;
+  // Risk flag chips. Overnight is tracked here as well — it's not part of
+  // the confidence band (which is single-label) but is operationally
+  // important on a voucher.
+  const riskChips: string[] = [];
+  if (standard.borderCrossingFlag) riskChips.push('Border crossing');
+  if (standard.mountainRoadFlag) riskChips.push('Mountain road');
+  if (standard.longDistanceFlag) riskChips.push('Long distance');
+  if (standard.airportRouteFlag) riskChips.push('Airport route');
+  if (standard.overnightRisk) riskChips.push('Overnight risk');
+  return (
+    <div
+      style={{
+        background: '#f9fafb',
+        border: '1px solid #e4e7ec',
+        borderRadius: 8,
+        padding: '0.75rem 0.9rem',
+        marginBottom: '0.85rem',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.75rem',
+          alignItems: 'baseline',
+          flexWrap: 'wrap',
+        }}
+      >
+        <p
+          style={{
+            color: '#475467',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            margin: 0,
+          }}
+        >
+          Operational route reference
+        </p>
+        <span
+          style={{
+            background: confidence.bg,
+            color: confidence.text,
+            padding: '0.1rem 0.55rem',
+            borderRadius: 999,
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+          }}
+          title={confidence.detail}
+        >
+          {confidence.label}
+        </span>
+      </div>
+      <p style={{ margin: '0.35rem 0 0', fontSize: '1rem', fontWeight: 600, color: '#101828' }}>
+        {standard.routeName || standard.routeCode}
+      </p>
+      <p style={{ margin: '0.15rem 0 0', color: '#475467', fontSize: '0.9rem' }}>
+        {[distance, duration, buffer].filter(Boolean).join(' · ') || 'Operational profile pending refinement.'}
+      </p>
+      {riskChips.length > 0 ? (
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+          {riskChips.map((chip) => (
+            <span
+              key={chip}
+              style={{
+                background: '#fff',
+                color: '#475467',
+                border: '1px solid #d0d5dd',
+                padding: '0.08rem 0.5rem',
+                borderRadius: 999,
+                fontSize: '0.7rem',
+                fontWeight: 500,
+              }}
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {standard.notes ? (
+        <p
+          style={{
+            margin: '0.5rem 0 0',
+            color: '#475467',
+            fontSize: '0.85rem',
+            lineHeight: 1.45,
+            borderTop: '1px dashed #e4e7ec',
+            paddingTop: '0.4rem',
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>Operational notes: </span>
+          {standard.notes}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function OperationalVoucherPage({ params }: PageProps) {
   const { id, operationId } = await params;
   const voucher = await adminPageFetchJson<VoucherResponse | null>(
@@ -258,6 +404,14 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
         <section className="admin-card">
           <p className="eyebrow">Transport</p>
           <h2>Route & vehicle</h2>
+          {/* Phase 2C — operational route reference block. Renders only when
+              a RouteStandard is seeded for this route. We deliberately put
+              this BEFORE the generic transport details so suppliers see the
+              canonical "Amman → Petra / 235 km / 3.5 h / +30 min" headline
+              first, then the route name + vehicle details supporting it. */}
+          {snapshot.transport.routeStandard ? (
+            <RouteStandardReferenceBlock standard={snapshot.transport.routeStandard} />
+          ) : null}
           <div className="voucher-detail-grid">
             <Detail label="Route name" hideIfEmpty>{snapshot.transport.routeName}</Detail>
             <Detail label="Route code" hideIfEmpty>{snapshot.transport.routeCode}</Detail>

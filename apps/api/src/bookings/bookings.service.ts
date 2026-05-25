@@ -10840,7 +10840,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return 'SERVICE' as VoucherType;
   }
 
-  private buildOperationalVoucherSnapshot(service: any, voucherType: VoucherType, warnings: string[]) {
+  private buildOperationalVoucherSnapshot(
+    service: any,
+    voucherType: VoucherType,
+    warnings: string[],
+    // Phase 2C — canonical RouteStandard attached to this service (when one
+    // exists). Drives the transport block's routeStandard sub-section so
+    // the rendered voucher shows operational distance/duration/buffer/
+    // confidence/notes instead of generic estimates. Null when no standard
+    // is seeded for the route — the voucher gracefully falls back to the
+    // route name only.
+    routeStandard?: import('../route-standards/route-standard-lookup').RouteStandardLookupValue | null,
+  ) {
     const booking = service.booking || {};
     const passengers = booking.passengers || [];
     const namesPending = passengers.filter((p: any) => !p.firstName || !p.lastName).length;
@@ -10973,6 +10984,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       // type matches; the detail page hides any block that's null.
       transport: isTransport
         ? {
+            // Commercial label: the human-friendly route name from the
+            // touring-route catalog. Always the same identifier track —
+            // we deliberately do NOT introduce a second route code, the
+            // canonical operational identifier is routeCode below.
             routeName: transportRoute?.name || null,
             routeCode: transportRoute?.code || null,
             vehicleType: vehicle?.vehicleType || vehicle?.name || null,
@@ -10986,6 +11001,29 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             driverLicenseNumber: (service as any).driver?.licenseNumber || null,
             emergencyContact: supplierContact,
             operationalRemarks: service.supplierRemarks || null,
+            // Phase 2C — canonical operational reference for this route.
+            // When a RouteStandard is seeded for this route the voucher
+            // shows distance / duration / +buffer / risk flags / notes
+            // sourced from the operator-curated table. When none is
+            // present, the field is null and the voucher detail page
+            // shows only routeName / routeCode (no loud warning — this
+            // is a supplier-facing document, not an operations alert).
+            routeStandard: routeStandard
+              ? {
+                  routeCode: routeStandard.routeCode,
+                  routeName: routeStandard.routeName,
+                  standardDistanceKm: routeStandard.standardDistanceKm,
+                  standardDurationHours: routeStandard.standardDurationHours,
+                  operationalBufferMinutes: routeStandard.operationalBufferMinutes,
+                  longDistanceFlag: routeStandard.longDistanceFlag,
+                  overnightRisk: routeStandard.overnightRisk,
+                  mountainRoadFlag: routeStandard.mountainRoadFlag,
+                  borderCrossingFlag: routeStandard.borderCrossingFlag,
+                  airportRouteFlag: routeStandard.airportRouteFlag,
+                  notes: routeStandard.notes,
+                  confidenceLabel: routeStandard.confidenceLabel,
+                }
+              : null,
           }
         : null,
       hotel: isHotel
@@ -11176,7 +11214,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const snapshot = this.buildOperationalVoucherSnapshot(bookingService, voucherType, warnings);
+    // Phase 2C — load the canonical RouteStandard for this booking service
+    // (if one is seeded). The helper batches both lookup tracks
+    // (touringRoute.code + transferRoute via sourceQuoteItemId) and soft-
+    // fails to an empty map when the table is empty or unreachable, so
+    // voucher generation stays unblocked when no standard exists yet.
+    const routeStandardMap = await loadRouteStandardsForBookingServices(this.prisma, [
+      bookingService as any,
+    ]);
+    const routeStandard = routeStandardMap.get(bookingService.id) || null;
+    const snapshot = this.buildOperationalVoucherSnapshot(bookingService, voucherType, warnings, routeStandard);
     // Mirror of the snapshot fix in PR #22: do NOT fall back to
     // bookingService.notes for the voucher.notes column either. service.notes
     // on hotel rows contains contract metadata with the supplier COST
