@@ -22,24 +22,36 @@ type ItineraryDay = {
 };
 
 // Known Jordan destination keywords — match in priority order so
-// "Wadi Rum" is detected before "Wadi" alone.
-const DESTINATIONS = [
-  'Amman',
-  'Petra',
-  'Wadi Rum',
-  'Dead Sea',
-  'Aqaba',
-  'Jerash',
-  'Madaba',
-  'Mount Nebo',
-  'Kerak',
-  'Ajloun',
-  'Umm Qais',
-  'Bethany',
-  'Beidha',
-  'Shoubak',
-  'Wadi Mujib',
+// "Wadi Rum" is detected before "Wadi" alone. Each carries a subtle
+// glyph that reinforces travel identity in the flow (spec task #10:
+// destination iconography hooks, no large media galleries).
+const DESTINATIONS: Array<{ name: string; icon: string; rhythm: JourneyRhythm }> = [
+  { name: 'Wadi Rum', icon: '🏜', rhythm: 'adventure' },
+  { name: 'Dead Sea', icon: '🏖', rhythm: 'relaxation' },
+  { name: 'Mount Nebo', icon: '⛰', rhythm: 'touring' },
+  { name: 'Wadi Mujib', icon: '🏞', rhythm: 'adventure' },
+  { name: 'Umm Qais', icon: '🏛', rhythm: 'touring' },
+  { name: 'Bethany', icon: '✦', rhythm: 'touring' },
+  { name: 'Beidha', icon: '✦', rhythm: 'touring' },
+  { name: 'Shoubak', icon: '🏰', rhythm: 'touring' },
+  { name: 'Amman', icon: '🏙', rhythm: 'touring' },
+  { name: 'Petra', icon: '✦', rhythm: 'touring' },
+  { name: 'Aqaba', icon: '🌊', rhythm: 'relaxation' },
+  { name: 'Jerash', icon: '🏛', rhythm: 'touring' },
+  { name: 'Madaba', icon: '✦', rhythm: 'touring' },
+  { name: 'Kerak', icon: '🏰', rhythm: 'touring' },
+  { name: 'Ajloun', icon: '🏰', rhythm: 'touring' },
 ];
+
+type JourneyRhythm = 'arrival' | 'touring' | 'adventure' | 'relaxation' | 'departure';
+
+const RHYTHM_TONE: Record<JourneyRhythm, { bg: string; text: string; label: string }> = {
+  arrival: { bg: '#e6f0e6', text: '#3a5a3a', label: 'Arrival' },
+  touring: { bg: '#eef3eb', text: '#5c6b50', label: 'Touring' },
+  adventure: { bg: '#f5ead8', text: '#7a5a30', label: 'Adventure' },
+  relaxation: { bg: '#e4eef0', text: '#3f5a60', label: 'Relaxation' },
+  departure: { bg: '#e6f0e6', text: '#3a5a3a', label: 'Departure' },
+};
 
 type JourneyStop = {
   dayNumber: number;
@@ -51,9 +63,14 @@ type JourneyStop = {
 function extractCity(title: string): string | null {
   const lower = String(title || '').toLowerCase();
   for (const dest of DESTINATIONS) {
-    if (lower.includes(dest.toLowerCase())) return dest;
+    if (lower.includes(dest.name.toLowerCase())) return dest.name;
   }
   return null;
+}
+
+function destinationMeta(city: string): { icon: string; rhythm: JourneyRhythm } {
+  const found = DESTINATIONS.find((d) => d.name === city);
+  return found ? { icon: found.icon, rhythm: found.rhythm } : { icon: '✦', rhythm: 'touring' };
 }
 
 function buildJourney(itineraries: ItineraryDay[]): JourneyStop[] {
@@ -160,6 +177,48 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
         <span style={{ color: '#6b7a6b', fontSize: '0.75rem' }}>v1 destination heuristic</span>
       </div>
 
+      {/* Journey rhythm strip — subtle pace tags (Arrival / Touring /
+          Adventure / Relaxation / Departure) derived from the city
+          rhythm metadata. De-duplicates consecutive same-rhythm tags
+          so the trip reads as a sequence of moods, not noise.
+          Spec task #6: elegant journey rhythm. */}
+      {(() => {
+        const rhythmSequence: JourneyRhythm[] = ['arrival'];
+        for (const m of markers) {
+          const r = destinationMeta(m.city).rhythm;
+          if (rhythmSequence[rhythmSequence.length - 1] !== r) rhythmSequence.push(r);
+        }
+        rhythmSequence.push('departure');
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+            {rhythmSequence.map((r, i) => {
+              const tone = RHYTHM_TONE[r];
+              return (
+                <span key={`${r}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <span
+                    style={{
+                      background: tone.bg,
+                      color: tone.text,
+                      padding: '0.15rem 0.55rem',
+                      borderRadius: 4,
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {tone.label}
+                  </span>
+                  {i < rhythmSequence.length - 1 ? (
+                    <span aria-hidden style={{ color: '#cdd7cd', fontSize: '0.7rem' }}>·</span>
+                  ) : null}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       <ol
         style={{
           listStyle: 'none',
@@ -191,31 +250,35 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
           </div>
           <span aria-hidden style={{ color: '#94a395', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.05em' }}>→</span>
         </li>
-        {markers.map((m, idx) => (
-          <li key={`${m.city}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cdd7cd',
-                borderRadius: 999,
-                padding: '0.4rem 0.8rem',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                minWidth: '5rem',
-              }}
-              title={`Day ${m.firstDay}${m.lastDay > m.firstDay ? `–${m.lastDay}` : ''}`}
-            >
-              <span style={{ color: '#3a5a3a', fontWeight: 700, fontSize: '0.88rem', lineHeight: 1.1 }}>
-                {m.city}
-              </span>
-              <span style={{ color: '#6b7a6b', fontSize: '0.7rem', marginTop: '0.1rem' }}>
-                {m.nights === 1 ? `Day ${m.firstDay}` : `${m.nights} nights`}
-              </span>
-            </div>
-            <span aria-hidden style={{ color: '#94a395', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.05em' }}>→</span>
-          </li>
-        ))}
+        {markers.map((m, idx) => {
+          const meta = destinationMeta(m.city);
+          return (
+            <li key={`${m.city}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #cdd7cd',
+                  borderRadius: 999,
+                  padding: '0.4rem 0.85rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  minWidth: '5.5rem',
+                }}
+                title={`Day ${m.firstDay}${m.lastDay > m.firstDay ? `–${m.lastDay}` : ''} · ${RHYTHM_TONE[meta.rhythm].label}`}
+              >
+                <span style={{ color: '#3a5a3a', fontWeight: 700, fontSize: '0.88rem', lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span aria-hidden style={{ fontSize: '0.9rem' }}>{meta.icon}</span>
+                  {m.city}
+                </span>
+                <span style={{ color: '#6b7a6b', fontSize: '0.7rem', marginTop: '0.1rem' }}>
+                  {m.nights === 1 ? `Day ${m.firstDay}` : `${m.nights} nights`}
+                </span>
+              </div>
+              <span aria-hidden style={{ color: '#94a395', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.05em' }}>→</span>
+            </li>
+          );
+        })}
         {/* Departure marker */}
         <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
           <div
