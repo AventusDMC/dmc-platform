@@ -2864,8 +2864,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           {/* Journey flow visualization — horizontal city timeline rendered
               from the itinerary days. Heuristic destination extraction;
               compresses consecutive same-city days into one marker with
-              night count. Arrival/departure markers frame the trip. */}
-          <QuoteJourneyFlow itineraries={quote.itineraries} />
+              night count. Arrival/departure markers frame the trip.
+              Reads from the merged readinessQuote.itineraries, which falls
+              back to the new quoteItineraryDay records when the legacy
+              Itinerary array is empty — older code path only saw the legacy
+              model so the journey flow rendered an empty-state on every
+              new-model quote even when the day planner had 8 days. */}
+          <QuoteJourneyFlow itineraries={readinessQuote.itineraries} />
 
           {/* Journey highlights — core experiences (activities/excursions)
               pulled out of the quote items into a calm summary card.

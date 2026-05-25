@@ -660,7 +660,13 @@ function getDayCompletenessRules(quoteType: Quote['quoteType']) {
 
 function formatDayHeading(day: QuoteReadinessDay, inferredCity?: string | null) {
   const dayLabel = `Day ${String(day.dayNumber).padStart(2, '0')}`;
-  const locationLabel = day.title?.trim() || inferredCity || `Day ${day.dayNumber}`;
+  const rawTitle = day.title?.trim() || '';
+  // Existing quotes saved their mid-day titles as "Day 2" / "Day 3" before
+  // the PR-#74 city-led title interleave. Treat a bare "Day N" string as
+  // stale — defer to inferredCity so older quotes also read as a journey
+  // ("Day 02 - Petra") without needing a migration.
+  const isStaleDayLabel = /^day\s+\d+$/i.test(rawTitle);
+  const locationLabel = (!isStaleDayLabel && rawTitle) || inferredCity || `Day ${day.dayNumber}`;
   return `${dayLabel} - ${locationLabel}`;
 }
 
@@ -3516,17 +3522,21 @@ function ScopePlanner({
           </div>
         </div>
         <div className="quote-preview-total-list">
+          {/* "Pending" reads calmer than "Missing" on a Workflow Summary
+              row that is by definition empty at quote-creation time —
+              the operator hasn't done anything wrong yet, they're just
+              about to start. */}
           <div>
             <span>Hotels</span>
-            <strong>{workflow.hasHotel ? 'Started' : 'Missing'}</strong>
+            <strong>{workflow.hasHotel ? 'Started' : 'Pending'}</strong>
           </div>
           <div>
             <span>Transport</span>
-            <strong>{workflow.hasTransport ? 'Started' : 'Missing'}</strong>
+            <strong>{workflow.hasTransport ? 'Started' : 'Pending'}</strong>
           </div>
           <div>
             <span>Activities</span>
-            <strong>{workflow.hasActivity ? 'Started' : 'Missing'}</strong>
+            <strong>{workflow.hasActivity ? 'Started' : 'Pending'}</strong>
           </div>
           <div>
             <span>Day coverage</span>
@@ -3753,15 +3763,19 @@ function ScopePlanner({
                 <section className="quote-service-side-section">
                   <div className="workspace-section-head">
                     <div>
-                      <p className="eyebrow">Completeness</p>
-                      <h4>What still needs coverage?</h4>
+                      <p className="eyebrow">Day coverage</p>
+                      <h4>What this day still needs</h4>
                     </div>
                   </div>
                   <div className="quote-service-day-checklist">
                     {completeness.map((item) => (
                       <div key={item.key} className={`quote-service-check ${item.complete ? 'quote-service-check-complete' : 'quote-service-check-missing'}`}>
                         <span>{item.label}</span>
-                        <strong>{item.complete ? 'Added' : 'Missing'}</strong>
+                        {/* Softer wording — "Pending" instead of red-flag
+                            "Missing" on a fresh day card so the operator
+                            doesn't see a wall of alarms before they've had
+                            a chance to fill anything in. */}
+                        <strong>{item.complete ? 'Added' : 'Pending'}</strong>
                       </div>
                     ))}
                   </div>
