@@ -912,15 +912,24 @@ async function buildPreviewDraft(values: {
       ? assignGeneratedItineraryCitiesByNights(generatedDays, reorderedNightStops)
       : assignGeneratedItineraryCities(generatedDays, cities);
 
-  const itineraryCities = days.map((day) => day.city);
+  // Per-day transport generation. Operator's mental model: every day card
+  // has a corresponding transport row indicating what happens that day:
+  //   Day 1 (arrival):     Arrival -> first city  (airport pickup)
+  //   In-city stay day:    City -> City  (marker, no actual transfer)
+  //   Transit day:         previous city -> current city
+  //   Last day (departure): last city -> Departure  (airport dropoff)
+  //
+  // This is uniform with the day cards — N days -> N transport rows.
+  // PR #87 suppressed same-city rows as ghosts; PR #89 split into
+  // three buckets. Both were operator-confusing — this single-loop
+  // design matches what they expect to see on each day card.
 
-  // Helper for both inter-city and airport transfers — builds the
-  // PreviewTransport shape with all the optimization metadata.
   const buildTransportEntry = async (
     dayNumber: number,
     fromCity: string,
     toCity: string,
-    routeOverride?: ReturnType<typeof findRoute>,
+    routeOverride: ReturnType<typeof findRoute> | undefined,
+    kind: 'arrival' | 'departure' | 'transit' | 'in-city',
   ) => {
     const route = routeOverride !== undefined ? routeOverride : findRoute(values.routes, fromCity, toCity);
     const distanceEstimate = getRouteDistanceEstimate(route, fromCity, toCity);
@@ -934,6 +943,19 @@ async function buildPreviewDraft(values: {
           optimizationMode: values.optimizationMode,
         })
       : null;
+    let optimizationReason: string;
+    if (selectedCandidate) {
+      optimizationReason =
+        values.optimizationMode === 'comfort'
+          ? `Selected ${selectedCandidate.vehicle.name} for comfort, luggage space, and fit for ${values.pax} pax.`
+          : `Selected ${selectedCandidate.vehicle.name} as best value at ${selectedCandidate.currency} ${selectedCandidate.price}.`;
+    } else if (kind === 'in-city') {
+      optimizationReason = `Staying in ${fromCity} today — no inter-city transfer required. Add an in-city tour or hourly disposal on the day card if needed.`;
+    } else if (route) {
+      optimizationReason = 'Route matched, but transport pricing is not configured yet.';
+    } else {
+      optimizationReason = `No catalog route from ${fromCity} to ${toCity}. Add it in Transfer Routes admin.`;
+    }
     return {
       dayNumber,
       fromCity,
@@ -943,63 +965,41 @@ async function buildPreviewDraft(values: {
       isTravelHeavy: (distanceEstimate?.travelTimeHours ?? 0) > 4,
       route,
       selectedCandidate,
-      optimizationReason: selectedCandidate
-        ? values.optimizationMode === 'comfort'
-          ? `Selected ${selectedCandidate.vehicle.name} for comfort, luggage space, and fit for ${values.pax} pax.`
-          : `Selected ${selectedCandidate.vehicle.name} as best value at ${selectedCandidate.currency} ${selectedCandidate.price}.`
-        : route
-          ? 'Route matched, but transport pricing is not configured yet.'
-          : `No catalog route from ${fromCity} to ${toCity}. Add it in Transfer Routes admin.`,
+      optimizationReason,
     };
   };
 
-  // Day 1 ARRIVAL transfer: airport -> first city. Auto-generated because
-  // every DMC quote needs an airport pickup. Previously this slot was
-  // either generating "Amman -> Amman" (suppressed in PR #87) or
-  // missing entirely — operators had to add it manually on every quote.
-  const firstCity = days[0]?.city || '';
-  const arrivalRoute = firstCity ? findAirportRoute(values.routes, firstCity, 'arrival') : null;
-  const arrivalFromLabel = arrivalRoute?.fromPlace?.name?.trim() || 'Airport';
-  const arrivalTransfer = firstCity
-    ? await buildTransportEntry(1, arrivalFromLabel, firstCity, arrivalRoute)
-    : null;
+  const transports = await Promise.all(
+    days.map(async (day, index) => {
+      const previousDay = index > 0 ? days[index - 1] : null;
+      const isFirst = index === 0;
+      const isLast = index === days.length - 1;
+      const previousCity = previousDay?.city || '';
+      const currentCity = day.city;
 
-  // Last day DEPARTURE transfer: last city -> airport.
-  const lastDay = days[days.length - 1];
-  const lastCity = lastDay?.city || '';
-  const departureRoute = lastCity ? findAirportRoute(values.routes, lastCity, 'departure') : null;
-  const departureToLabel = departureRoute?.toPlace?.name?.trim() || 'Airport';
-  const departureTransfer = lastDay && lastCity
-    ? await buildTransportEntry(lastDay.dayNumber, lastCity, departureToLabel, departureRoute)
-    : null;
-
-  // Inter-city transit transfers — skip same-city pairs entirely (real
-  // in-city stays don't need a transfer row, and arrival/departure are
-  // already handled separately above).
-  const interCityTransports = (await Promise.all(
-    itineraryCities.slice(0, -1).map(async (city, index) => {
-      const toCity = itineraryCities[index + 1];
-      const normalizedFrom = normalizeText(city);
-      const normalizedTo = normalizeText(toCity);
-      if (normalizedFrom && normalizedTo && normalizedFrom === normalizedTo) {
-        return null;
+      if (isFirst) {
+        // ARRIVAL transfer: Airport (or "Arrival" placeholder) -> first city.
+        const route = currentCity ? findAirportRoute(values.routes, currentCity, 'arrival') : null;
+        const fromLabel = route?.fromPlace?.name?.trim() || 'Arrival';
+        return buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
       }
-      // The transit transfer happens on the ARRIVAL day (index+1+1 because
-      // arrays are 0-indexed and the new city is the second day in the
-      // pair). That matches operator intuition — "Day 3 Petra" includes
-      // the transfer from Amman.
-      return buildTransportEntry(index + 2, city, toCity);
+      if (isLast) {
+        // DEPARTURE transfer: last city -> Airport (or "Departure" placeholder).
+        const route = currentCity ? findAirportRoute(values.routes, currentCity, 'departure') : null;
+        const toLabel = route?.toPlace?.name?.trim() || 'Departure';
+        return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
+      }
+      const normalizedPrevious = normalizeText(previousCity);
+      const normalizedCurrent = normalizeText(currentCity);
+      const isInCityStay = normalizedPrevious && normalizedCurrent && normalizedPrevious === normalizedCurrent;
+      if (isInCityStay) {
+        // SAME-CITY day: "Staying in X today" marker, no inter-city transfer.
+        return buildTransportEntry(day.dayNumber, currentCity, currentCity, null, 'in-city');
+      }
+      // TRANSIT: previous city -> current city.
+      return buildTransportEntry(day.dayNumber, previousCity, currentCity, undefined, 'transit');
     }),
-  )).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-  // Compose final transports: arrival (Day 1) + transit (intermediate)
-  // + departure (last day). Operators see the full transport chain
-  // covering airport pickup, every city transition, and airport dropoff.
-  const transports = [
-    ...(arrivalTransfer ? [arrivalTransfer] : []),
-    ...interCityTransports,
-    ...(departureTransfer ? [departureTransfer] : []),
-  ];
+  );
 
   const hotels = days.slice(0, values.nightCount).map((day) => ({
     dayNumber: day.dayNumber,
