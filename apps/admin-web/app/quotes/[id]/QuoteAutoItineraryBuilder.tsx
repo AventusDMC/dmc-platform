@@ -448,6 +448,8 @@ function findMeetAssistService(services: SupplierService[]) {
   );
 }
 
+type HotelSetupMissingReason = 'no-hotel-in-city' | 'no-valid-contract' | 'no-rate' | null;
+
 function findHotelSetup(values: {
   city: string;
   travelDate: string | null;
@@ -455,14 +457,26 @@ function findHotelSetup(values: {
   hotelContracts: HotelContract[];
   hotelRates: HotelRate[];
   optimizationMode: OptimizationMode;
-}) {
+}): {
+  hotel: Hotel | null;
+  contract: HotelContract | null;
+  rate: HotelRate | null;
+  // missingReason surfaces WHICH piece is absent so the preview UI can
+  // give the operator an actionable cue (e.g., "No Petra hotel in catalog
+  // — add one in /hotels" vs. "Petra hotel exists but no 2026 contract
+  // — add one in /hotel-contracts" vs. "contract exists but no rates —
+  // add rates"). Previously the day card said the generic "Needs hotel
+  // contract and rate" for all three causes and the operator had no
+  // idea what to actually fix.
+  missingReason: HotelSetupMissingReason;
+} {
   const cityKey = normalizeText(values.city);
   const cityHotels = values.hotels.filter(
     (candidate) => normalizeText(candidate.city).includes(cityKey) || cityKey.includes(normalizeText(candidate.city)),
   );
 
   if (cityHotels.length === 0) {
-    return { hotel: null, contract: null, rate: null };
+    return { hotel: null, contract: null, rate: null, missingReason: 'no-hotel-in-city' };
   }
 
   const travelTime = values.travelDate ? new Date(`${values.travelDate}T00:00:00`).getTime() : null;
@@ -486,7 +500,7 @@ function findHotelSetup(values: {
     return { hotel, contract, rate, hasValidContract: validContracts.length > 0 };
   });
 
-  return setups.sort((left, right) => {
+  const best = setups.sort((left, right) => {
     const leftReady = left.contract && left.rate ? 1 : 0;
     const rightReady = right.contract && right.rate ? 1 : 0;
 
@@ -511,6 +525,22 @@ function findHotelSetup(values: {
 
     return (right.rate?.cost ?? 0) - (left.rate?.cost ?? 0);
   })[0];
+
+  // Surface WHICH piece is missing so the day-card preview can give the
+  // operator an actionable cue ("Petra hotel has no 2026 contract — add
+  // one in /hotel-contracts") instead of the generic "Needs hotel
+  // contract and rate" message that fired for all three causes equally.
+  let missingReason: HotelSetupMissingReason = null;
+  if (!best?.hotel) missingReason = 'no-hotel-in-city';
+  else if (!best.contract) missingReason = 'no-valid-contract';
+  else if (!best.rate) missingReason = 'no-rate';
+
+  return {
+    hotel: best?.hotel ?? null,
+    contract: best?.contract ?? null,
+    rate: best?.rate ?? null,
+    missingReason,
+  };
 }
 
 function getHotelComfortScore(hotel: Hotel) {
@@ -2035,19 +2065,54 @@ export function QuoteAutoItineraryBuilder({
                 <em>{item.optimizationReason}</em>
               </div>
             ))}
-            {preview.hotels.map((item) => (
-              <div key={`hotel-${item.dayNumber}-${item.city}`}>
-                <span>Hotel</span>
-                <strong>
-                  Night {item.dayNumber}: {item.city}
-                </strong>
-                <em>
-                  {item.hotel && item.contract && item.rate
-                    ? `${item.hotel.name} | ${item.contract.name} | ${item.rate.occupancyType}/${item.rate.mealPlan}`
-                    : 'Needs hotel contract and rate'}
-                </em>
-              </div>
-            ))}
+            {preview.hotels.map((item) => {
+              const ready = item.hotel && item.contract && item.rate;
+              // Build an actionable cue based on what's actually missing.
+              // Generic "Needs hotel contract and rate" used to fire for
+              // three distinct causes — now the operator sees which.
+              let cue: React.ReactNode;
+              if (ready) {
+                cue = `${item.hotel!.name} | ${item.contract!.name} | ${item.rate!.occupancyType}/${item.rate!.mealPlan}`;
+              } else if ((item as { missingReason?: string }).missingReason === 'no-hotel-in-city') {
+                cue = (
+                  <>
+                    No {item.city} hotel in catalog —{' '}
+                    <Link href="/hotels" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                      add one in Hotels admin
+                    </Link>
+                  </>
+                );
+              } else if ((item as { missingReason?: string }).missingReason === 'no-valid-contract') {
+                cue = (
+                  <>
+                    {item.hotel?.name || item.city} has no contract covering this travel date —{' '}
+                    <Link href="/hotel-contracts" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                      add a contract
+                    </Link>
+                  </>
+                );
+              } else if ((item as { missingReason?: string }).missingReason === 'no-rate') {
+                cue = (
+                  <>
+                    {item.hotel?.name || item.city} contract has no rates —{' '}
+                    <Link href="/hotel-rates" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                      add rates
+                    </Link>
+                  </>
+                );
+              } else {
+                cue = 'Needs hotel contract and rate';
+              }
+              return (
+                <div key={`hotel-${item.dayNumber}-${item.city}`}>
+                  <span>Hotel</span>
+                  <strong>
+                    Night {item.dayNumber}: {item.city}
+                  </strong>
+                  <em>{cue}</em>
+                </div>
+              );
+            })}
             {preview.activities.map((item) => (
               <div key={`activity-${item.dayNumber}-${item.city}`}>
                 <span>Activity</span>
