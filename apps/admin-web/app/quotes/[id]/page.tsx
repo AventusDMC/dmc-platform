@@ -2470,48 +2470,170 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           Show ▾
         </span>
       </summary>
-      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        {activeConvertBlockers.map((blocker) => {
-          const tone = blockerCalmTone(blocker.source);
-          return (
-            <Link
-              key={`${blocker.blockerType}-${blocker.itemId || 'quote'}-${blocker.reason}`}
-              href={blocker.href}
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                alignItems: 'flex-start',
-                padding: '0.4rem 0.6rem',
-                background: tone.bg,
-                border: '1px solid #efe7d4',
-                borderRadius: 6,
-                textDecoration: 'none',
-                fontSize: '0.83rem',
-                color: tone.text,
-              }}
-            >
-              <span
-                aria-hidden
+      {/* Consolidated category groups — instead of N identical rows
+          ("Imported Activity — Pricing review" x5), bucket by the
+          calmed reason so the operator sees "5 activities need pricing
+          review" with a sub-expansion for individual items.
+          Spec task #1 + #2: consolidate + group by category. */}
+      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        {(() => {
+          type Group = {
+            categoryKey: string;
+            categoryLabel: string;
+            severity: 'informational' | 'review' | 'caution' | 'blocking';
+            items: Array<{ blocker: typeof activeConvertBlockers[number]; calmedReason: string; itemTypeLabel: string }>;
+          };
+          // Pick the category bucket for each blocker based on the calmed
+          // reason — the same translation map used in the row rendering.
+          const groupKeyFor = (calmed: string, source: string): { key: string; label: string; severity: Group['severity'] } => {
+            const lower = calmed.toLowerCase();
+            if (lower.includes('status mismatch') || lower.includes('accept the quote')) {
+              return { key: 'status', label: 'Status Review', severity: 'blocking' };
+            }
+            if (lower.includes('pricing') && lower.includes('timing')) {
+              return { key: 'pricing-timing', label: 'Pricing & Timing Review', severity: 'review' };
+            }
+            if (lower.includes('pricing')) return { key: 'pricing', label: 'Pricing Review', severity: 'review' };
+            if (lower.includes('timing')) return { key: 'timing', label: 'Timing Review', severity: 'review' };
+            if (lower.includes('meeting point') || lower.includes('location')) {
+              return { key: 'operational-fields', label: 'Operational Fields', severity: 'review' };
+            }
+            if (lower.includes('supplier')) return { key: 'supplier', label: 'Supplier Review', severity: 'caution' };
+            if (lower.includes('voucher')) return { key: 'voucher', label: 'Voucher Review', severity: 'review' };
+            if (String(source).toLowerCase().includes('blocker') || String(source).toLowerCase().includes('error')) {
+              return { key: 'other-blocking', label: 'Coordination Required', severity: 'blocking' };
+            }
+            return { key: 'other', label: 'Other', severity: 'informational' };
+          };
+          const itemTypeLabelFor = (blocker: typeof activeConvertBlockers[number]): string => {
+            const name = blocker.itemName || '';
+            if (name.toLowerCase().includes('activity')) return 'activity';
+            if (name.toLowerCase().includes('transport')) return 'transport';
+            if (name.toLowerCase().includes('hotel')) return 'hotel';
+            if (name.toLowerCase().includes('service')) return 'service';
+            if (name.toLowerCase().includes('entrance')) return 'entrance';
+            return 'item';
+          };
+          const groupsMap = new Map<string, Group>();
+          for (const blocker of activeConvertBlockers) {
+            const calmed = calmWording(blocker.reason);
+            const meta = groupKeyFor(calmed, blocker.source);
+            const itemTypeLabel = itemTypeLabelFor(blocker);
+            const cur = groupsMap.get(meta.key) || {
+              categoryKey: meta.key,
+              categoryLabel: meta.label,
+              severity: meta.severity,
+              items: [],
+            };
+            cur.items.push({ blocker, calmedReason: calmed, itemTypeLabel });
+            groupsMap.set(meta.key, cur);
+          }
+          // Severity sort: blocking → caution → review → informational
+          const SEVERITY_ORDER: Record<Group['severity'], number> = {
+            blocking: 0,
+            caution: 1,
+            review: 2,
+            informational: 3,
+          };
+          const groups = [...groupsMap.values()].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+          const SEVERITY_TONE: Record<Group['severity'], { bg: string; border: string; text: string; dot: string; label: string }> = {
+            blocking: { bg: '#faf2f2', border: '#e8c8c8', text: '#7a4242', dot: '#a85454', label: 'Blocking' },
+            caution: { bg: '#fbf6ea', border: '#e8d5a8', text: '#8b5e34', dot: '#c7956b', label: 'Caution' },
+            review: { bg: '#fbf9f4', border: '#e8dcc4', text: '#6b5933', dot: '#c7956b', label: 'Review' },
+            informational: { bg: '#f5f5f5', border: '#dcdcdc', text: '#555555', dot: '#999999', label: 'Info' },
+          };
+          // Pluralise item-type label for the consolidated heading.
+          const pluralise = (label: string, n: number) => {
+            if (n === 1) return label;
+            if (label === 'item') return 'items';
+            if (label === 'activity') return 'activities';
+            if (label === 'entrance') return 'entrances';
+            return `${label}s`;
+          };
+          // Build the consolidated headline for a group.
+          const buildHeadline = (group: Group): string => {
+            // If all items share the same item type, emit "N <type>s need
+            // <action>". Otherwise generic count.
+            const types = [...new Set(group.items.map((i) => i.itemTypeLabel))];
+            if (group.items.length === 1) {
+              const it = group.items[0];
+              return `${it.itemTypeLabel === 'item' ? 'Item' : titleCase(it.itemTypeLabel)} needs ${group.categoryLabel.toLowerCase()}`;
+            }
+            if (types.length === 1) {
+              return `${group.items.length} ${pluralise(types[0], group.items.length)} need ${group.categoryLabel.toLowerCase()}`;
+            }
+            return `${group.items.length} items need ${group.categoryLabel.toLowerCase()}`;
+          };
+          return groups.map((group) => {
+            const tone = SEVERITY_TONE[group.severity];
+            return (
+              <details
+                key={group.categoryKey}
                 style={{
-                  display: 'inline-block',
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: tone.dot,
-                  marginTop: '0.5rem',
-                  flexShrink: 0,
+                  background: tone.bg,
+                  border: `1px solid ${tone.border}`,
+                  borderRadius: 8,
+                  padding: '0.45rem 0.65rem',
                 }}
-              />
-              <span style={{ flex: 1 }}>
-                <strong style={{ fontWeight: 600 }}>
-                  {blocker.itemName ? blocker.itemName : titleCase(blocker.blockerType)}
-                </strong>
-                {' — '}
-                {calmWording(blocker.reason)}
-              </span>
-            </Link>
-          );
-        })}
+              >
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    listStyle: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      display: 'inline-block',
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: tone.dot,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <strong style={{ color: tone.text, fontSize: '0.86rem', fontWeight: 600 }}>
+                    {buildHeadline(group)}
+                  </strong>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      color: tone.text,
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      opacity: 0.8,
+                    }}
+                  >
+                    {tone.label}
+                  </span>
+                </summary>
+                <ul style={{ listStyle: 'none', margin: '0.55rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  {group.items.map((entry, idx) => (
+                    <li key={`${entry.blocker.blockerType}-${entry.blocker.itemId || idx}`}>
+                      <Link
+                        href={entry.blocker.href}
+                        style={{
+                          color: tone.text,
+                          fontSize: '0.82rem',
+                          textDecoration: 'none',
+                          opacity: 0.92,
+                        }}
+                      >
+                        · {entry.blocker.itemName || titleCase(entry.blocker.blockerType)}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            );
+          });
+        })()}
       </div>
     </details>
   ) : null;
