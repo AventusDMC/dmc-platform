@@ -746,12 +746,18 @@ describe('quote detail page regression', () => {
   });
 
   it('shows sell-price summary while keeping supplier cost out of client-facing exports', () => {
+    // Consolidation pass 2026-05: the "Internal / Admin Profit" card on
+    // the Overview tab was removed because the right-sidebar Financial
+    // Summary card (rendered via QuotePricingSummaryCard, pinned across
+    // every tab) shows the exact same sell/cost/profit/margin data.
+    // The pricing math contracts below still hold — totals are computed
+    // and passed to QuoteSummaryPanel + QuotePricingSummaryCard.
     expectSourceContains(pageSource, [
-      '<p className="eyebrow">Internal / Admin Profit</p>',
-      '<span>Total sell</span>',
-      '<span>Total cost</span>',
-      '<span>Gross profit</span>',
-      '<span>Margin %</span>',
+      "title=\"Financial summary\"",
+      "{ label: 'Total Sell', value: formatMoney(quote.totalSell, quote.quoteCurrency)",
+      "{ label: 'Total Cost', value: formatMoney(quote.totalCost, quote.quoteCurrency)",
+      "{ label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency)",
+      "{ label: 'Margin %', value: formatMarginPercent(quoteMarginPercent)",
       "{ label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' }",
       '<QuoteSummaryPanel',
       'totalSell={quote.totalSell}',

@@ -2984,52 +2984,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
           {activeTab === 'overview' ? (
             <div className="section-stack">
-            <section className="quote-client-overview-grid">
-              <article className="workspace-section tab-panel-card quote-trip-highlights-card">
-                <div className="workspace-section-head">
-                  <div>
-                    <p className="eyebrow">Trip Highlights</p>
-                    <h2>Key experiences</h2>
-                  </div>
-                </div>
-                {tripHighlights.length === 0 ? (
-                  <p className="detail-copy">Add itinerary days and services to surface client-facing trip highlights.</p>
-                ) : (
-                  <ul className="quote-trip-highlights-list">
-                    {tripHighlights.map((highlight) => (
-                      <li key={highlight}>{highlight}</li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-
-              <article className="workspace-section tab-panel-card quote-featured-services-card">
-                <div className="workspace-section-head">
-                  <div>
-                    <p className="eyebrow">Services</p>
-                    <h2>Featured services</h2>
-                  </div>
-                  <Link href={buildStepHref('services')} className="secondary-button">
-                    Manage all
-                  </Link>
-                </div>
-                {featuredServices.length === 0 ? (
-                  <p className="detail-copy">No services have been added yet.</p>
-                ) : (
-                  <div className="quote-featured-service-list">
-                    {featuredServices.map((item) => (
-                      <div key={item.id} className="quote-featured-service-row">
-                        <div>
-                          <strong>{getQuoteItemDisplayName(item)}</strong>
-                          <span>{getQuoteItemCategory(item)}</span>
-                        </div>
-                        <span>{item.serviceDate ? formatDate(item.serviceDate) : 'Date pending'}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </article>
-            </section>
+            {/* Consolidation pass 2026-05: removed the
+                quote-client-overview-grid which held two cards:
+                  - "Trip Highlights" — Journey Highlights (sage panel
+                    pinned at the top of the page) already shows the
+                    client-facing experiences.
+                  - "Featured services" — the Services tab has the full
+                    sortable list with edit affordances; this card was
+                    just a 5-row preview with no actions, so it became
+                    pure noise on a quote with any real service count.
+                Operator who wants experiences -> Journey Highlights.
+                Operator who wants the full list -> Services tab. */}
 
             <section className="split-layout">
               <article className="workspace-section tab-panel-card">
@@ -3089,61 +3054,18 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               </article>
 
               <div className="section-stack">
-                <article className="detail-card quote-admin-profit-card">
-                  <p className="eyebrow">Internal / Admin Profit</p>
-                  <div className="quote-preview-total-list quote-admin-profit-grid">
-                    <div>
-                      <span>Total sell</span>
-                      <strong>{formatMoney(quote.totalSell, quote.quoteCurrency)}</strong>
-                    </div>
-                    <div>
-                      <span>Total cost</span>
-                      <strong>{formatMoney(quote.totalCost, quote.quoteCurrency)}</strong>
-                    </div>
-                    <div>
-                      <span>Gross profit</span>
-                      <strong>{formatMoney(quoteProfit, quote.quoteCurrency)}</strong>
-                      {quoteMarginWarning ? <em className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</em> : null}
-                    </div>
-                    <div>
-                      <span>Margin %</span>
-                      <strong>{formatMarginPercent(quoteMarginPercent)}</strong>
-                    </div>
-                    <div>
-                      <span>Quote currency</span>
-                      <strong>{quote.quoteCurrency}</strong>
-                    </div>
-                    <div>
-                      <span>Price per pax</span>
-                      <strong>{formatMoney(quote.pricePerPax, quote.quoteCurrency)}</strong>
-                    </div>
-                  </div>
-                </article>
-                <article className="detail-card">
-                  <p className="eyebrow">Attention</p>
-                  {overviewWarnings.length === 0 ? (
-                    <p className="detail-copy">No immediate pricing, validity, or workflow warnings.</p>
-                  ) : (
-                    overviewWarnings.map((message) => (
-                      <p key={message} className="form-error">
-                        {message}
-                      </p>
-                    ))
-                  )}
-                  {incompleteActivityItemLabels.length > 0 ? (
-                    <div className="quote-warning-links">
-                      {incompleteActivityItemLabels.slice(0, 5).map((item) => (
-                        <Link
-                          key={item.itemId || item.itemName}
-                          href={`${buildStepHref('services')}#quote-item-${item.itemId || ''}`}
-                          className="secondary-button"
-                        >
-                          Edit {item.itemName} {item.itemId ? `(${item.itemId})` : ''}: {item.missingWorkflowFields.join(', ')}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
+                {/* Consolidation pass 2026-05: removed three cards
+                    from this right column:
+                      - "Internal / Admin Profit" — the right-sidebar
+                        Financial Summary card shows the exact same
+                        total sell / cost / profit / margin (and is
+                        pinned across every tab, not just Overview).
+                      - "Attention" — Pricing Audit + Quote Readiness +
+                        Operational Review chips (all sage panels above
+                        the day cards) surface the same warnings with
+                        better grouping and click-through.
+                      - "Segments" — placeholder static text for a
+                        future multi-country feature, no actual data. */}
                 <article className="detail-card">
                   <p className="eyebrow">Trip Summary</p>
                   <div className="quote-preview-total-list">
@@ -3164,13 +3086,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       <strong>{versions.length}</strong>
                     </div>
                   </div>
-                </article>
-                <article className="detail-card">
-                  <p className="eyebrow">Segments</p>
-                  <h3>Multi-country planning</h3>
-                  <p className="detail-copy">
-                    This workspace is ready to host ordered country segments later. For now, keep the current Jordan operating plan here and track external package notes in the proposal/review text.
-                  </p>
                 </article>
               </div>
             </section>
