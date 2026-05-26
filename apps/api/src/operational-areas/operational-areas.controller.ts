@@ -52,7 +52,7 @@ export class OperationalAreasController {
    */
   @Post('preview-code')
   @Roles('admin', 'operations')
-  previewCode(@Body() body: { name: string; type?: string; excludeId?: string }) {
+  previewCode(@Body() body: { name: string; type?: string; excludeId?: string; manualCode?: string }) {
     return this.operationalAreasService.previewAreaCode(body);
   }
 

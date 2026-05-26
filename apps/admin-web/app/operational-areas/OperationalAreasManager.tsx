@@ -64,6 +64,11 @@ const EMPTY_FORM: FormState = {
 
 type PreviewResponse = {
   suggestedCode: string;
+  // The code the backend actually validated. Equals form.code when the
+  // operator manually edited; equals suggestedCode otherwise. Drives
+  // the chip + alternatives + reason text.
+  checkedCode?: string;
+  usingManualCode?: boolean;
   alternatives: string[];
   existingMatch: { id: string; code: string; name: string; type: string; city: string; isActive: boolean } | null;
   similarMatch: { id: string; code: string; name: string; type: string; city: string } | null;
@@ -93,9 +98,20 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced preview-code call — triggers on name/type change and on
-  // editingId change (so switching to edit mode previews against the
-  // existing code with excludeId filtering self-matches).
+  // Debounced preview-code call.
+  //
+  // Two validation modes the backend supports:
+  //   - manualCode mode (when operator typed into the Code field OR
+  //     adopted an alternative): backend checks the operator's EXACT
+  //     code for duplicates. The chip / reason / alternatives describe
+  //     THAT code's situation. This is the fix for "operator types AQS
+  //     and gets warned about AQJ" — AQS is what they'll save, so AQS
+  //     is what we validate.
+  //   - auto mode (operator hasn't touched the Code field): backend
+  //     generates a code from the name and validates that. UI auto-
+  //     fills the Code field with the suggestion.
+  //
+  // Fires on name / type / code / editingId / manuallyEdited changes.
   useEffect(() => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
     if (!form.name.trim()) {
@@ -112,6 +128,12 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
             name: form.name,
             type: form.type,
             excludeId: editingId || undefined,
+            // Send the operator's current code value when they've
+            // manually edited it OR when they've adopted an alternative
+            // (in which case form.code differs from the auto-generated
+            // suggestion). Backend validates THIS code, not the auto-
+            // generated one.
+            manualCode: codeManuallyEdited ? form.code : undefined,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -124,7 +146,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
         // Auto-fill the Code field with the suggestion unless the
         // operator has manually edited it.
         if (!codeManuallyEdited && result.suggestedCode) {
-          setForm((f) => ({ ...f, code: result.suggestedCode }));
+          setForm((f) => (f.code !== result.suggestedCode ? { ...f, code: result.suggestedCode } : f));
         }
       } catch {
         setPreview(null);
@@ -135,7 +157,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
     return () => {
       if (previewTimer.current) clearTimeout(previewTimer.current);
     };
-  }, [form.name, form.type, editingId, codeManuallyEdited]);
+  }, [form.name, form.type, form.code, editingId, codeManuallyEdited]);
 
   // Apply default-flag suggestions from the area type — operator can
   // still override per row. We only set flags when not editing (avoid
@@ -580,6 +602,11 @@ function CodeFieldWithPreview({
   manuallyEdited: boolean;
   onAdoptAlternative: (alt: string) => void;
 }) {
+  // Diverged = operator's current Code differs from the auto-generated
+  // suggestion (either manually typed or alternative-chip adopted). The
+  // ↻ "Use suggested" link only makes sense when diverged.
+  const suggestion = preview?.suggestedCode || '';
+  const diverged = Boolean(suggestion && suggestion !== value);
   // Color-coded confidence chip + alternative chips. Operator workflow:
   //   1. Type the Name. Code auto-fills with the ERP suggestion.
   //   2. If chip is green → save normally.
@@ -608,7 +635,7 @@ function CodeFieldWithPreview({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' }}>
         <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Code *</span>
-        {manuallyEdited ? (
+        {diverged ? (
           <button
             type="button"
             onClick={onReset}
@@ -621,9 +648,9 @@ function CodeFieldWithPreview({
               cursor: 'pointer',
               textDecoration: 'underline',
             }}
-            title="Discard manual edits and use the auto-generated suggestion"
+            title={`Switch back to the auto-generated suggestion (${suggestion})`}
           >
-            ↻ Use suggested
+            ↻ Use suggested ({suggestion})
           </button>
         ) : null}
       </div>
