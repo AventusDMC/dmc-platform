@@ -165,6 +165,175 @@ export class HotelContractsService {
     return resolved;
   }
 
+  /**
+   * Room Types lightweight summary for the contract workspace.
+   *
+   * Returns one row per `HotelRoomCategory` belonging to this contract's
+   * hotel, plus per-room aggregates derived from `HotelRate`:
+   *   - rateCount: how many rate rows reference this room category
+   *   - occupancyTypes: distinct occupancy buckets (SGL / DBL / TPL / ...)
+   *   - mealPlans: distinct meal-plan codes (BB / HB / FB / ...)
+   *   - seasonCount: distinct season names
+   *   - supplementCount: supplements scoped to this room category
+   *   - currencyRange: min/max cost summary (lets the UI surface a price
+   *     band without loading every rate row).
+   *
+   * Crucially this does NOT return any individual rate / supplement /
+   * cancellation rule / PDF import blob. The full rate matrix loads only
+   * when the operator expands a specific room.
+   *
+   * The route is ordered: city-anchored hotels often have hundreds of
+   * `HotelRate` rows per contract; aggregating in SQL via `groupBy` keeps
+   * the payload bounded to N (room category count) regardless of the
+   * underlying rate volume.
+   */
+  async findRoomTypesSummary(id: string) {
+    const startedAt = Date.now();
+    const contract = await this.prisma.hotelContract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        hotelId: true,
+        validFrom: true,
+        validTo: true,
+        currency: true,
+        hotel: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+          },
+        },
+      },
+    });
+
+    throwIfNotFound(contract, 'Hotel contract');
+
+    const [roomCategories, rateGroups, supplementGroups, totalRateCount] = await Promise.all([
+      this.prisma.hotelRoomCategory.findMany({
+        where: { hotelId: contract!.hotelId },
+        orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+          isActive: true,
+        },
+      }),
+      // Per-room aggregate over the rate matrix. PostgreSQL handles the
+      // count / min / max in SQL — the API never holds individual rate
+      // rows in memory just to build the summary.
+      this.prisma.hotelRate.groupBy({
+        by: ['roomCategoryId'],
+        where: { contractId: id },
+        _count: { _all: true },
+        _min: { cost: true },
+        _max: { cost: true },
+      }),
+      this.prisma.hotelContractSupplement.groupBy({
+        by: ['roomCategoryId'],
+        where: { hotelContractId: id },
+        _count: { _all: true },
+      }),
+      this.prisma.hotelRate.count({ where: { contractId: id } }),
+    ]);
+
+    // Pull distinct occupancy/meal/season per room — one DB query each
+    // grouped by roomCategoryId. These are small enums so the result set
+    // stays tiny even on contracts with thousands of rates.
+    const occupancyGroups = await this.prisma.hotelRate.groupBy({
+      by: ['roomCategoryId', 'occupancyType'],
+      where: { contractId: id },
+      _count: { _all: true },
+    });
+    const mealPlanGroups = await this.prisma.hotelRate.groupBy({
+      by: ['roomCategoryId', 'mealPlan'],
+      where: { contractId: id },
+      _count: { _all: true },
+    });
+    const seasonGroups = await this.prisma.hotelRate.groupBy({
+      by: ['roomCategoryId', 'seasonName'],
+      where: { contractId: id },
+      _count: { _all: true },
+    });
+
+    const rateByRoom = new Map<string, { count: number; minCost: number | null; maxCost: number | null }>();
+    for (const group of rateGroups) {
+      rateByRoom.set(group.roomCategoryId, {
+        count: group._count._all,
+        minCost: group._min.cost ?? null,
+        maxCost: group._max.cost ?? null,
+      });
+    }
+
+    const occupancyByRoom = new Map<string, Set<string>>();
+    for (const group of occupancyGroups) {
+      const set = occupancyByRoom.get(group.roomCategoryId) || new Set<string>();
+      set.add(group.occupancyType);
+      occupancyByRoom.set(group.roomCategoryId, set);
+    }
+
+    const mealPlanByRoom = new Map<string, Set<string>>();
+    for (const group of mealPlanGroups) {
+      const set = mealPlanByRoom.get(group.roomCategoryId) || new Set<string>();
+      set.add(group.mealPlan);
+      mealPlanByRoom.set(group.roomCategoryId, set);
+    }
+
+    const seasonByRoom = new Map<string, Set<string>>();
+    for (const group of seasonGroups) {
+      const set = seasonByRoom.get(group.roomCategoryId) || new Set<string>();
+      set.add(group.seasonName);
+      seasonByRoom.set(group.roomCategoryId, set);
+    }
+
+    const supplementByRoom = new Map<string, number>();
+    for (const group of supplementGroups) {
+      if (group.roomCategoryId) {
+        supplementByRoom.set(group.roomCategoryId, group._count._all);
+      }
+    }
+
+    const rooms = roomCategories.map((room) => {
+      const rateInfo = rateByRoom.get(room.id) || { count: 0, minCost: null, maxCost: null };
+      return {
+        id: room.id,
+        name: room.name,
+        code: room.code,
+        description: room.description,
+        isActive: room.isActive,
+        rateCount: rateInfo.count,
+        minCost: rateInfo.minCost,
+        maxCost: rateInfo.maxCost,
+        currency: contract!.currency,
+        occupancyTypes: Array.from(occupancyByRoom.get(room.id) || []).sort(),
+        mealPlans: Array.from(mealPlanByRoom.get(room.id) || []).sort(),
+        seasonNames: Array.from(seasonByRoom.get(room.id) || []).sort(),
+        supplementCount: supplementByRoom.get(room.id) || 0,
+      };
+    });
+
+    logHotelContractTiming('[hotel-contracts] room-types-summary fetch', {
+      contractId: id,
+      durationMs: Date.now() - startedAt,
+      roomCategories: rooms.length,
+      totalRates: totalRateCount,
+    });
+
+    return {
+      contractId: contract!.id,
+      hotelId: contract!.hotelId,
+      hotelName: contract!.hotel.name,
+      validFrom: contract!.validFrom,
+      validTo: contract!.validTo,
+      currency: contract!.currency,
+      totalRoomCategories: rooms.length,
+      totalRates: totalRateCount,
+      rooms,
+    };
+  }
+
   async create(data: CreateHotelContractInput) {
     if (data.validFrom > data.validTo) {
       throw new BadRequestException('validFrom cannot be after validTo');

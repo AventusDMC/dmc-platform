@@ -119,7 +119,9 @@ describe('hotel contract display fallbacks', () => {
     assert.match(workspaceSource, /MAX_CONTRACT_DETAIL_ROWS = 250/);
     assert.match(workspaceSource, /ROOM_CATEGORY_PREVIEW_ROWS = 20/);
     assert.match(workspaceSource, /RATE_PREVIEW_ROWS = 50/);
-    assert.match(workspaceSource, /CONTRACT_SAFE_MODE_THRESHOLD = 500/);
+    // Room Types freeze fix — threshold lowered from 500 to 200 so large
+    // imported PDFs always go through the safe-mode path.
+    assert.match(workspaceSource, /CONTRACT_SAFE_MODE_THRESHOLD = 200/);
     assert.match(workspaceSource, /CONTRACT_RENDER_PROBE_STORAGE_KEY = 'hotelContractRenderProbe'/);
     assert.match(workspaceSource, /CONTRACT_RENDER_PROBE_QUERY_KEY = 'contractRenderProbe'/);
     assert.match(workspaceSource, /renderProbeMode === 'shell'/);
@@ -133,5 +135,50 @@ describe('hotel contract display fallbacks', () => {
     assert.match(workspaceSource, /limitRowsTo\(sortedRates, RATE_PREVIEW_ROWS\)/);
     assert.match(workspaceSource, /limitRowsTo\(visibleRoomCategories, ROOM_CATEGORY_PREVIEW_ROWS\)/);
     assert.doesNotMatch(workspaceSource, /sortedRates\.map/);
+  });
+
+  it('Room Types freeze fix — workspace wires error boundary + lazy panel + bounded effects', () => {
+    const workspaceSource = readFileSync(new URL('./contracts/[contractId]/HotelContractWorkspace.tsx', import.meta.url), 'utf8');
+
+    // Lazy Room Types panel — replaces the eager chip list on Overview.
+    assert.match(workspaceSource, /import \{ RoomTypesPanel \} from '\.\/RoomTypesPanel'/);
+    assert.match(workspaceSource, /<RoomTypesPanel apiBaseUrl=\{apiBaseUrl\} contractId=\{contract\.id\}/);
+
+    // Error boundary wraps every heavy tab so a render failure can't
+    // freeze the whole page.
+    assert.match(workspaceSource, /import \{ ContractTabErrorBoundary \} from '\.\/ContractTabErrorBoundary'/);
+    assert.match(workspaceSource, /<ContractTabErrorBoundary tabLabel="Room Types">/);
+    assert.match(workspaceSource, /<ContractTabErrorBoundary tabLabel="Rates">/);
+    assert.match(workspaceSource, /<ContractTabErrorBoundary tabLabel="Supplements">/);
+    assert.match(workspaceSource, /<ContractTabErrorBoundary tabLabel="Terms">/);
+
+    // Render-loop guard — the timing-log effect now carries an explicit
+    // deps array. The old no-deps form (`}); ` immediately after the
+    // payload object) is what caused the freeze; assert it can't return.
+    assert.doesNotMatch(workspaceSource, /logContractWorkspaceTiming\('\[hotel-contract-workspace\] render tab',[\s\S]*?\}\);\s*\}\);\s*useEffect/);
+
+    // Safe-mode banner uses the spec-mandated copy.
+    assert.match(workspaceSource, /Large contract — showing summary first\./);
+  });
+
+  it('Room Types panel never reads pricing / contract / supplement engine internals', () => {
+    const panelSource = readFileSync(new URL('./contracts/[contractId]/RoomTypesPanel.tsx', import.meta.url), 'utf8');
+    // These names belong to the pricing engine / quote selector / import
+    // workflow — they must never leak into this lightweight UI panel.
+    const forbidden = [
+      'ratePolicies',
+      'cancellationPolicy.rules',
+      'HotelPricingResolver',
+      'calculateHotelCost',
+      'quoteHotelOptions',
+      'snapshotJson',
+      'allotments',
+    ];
+    for (const banned of forbidden) {
+      assert.ok(
+        !panelSource.includes(banned),
+        `RoomTypesPanel.tsx must not reference "${banned}" — read-only summary only.`,
+      );
+    }
   });
 });

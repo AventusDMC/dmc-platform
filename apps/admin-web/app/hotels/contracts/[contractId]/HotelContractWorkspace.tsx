@@ -12,6 +12,8 @@ import {
   formatSupplementLabel,
 } from '../../hotel-contract-display';
 import { normalizeSupportedCurrency, type SupportedCurrency } from '../../../lib/currencyOptions';
+import { ContractTabErrorBoundary } from './ContractTabErrorBoundary';
+import { RoomTypesPanel } from './RoomTypesPanel';
 
 type HotelRoomCategory = {
   id: string;
@@ -158,8 +160,17 @@ const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] 
 const MAX_CONTRACT_DETAIL_ROWS = 250;
 const ROOM_CATEGORY_PREVIEW_ROWS = 20;
 const RATE_PREVIEW_ROWS = 50;
-const CONTRACT_SAFE_MODE_THRESHOLD = 500;
+// Room Types freeze fix — lowered from 500 to 200. Imported PDFs from
+// big chains can carry 1000+ rate rows per contract; the old threshold
+// let those slip through and freeze the page during sort/render. At 200
+// we err on the side of "show summary first, expand a room to see its
+// detail rates" — operators can always click in.
+const CONTRACT_SAFE_MODE_THRESHOLD = 200;
 const CONTRACT_TAB_PAGE_SIZE = 50;
+// Per-room expand fetch cap. Even when a single room has hundreds of
+// rates (season x occupancy x meal plan matrix), we only ever surface
+// the first slice. The full grid lives in /hotels?tab=rates.
+const ROOM_DETAIL_RATE_LIMIT = 50;
 const ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
 const CONTRACT_RENDER_PROBE_STORAGE_KEY = 'hotelContractRenderProbe';
 const CONTRACT_RENDER_PROBE_QUERY_KEY = 'contractRenderProbe';
@@ -328,7 +339,10 @@ export function HotelContractWorkspace({
   mealPlans,
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
-  if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
+  // Diagnostic render counter — was unconditional dev-mode side effect
+  // in the render body. Now gated behind the timing-logs flag AND a
+  // typeof window check so SSR doesn't double-count.
+  if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS && typeof window !== 'undefined') {
     console.count('[hotel-contract-workspace] render');
   }
   const renderStartedAt = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -500,7 +514,18 @@ export function HotelContractWorkspace({
     [safeRates, shouldRenderSupplements],
   );
 
+  // ROOM TYPES FREEZE FIX — this effect previously had NO dependency
+  // array, so it fired on every render. Combined with the lazy-load
+  // effect below (which calls setLoadedTabs and triggers another render),
+  // every interaction with the workspace cascaded into runaway re-renders
+  // — that's the "Room Types tab freezes the ERP" symptom operators saw.
+  //
+  // Two safety guards:
+  //   1. Only run when timing logs are enabled (dev only).
+  //   2. Track activeTab + the counts the log payload actually reads,
+  //      so we don't log on unrelated state changes (e.g. drawer open/close).
   useEffect(() => {
+    if (!ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) return;
     logContractWorkspaceTiming('[hotel-contract-workspace] render tab', {
       activeTab,
       renderMs: typeof performance !== 'undefined' ? Math.round(performance.now() - renderStartedAt) : 0,
@@ -516,16 +541,19 @@ export function HotelContractWorkspace({
       mealPlansTotal: totalMealPlans,
       derivedSeasonRows: seasonRows.length,
       derivedTaxProfiles: taxProfiles.length,
-      displayedRows:
-        activeTab === 'rates'
-          ? displayedRates.length
-          : activeTab === 'supplements'
-            ? displayedSupplements.length + taxProfiles.length
-            : activeTab === 'terms'
-              ? displayedMealPlans.length + displayedCancellationRules.length
-              : displayedRoomCategories.length + seasonRows.length,
     });
-  });
+    // Intentionally exclude derived row counts and renderStartedAt — they
+    // change on every render and would defeat the dependency-array guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTab,
+    contract.id,
+    isLargeContract,
+    roomCategories.length,
+    safeRates.length,
+    safeSupplements.length,
+    safeMealPlans.length,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -867,10 +895,11 @@ export function HotelContractWorkspace({
       </nav>
 
       {isLargeContract ? (
-        <div className="contract-workspace-card contract-safe-mode-banner">
-          <strong>Large contract safe mode</strong>
+        <div className="contract-workspace-card contract-safe-mode-banner" role="status">
+          <strong>Large contract — showing summary first.</strong>
           <span>
-            Summary is shown first. Rates, supplements, and terms load only when their tab is opened.
+            This contract has {totalRates} rates across {totalRoomCategories} room categories.
+            Rates, supplements, and terms load on demand. Click a room below to see its detail rows.
           </span>
         </div>
       ) : null}
@@ -903,7 +932,16 @@ export function HotelContractWorkspace({
       ) : null}
 
       {activeTab === 'overview' && shouldRenderOverview ? <section id="overview" className="contract-section-grid">
-        <article className="contract-workspace-card">
+        {/* Room Types lazy-loaded panel. Replaces the previous eager
+            chip list that iterated the entire room categories array on
+            every render — the panel calls /room-types-summary which
+            aggregates in SQL and returns one row per category with
+            rate/occupancy/meal-plan counts. Expanding a room triggers
+            a scoped /hotel-rates?roomCategoryId=:id fetch. */}
+        <ContractTabErrorBoundary tabLabel="Room Types">
+          <RoomTypesPanel apiBaseUrl={apiBaseUrl} contractId={contract.id} />
+        </ContractTabErrorBoundary>
+        <article className="contract-workspace-card" hidden>
           <div className="section-header-inline">
             <div>
               <p className="eyebrow">Rooms</p>
@@ -949,7 +987,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {activeTab === 'rates' && shouldRenderRates && (!isLargeContract || loadedTabs.rates || manualTabLoads.rates) ? <section id="rates" className="contract-workspace-card">
+      {activeTab === 'rates' && shouldRenderRates && (!isLargeContract || loadedTabs.rates || manualTabLoads.rates) ? <ContractTabErrorBoundary tabLabel="Rates"><section id="rates" className="contract-workspace-card">
         <div className="section-header-inline">
           <div>
             <p className="eyebrow">Pricing</p>
@@ -1016,9 +1054,9 @@ export function HotelContractWorkspace({
             </table>
           </div>
         )}
-      </section> : null}
+      </section></ContractTabErrorBoundary> : null}
 
-      {activeTab === 'supplements' && shouldRenderSupplements && (!isLargeContract || loadedTabs.supplements || manualTabLoads.supplements) ? <section id="supplements" className="contract-section-grid">
+      {activeTab === 'supplements' && shouldRenderSupplements && (!isLargeContract || loadedTabs.supplements || manualTabLoads.supplements) ? <ContractTabErrorBoundary tabLabel="Supplements"><section id="supplements" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -1116,9 +1154,9 @@ export function HotelContractWorkspace({
             </div>
           )}
         </article>
-      </section> : null}
+      </section></ContractTabErrorBoundary> : null}
 
-      {activeTab === 'terms' && shouldRenderTerms && (!isLargeContract || loadedTabs.terms || manualTabLoads.terms) ? <section id="terms" className="contract-section-grid">
+      {activeTab === 'terms' && shouldRenderTerms && (!isLargeContract || loadedTabs.terms || manualTabLoads.terms) ? <ContractTabErrorBoundary tabLabel="Terms"><section id="terms" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -1179,7 +1217,7 @@ export function HotelContractWorkspace({
             </div>
           )}
         </article>
-      </section> : null}
+      </section></ContractTabErrorBoundary> : null}
 
       {drawer && shouldHydrateDrawerForms ? (
         <div className="contract-drawer-backdrop" role="presentation">

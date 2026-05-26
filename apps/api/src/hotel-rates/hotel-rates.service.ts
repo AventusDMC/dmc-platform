@@ -35,6 +35,10 @@ type UpdateHotelRateInput = Partial<CreateHotelRateInput>;
 
 type FindHotelRatesOptions = {
   contractId?: string | null;
+  // Room Types freeze fix — narrow the rate query to a single room
+  // category. The Room Types expandable panel uses this so opening a
+  // single room never fans out to the whole contract's rate matrix.
+  roomCategoryId?: string | null;
   limit?: number | null;
   offset?: number | null;
 };
@@ -111,12 +115,11 @@ export class HotelRatesService {
       offset,
     });
     const queryStartedAt = Date.now();
+    const where: { contractId?: string; roomCategoryId?: string } = {};
+    if (options.contractId) where.contractId = options.contractId;
+    if (options.roomCategoryId) where.roomCategoryId = options.roomCategoryId;
     const rows = await this.prisma.hotelRate.findMany({
-      where: options.contractId
-        ? {
-            contractId: options.contractId,
-          }
-        : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         contract: {
           include: {
