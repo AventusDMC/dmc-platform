@@ -346,6 +346,26 @@ model Activity {
   categoryTags        Json?
   reviewNotes         String?
   active              Boolean                      @default(true)
+  // Guided Quote Builder v2B — experience taxonomy. All nullable so
+  // existing activities stay valid; admin populates incrementally.
+  // moodCategory: CULTURE | ADVENTURE | RELIGIOUS | RELAXATION |
+  // FAMILY | WELLNESS | FOOD_LOCAL. Drives the per-destination mood
+  // grouping in the Guided Journey Composer.
+  moodCategory             String?
+  // Free-text experience descriptor ("Guided heritage walk", "Bedouin
+  // dinner", "Spa half day") — operator-facing label used by the
+  // experience cards. Defaults to the existing description when null.
+  experienceType           String?
+  // RELAXED | MODERATE | INTENSE — drives the operational intensity
+  // chip on the card and the per-destination pacing assessment.
+  operationalIntensity     String?
+  // Religious significance flag — distinct from moodCategory because
+  // an activity can be "religious significance: yes" within a Culture
+  // mood (e.g. Madaba mosaic map church).
+  religiousSignificance    Boolean   @default(false)
+  // Premium / Signature experience flag — bumps the activity into the
+  // top-of-journey "Top experiences" highlights strip.
+  premiumExperienceFlag    Boolean   @default(false)
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
   supplierCompany     Company                      @relation(fields: [supplierCompanyId], references: [id])
@@ -359,6 +379,8 @@ model Activity {
   @@index([code])
   @@index([city, active])
   @@index([supplierCompanyId])
+  // Guided v2B — backs the per-destination + mood lookup.
+  @@index([moodCategory, city, active])
   @@map("activities")
 }
 

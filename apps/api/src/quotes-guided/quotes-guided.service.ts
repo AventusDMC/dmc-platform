@@ -116,6 +116,75 @@ export type HotelSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Experience suggestion types (v2B) -----
+
+export type MoodCategory =
+  | 'CULTURE'
+  | 'ADVENTURE'
+  | 'RELIGIOUS'
+  | 'RELAXATION'
+  | 'FAMILY'
+  | 'WELLNESS'
+  | 'FOOD_LOCAL';
+
+export const MOOD_CATEGORY_LABELS: Record<MoodCategory, string> = {
+  CULTURE: 'Culture',
+  ADVENTURE: 'Adventure',
+  RELIGIOUS: 'Religious',
+  RELAXATION: 'Relaxation',
+  FAMILY: 'Family',
+  WELLNESS: 'Wellness',
+  FOOD_LOCAL: 'Food & Local Experience',
+};
+
+export type OperationalIntensity = 'RELAXED' | 'MODERATE' | 'INTENSE';
+
+export type SuggestedExperience = {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string;
+  experienceType: string | null;
+  moodCategory: MoodCategory | string | null;
+  // The mood the UI groups under. When activity has explicit
+  // moodCategory we use that; otherwise inferActivityMood derives one
+  // from name/category/keywords so untagged activities still appear in
+  // a sensible bucket.
+  effectiveMood: MoodCategory;
+  durationMinutes: number | null;
+  durationHours: number | null;
+  operationalIntensity: OperationalIntensity | null;
+  familyFriendly: boolean;
+  religiousSignificance: boolean;
+  premiumExperienceFlag: boolean;
+  // Heuristic — sicPossible OR chain partner OR name keyword "tour /
+  // group" suggests this scales for group tours.
+  popularWithGroups: boolean;
+  operationalConfidenceLabel: string;
+  notes: string[];
+};
+
+export type DestinationExperienceSuggestions = {
+  destination: string;
+  matchedAreaCode: string | null;
+  // Grouped by mood — keys present only when at least one activity
+  // sits in that bucket.
+  byMood: Partial<Record<MoodCategory, SuggestedExperience[]>>;
+  totalExperienceCount: number;
+  hasAnyExperiences: boolean;
+  fallbackHint: string | null;
+};
+
+export type ExperienceSuggestionsResponse = {
+  destinations: string[];
+  suggestions: DestinationExperienceSuggestions[];
+  // "Top experiences for this journey" highlights — picks the most
+  // operationally-confident premium experiences across all
+  // destinations, capped at 5.
+  highlights: SuggestedExperience[];
+  notes: string[];
+};
+
 @Injectable()
 export class QuotesGuidedService {
   constructor(private readonly prisma: PrismaService) {}
@@ -359,6 +428,136 @@ export class QuotesGuidedService {
     }
 
     return { destinations, suggestions, notes };
+  }
+
+  /**
+   * Guided v2B — per-destination experience suggestions grouped by
+   * travel mood (Culture / Adventure / Religious / Relaxation / Family
+   * / Wellness / Food & Local Experience). Pure read across the
+   * activities catalog + operational areas; never touches pricing.
+   *
+   * Selection logic per destination:
+   *   1. Filter activities by city (case-insensitive), active=true
+   *   2. Map each activity through enrichActivityForSuggestion to derive
+   *      mood (using explicit moodCategory when set, falling back to
+   *      inferActivityMood for untagged rows), intensity, operational
+   *      confidence, popularity heuristic, and quick notes.
+   *   3. Cap each mood bucket at 6 (UI scannability)
+   *   4. Sort premium → operational-confident → alphabetical within
+   *      each bucket
+   *
+   * Then composes a top-of-journey "highlights" strip — top 5 premium
+   * + operationally-confident picks across all destinations, deduped.
+   */
+  async getExperienceSuggestionsForJourney(input: {
+    destinations: string[];
+  }): Promise<ExperienceSuggestionsResponse> {
+    const destinations = (input.destinations || [])
+      .map((d) => String(d || '').trim())
+      .filter(Boolean);
+    if (destinations.length === 0) {
+      return { destinations: [], suggestions: [], highlights: [], notes: [] };
+    }
+
+    const [activities, operationalAreas] = await Promise.all([
+      (this.prisma as any).activity.findMany({
+        where: { active: true },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          city: true,
+          category: true,
+          experienceType: true,
+          moodCategory: true,
+          operationalIntensity: true,
+          durationMinutes: true,
+          durationHours: true,
+          familyFriendly: true,
+          religiousSignificance: true,
+          premiumExperienceFlag: true,
+          sicPossible: true,
+          guideRequired: true,
+          difficulty: true,
+        },
+      }),
+      (this.prisma as any).operationalArea.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, name: true, city: true, type: true },
+      }),
+    ]);
+
+    const suggestions: DestinationExperienceSuggestions[] = [];
+    let totalSuggestionCount = 0;
+    const allExperiences: SuggestedExperience[] = [];
+    for (const dest of destinations) {
+      const matchedArea = pickAreaForCity(operationalAreas as any[], dest);
+      const matched = (activities as any[]).filter(
+        (a) => a.city && a.city.toLowerCase() === dest.toLowerCase(),
+      );
+      const enriched = matched.map((a) => enrichActivityForSuggestion(a));
+      // Sort within each mood: premium first, then operationally
+      // confident, then alphabetical.
+      const byMood: Partial<Record<MoodCategory, SuggestedExperience[]>> = {};
+      for (const exp of enriched) {
+        const bucket = (byMood[exp.effectiveMood] = byMood[exp.effectiveMood] || []);
+        bucket.push(exp);
+      }
+      for (const mood of Object.keys(byMood) as MoodCategory[]) {
+        byMood[mood] = byMood[mood]!
+          .sort((a, b) => {
+            if (a.premiumExperienceFlag !== b.premiumExperienceFlag) {
+              return a.premiumExperienceFlag ? -1 : 1;
+            }
+            if (a.operationalConfidenceLabel !== b.operationalConfidenceLabel) {
+              return a.operationalConfidenceLabel === 'Operationally confident' ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+          })
+          .slice(0, 6);
+      }
+      const totalExperienceCount = Object.values(byMood).reduce(
+        (sum, list) => sum + (list?.length || 0),
+        0,
+      );
+      totalSuggestionCount += totalExperienceCount;
+      // Collect for the journey-wide highlights strip.
+      for (const list of Object.values(byMood)) {
+        for (const exp of list || []) allExperiences.push(exp);
+      }
+      suggestions.push({
+        destination: dest,
+        matchedAreaCode: matchedArea?.code ?? null,
+        byMood,
+        totalExperienceCount,
+        hasAnyExperiences: totalExperienceCount > 0,
+        fallbackHint:
+          totalExperienceCount === 0
+            ? `No activities matched "${dest}" in the catalog yet. Use the standard activity selector on the Activities tab to search by name.`
+            : null,
+      });
+    }
+
+    // Top-of-journey highlights: premium + operationally-confident
+    // picks across all destinations, capped at 5, deduped by id.
+    const highlights = allExperiences
+      .filter((e) => e.premiumExperienceFlag || e.operationalConfidenceLabel === 'Operationally confident')
+      .sort((a, b) => {
+        if (a.premiumExperienceFlag !== b.premiumExperienceFlag) {
+          return a.premiumExperienceFlag ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 5);
+
+    const notes: string[] = [];
+    if (totalSuggestionCount === 0 && destinations.length > 0) {
+      notes.push(
+        'None of the destinations matched activities in the catalog. Use the standard activity selector from the Activities tab.',
+      );
+    }
+
+    return { destinations, suggestions, highlights, notes };
   }
 }
 
@@ -695,5 +894,155 @@ export function enrichHotelForSuggestion(
       hasActiveContract,
     }),
     notes: deriveQuickNotes(hotel),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Experience suggestion helpers (v2B) — exported pure for tests.
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a mood category when the activity row has no explicit
+ * moodCategory column populated yet (most existing activities). Reads
+ * the activity name + category + description keywords.
+ *
+ * Priority order matters: religious / wellness / food are specific
+ * enough to trump generic culture/adventure when they collide.
+ */
+export function inferActivityMood(activity: {
+  name: string;
+  category?: string | null;
+  description?: string | null;
+}): MoodCategory {
+  const haystack = `${activity.name} ${activity.category || ''} ${activity.description || ''}`.toLowerCase();
+  if (/baptism|monastery|nebo|moses|church|mosque|shrine|pilgrim|religious|holy/.test(haystack)) {
+    return 'RELIGIOUS';
+  }
+  if (/spa|wellness|hammam|turkish bath|float|mud bath|thermal|hot spring/.test(haystack)) {
+    return 'WELLNESS';
+  }
+  if (/cooking|kitchen|food walk|food tour|tasting|culinary|local market|bedouin dinner|coffee/.test(haystack)) {
+    return 'FOOD_LOCAL';
+  }
+  if (/jeep|safari|hike|trek|climb|kayak|paragliding|cycling|cycle|adventure|canyon|mujib|wadi rum|stargaz/.test(haystack)) {
+    return 'ADVENTURE';
+  }
+  if (/family|kids|children|kid-friendly/.test(haystack)) {
+    return 'FAMILY';
+  }
+  if (/beach|float|relax|leisure|sunset/.test(haystack)) {
+    return 'RELAXATION';
+  }
+  if (/petra|jerash|ajloun|kerak|umm qais|citadel|roman|museum|archaeological|heritage|guided tour|city tour|walking tour|panoramic/.test(haystack)) {
+    return 'CULTURE';
+  }
+  // Default to Culture — most Jordan operator activities lean cultural.
+  return 'CULTURE';
+}
+
+/** Operational confidence label for the experience card. */
+export function deriveExperienceConfidence(activity: {
+  sicPossible?: boolean;
+  guideRequired?: boolean | null;
+  difficulty?: string | null;
+}): string {
+  // Spec didn't enumerate experience confidence chips — keep it simple:
+  //   - "Operationally confident" when activity is SIC-able (frequent
+  //     departures, well-rehearsed)
+  //   - "Specialist coordination" when it requires a guide or has
+  //     high-difficulty
+  //   - "Standard coordination" otherwise
+  if (activity.sicPossible) return 'Operationally confident';
+  if (activity.guideRequired || /hard|expert|extreme/i.test(activity.difficulty || '')) {
+    return 'Specialist coordination';
+  }
+  return 'Standard coordination';
+}
+
+/** Quick notes for the experience card — short, travel-oriented hints. */
+export function deriveExperienceNotes(activity: {
+  name: string;
+  sicPossible?: boolean;
+  durationHours?: number | null;
+  durationMinutes?: number | null;
+}): string[] {
+  const out: string[] = [];
+  if (activity.sicPossible) out.push('Popular with groups');
+  const hours = activity.durationHours ?? (activity.durationMinutes ? activity.durationMinutes / 60 : null);
+  if (hours != null) {
+    if (hours >= 6) out.push('Long active day');
+    else if (hours <= 1.5) out.push('Relaxed pace');
+  }
+  if (/by night|stargaz|sunset|evening/i.test(activity.name)) {
+    out.push('Evening departure');
+  }
+  if (/early|sunrise|dawn/i.test(activity.name)) {
+    out.push('Early departure required');
+  }
+  return out;
+}
+
+/** Compose all derivations into the SuggestedExperience shape. */
+export function enrichActivityForSuggestion(activity: {
+  id: string;
+  name: string;
+  description?: string | null;
+  city?: string | null;
+  category?: string | null;
+  experienceType?: string | null;
+  moodCategory?: string | null;
+  operationalIntensity?: string | null;
+  durationMinutes?: number | null;
+  durationHours?: number | null;
+  familyFriendly?: boolean;
+  religiousSignificance?: boolean;
+  premiumExperienceFlag?: boolean;
+  sicPossible?: boolean;
+  guideRequired?: boolean | null;
+  difficulty?: string | null;
+}): SuggestedExperience {
+  const moodFromColumn = (activity.moodCategory || '').toUpperCase();
+  const validMoods: MoodCategory[] = [
+    'CULTURE',
+    'ADVENTURE',
+    'RELIGIOUS',
+    'RELAXATION',
+    'FAMILY',
+    'WELLNESS',
+    'FOOD_LOCAL',
+  ];
+  const effectiveMood: MoodCategory = (validMoods as string[]).includes(moodFromColumn)
+    ? (moodFromColumn as MoodCategory)
+    : inferActivityMood({
+        name: activity.name,
+        category: activity.category,
+        description: activity.description,
+      });
+  return {
+    id: activity.id,
+    name: activity.name,
+    description: activity.description ?? null,
+    city: activity.city || '',
+    experienceType: activity.experienceType ?? null,
+    moodCategory: activity.moodCategory ?? null,
+    effectiveMood,
+    durationMinutes: activity.durationMinutes ?? null,
+    durationHours: activity.durationHours ?? null,
+    operationalIntensity: (activity.operationalIntensity as OperationalIntensity) ?? null,
+    familyFriendly: Boolean(activity.familyFriendly),
+    religiousSignificance: Boolean(activity.religiousSignificance),
+    premiumExperienceFlag: Boolean(activity.premiumExperienceFlag),
+    popularWithGroups: Boolean(activity.sicPossible) || /group|tour/i.test(activity.name),
+    operationalConfidenceLabel: deriveExperienceConfidence({
+      sicPossible: activity.sicPossible,
+      guideRequired: activity.guideRequired,
+      difficulty: activity.difficulty,
+    }),
+    notes: deriveExperienceNotes({
+      name: activity.name,
+      sicPossible: activity.sicPossible,
+      durationHours: activity.durationHours,
+      durationMinutes: activity.durationMinutes,
+    }),
   };
 }

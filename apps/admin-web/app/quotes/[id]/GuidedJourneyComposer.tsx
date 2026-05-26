@@ -120,6 +120,71 @@ type HotelSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Experience suggestion types (v2B) -----
+type MoodCategory =
+  | 'CULTURE'
+  | 'ADVENTURE'
+  | 'RELIGIOUS'
+  | 'RELAXATION'
+  | 'FAMILY'
+  | 'WELLNESS'
+  | 'FOOD_LOCAL';
+
+const MOOD_LABELS: Record<MoodCategory, string> = {
+  CULTURE: 'Culture',
+  ADVENTURE: 'Adventure',
+  RELIGIOUS: 'Religious',
+  RELAXATION: 'Relaxation',
+  FAMILY: 'Family',
+  WELLNESS: 'Wellness',
+  FOOD_LOCAL: 'Food & Local Experience',
+};
+
+const MOOD_ICONS: Record<MoodCategory, string> = {
+  CULTURE: '🏛',
+  ADVENTURE: '🧭',
+  RELIGIOUS: '🕊',
+  RELAXATION: '🌿',
+  FAMILY: '👪',
+  WELLNESS: '💆',
+  FOOD_LOCAL: '🍲',
+};
+
+type SuggestedExperience = {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string;
+  experienceType: string | null;
+  moodCategory: string | null;
+  effectiveMood: MoodCategory;
+  durationMinutes: number | null;
+  durationHours: number | null;
+  operationalIntensity: 'RELAXED' | 'MODERATE' | 'INTENSE' | null;
+  familyFriendly: boolean;
+  religiousSignificance: boolean;
+  premiumExperienceFlag: boolean;
+  popularWithGroups: boolean;
+  operationalConfidenceLabel: string;
+  notes: string[];
+};
+
+type DestinationExperienceSuggestions = {
+  destination: string;
+  matchedAreaCode: string | null;
+  byMood: Partial<Record<MoodCategory, SuggestedExperience[]>>;
+  totalExperienceCount: number;
+  hasAnyExperiences: boolean;
+  fallbackHint: string | null;
+};
+
+type ExperienceSuggestionsResponse = {
+  destinations: string[];
+  suggestions: DestinationExperienceSuggestions[];
+  highlights: SuggestedExperience[];
+  notes: string[];
+};
+
 export function GuidedJourneyComposer({
   quote,
   advancedWorkspaceUrl,
@@ -181,6 +246,39 @@ export function GuidedJourneyComposer({
       cancelled = true;
     };
   }, [quote.arrivalCity, destinations.join('|')]);
+
+  // v2B — experience suggestions per destination, fetched independently.
+  // Same soft-fail semantics as hotels: if this call errors the rest of
+  // the panel still renders.
+  const [experienceData, setExperienceData] = useState<ExperienceSuggestionsResponse | null>(null);
+  const [experiencesLoading, setExperiencesLoading] = useState(false);
+  useEffect(() => {
+    if (destinations.length === 0) {
+      setExperienceData(null);
+      return;
+    }
+    let cancelled = false;
+    setExperiencesLoading(true);
+    (async () => {
+      try {
+        const response = await fetch('/api/quotes/guided/experience-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destinations }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.message || `Experience suggestions failed (${response.status})`);
+        if (!cancelled) setExperienceData(payload as ExperienceSuggestionsResponse);
+      } catch {
+        if (!cancelled) setExperienceData(null);
+      } finally {
+        if (!cancelled) setExperiencesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [destinations.join('|')]);
 
   // v2A — hotel suggestions per destination, fetched independently so
   // the journey-flow + pacing data shows even if hotels fail to load.
@@ -302,7 +400,15 @@ export function GuidedJourneyComposer({
         quoteId={quote.id}
       />
 
-      {/* Section 5 — Quote readiness checklist */}
+      {/* Section 5 — Suggested Experiences per destination (v2B) */}
+      <SuggestedExperiencesSection
+        experienceData={experienceData}
+        loading={experiencesLoading}
+        destinations={destinations}
+        quoteId={quote.id}
+      />
+
+      {/* Section 6 — Quote readiness checklist */}
       <ReadinessSection readiness={readiness} />
 
       <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.78rem', textAlign: 'center' }}>
@@ -928,6 +1034,362 @@ function HotelCard({
       {!hotel.hasActiveContract ? (
         <p style={{ margin: 0, color: '#854d0e', fontSize: '0.74rem' }}>
           ⚠ No active contract on file — supplier may need confirmation before booking.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v2B — Suggested Experiences section
+// ---------------------------------------------------------------------------
+
+function SuggestedExperiencesSection({
+  experienceData,
+  loading,
+  destinations,
+  quoteId,
+}: {
+  experienceData: ExperienceSuggestionsResponse | null;
+  loading: boolean;
+  destinations: string[];
+  quoteId: string;
+}) {
+  if (destinations.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 10,
+        padding: '1rem 1.1rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p
+            style={{
+              color: '#475569',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: 0,
+            }}
+          >
+            Suggested experiences
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+            Per destination, grouped by travel mood — Culture, Adventure, Religious, Relaxation,
+            Family, Wellness, Food & Local. Each card shows duration, intensity, and operational
+            confidence. Adding experiences happens on the Activities tab — the link on each card
+            jumps you there with the activity pre-selected.
+          </p>
+        </div>
+        <a
+          href={`/quotes/${quoteId}?tab=services`}
+          style={{
+            padding: '0.35rem 0.7rem',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            background: '#f8fafc',
+            color: '#0c4a6e',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Open standard activity selector →
+        </a>
+      </div>
+
+      {loading && !experienceData ? (
+        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Reading activities catalog for these destinations…
+        </p>
+      ) : null}
+
+      {!loading && !experienceData ? (
+        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Could not load experience suggestions. Open the standard activity selector to search by name.
+        </p>
+      ) : null}
+
+      {experienceData && experienceData.highlights.length > 0 ? (
+        <ExperienceHighlightsStrip highlights={experienceData.highlights} quoteId={quoteId} />
+      ) : null}
+
+      {experienceData ? (
+        <div style={{ marginTop: '0.7rem', display: 'grid', gap: '1rem' }}>
+          {experienceData.suggestions.map((destSugg) => (
+            <DestinationExperienceGroup
+              key={destSugg.destination}
+              group={destSugg}
+              quoteId={quoteId}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ExperienceHighlightsStrip({
+  highlights,
+  quoteId,
+}: {
+  highlights: SuggestedExperience[];
+  quoteId: string;
+}) {
+  return (
+    <div
+      style={{
+        marginTop: '0.7rem',
+        padding: '0.7rem 0.85rem',
+        background: '#f0f9ff',
+        border: '1px solid #bae6fd',
+        borderRadius: 10,
+      }}
+    >
+      <p
+        style={{
+          color: '#0c4a6e',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          margin: 0,
+        }}
+      >
+        Top experiences for this journey
+      </p>
+      <div style={{ display: 'grid', gap: '0.4rem', marginTop: '0.45rem' }}>
+        {highlights.map((exp) => (
+          <ExperienceCard key={exp.id} exp={exp} quoteId={quoteId} compact />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DestinationExperienceGroup({
+  group,
+  quoteId,
+}: {
+  group: DestinationExperienceSuggestions;
+  quoteId: string;
+}) {
+  // Render moods in a stable order that matches the spec list.
+  const moodOrder: MoodCategory[] = [
+    'CULTURE',
+    'ADVENTURE',
+    'RELIGIOUS',
+    'RELAXATION',
+    'FAMILY',
+    'WELLNESS',
+    'FOOD_LOCAL',
+  ];
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>{group.destination}</p>
+        {group.matchedAreaCode ? (
+          <span
+            style={{
+              background: '#f1f5f9',
+              color: '#475569',
+              padding: '0.05rem 0.4rem',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontFamily: 'monospace',
+            }}
+          >
+            {group.matchedAreaCode}
+          </span>
+        ) : null}
+        <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>
+          {group.totalExperienceCount} experience{group.totalExperienceCount === 1 ? '' : 's'}
+        </span>
+      </div>
+      {!group.hasAnyExperiences ? (
+        <div
+          style={{
+            padding: '0.55rem 0.7rem',
+            background: '#fefce8',
+            border: '1px solid #fde68a',
+            borderRadius: 8,
+            color: '#854d0e',
+            fontSize: '0.82rem',
+          }}
+        >
+          {group.fallbackHint ||
+            `No activities matched "${group.destination}". Use the standard activity selector to search.`}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.55rem' }}>
+          {moodOrder.map((mood) => {
+            const list = group.byMood[mood] || [];
+            if (list.length === 0) return null;
+            return (
+              <div key={mood}>
+                <p
+                  style={{
+                    margin: '0 0 0.3rem',
+                    color: '#475569',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <span aria-hidden style={{ marginRight: '0.3rem' }}>{MOOD_ICONS[mood]}</span>
+                  {MOOD_LABELS[mood]}
+                </p>
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {list.map((exp) => (
+                    <ExperienceCard key={exp.id} exp={exp} quoteId={quoteId} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExperienceCard({
+  exp,
+  quoteId,
+  compact,
+}: {
+  exp: SuggestedExperience;
+  quoteId: string;
+  compact?: boolean;
+}) {
+  const intensityColors: Record<NonNullable<SuggestedExperience['operationalIntensity']>, { bg: string; text: string }> = {
+    RELAXED: { bg: '#ecfdf3', text: '#067647' },
+    MODERATE: { bg: '#eff6ff', text: '#1e40af' },
+    INTENSE: { bg: '#fef3c7', text: '#854d0e' },
+  };
+  const confidenceTone =
+    exp.operationalConfidenceLabel === 'Operationally confident'
+      ? { bg: '#ecfdf3', text: '#067647', border: '#abefc6' }
+      : exp.operationalConfidenceLabel === 'Specialist coordination'
+        ? { bg: '#fff7ed', text: '#7c2d12', border: '#fed7aa' }
+        : { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' };
+  const durationLabel =
+    exp.durationHours != null
+      ? `${exp.durationHours} h`
+      : exp.durationMinutes != null
+        ? `${exp.durationMinutes} min`
+        : null;
+  return (
+    <div
+      style={{
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        padding: '0.55rem 0.7rem',
+        display: 'grid',
+        gap: '0.3rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.92rem', fontWeight: 600 }}>
+          {exp.premiumExperienceFlag ? <span aria-hidden style={{ marginRight: '0.25rem' }}>✨</span> : null}
+          {exp.name}
+        </p>
+        <a
+          href={`/quotes/${quoteId}?tab=services&activityId=${encodeURIComponent(exp.id)}`}
+          style={{
+            color: '#0c4a6e',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+          title="Open in Advanced Workspace's Activities tab"
+        >
+          Add in Activities tab →
+        </a>
+      </div>
+      {!compact && exp.description ? (
+        <p style={{ margin: 0, color: '#475569', fontSize: '0.82rem', lineHeight: 1.4 }}>
+          {exp.description.length > 180 ? `${exp.description.slice(0, 180)}…` : exp.description}
+        </p>
+      ) : null}
+      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {durationLabel ? (
+          <span
+            style={{
+              background: '#f1f5f9',
+              color: '#475569',
+              padding: '0.05rem 0.4rem',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontWeight: 600,
+            }}
+          >
+            {durationLabel}
+          </span>
+        ) : null}
+        {exp.operationalIntensity ? (
+          <span
+            style={{
+              background: intensityColors[exp.operationalIntensity].bg,
+              color: intensityColors[exp.operationalIntensity].text,
+              padding: '0.05rem 0.4rem',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontWeight: 600,
+            }}
+          >
+            {exp.operationalIntensity.charAt(0) + exp.operationalIntensity.slice(1).toLowerCase()} pace
+          </span>
+        ) : null}
+        <span
+          style={{
+            background: confidenceTone.bg,
+            color: confidenceTone.text,
+            border: `1px solid ${confidenceTone.border}`,
+            padding: '0.05rem 0.45rem',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            fontWeight: 600,
+          }}
+        >
+          {exp.operationalConfidenceLabel}
+        </span>
+        {exp.familyFriendly ? (
+          <span
+            style={{ background: '#fef3c7', color: '#854d0e', padding: '0.05rem 0.4rem', borderRadius: 999, fontSize: '0.68rem', fontWeight: 600 }}
+            title="Family-friendly"
+          >
+            👪 Family
+          </span>
+        ) : null}
+        {exp.religiousSignificance ? (
+          <span
+            style={{ background: '#eef2ff', color: '#3730a3', padding: '0.05rem 0.4rem', borderRadius: 999, fontSize: '0.68rem', fontWeight: 600 }}
+            title="Religious significance"
+          >
+            🕊 Religious
+          </span>
+        ) : null}
+        {exp.popularWithGroups ? (
+          <span
+            style={{ background: '#f0f9ff', color: '#0c4a6e', padding: '0.05rem 0.4rem', borderRadius: 999, fontSize: '0.68rem', fontWeight: 600 }}
+          >
+            Popular with groups
+          </span>
+        ) : null}
+      </div>
+      {!compact && exp.notes.length > 0 ? (
+        <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
+          {exp.notes.join(' · ')}
         </p>
       ) : null}
     </div>
