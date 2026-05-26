@@ -348,7 +348,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
       (this.prisma as any).routeStandard.findMany({
         where: { isActive: true },
@@ -479,7 +479,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
     ]);
 
@@ -590,7 +590,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
     ]);
 
@@ -716,7 +716,7 @@ export class QuotesGuidedService {
     const [operationalAreas, routeStandards] = await Promise.all([
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
       (this.prisma as any).routeStandard.findMany({
         where: { isActive: true },
@@ -803,19 +803,66 @@ export class QuotesGuidedService {
 /** Best-match operational area for a destination city name. Falls back
  *  to null when nothing matches. Case-insensitive. */
 export function pickAreaForCity(
-  areas: Array<{ id: string; code: string; name: string; city: string; type: string }>,
+  areas: Array<{ id: string; code: string; name: string; city: string; type: string; priority?: number | null }>,
   destination: string,
-): { id: string; code: string; name: string; city: string; type: string } | null {
+): { id: string; code: string; name: string; city: string; type: string; priority?: number | null } | null {
   const term = destination.trim().toLowerCase();
   if (!term) return null;
-  // Exact name match first (Petra Visitor Center → PET)
-  const nameHit = areas.find((a) => a.name.toLowerCase() === term);
-  if (nameHit) return nameHit;
-  // Then anchor city match — prefer CITY type when multiple share a city.
+
+  // Step 1: exact name match — but still apply priority when multiple
+  // rows somehow match the same display name (rare but possible).
+  const nameHits = areas.filter((a) => a.name.toLowerCase() === term);
+  if (nameHits.length === 1) return nameHits[0];
+  if (nameHits.length > 1) {
+    const sorted = [...nameHits].sort(compareAreasByPriority);
+    return sorted[0];
+  }
+
+  // Step 2: anchor city match — priority-aware. When multiple areas
+  // share a city, lower `priority` wins (QAIA=1 beats Marka=2 for
+  // Amman AIRPORT). NULL priority sorts last, falling back to the
+  // PREFERRED_TYPE_ORDER and then alphabetical.
   const cityHits = areas.filter((a) => a.city.toLowerCase() === term);
   if (cityHits.length === 0) return null;
   if (cityHits.length === 1) return cityHits[0];
-  return cityHits.find((a) => a.type === 'CITY') || cityHits[0];
+  const sorted = [...cityHits].sort(compareAreasByPriority);
+  return sorted[0];
+}
+
+// Preferred type order — used as a tie-breaker when priority is NULL.
+const PREFERRED_TYPE_ORDER: Array<string> = [
+  'CITY',
+  'TOURISM_SITE',
+  'RESORT_AREA',
+  'CAMP_AREA',
+  'BORDER',
+  'HOTEL_ZONE',
+  'PORT',
+  'AIRPORT',
+];
+
+/**
+ * Sort areas for "primary operational area" selection.
+ *
+ *   1. Lower `priority` integer wins (NULL = lowest priority, sorts last)
+ *   2. Tie → PREFERRED_TYPE_ORDER (CITY before AIRPORT, etc.)
+ *   3. Tie → alphabetical by name
+ *
+ * Exported so admin tooling + tests can reuse the same comparator.
+ */
+export function compareAreasByPriority<T extends { type: string; name: string; priority?: number | null }>(
+  a: T,
+  b: T,
+): number {
+  const pa = a.priority ?? 999;
+  const pb = b.priority ?? 999;
+  if (pa !== pb) return pa - pb;
+  const ta = PREFERRED_TYPE_ORDER.indexOf(a.type);
+  const tb = PREFERRED_TYPE_ORDER.indexOf(b.type);
+  const taOrd = ta < 0 ? 99 : ta;
+  const tbOrd = tb < 0 ? 99 : tb;
+  if (taOrd !== tbOrd) return taOrd - tbOrd;
+  return a.name.localeCompare(b.name);
 }
 
 /** Touring routes that operationally serve a destination — by startCity,
@@ -963,7 +1010,7 @@ export function assessPacing(
       totalDriveHours,
       longestSingleLegHours: longestLegHours,
       longLegCount,
-      explanation: `${longLegCount} legs exceed 4h — back-to-back long drives leave little margin for delays or sightseeing.`,
+      explanation: `${longLegCount} legs exceed 4h — back-to-back long drives leave little slack for delays or sightseeing.`,
     };
   }
   if (totalDriveHours >= 6) {

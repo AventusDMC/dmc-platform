@@ -43,6 +43,10 @@ export type OperationalAreaInput = {
   borderCrossingFlagDefault?: boolean;
   mountainRoadFlagDefault?: boolean;
   overnightRiskDefault?: boolean;
+  // Preferred Operational Area Logic — lower number wins when multiple
+  // areas share a city + type. NULL = lowest priority (operator hasn't
+  // opined). See compareAreasByPriority for tie-break order.
+  priority?: number | null;
 };
 
 /** Same UPPER_SNAKE normalization the canonical route-code generator uses. */
@@ -65,6 +69,13 @@ function requireValidType(type: string): OperationalAreaType {
   return type as OperationalAreaType;
 }
 
+function normalizePriority(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || (value as unknown) === '') return null;
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
 function buildCreateData(input: OperationalAreaInput) {
   return {
     code: normalizeAreaCode(requireString(input.code, 'code')),
@@ -78,6 +89,7 @@ function buildCreateData(input: OperationalAreaInput) {
     borderCrossingFlagDefault: Boolean(input.borderCrossingFlagDefault),
     mountainRoadFlagDefault: Boolean(input.mountainRoadFlagDefault),
     overnightRiskDefault: Boolean(input.overnightRiskDefault),
+    priority: normalizePriority(input.priority),
   };
 }
 
@@ -94,12 +106,39 @@ function buildUpdateData(input: Partial<OperationalAreaInput>) {
   if (input.borderCrossingFlagDefault !== undefined) data.borderCrossingFlagDefault = Boolean(input.borderCrossingFlagDefault);
   if (input.mountainRoadFlagDefault !== undefined) data.mountainRoadFlagDefault = Boolean(input.mountainRoadFlagDefault);
   if (input.overnightRiskDefault !== undefined) data.overnightRiskDefault = Boolean(input.overnightRiskDefault);
+  if (input.priority !== undefined) data.priority = normalizePriority(input.priority);
   return data;
 }
 
 // Best-match preference order when a city has multiple areas (Amman →
 // Amman City + QAIA). Keep this in sync with the client-side helper in
 // admin-web/.../CanonicalBuilderSection.tsx.
+/**
+ * Preferred Operational Area Logic (v2C addendum) — pure comparator
+ * used by findByCity + all matching helpers. Sort order:
+ *   1. Lower `priority` integer wins (NULL = lowest priority → 999)
+ *   2. Tie → PREFERRED_TYPE_ORDER (CITY first, AIRPORT last)
+ *   3. Tie → alphabetical by name
+ *
+ * Operators set explicit priorities via /operational-areas: QAIA=1,
+ * Marka=2 so QAIA wins for Amman AIRPORT. ALLENBY=1, SHB=2, WAB=3 so
+ * Allenby wins for the BORDER type within the same city anchor.
+ */
+export function compareAreasByPriority<T extends { type: string; name: string; priority?: number | null }>(
+  a: T,
+  b: T,
+): number {
+  const pa = a.priority ?? 999;
+  const pb = b.priority ?? 999;
+  if (pa !== pb) return pa - pb;
+  const ta = PREFERRED_TYPE_ORDER.indexOf(a.type as OperationalAreaType);
+  const tb = PREFERRED_TYPE_ORDER.indexOf(b.type as OperationalAreaType);
+  const taOrd = ta < 0 ? 99 : ta;
+  const tbOrd = tb < 0 ? 99 : tb;
+  if (taOrd !== tbOrd) return taOrd - tbOrd;
+  return a.name.localeCompare(b.name);
+}
+
 const PREFERRED_TYPE_ORDER: OperationalAreaType[] = [
   'CITY',
   'TOURISM_SITE',
@@ -161,14 +200,20 @@ export class OperationalAreasService {
     });
     if (!rows.length) return null;
     if (rows.length === 1) return rows[0];
-    const types: OperationalAreaType[] = options.preferType
-      ? [options.preferType, ...PREFERRED_TYPE_ORDER.filter((t) => t !== options.preferType)]
-      : PREFERRED_TYPE_ORDER;
-    for (const type of types) {
-      const found = rows.find((r: any) => r.type === type);
-      if (found) return found;
+
+    // Preferred Operational Area Logic — if the caller explicitly
+    // asked for a type, surface that type first when present.
+    if (options.preferType) {
+      const sameTypeRows = (rows as any[]).filter((r) => r.type === options.preferType);
+      if (sameTypeRows.length > 0) {
+        return sameTypeRows.sort(compareAreasByPriority)[0];
+      }
     }
-    return rows[0];
+
+    // Otherwise sort the full candidate set by priority (NULL last),
+    // type preference, then alphabetical. QAIA (priority 1) wins over
+    // Marka (priority 2) within Amman AIRPORT etc.
+    return (rows as any[]).sort(compareAreasByPriority)[0];
   }
 
   async create(input: OperationalAreaInput) {

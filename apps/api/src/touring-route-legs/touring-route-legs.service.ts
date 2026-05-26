@@ -628,36 +628,55 @@ const PREFERRED_TYPE_ORDER_FOR_MATCH = [
 
 export function matchStopToArea(
   stop: { city: string; location: string | null | undefined },
-  areas: Array<{ id: string; code: string; name: string; type: string; city: string }>,
-): { id: string; code: string; name: string; type: string; city: string } | null {
+  areas: Array<{ id: string; code: string; name: string; type: string; city: string; priority?: number | null }>,
+): { id: string; code: string; name: string; type: string; city: string; priority?: number | null } | null {
   const norm = (v: string | null | undefined) => String(v || '').trim().toLowerCase();
   const locationNorm = norm(stop.location);
   const cityNorm = norm(stop.city);
   if (!cityNorm && !locationNorm) return null;
 
-  // Step 1: exact-match against location.
+  // Step 1: exact-match against location. Ties broken by priority.
   if (locationNorm) {
-    const byLocation = areas.find((a) => norm(a.name) === locationNorm);
-    if (byLocation) return byLocation;
+    const matches = areas.filter((a) => norm(a.name) === locationNorm);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return [...matches].sort(compareStopAreasByPriority)[0];
   }
-  // Step 2: exact-match against city (matches single-token names like
-  // "Petra" → Petra Visitor Center isn't an exact name match but
-  // "Madaba" → Madaba IS).
+  // Step 2: exact-match against city name (e.g. "Madaba" → Madaba area).
   if (cityNorm) {
-    const byCityName = areas.find((a) => norm(a.name) === cityNorm);
-    if (byCityName) return byCityName;
+    const matches = areas.filter((a) => norm(a.name) === cityNorm);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return [...matches].sort(compareStopAreasByPriority)[0];
   }
-  // Step 3: match by area.city anchor with preferred-type ordering.
+  // Step 3: match by area.city anchor — priority-aware sort. QAIA
+  // (priority 1) beats Marka (priority 2) within Amman AIRPORT etc.
   if (cityNorm) {
     const candidates = areas.filter((a) => norm(a.city) === cityNorm);
     if (candidates.length === 1) return candidates[0];
     if (candidates.length > 1) {
-      for (const type of PREFERRED_TYPE_ORDER_FOR_MATCH) {
-        const hit = candidates.find((a) => a.type === type);
-        if (hit) return hit;
-      }
-      return candidates[0];
+      return [...candidates].sort(compareStopAreasByPriority)[0];
     }
   }
   return null;
+}
+
+/**
+ * Preferred Operational Area Logic — sort comparator local to this
+ * file (avoids a cross-service import). Mirrors compareAreasByPriority
+ * in operational-areas.service. Sort order:
+ *   1. Lower `priority` integer wins (NULL → 999)
+ *   2. Tie → PREFERRED_TYPE_ORDER_FOR_MATCH (CITY first, AIRPORT last)
+ *   3. Tie → alphabetical name
+ */
+function compareStopAreasByPriority<
+  T extends { type: string; name: string; priority?: number | null },
+>(a: T, b: T): number {
+  const pa = a.priority ?? 999;
+  const pb = b.priority ?? 999;
+  if (pa !== pb) return pa - pb;
+  const ta = PREFERRED_TYPE_ORDER_FOR_MATCH.indexOf(a.type);
+  const tb = PREFERRED_TYPE_ORDER_FOR_MATCH.indexOf(b.type);
+  const taOrd = ta < 0 ? 99 : ta;
+  const tbOrd = tb < 0 ? 99 : tb;
+  if (taOrd !== tbOrd) return taOrd - tbOrd;
+  return a.name.localeCompare(b.name);
 }
