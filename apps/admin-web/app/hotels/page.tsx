@@ -49,6 +49,11 @@ type HotelsPageProps = {
     // on the lightweight shell.
     load?: string;
     debugPerf?: string;
+    // Room Categories binary-isolation mode. `minimal` (default) hides
+    // all client subcomponents and renders only the loaded count.
+    // Step up through table → form → expand → full to identify
+    // which layer trips the runaway render.
+    cats?: string;
   }>;
 };
 
@@ -173,7 +178,13 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
       });
     }
 
-    if (activeTab === 'room-categories') return await RoomCategoriesSection();
+    if (activeTab === 'room-categories') {
+      // Room Categories binary-isolation hunt — propagate ?cats= into
+      // the section so each layer (minimal / table / form / expand /
+      // full) renders independently. Default mode is `minimal` —
+      // operators step up via the ladder UI rendered by the section.
+      return await RoomCategoriesSection({ catsMode: params?.cats });
+    }
     if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });
     if (activeTab === 'allotments') return await HotelAllotmentsSection({ contractId: params?.contractId });
     if (activeTab === 'rates') {
