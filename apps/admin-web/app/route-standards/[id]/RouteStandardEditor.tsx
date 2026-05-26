@@ -138,52 +138,58 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
     }
   }
 
-  // Important: this is a <div> wrapper (not <label>) because several global
-  // CSS rules in globals.css target `label { display: grid }` inside form
-  // shells and were stretching the cards into tall empty columns. The inner
-  // <label htmlFor> still makes the entire text-area clickable to toggle
-  // the checkbox, but the outer <div> sidesteps the global cascade.
-  const flagRow = (key: keyof typeof state, label: string, helper: string) => {
-    const inputId = `flag-${String(key)}`;
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '0.5rem',
-          padding: '0.5rem',
-          border: '1px solid #e4e7ec',
-          borderRadius: 8,
-          background: '#fff',
-          minHeight: '3.5rem',
-        }}
-      >
-        <input
-          id={inputId}
-          type="checkbox"
-          checked={Boolean(state[key])}
-          onChange={(e) => setState((s) => ({ ...s, [key]: e.target.checked }))}
-          style={{ marginTop: '0.25rem', flexShrink: 0 }}
-        />
-        <label
-          htmlFor={inputId}
-          style={{
-            flex: 1,
-            display: 'block',
-            cursor: 'pointer',
-            color: '#101828',
-            fontSize: '0.88rem',
-            lineHeight: 1.35,
-          }}
-        >
-          <strong style={{ display: 'block', marginBottom: '0.15rem' }}>{label}</strong>
-          <span style={{ fontSize: '0.78rem', color: '#667085', fontWeight: 400, display: 'block' }}>
-            {helper}
-          </span>
-        </label>
-      </div>
-    );
+  // Defensive card layout — no <label> at all. Globals.css contains many
+  // rules targeting `label { display: grid }` inside various form shells
+  // (.entity-form label, .app-form-section label, etc.) and at least one
+  // of them was leaking through to break our flag cards (tall empty
+  // columns with no visible text). By using a plain <div> with an
+  // onClick toggle, we sidestep the entire label cascade. The checkbox
+  // input still receives clicks directly; clicking the text area also
+  // toggles via the wrapper's onClick.
+  const toggleFlag = (key: keyof typeof state) => () => {
+    setState((s) => ({ ...s, [key]: !s[key] } as typeof s));
   };
+  const flagRow = (key: keyof typeof state, label: string, helper: string) => (
+    <div
+      onClick={toggleFlag(key)}
+      role="checkbox"
+      aria-checked={Boolean(state[key])}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          toggleFlag(key)();
+        }
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '0.5rem',
+        padding: '0.6rem 0.7rem',
+        border: '1px solid #e4e7ec',
+        borderRadius: 8,
+        background: '#fff',
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={Boolean(state[key])}
+        onChange={(e) => setState((s) => ({ ...s, [key]: e.target.checked }))}
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 18, height: 18, marginTop: '0.15rem', flexShrink: 0 }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#101828', lineHeight: 1.3 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: '0.78rem', color: '#667085', lineHeight: 1.35, marginTop: '0.15rem' }}>
+          {helper}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <form onSubmit={save} style={{ display: 'grid', gap: '1rem' }}>
@@ -293,7 +299,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
           override here for special cases.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Canonical route code</span>
             <input
               value={state.canonicalRouteCode}
@@ -301,8 +307,8 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
               placeholder="AMM_PET"
               style={{ fontFamily: 'monospace' }}
             />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Review status</span>
             <select
               value={state.reviewStatus}
@@ -312,42 +318,45 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
                 <option key={opt.value || 'unset'} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-          </label>
+          </div>
           <div
+            onClick={() => setState((s) => ({ ...s, suspiciousDurationFlag: !s.suspiciousDurationFlag }))}
+            role="checkbox"
+            aria-checked={state.suspiciousDurationFlag}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                setState((s) => ({ ...s, suspiciousDurationFlag: !s.suspiciousDurationFlag }));
+              }
+            }}
             style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: '0.5rem',
-              padding: '0.5rem',
+              padding: '0.6rem 0.7rem',
               border: '1px solid #e4e7ec',
               borderRadius: 8,
               background: '#fff',
-              minHeight: '3.5rem',
+              cursor: 'pointer',
+              userSelect: 'none',
             }}
           >
             <input
-              id="suspicious-duration-flag"
               type="checkbox"
               checked={state.suspiciousDurationFlag}
               onChange={(e) => setState((s) => ({ ...s, suspiciousDurationFlag: e.target.checked }))}
-              style={{ marginTop: '0.25rem', flexShrink: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: 18, height: 18, marginTop: '0.15rem', flexShrink: 0 }}
             />
-            <label
-              htmlFor="suspicious-duration-flag"
-              style={{
-                flex: 1,
-                display: 'block',
-                cursor: 'pointer',
-                color: '#101828',
-                fontSize: '0.88rem',
-                lineHeight: 1.35,
-              }}
-            >
-              <strong style={{ display: 'block', marginBottom: '0.15rem' }}>Suspicious duration</strong>
-              <span style={{ fontSize: '0.78rem', color: '#667085', fontWeight: 400, display: 'block' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#101828', lineHeight: 1.3 }}>
+                Suspicious duration
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#667085', lineHeight: 1.35, marginTop: '0.15rem' }}>
                 Duration looks like an excursion day length rather than realistic transfer time.
-              </span>
-            </label>
+              </div>
+            </div>
           </div>
         </div>
       </section>
