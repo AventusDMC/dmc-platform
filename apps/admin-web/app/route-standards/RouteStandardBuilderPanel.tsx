@@ -21,7 +21,7 @@ import { useRouter } from 'next/navigation';
 
 type OperationalArea = {
   id: string;
-  displayName: string;
+  name: string;
   code: string;
   type: 'CITY' | 'AIRPORT' | 'ATTRACTION' | 'BORDER';
   city: string;
@@ -147,7 +147,7 @@ export function RouteStandardBuilderPanel() {
   }, [mode, fromAreaId, toAreaId]);
 
   const areaOptions = useMemo(() => {
-    return areas.map((a) => ({ value: a.id, label: `${a.displayName} (${a.code})` }));
+    return areas.map((a) => ({ value: a.id, label: `${a.name} (${a.code})` }));
   }, [areas]);
 
   const fromArea = useMemo(() => areas.find((a) => a.id === fromAreaId) || null, [areas, fromAreaId]);
@@ -582,7 +582,7 @@ function PreviewBanner({
       <p style={{ margin: 0 }}>
         <strong>New route.</strong> Will create{' '}
         <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>{preview.suggestedCode}</code> —{' '}
-        {fromArea.displayName} → {toArea.displayName}.
+        {fromArea.name} → {toArea.name}.
       </p>
     </div>
   );

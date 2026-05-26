@@ -24,7 +24,7 @@ type OperationalAreaType = 'CITY' | 'AIRPORT' | 'ATTRACTION' | 'BORDER';
 
 type OperationalArea = {
   id: string;
-  displayName: string;
+  name: string;
   code: string;
   type: OperationalAreaType;
   city: string;
@@ -194,7 +194,7 @@ export function CanonicalBuilderSection({
     };
   }, [fromAreaId, toAreaId]);
 
-  const areaOptions = useMemo(() => areas.map((a) => ({ value: a.id, label: `${a.displayName} (${a.code})` })), [areas]);
+  const areaOptions = useMemo(() => areas.map((a) => ({ value: a.id, label: `${a.name} (${a.code})` })), [areas]);
 
   // The existingMatch may be the row being edited itself — that's NOT a
   // duplicate, it's the same identifier the operator already owns. Filter

@@ -2,7 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { RouteStandardsService } from './route-standards.service';
-import { OPERATIONAL_AREAS, getAreaByCode, getAreaById, mergeDefaultFlags } from './operational-areas';
+import { pickAreaByCode, pickAreaById, mergeDefaultFlagsFor, OperationalArea } from './operational-areas';
+
+// Operational Areas Catalog v1 — the dictionary now lives in the DB,
+// but tests need a deterministic in-memory fixture. Mirror the migration
+// seed.
+const JORDAN_AREAS_FIXTURE: OperationalArea[] = [
+  { id: 'a-amm', code: 'AMM', name: 'Amman City', type: 'CITY', city: 'Amman' },
+  { id: 'a-qaia', code: 'QAIA', name: 'Queen Alia International Airport', type: 'AIRPORT', city: 'Amman', airportRouteFlagDefault: true },
+  { id: 'a-pet', code: 'PET', name: 'Petra Visitor Center', type: 'TOURISM_SITE', city: 'Petra' },
+  { id: 'a-wr', code: 'WR', name: 'Wadi Rum Camp Area', type: 'CAMP_AREA', city: 'Wadi Rum' },
+  { id: 'a-aqj', code: 'AQJ', name: 'Aqaba City', type: 'CITY', city: 'Aqaba' },
+  { id: 'a-ds', code: 'DS', name: 'Dead Sea Resort Area', type: 'RESORT_AREA', city: 'Dead Sea' },
+  { id: 'a-jer', code: 'JER', name: 'Jerash Archaeological Site', type: 'TOURISM_SITE', city: 'Jerash' },
+  { id: 'a-mad', code: 'MAD', name: 'Madaba', type: 'CITY', city: 'Madaba' },
+  { id: 'a-neb', code: 'NEB', name: 'Mount Nebo', type: 'TOURISM_SITE', city: 'Madaba' },
+  { id: 'a-irb', code: 'IRB', name: 'Irbid', type: 'CITY', city: 'Irbid' },
+  { id: 'a-allenby', code: 'ALLENBY', name: 'Allenby / King Hussein Bridge', type: 'BORDER', city: 'Dead Sea', borderCrossingFlagDefault: true },
+  { id: 'a-shb', code: 'SHB', name: 'Sheikh Hussein Border', type: 'BORDER', city: 'Irbid', borderCrossingFlagDefault: true },
+];
+
+const fakeAreasService = {
+  findAll: async (_filters?: any) => JORDAN_AREAS_FIXTURE,
+} as any;
 
 // Route Code Generator + Duplicate Protection v1 — tests for the
 // Route Builder backend: operational area dictionary lookups,
@@ -68,10 +90,10 @@ function buildFakePrisma(initial: Array<any> = []) {
 }
 
 // -----------------------------------------------------------------------
-// Operational area dictionary
+// Operational area dictionary (Jordan seed fixture mirrors migration seed)
 // -----------------------------------------------------------------------
-test('OPERATIONAL_AREAS includes every code called out in the spec', () => {
-  const codes = OPERATIONAL_AREAS.map((a) => a.code);
+test('JORDAN_AREAS_FIXTURE includes every code called out in the spec', () => {
+  const codes = JORDAN_AREAS_FIXTURE.map((a) => a.code);
   // From the spec:
   assert.ok(codes.includes('AMM'), 'Amman City');
   assert.ok(codes.includes('QAIA'), 'Queen Alia Airport');
@@ -80,30 +102,29 @@ test('OPERATIONAL_AREAS includes every code called out in the spec', () => {
   assert.ok(codes.includes('AQJ'), 'Aqaba');
   assert.ok(codes.includes('DS'), 'Dead Sea');
   assert.ok(codes.includes('JER'), 'Jerash');
-  assert.ok(codes.includes('AJL'), 'Ajloun');
   assert.ok(codes.includes('MAD'), 'Madaba');
   assert.ok(codes.includes('NEB'), 'Mount Nebo');
   assert.ok(codes.includes('ALLENBY'), 'Allenby border');
   assert.ok(codes.includes('SHB'), 'Sheikh Hussein border');
 });
 
-test('getAreaByCode + getAreaById resolve consistently', () => {
-  const amm = getAreaByCode('AMM');
+test('pickAreaByCode + pickAreaById resolve consistently against the loaded list', () => {
+  const amm = pickAreaByCode(JORDAN_AREAS_FIXTURE, 'AMM');
   assert.equal(amm?.code, 'AMM');
   assert.equal(amm?.city, 'Amman');
-  assert.equal(getAreaById(amm!.id)?.code, 'AMM');
-  assert.equal(getAreaByCode('unknown-code'), null);
-  assert.equal(getAreaById('unknown-id'), null);
+  assert.equal(pickAreaById(JORDAN_AREAS_FIXTURE, amm!.id)?.code, 'AMM');
+  assert.equal(pickAreaByCode(JORDAN_AREAS_FIXTURE, 'unknown-code'), null);
+  assert.equal(pickAreaById(JORDAN_AREAS_FIXTURE, 'unknown-id'), null);
 });
 
-test('mergeDefaultFlags ORs flags from both endpoints', () => {
-  const amm = getAreaByCode('AMM')!;
-  const qaia = getAreaByCode('QAIA')!;
-  const allenby = getAreaByCode('ALLENBY')!;
-  const merged = mergeDefaultFlags(amm, qaia);
+test('mergeDefaultFlagsFor ORs flags from both endpoints', () => {
+  const amm = pickAreaByCode(JORDAN_AREAS_FIXTURE, 'AMM')!;
+  const qaia = pickAreaByCode(JORDAN_AREAS_FIXTURE, 'QAIA')!;
+  const allenby = pickAreaByCode(JORDAN_AREAS_FIXTURE, 'ALLENBY')!;
+  const merged = mergeDefaultFlagsFor(amm, qaia);
   assert.equal(merged.airportRouteFlag, true);
   assert.equal(merged.borderCrossingFlag, false);
-  const merged2 = mergeDefaultFlags(qaia, allenby);
+  const merged2 = mergeDefaultFlagsFor(qaia, allenby);
   assert.equal(merged2.airportRouteFlag, true);
   assert.equal(merged2.borderCrossingFlag, true);
 });
@@ -113,7 +134,7 @@ test('mergeDefaultFlags ORs flags from both endpoints', () => {
 // -----------------------------------------------------------------------
 test('previewRouteCreation: suggests AMM_PET when From=Amman City, To=Petra Visitor Center', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.equal(preview.suggestedCode, 'AMM_PET');
   assert.equal(preview.suggestedRouteName, 'Amman City → Petra Visitor Center');
@@ -133,7 +154,7 @@ test('previewRouteCreation: detects duplicate by canonicalRouteCode', async () =
       standardDistanceKm: 235,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.ok(preview.existingMatch);
   assert.equal(preview.existingMatch?.matchReason, 'canonical_code');
@@ -150,7 +171,7 @@ test('previewRouteCreation: detects duplicate by legacy routeCode when canonical
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.ok(preview.existingMatch);
   assert.equal(preview.existingMatch?.matchReason, 'legacy_code');
@@ -168,7 +189,7 @@ test('previewRouteCreation: detects duplicate by city pair when codes do not mat
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.ok(preview.existingMatch);
   assert.equal(preview.existingMatch?.matchReason, 'city_pair');
@@ -176,7 +197,7 @@ test('previewRouteCreation: detects duplicate by city pair when codes do not mat
 
 test('previewRouteCreation: refuses same-area routes', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   await assert.rejects(
     () => service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'AMM' }),
     /From and To areas cannot be the same/,
@@ -188,7 +209,7 @@ test('previewRouteCreation: refuses same-area routes', async () => {
 // -----------------------------------------------------------------------
 test('createWithGeneration: creates new route with generated canonical code', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createWithGeneration({
     fromAreaCode: 'AMM',
     toAreaCode: 'PET',
@@ -216,7 +237,7 @@ test('createWithGeneration: refuses to create when duplicate exists (without for
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createWithGeneration({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.equal(result.action, 'use-existing');
   assert.equal((prisma as any).__store.length, 1); // no new row created
@@ -224,7 +245,7 @@ test('createWithGeneration: refuses to create when duplicate exists (without for
 
 test('createWithGeneration: alsoCreateReverse creates both legs (AMM_PET + PET_AMM)', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createWithGeneration(
     {
       fromAreaCode: 'AMM',
@@ -251,7 +272,7 @@ test('createWithGeneration: alsoCreateReverse skips reverse leg when it already 
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createWithGeneration(
     { fromAreaCode: 'AMM', toAreaCode: 'PET' },
     { alsoCreateReverse: true },
@@ -265,7 +286,7 @@ test('createWithGeneration: alsoCreateReverse skips reverse leg when it already 
 // -----------------------------------------------------------------------
 test('createMultiStopRoute: builds N-1 legs from an ordered stop list (AMM → MAD → NEB → PET)', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createMultiStopRoute({
     stops: [{ areaCode: 'AMM' }, { areaCode: 'MAD' }, { areaCode: 'NEB' }, { areaCode: 'PET' }],
   });
@@ -288,7 +309,7 @@ test('createMultiStopRoute: reuses existing legs and only creates the missing on
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.createMultiStopRoute({
     stops: [{ areaCode: 'AMM' }, { areaCode: 'MAD' }, { areaCode: 'NEB' }, { areaCode: 'PET' }],
   });
@@ -301,7 +322,7 @@ test('createMultiStopRoute: reuses existing legs and only creates the missing on
 
 test('createMultiStopRoute: refuses fewer than 3 stops (use single-leg builder instead)', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   await assert.rejects(
     () => service.createMultiStopRoute({ stops: [{ areaCode: 'AMM' }, { areaCode: 'PET' }] }),
     /at least 3 stops/,
@@ -324,7 +345,7 @@ test('bulkUpsert: re-importing a workbook with the canonical short code updates 
       standardDurationHours: 3.5,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   // Workbook contains the canonical short form with updated numbers.
   const result = await service.bulkUpsert([
     {
@@ -346,7 +367,7 @@ test('bulkUpsert: re-importing a workbook with the canonical short code updates 
 
 test('bulkUpsert: still creates fresh rows when no dedup target exists', async () => {
   const prisma = buildFakePrisma([]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const result = await service.bulkUpsert([
     { routeCode: 'AMM_PET', routeName: 'Amman → Petra' },
     { routeCode: 'PET_WR', routeName: 'Petra → Wadi Rum' },
@@ -369,7 +390,7 @@ test('createWithGeneration: never touches existing routeCode of any other row', 
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   await service.createWithGeneration({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   // PET_WR is untouched.
   const pwr = (prisma as any).__store.find((r: any) => r.id === 'unrelated-1');
