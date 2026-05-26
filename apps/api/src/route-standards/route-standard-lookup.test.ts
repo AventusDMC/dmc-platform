@@ -28,8 +28,20 @@ function buildFakePrisma(opts: {
     },
     routeStandard: {
       findMany: async ({ where }: any) => {
-        const codes: string[] = where?.routeCode?.in || [];
-        return (opts.standards || []).filter((s) => codes.includes(s.routeCode));
+        // Cleanup Phase v1 — the lookup helper now uses OR over BOTH
+        // routeCode and canonicalRouteCode so legacy bookings whose
+        // captured code matches the long form still resolve once
+        // canonicalization assigns a FROM_TO short form. Mirror that
+        // shape here so tests exercise the real query.
+        const orClauses: any[] = where?.OR || (where?.routeCode ? [{ routeCode: where.routeCode }] : []);
+        const codes = new Set<string>();
+        for (const clause of orClauses) {
+          for (const candidate of clause?.routeCode?.in || []) codes.add(candidate);
+          for (const candidate of clause?.canonicalRouteCode?.in || []) codes.add(candidate);
+        }
+        return (opts.standards || []).filter(
+          (s) => codes.has(s.routeCode) || (s.canonicalRouteCode && codes.has(s.canonicalRouteCode)),
+        );
       },
     },
   };

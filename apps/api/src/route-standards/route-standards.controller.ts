@@ -43,6 +43,13 @@ const COLUMN_HEADERS = [
   'Notes',
   'Active',
   'Timing Confidence (derived, read-only)',
+  // Cleanup Phase v1 — surface canonical code + review status + suspicious flag
+  // so operators can edit them in Excel too. Empty cells leave the
+  // existing value untouched (matches the import semantics for the
+  // other optional columns).
+  'Canonical Route Code',
+  'Review Status',
+  'Suspicious Duration Flag',
 ] as const;
 
 function parseBoolean(value: unknown): boolean {
@@ -100,6 +107,43 @@ export class RouteStandardsController {
     return this.routeStandardsService.bootstrapFromExistingRoutes();
   }
 
+  // ---------------------------------------------------------------------
+  // Cleanup Phase v1 — canonical operational route normalization.
+  //
+  // Three-step operator flow:
+  //   1. GET  /route-standards/refinement-summary  — counters for the
+  //      refinement dashboard.
+  //   2. POST /route-standards/canonicalize/preview — no-write preview
+  //      of canonical FROM_TO codes + duplicates + sanity flags.
+  //   3. POST /route-standards/canonicalize/apply  — write the proposed
+  //      canonicalRouteCode + reviewStatus across the table.
+  //   4. POST /route-standards/merge-duplicates    — per duplicate group,
+  //      soft-merge into the operator's chosen target.
+  // ---------------------------------------------------------------------
+
+  @Get('refinement/summary')
+  refinementSummary() {
+    return this.routeStandardsService.refinementSummary();
+  }
+
+  @Post('canonicalize/preview')
+  @Roles('admin', 'operations')
+  previewCanonicalization() {
+    return this.routeStandardsService.previewCanonicalization();
+  }
+
+  @Post('canonicalize/apply')
+  @Roles('admin', 'operations')
+  applyCanonicalization() {
+    return this.routeStandardsService.applyCanonicalization();
+  }
+
+  @Post('merge-duplicates')
+  @Roles('admin', 'operations')
+  mergeDuplicates(@Body() body: { targetId: string; mergedIds: string[] }) {
+    return this.routeStandardsService.mergeDuplicates(body?.targetId, body?.mergedIds || []);
+  }
+
   /**
    * Excel export — one row per route standard. Sheet name fixed at
    * "Route Standards" so the import path can validate it.
@@ -129,6 +173,9 @@ export class RouteStandardsController {
         row.notes ?? '',
         row.isActive ? 'Yes' : 'No',
         computeRouteTimingConfidence(row),
+        row.canonicalRouteCode ?? '',
+        row.reviewStatus ?? '',
+        row.suspiciousDurationFlag ? 'Yes' : 'No',
       ]);
     }
     sheet.columns.forEach((column: any) => {
@@ -188,6 +235,9 @@ export class RouteStandardsController {
       const routeName = cell(2).trim();
       if (!routeCode || !routeName) return; // skip blank rows
 
+      const canonicalRaw = cell(17).trim();
+      const reviewRaw = cell(18).trim().toUpperCase();
+      const allowedReviewStatus = ['AUTO_BOOTSTRAP', 'REVIEW_REQUIRED', 'VERIFIED', 'CANONICALIZED'];
       rows.push({
         routeCode,
         routeName,
@@ -204,6 +254,14 @@ export class RouteStandardsController {
         airportRouteFlag: parseBoolean(cell(13)),
         notes: cell(14).trim() || null,
         isActive: cell(15).trim().toLowerCase() === 'no' ? false : true,
+        // Cleanup Phase v1 fields — optional in the workbook. Empty cells
+        // pass undefined so buildUpdateData leaves the existing value
+        // alone; empty strings here would clobber operator-curated values.
+        canonicalRouteCode: canonicalRaw ? canonicalRaw : undefined,
+        reviewStatus: allowedReviewStatus.includes(reviewRaw)
+          ? (reviewRaw as RouteStandardInput['reviewStatus'])
+          : undefined,
+        suspiciousDurationFlag: cell(19).trim() ? parseBoolean(cell(19)) : undefined,
       });
     });
     return rows;

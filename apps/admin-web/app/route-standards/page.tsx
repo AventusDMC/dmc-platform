@@ -3,6 +3,7 @@ import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { AdminBreadcrumbs } from '../components/AdminBreadcrumbs';
 import { RouteStandardBootstrapPanel } from './RouteStandardBootstrapPanel';
 import { RouteStandardImportPanel } from './RouteStandardImportPanel';
+import { RouteStandardRefinementPanel } from './RouteStandardRefinementPanel';
 import { computeTimingConfidenceLabel } from './route-standard-display';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,10 @@ type RouteStandard = {
   notes: string | null;
   isActive: boolean;
   source: string | null;
+  // Cleanup Phase v1
+  canonicalRouteCode: string | null;
+  reviewStatus: string | null;
+  suspiciousDurationFlag: boolean;
 };
 
 async function loadStandards(): Promise<RouteStandard[]> {
@@ -79,6 +84,8 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
       ) : null}
 
       <RouteStandardBootstrapPanel />
+
+      <RouteStandardRefinementPanel />
 
       <RouteStandardImportPanel />
 
@@ -170,7 +177,84 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                     <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
                       <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>
                         <strong>{s.routeCode}</strong>
-                        {s.source === 'AUTO_BOOTSTRAP' ? (
+                        {/* Cleanup Phase v1 — canonical FROM_TO code chip
+                            sits right next to the legacy code so operators
+                            can read both. The legacy column is the historical
+                            identifier (kept for lookup compatibility); the
+                            canonical code is the operational truth. */}
+                        {s.canonicalRouteCode && s.canonicalRouteCode !== s.routeCode ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#fcfaf5',
+                              color: '#7a5c2e',
+                              border: '1px solid #e2dccc',
+                              padding: '0.05rem 0.45rem',
+                              borderRadius: 999,
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                            }}
+                            title="Canonical FROM_TO operational code. Vouchers and dispatch render this; legacy quote items still resolve via the long code."
+                          >
+                            {s.canonicalRouteCode}
+                          </span>
+                        ) : null}
+                        {s.suspiciousDurationFlag ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#fbf6ea',
+                              color: '#8b5e34',
+                              padding: '0.05rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              fontFamily: 'inherit',
+                              textTransform: 'uppercase',
+                            }}
+                            title="Inherited duration looks like an excursion day length rather than realistic transfer time. Refine before dispatch trusts the timing."
+                          >
+                            Suspicious
+                          </span>
+                        ) : null}
+                        {s.reviewStatus === 'REVIEW_REQUIRED' ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#fbf2f2',
+                              color: '#7a4242',
+                              padding: '0.05rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              fontFamily: 'inherit',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Review
+                          </span>
+                        ) : s.reviewStatus === 'VERIFIED' ? (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              background: '#ecfdf3',
+                              color: '#067647',
+                              padding: '0.05rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              fontFamily: 'inherit',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Verified
+                          </span>
+                        ) : null}
+                        {s.source === 'AUTO_BOOTSTRAP' && s.reviewStatus !== 'REVIEW_REQUIRED' && s.reviewStatus !== 'VERIFIED' && s.reviewStatus !== 'CANONICALIZED' ? (
                           <span
                             style={{
                               marginLeft: '0.4rem',
