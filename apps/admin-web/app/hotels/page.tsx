@@ -13,6 +13,8 @@ import { HotelRatesSection } from './HotelRatesSection';
 import { HotelTariffWorkbookSection } from './HotelTariffWorkbookSection';
 import { HotelsSection } from './HotelsSection';
 import { HotelsDirectoryErrorBoundary } from './HotelsDirectoryErrorBoundary';
+import { HotelsSafeShell } from './HotelsSafeShell';
+import { HotelsPerfDebugPanel } from './HotelsPerfDebugPanel';
 import { RoomCategoriesSection } from './RoomCategoriesSection';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +43,12 @@ type HotelsPageProps = {
     status?: string;
     validity?: string;
     activeState?: string;
+    // Emergency safe-shell flags — `load=1` opts in to the heavy
+    // tab body; `debugPerf=1` mounts the floating render-counter
+    // overlay. Both are absent by default so initial visits land
+    // on the lightweight shell.
+    load?: string;
+    debugPerf?: string;
   }>;
 };
 
@@ -229,6 +237,15 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
     activeTab === 'promotions';
+  // Emergency safe-shell mode — when the operator hasn't explicitly
+  // opted in to loading via `?load=1`, skip EVERY server-side fetch on
+  // this page. Even the lightweight directory-summary stays unfetched
+  // so we can isolate whether the freeze is a render/hydration cascade
+  // triggered by tab content or by the page itself. Once verified, the
+  // gating can be relaxed in follow-up work.
+  const loadRequested = resolvedSearchParams?.load === '1';
+  const debugPerfEnabled = resolvedSearchParams?.debugPerf === '1';
+
   // Hotels Directory freeze fix — split the heavy hotel fetch from
   // the lightweight summary used by the strip. Only load full hotels
   // when the operator is on the directory tab (the only tab that
@@ -236,7 +253,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
   // /hotels/directory-summary endpoint.
   const isDirectoryTab = activeTab === 'hotels';
   const [hotelsForDirectory, directorySummary, currentContract] = await Promise.all([
-    isDirectoryTab
+    loadRequested && isDirectoryTab
       ? getHotels().catch((error) => {
           if (isNextRedirectError(error)) {
             throw error;
@@ -245,14 +262,16 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
           return [] as HotelsPageHotel[];
         })
       : Promise.resolve([] as HotelsPageHotel[]),
-    getDirectorySummary().catch((error) => {
-      if (isNextRedirectError(error)) {
-        throw error;
-      }
-      console.error('[hotels] directory summary unavailable', error);
-      return [] as HotelDirectorySummary[];
-    }),
-    isCommercialTab && resolvedSearchParams?.contractId
+    loadRequested
+      ? getDirectorySummary().catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+          console.error('[hotels] directory summary unavailable', error);
+          return [] as HotelDirectorySummary[];
+        })
+      : Promise.resolve([] as HotelDirectorySummary[]),
+    loadRequested && isCommercialTab && resolvedSearchParams?.contractId
       ? getHotelContract(resolvedSearchParams.contractId).catch((error) => {
           if (isNextRedirectError(error)) {
             throw error;
@@ -500,7 +519,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
               </>
             ) : null}
 
-            {isLargeDirectory ? (
+            {loadRequested && isLargeDirectory ? (
               <div className="detail-card" role="status" style={{ borderColor: '#f59e0b', marginBottom: '0.75rem' }}>
                 <p className="eyebrow" style={{ color: '#f59e0b', margin: 0 }}>Safe mode</p>
                 <strong>Large hotel directory — showing summary cards first.</strong>
@@ -512,8 +531,17 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
             ) : null}
 
             <HotelsDirectoryErrorBoundary tabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}>
-              {await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)}
+              {loadRequested
+                ? await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)
+                : (
+                    <HotelsSafeShell
+                      activeTab={activeTab}
+                      activeTabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}
+                      searchParams={resolvedSearchParams}
+                    />
+                  )}
             </HotelsDirectoryErrorBoundary>
+            <HotelsPerfDebugPanel enabled={debugPerfEnabled} />
           </section>
         </WorkspaceShell>
       </section>
