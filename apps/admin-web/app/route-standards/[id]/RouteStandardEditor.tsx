@@ -138,30 +138,52 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
     }
   }
 
-  const flagRow = (key: keyof typeof state, label: string, helper: string) => (
-    <label
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: '0.5rem',
-        padding: '0.5rem',
-        border: '1px solid #e4e7ec',
-        borderRadius: 8,
-        background: '#fff',
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={Boolean(state[key])}
-        onChange={(e) => setState((s) => ({ ...s, [key]: e.target.checked }))}
-        style={{ marginTop: '0.2rem' }}
-      />
-      <span style={{ flex: 1 }}>
-        <strong style={{ fontSize: '0.88rem', color: '#101828', display: 'block' }}>{label}</strong>
-        <span style={{ fontSize: '0.78rem', color: '#667085' }}>{helper}</span>
-      </span>
-    </label>
-  );
+  // Important: this is a <div> wrapper (not <label>) because several global
+  // CSS rules in globals.css target `label { display: grid }` inside form
+  // shells and were stretching the cards into tall empty columns. The inner
+  // <label htmlFor> still makes the entire text-area clickable to toggle
+  // the checkbox, but the outer <div> sidesteps the global cascade.
+  const flagRow = (key: keyof typeof state, label: string, helper: string) => {
+    const inputId = `flag-${String(key)}`;
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.5rem',
+          padding: '0.5rem',
+          border: '1px solid #e4e7ec',
+          borderRadius: 8,
+          background: '#fff',
+          minHeight: '3.5rem',
+        }}
+      >
+        <input
+          id={inputId}
+          type="checkbox"
+          checked={Boolean(state[key])}
+          onChange={(e) => setState((s) => ({ ...s, [key]: e.target.checked }))}
+          style={{ marginTop: '0.25rem', flexShrink: 0 }}
+        />
+        <label
+          htmlFor={inputId}
+          style={{
+            flex: 1,
+            display: 'block',
+            cursor: 'pointer',
+            color: '#101828',
+            fontSize: '0.88rem',
+            lineHeight: 1.35,
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: '0.15rem' }}>{label}</strong>
+          <span style={{ fontSize: '0.78rem', color: '#667085', fontWeight: 400, display: 'block' }}>
+            {helper}
+          </span>
+        </label>
+      </div>
+    );
+  };
 
   return (
     <form onSubmit={save} style={{ display: 'grid', gap: '1rem' }}>
@@ -291,7 +313,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
               ))}
             </select>
           </label>
-          <label
+          <div
             style={{
               display: 'flex',
               alignItems: 'flex-start',
@@ -300,21 +322,33 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
               border: '1px solid #e4e7ec',
               borderRadius: 8,
               background: '#fff',
+              minHeight: '3.5rem',
             }}
           >
             <input
+              id="suspicious-duration-flag"
               type="checkbox"
               checked={state.suspiciousDurationFlag}
               onChange={(e) => setState((s) => ({ ...s, suspiciousDurationFlag: e.target.checked }))}
-              style={{ marginTop: '0.2rem' }}
+              style={{ marginTop: '0.25rem', flexShrink: 0 }}
             />
-            <span style={{ flex: 1 }}>
-              <strong style={{ fontSize: '0.88rem', color: '#101828', display: 'block' }}>Suspicious duration</strong>
-              <span style={{ fontSize: '0.78rem', color: '#667085' }}>
+            <label
+              htmlFor="suspicious-duration-flag"
+              style={{
+                flex: 1,
+                display: 'block',
+                cursor: 'pointer',
+                color: '#101828',
+                fontSize: '0.88rem',
+                lineHeight: 1.35,
+              }}
+            >
+              <strong style={{ display: 'block', marginBottom: '0.15rem' }}>Suspicious duration</strong>
+              <span style={{ fontSize: '0.78rem', color: '#667085', fontWeight: 400, display: 'block' }}>
                 Duration looks like an excursion day length rather than realistic transfer time.
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
       </section>
 
