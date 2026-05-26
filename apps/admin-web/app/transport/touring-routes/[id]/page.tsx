@@ -6,6 +6,7 @@ import { WorkspaceShell } from '../../../components/WorkspaceShell';
 import { adminPageFetchJson } from '../../../lib/admin-server';
 import { TouringRouteDuplicateButton } from '../TouringRouteDuplicateButton';
 import { TouringRouteEditor } from './TouringRouteEditor';
+import { TouringRouteLegsPanel } from './TouringRouteLegsPanel';
 import type { TouringRouteCatalogs, TouringRouteDetail } from '../types';
 
 export const dynamic = 'force-dynamic';
@@ -170,6 +171,8 @@ export default async function TouringRouteDetailPage({ params, searchParams }: T
               <h3>Operational warnings</h3>
               {warnings.length > 0 ? warnings.map((warning) => <p className="form-helper" key={warning}>{warning}</p>) : <p className="form-success">No operational warnings detected.</p>}
             </section>
+
+            <TouringRouteLegsPanel touringRouteId={route.id} />
 
             {resolvedSearchParams.mode === 'edit' ? <TouringRouteEditor route={route} catalogs={catalogs} /> : null}
           </section>

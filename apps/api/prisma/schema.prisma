@@ -1769,6 +1769,11 @@ model RouteStandard {
   suspiciousDurationFlag    Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
+  // Touring Route Legs v1 — back-relation to legs that reference this
+  // standard. ON DELETE SET NULL (configured in migration) so removing
+  // a standard doesn't cascade-delete every touring-route leg using it;
+  // legs lose the link but their fromArea/toArea + sequence stay intact.
+  routeLegs                 TouringRouteLeg[]
 
   @@index([isActive, routeCode])
   @@index([fromCity, toCity])
@@ -1804,11 +1809,59 @@ model OperationalArea {
   overnightRiskDefault       Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // Touring Route Legs v1 — back-relations so we can include the area's
+  // outgoing and incoming legs when needed. Named relations so Prisma
+  // can disambiguate FROM vs TO.
+  legsAsFrom  TouringRouteLeg[] @relation("LegFromArea")
+  legsAsTo    TouringRouteLeg[] @relation("LegToArea")
 
   @@index([isActive, code])
   @@index([city])
   @@index([type])
   @@map("operational_areas")
+}
+
+// Touring Route Legs v1 — ordered Route Standard movements that compose
+// the operational flow of a Touring Route. Pricing is NOT derived from
+// these legs (TouringRoutePricing remains the pricing authority); legs
+// only describe movement + timing + risk profile used by quote display
+// (e.g. "Amman → Madaba → Nebo → Petra") and dispatch feasibility
+// (drive duration + buffer + estimated stop time).
+model TouringRouteLeg {
+  id                    String          @id @default(uuid()) @db.Uuid
+  touringRouteId        String          @db.Uuid
+  touringRoute          TouringRoute    @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+  // Ordered position within the touring route. Unique per touring route
+  // — reordering reassigns sequences. Gaps are allowed (a deleted leg
+  // leaves a gap until the next reorder).
+  sequence              Int
+  // Optional. NULL when no RouteStandard exists yet for the from/to
+  // pair OR when legType is STOP / WAIT / ACTIVITY_ANCHOR (those legs
+  // don't model movement). Auto-resolved from fromAreaId + toAreaId
+  // when a matching canonical route code exists.
+  routeStandardId       String?         @db.Uuid
+  routeStandard         RouteStandard?  @relation(fields: [routeStandardId], references: [id])
+  fromAreaId            String?         @db.Uuid
+  fromArea              OperationalArea? @relation("LegFromArea", fields: [fromAreaId], references: [id])
+  toAreaId              String?         @db.Uuid
+  toArea                OperationalArea? @relation("LegToArea", fields: [toAreaId], references: [id])
+  // DRIVE | STOP | WAIT | ACTIVITY_ANCHOR. DRIVE = a movement leg with
+  // a routeStandard; STOP = scheduled stop (photo / break); WAIT =
+  // operational hold (border, transit); ACTIVITY_ANCHOR = the leg
+  // exists to mark where a planned activity happens during the day.
+  legType               String          @default("DRIVE")
+  notes                 String?
+  // Stop time at the FROM end of this leg (e.g. 30 min photo stop at
+  // Mount Nebo before driving on to Petra). Counted toward total
+  // operational duration but NOT toward drive duration.
+  estimatedStopMinutes  Int?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([touringRouteId, sequence])
+  @@index([touringRouteId, sequence])
+  @@index([routeStandardId])
+  @@map("touring_route_legs")
 }
 
 model ServiceType {
@@ -2231,6 +2284,12 @@ model TouringRoute {
   packageComponents   PackageTemplateComponent[]
   quoteItems          QuoteItem[]
   bookingServices     BookingService[]
+  // Touring Route Legs v1 — ordered Route Standard movements that
+  // compose the operational flow of this touring route. Pricing is
+  // NOT derived from leg costs (TouringRoutePricing remains the
+  // pricing authority); these legs only describe the movement +
+  // timing + risk profile used by quote display and dispatch.
+  routeLegs           TouringRouteLeg[]
 
   @@index([active, name])
   @@index([startCity])
