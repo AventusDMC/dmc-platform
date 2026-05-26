@@ -32,4 +32,17 @@ export class QuotesGuidedController {
       destinations: Array.isArray(body?.destinations) ? body.destinations : [],
     });
   }
+
+  /**
+   * v2B — Experiences & Activity Intelligence. Per-destination activity
+   * suggestions grouped by travel mood (Culture / Adventure / Religious
+   * / Relaxation / Family / Wellness / Food & Local), plus a top-of-
+   * journey highlights strip. Pure read — never touches pricing.
+   */
+  @Post('experience-suggestions')
+  experienceSuggestions(@Body() body: { destinations?: string[] }) {
+    return this.service.getExperienceSuggestionsForJourney({
+      destinations: Array.isArray(body?.destinations) ? body.destinations : [],
+    });
+  }
 }
