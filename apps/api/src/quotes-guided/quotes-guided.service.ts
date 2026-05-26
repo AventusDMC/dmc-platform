@@ -70,6 +70,52 @@ export type GuidedSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Hotel suggestion types (v2A) -----
+
+export type CommercialTier = 'Luxury' | 'Standard' | 'Budget';
+
+export type OperationalConfidence =
+  | 'Operationally smooth'
+  | 'Moderate coordination'
+  | 'Seasonal pressure'
+  | 'Remote logistics';
+
+export type RecommendedMealPlan = {
+  code: 'BB' | 'HB' | 'FB';
+  label: string;
+  reason: string;
+};
+
+export type SuggestedHotel = {
+  id: string;
+  name: string;
+  city: string;
+  category: string;
+  // 'Luxury' / 'Standard' / 'Budget' derived from category.
+  tier: CommercialTier;
+  hasActiveContract: boolean;
+  recommendedMealPlan: RecommendedMealPlan;
+  operationalConfidence: OperationalConfidence;
+  // Short heuristic notes shown to the operator.
+  notes: string[];
+};
+
+export type DestinationHotelSuggestions = {
+  destination: string;
+  matchedAreaCode: string | null;
+  // Grouped by commercial tier so the UI can render three columns.
+  tiers: Record<CommercialTier, SuggestedHotel[]>;
+  totalHotelCount: number;
+  hasAnySuggestions: boolean;
+  fallbackHint: string | null;
+};
+
+export type HotelSuggestionsResponse = {
+  destinations: string[];
+  suggestions: DestinationHotelSuggestions[];
+  notes: string[];
+};
+
 @Injectable()
 export class QuotesGuidedService {
   constructor(private readonly prisma: PrismaService) {}
@@ -203,6 +249,116 @@ export class QuotesGuidedService {
       pacing,
       notes,
     };
+  }
+
+  /**
+   * Per-destination tiered hotel suggestions for the Guided Journey
+   * Composer. Pure read across the hotels catalog + contracts; never
+   * touches pricing.
+   *
+   * Selection logic per destination:
+   *   1. Filter hotels whose city matches the destination (case-insensitive)
+   *   2. Group by commercial tier (Luxury / Standard / Budget) derived
+   *      from the category column
+   *   3. For each hotel, attach:
+   *      - recommendedMealPlan (destination-aware: Petra/Wadi Rum → HB,
+   *        others → BB default)
+   *      - operationalConfidence ("Operationally smooth" when active
+   *        contracts exist, "Seasonal pressure" when no current
+   *        contract, "Remote logistics" for remote camp / desert
+   *        properties)
+   *      - quick notes (popular-with-groups / near-visitor-center /
+   *        long-transfer-from-main-sites — derived from name heuristics)
+   *
+   * If a destination has NO matching hotels, the response includes a
+   * fallbackHint pointing the operator to the standard hotel selector.
+   */
+  async getHotelSuggestionsForJourney(input: {
+    destinations: string[];
+  }): Promise<HotelSuggestionsResponse> {
+    const destinations = (input.destinations || [])
+      .map((d) => String(d || '').trim())
+      .filter(Boolean);
+    if (destinations.length === 0) {
+      return { destinations: [], suggestions: [], notes: [] };
+    }
+
+    // Single batched catalog load. We pull hotels + the count of their
+    // currently-active contracts so the operational-confidence chip can
+    // honestly say "no current contract" without an extra round-trip.
+    const today = new Date();
+    const [hotels, operationalAreas] = await Promise.all([
+      (this.prisma as any).hotel.findMany({
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          category: true,
+          hotelCategory: { select: { name: true } },
+          contracts: {
+            where: { validFrom: { lte: today }, validTo: { gte: today } },
+            select: { id: true },
+          },
+        },
+      }),
+      (this.prisma as any).operationalArea.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, name: true, city: true, type: true },
+      }),
+    ]);
+
+    const suggestions: DestinationHotelSuggestions[] = [];
+    let totalSuggestionCount = 0;
+    for (const dest of destinations) {
+      const matchedArea = pickAreaForCity(operationalAreas as any[], dest);
+      const matched = (hotels as any[]).filter(
+        (h) => h.city && h.city.toLowerCase() === dest.toLowerCase(),
+      );
+      const tiers: Record<CommercialTier, SuggestedHotel[]> = {
+        Luxury: [],
+        Standard: [],
+        Budget: [],
+      };
+      for (const h of matched) {
+        const enriched = enrichHotelForSuggestion(h, dest);
+        tiers[enriched.tier].push(enriched);
+      }
+      // Cap each tier at 4 so the UI stays scannable; sort by hotels
+      // with active contracts first, then alphabetical.
+      for (const tier of Object.keys(tiers) as CommercialTier[]) {
+        tiers[tier] = tiers[tier]
+          .sort((a, b) => {
+            if (a.hasActiveContract !== b.hasActiveContract) {
+              return a.hasActiveContract ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+          })
+          .slice(0, 4);
+      }
+      const totalHotelCount =
+        tiers.Luxury.length + tiers.Standard.length + tiers.Budget.length;
+      totalSuggestionCount += totalHotelCount;
+      suggestions.push({
+        destination: dest,
+        matchedAreaCode: matchedArea?.code ?? null,
+        tiers,
+        totalHotelCount,
+        hasAnySuggestions: totalHotelCount > 0,
+        fallbackHint:
+          totalHotelCount === 0
+            ? `No hotels matched "${dest}" in the catalog yet. Use the standard hotel selector on the Hotels tab to search by name or browse by city.`
+            : null,
+      });
+    }
+
+    const notes: string[] = [];
+    if (totalSuggestionCount === 0 && destinations.length > 0) {
+      notes.push(
+        'None of the destinations matched hotels in the catalog. Use the standard hotel selector from the Hotels tab.',
+      );
+    }
+
+    return { destinations, suggestions, notes };
   }
 }
 
@@ -393,5 +549,151 @@ export function assessPacing(
     longestSingleLegHours: longestLegHours,
     longLegCount,
     explanation: `${totalDriveHours}h of total driving — comfortable pacing across ${legCount} destinations.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Hotel suggestion helpers (v2A) — exported pure for tests.
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a commercial tier from the hotel's category string. The
+ * category column carries free-form values across the catalog (5*,
+ * "5-star", "Five Star", "Boutique", "Camp", "Resort", etc.), so this
+ * helper is heuristic — anything matching a 5-star marker is Luxury,
+ * 4-star is Standard, 3-star/below or budget keywords land in Budget.
+ * Camps default to Standard since Wadi Rum camps are typically the
+ * mid-tier offering even when category text omits stars.
+ */
+export function deriveCommercialTier(category: string | null | undefined): CommercialTier {
+  const c = String(category || '').toLowerCase();
+  if (/5\s*[-* ]*\s*(star|stars)|5\*|five[-\s]*star|luxury|deluxe|premium/.test(c)) {
+    return 'Luxury';
+  }
+  if (/4\s*[-* ]*\s*(star|stars)|4\*|four[-\s]*star|boutique|superior/.test(c)) {
+    return 'Standard';
+  }
+  if (/3\s*[-* ]*\s*(star|stars)|3\*|three[-\s]*star|budget|economy|hostel/.test(c)) {
+    return 'Budget';
+  }
+  // Camps + resorts default to Standard — for Wadi Rum / Dead Sea
+  // properties this is operationally correct (mid-tier is the volume
+  // category in those destinations).
+  if (/camp|resort|lodge|club/.test(c)) {
+    return 'Standard';
+  }
+  return 'Standard';
+}
+
+/**
+ * Destination-aware meal plan recommendation. The defaults reflect
+ * Jordan DMC operational standards:
+ *   - Petra overnight: HB recommended (limited dinner options near the
+ *     visitor center for after-hours arrivals)
+ *   - Wadi Rum camp: FB common (camps are remote; meals are bundled)
+ *   - Dead Sea resort: BB default with note (HB available if pax want
+ *     to dine on-property)
+ *   - Aqaba / Amman: BB default (plenty of off-property dining)
+ *   - Other: BB default
+ */
+export function recommendMealPlanForDestination(destination: string): RecommendedMealPlan {
+  const d = destination.trim().toLowerCase();
+  if (/petra|wadi musa/.test(d)) {
+    return {
+      code: 'HB',
+      label: 'Half board (BB + dinner)',
+      reason: 'Petra dinner options after dark are limited near the visitor center — HB keeps guests on-property.',
+    };
+  }
+  if (/wadi rum/.test(d)) {
+    return {
+      code: 'FB',
+      label: 'Full board',
+      reason: 'Wadi Rum camps are remote desert properties — meals are bundled into the camp experience.',
+    };
+  }
+  if (/dead sea/.test(d)) {
+    return {
+      code: 'BB',
+      label: 'Bed & breakfast',
+      reason: 'Dead Sea resorts have full restaurant offerings — BB default; offer HB upgrade if pax prefer on-property dining.',
+    };
+  }
+  return {
+    code: 'BB',
+    label: 'Bed & breakfast',
+    reason: 'Plenty of off-property dining nearby — BB is the standard default.',
+  };
+}
+
+/**
+ * Operational confidence chip. "Operationally smooth" is the default
+ * when an active contract is on file; "Seasonal pressure" when there's
+ * no current contract (operator may need to fall back to BAR rates);
+ * "Remote logistics" for properties whose name suggests they're a
+ * remote camp / desert / off-grid stay.
+ */
+export function deriveOperationalConfidence(input: {
+  name: string;
+  hasActiveContract: boolean;
+}): OperationalConfidence {
+  const n = input.name.toLowerCase();
+  if (/camp|desert|bedouin|wadi rum|tented|wilderness/.test(n)) {
+    return 'Remote logistics';
+  }
+  if (!input.hasActiveContract) {
+    return 'Seasonal pressure';
+  }
+  return 'Operationally smooth';
+}
+
+/**
+ * Short operational note chips drawn from the hotel name. These are
+ * lightweight heuristics for v1 — they cover common patterns operators
+ * already say out loud ("popular with groups", "near visitor center",
+ * etc.). A future PR can replace this with structured tags on the
+ * Hotel model.
+ */
+export function deriveQuickNotes(hotel: { name: string; city: string; category: string }): string[] {
+  const out: string[] = [];
+  const n = hotel.name.toLowerCase();
+  const c = hotel.city.toLowerCase();
+  if (/movenpick|moevenpick|kempinski|hilton|marriott|holiday\s*inn|crowne/.test(n)) {
+    out.push('Popular with groups');
+  }
+  if (/petra/.test(c) && /(petra moon|old village|p\s*quattro|movenpick petra|petra panorama)/.test(n)) {
+    out.push('Near visitor center');
+  }
+  if (/wadi rum/.test(c)) {
+    out.push('Desert camp · jeep transfer from gateway');
+  }
+  if (/dead sea/.test(c) && /movenpick|marriott|holiday inn|hilton/.test(n)) {
+    out.push('Resort beach access');
+  }
+  if (/boutique|heritage/.test(n)) {
+    out.push('Boutique character');
+  }
+  return out;
+}
+
+/** Combine all per-hotel derivations into the suggestion shape. */
+export function enrichHotelForSuggestion(
+  hotel: { id: string; name: string; city: string; category: string; contracts?: Array<{ id: string }> },
+  destination: string,
+): SuggestedHotel {
+  const hasActiveContract = Array.isArray(hotel.contracts) && hotel.contracts.length > 0;
+  return {
+    id: hotel.id,
+    name: hotel.name,
+    city: hotel.city,
+    category: hotel.category,
+    tier: deriveCommercialTier(hotel.category),
+    hasActiveContract,
+    recommendedMealPlan: recommendMealPlanForDestination(destination),
+    operationalConfidence: deriveOperationalConfidence({
+      name: hotel.name,
+      hasActiveContract,
+    }),
+    notes: deriveQuickNotes(hotel),
   };
 }
