@@ -65,6 +65,43 @@ type LegsSummary = {
   flow: string;
 };
 
+type GeneratedLeg = {
+  sequence: number;
+  fromStopId: string;
+  toStopId: string;
+  fromArea: OperationalArea | null;
+  toArea: OperationalArea | null;
+  suggestedCode: string | null;
+  routeStandardId: string | null;
+  routeStandard: RouteStandard | null;
+  status: 'new' | 'reused' | 'skipped_same_area' | 'skipped_unmatched_area';
+  reusedLegId: string | null;
+};
+
+type ResolvedStop = {
+  stopId: string;
+  order: number;
+  city: string;
+  location: string | null;
+  matchedArea: OperationalArea | null;
+};
+
+type GenerateLegsResponse = {
+  mode: 'preview' | 'apply';
+  applied: boolean;
+  stops: ResolvedStop[];
+  legs: GeneratedLeg[];
+  existingLegCount: number;
+  newCount: number;
+  reusedCount: number;
+  skippedSameArea: number;
+  skippedUnmatched: number;
+  missingStandardCount: number;
+  createdCount: number;
+  replacedCount: number;
+  message: string;
+};
+
 const LEG_TYPES = ['DRIVE', 'STOP', 'WAIT', 'ACTIVITY_ANCHOR'] as const;
 
 const LEG_TYPE_LABELS: Record<string, string> = {
@@ -81,6 +118,12 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Auto-Leg Builder from Stops v1 — preview state. Null = closed; an
+  // object = preview panel rendered with the proposed plan.
+  const [generatePreview, setGeneratePreview] = useState<GenerateLegsResponse | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [replaceExisting, setReplaceExisting] = useState(false);
 
   // Add-leg form state
   const [formFromAreaId, setFormFromAreaId] = useState('');
@@ -193,6 +236,58 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
     }
   }
 
+  async function previewGenerate(replace: boolean) {
+    if (generating) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/touring-routes/${touringRouteId}/legs/generate-from-stops`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'preview', replaceExisting: replace }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message || `Preview failed (${response.status})`);
+      setGeneratePreview(payload as GenerateLegsResponse);
+      setReplaceExisting(replace);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Generate preview failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function applyGenerate() {
+    if (generating) return;
+    if (replaceExisting) {
+      if (!confirm(
+        `Replace existing legs? ${generatePreview?.existingLegCount ?? 0} current leg${
+          generatePreview?.existingLegCount === 1 ? '' : 's'
+        } will be deleted before the new legs are written. Touring route pricing is not affected.`,
+      )) {
+        return;
+      }
+    }
+    setGenerating(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/touring-routes/${touringRouteId}/legs/generate-from-stops`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'apply', replaceExisting }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message || `Apply failed (${response.status})`);
+      setGeneratePreview(null);
+      setReplaceExisting(false);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Apply failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function deleteLeg(id: string) {
     if (!confirm('Remove this leg? Touring route pricing is not affected.')) return;
     setBusy(true);
@@ -263,6 +358,22 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
       {summary && summary.legCount > 0 ? (
         <SummaryHeader summary={summary} />
       ) : null}
+
+      {/* Auto-Leg Builder from Stops v1 — preview button + result panel.
+          Pricing is NOT affected by this builder. */}
+      <GenerateFromStopsControls
+        preview={generatePreview}
+        generating={generating}
+        replaceExisting={replaceExisting}
+        setReplaceExisting={setReplaceExisting}
+        onPreview={previewGenerate}
+        onApply={applyGenerate}
+        onDismiss={() => {
+          setGeneratePreview(null);
+          setReplaceExisting(false);
+        }}
+        existingLegCount={legs.length}
+      />
 
       {/* Existing legs */}
       {loading ? (
@@ -694,6 +805,258 @@ function FieldPicker({
         ))}
       </select>
     </div>
+  );
+}
+
+function GenerateFromStopsControls({
+  preview,
+  generating,
+  replaceExisting,
+  setReplaceExisting,
+  onPreview,
+  onApply,
+  onDismiss,
+  existingLegCount,
+}: {
+  preview: GenerateLegsResponse | null;
+  generating: boolean;
+  replaceExisting: boolean;
+  setReplaceExisting: (v: boolean) => void;
+  onPreview: (replace: boolean) => void;
+  onApply: () => void;
+  onDismiss: () => void;
+  existingLegCount: number;
+}) {
+  // No preview yet → just the button + replace-toggle.
+  if (!preview) {
+    return (
+      <div
+        style={{
+          background: '#fcfaf5',
+          border: '1px solid #e2dccc',
+          borderRadius: 10,
+          padding: '0.7rem 0.9rem',
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <p
+            style={{
+              color: '#7a5c2e',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: 0,
+            }}
+          >
+            Auto-build from stops
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.82rem' }}>
+            Generate ordered DRIVE legs by pairing this touring route's existing Stops. Each stop is matched to an
+            Operational Area and a Route Standard is auto-resolved. Pricing is <strong>not</strong> affected.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {existingLegCount > 0 ? (
+            <label style={{ fontSize: '0.82rem', color: '#475467', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <input
+                type="checkbox"
+                checked={replaceExisting}
+                onChange={(e) => setReplaceExisting(e.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              Replace existing legs
+            </label>
+          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => onPreview(replaceExisting)}
+            disabled={generating}
+          >
+            {generating ? 'Generating…' : 'Generate legs from stops'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Preview rendered — show plan + Apply / Dismiss.
+  return (
+    <div
+      style={{
+        background: '#fcfaf5',
+        border: '1px solid #e2dccc',
+        borderRadius: 10,
+        padding: '0.8rem 1rem',
+        display: 'grid',
+        gap: '0.5rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p
+            style={{
+              color: '#7a5c2e',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: 0,
+            }}
+          >
+            Auto-build preview
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>{preview.message}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button type="button" className="secondary-button" onClick={onDismiss} disabled={generating}>
+            Dismiss
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={onApply}
+            disabled={generating || preview.newCount === 0}
+            title={preview.newCount === 0 ? 'Nothing new to apply' : 'Write the new legs'}
+          >
+            {generating ? 'Applying…' : `Apply (${preview.newCount} new)`}
+          </button>
+        </div>
+      </div>
+
+      {/* Per-leg plan rows */}
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.3rem' }}>
+        {preview.legs.map((leg, idx) => (
+          <li
+            key={idx}
+            style={{
+              background: '#fff',
+              border: '1px solid #e2dccc',
+              borderRadius: 6,
+              padding: '0.4rem 0.6rem',
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'baseline',
+              flexWrap: 'wrap',
+              fontSize: '0.82rem',
+            }}
+          >
+            <span style={{ fontFamily: 'monospace', color: '#475467', minWidth: 24 }}>{leg.sequence}.</span>
+            <span style={{ flex: 1, minWidth: 200 }}>
+              {leg.fromArea?.name || '?'} → {leg.toArea?.name || '?'}
+              {leg.suggestedCode ? (
+                <code
+                  style={{
+                    marginLeft: '0.4rem',
+                    background: '#f9fafb',
+                    padding: '0.05rem 0.4rem',
+                    borderRadius: 4,
+                    fontSize: '0.78rem',
+                    color: '#0c4a6e',
+                  }}
+                >
+                  {leg.suggestedCode}
+                </code>
+              ) : null}
+            </span>
+            <PreviewBadge leg={leg} />
+          </li>
+        ))}
+      </ol>
+      {preview.missingStandardCount > 0 ? (
+        <p style={{ margin: 0, fontSize: '0.78rem', color: '#7c2d12' }}>
+          ⚠ {preview.missingStandardCount} leg{preview.missingStandardCount === 1 ? '' : 's'} ha
+          {preview.missingStandardCount === 1 ? 's' : 've'} no Route Standard yet —{' '}
+          <a
+            href="/route-standards"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#0c4a6e', textDecoration: 'underline' }}
+          >
+            create the missing standards
+          </a>
+          {' '}so dispatch + quote display pick up timing. Legs will still be created; drive totals will exclude them.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function PreviewBadge({ leg }: { leg: GeneratedLeg }) {
+  if (leg.status === 'new') {
+    return (
+      <span
+        style={{
+          background: '#ecfdf3',
+          color: '#067647',
+          border: '1px solid #abefc6',
+          padding: '0.05rem 0.45rem',
+          borderRadius: 999,
+          fontSize: '0.7rem',
+          fontWeight: 600,
+        }}
+        title={leg.routeStandardId ? 'New leg — Route Standard auto-resolved' : 'New leg — Route Standard MISSING'}
+      >
+        + new {leg.routeStandardId ? '' : '· no standard'}
+      </span>
+    );
+  }
+  if (leg.status === 'reused') {
+    return (
+      <span
+        style={{
+          background: '#f0f9ff',
+          color: '#0c4a6e',
+          border: '1px solid #bae6fd',
+          padding: '0.05rem 0.45rem',
+          borderRadius: 999,
+          fontSize: '0.7rem',
+          fontWeight: 600,
+        }}
+        title="A matching leg already exists — will be skipped (or kept after Replace)"
+      >
+        ✓ exists
+      </span>
+    );
+  }
+  if (leg.status === 'skipped_same_area') {
+    return (
+      <span
+        style={{
+          background: '#f9fafb',
+          color: '#475467',
+          border: '1px solid #d0d5dd',
+          padding: '0.05rem 0.45rem',
+          borderRadius: 999,
+          fontSize: '0.7rem',
+          fontWeight: 600,
+        }}
+        title="Both stops resolved to the same Operational Area — not modelled as a movement leg"
+      >
+        ⤵ same area
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        background: '#fef3c7',
+        color: '#7c2d12',
+        border: '1px solid #fcd34d',
+        padding: '0.05rem 0.45rem',
+        borderRadius: 999,
+        fontSize: '0.7rem',
+        fontWeight: 600,
+      }}
+      title="Couldn't match one or both stops to an Operational Area — add the area in /operational-areas first"
+    >
+      ⚠ unmatched area
+    </span>
   );
 }
 
