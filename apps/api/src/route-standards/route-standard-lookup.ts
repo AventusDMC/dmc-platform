@@ -16,6 +16,11 @@ import {
 
 export type RouteStandardLookupValue = {
   routeCode: string;
+  // Cleanup Phase v1 — short FROM_TO operational code (AMM_PET, etc.).
+  // Null when the standard hasn't been canonicalized yet. Vouchers /
+  // dispatch / quote rendering should prefer this when present for
+  // the operationally-readable label.
+  canonicalRouteCode: string | null;
   routeName: string;
   standardDistanceKm: number | null;
   standardDurationHours: number | null;
@@ -43,6 +48,7 @@ function normalizeCode(value: string | null | undefined): string {
 function decorate(standard: any): RouteStandardLookupValue {
   return {
     routeCode: standard.routeCode,
+    canonicalRouteCode: standard.canonicalRouteCode ?? null,
     routeName: standard.routeName,
     standardDistanceKm: standard.standardDistanceKm ?? null,
     standardDurationHours: standard.standardDurationHours ?? null,
@@ -123,14 +129,36 @@ export async function loadRouteStandardsForBookingServices(
     }
 
     // ---- Pass 2: batch-load RouteStandards for the distinct codes ----
+    // Cleanup Phase v1 — try BOTH the legacy routeCode column (the
+    // identifier captured on the quote item / touring route when the
+    // booking was created) AND canonicalRouteCode (the FROM_TO short
+    // form ops moved to in the cleanup). This keeps legacy lookups
+    // working: a booking that was created with routeCode='JORDAN_AMMAN_CITY_JORDAN_QAIA_AIRPORT'
+    // still resolves to the (now canonicalized) AMM_QAIA standard.
     const distinctCodes = [...new Set(codeByService.values())];
     if (distinctCodes.length === 0) return result;
     const standards = await (prisma as any).routeStandard.findMany({
-      where: { routeCode: { in: distinctCodes }, isActive: true },
+      where: {
+        isActive: true,
+        OR: [
+          { routeCode: { in: distinctCodes } },
+          { canonicalRouteCode: { in: distinctCodes } },
+        ],
+      },
     });
-    const standardByCode = new Map<string, RouteStandardLookupValue>(
-      (standards as any[]).map((s) => [s.routeCode, decorate(s)] as const),
-    );
+    // Build a lookup keyed by both routeCode AND canonicalRouteCode so
+    // either flavor of identifier resolves to the same standard. When
+    // BOTH a legacy and a canonicalized row exist for the same code,
+    // the active VERIFIED/CANONICALIZED row wins (mergeDuplicates
+    // deactivates losers, so this is implicit via isActive=true).
+    const standardByCode = new Map<string, RouteStandardLookupValue>();
+    for (const s of standards as any[]) {
+      const decorated = decorate(s);
+      if (s.routeCode && !standardByCode.has(s.routeCode)) standardByCode.set(s.routeCode, decorated);
+      if (s.canonicalRouteCode && !standardByCode.has(s.canonicalRouteCode)) {
+        standardByCode.set(s.canonicalRouteCode, decorated);
+      }
+    }
 
     for (const [serviceId, code] of codeByService.entries()) {
       const standard = standardByCode.get(code);

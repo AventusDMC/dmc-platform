@@ -21,7 +21,18 @@ type RouteStandard = {
   airportRouteFlag: boolean;
   notes: string | null;
   isActive: boolean;
+  canonicalRouteCode?: string | null;
+  reviewStatus?: string | null;
+  suspiciousDurationFlag?: boolean;
 };
+
+const REVIEW_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Unreviewed' },
+  { value: 'AUTO_BOOTSTRAP', label: 'Auto bootstrap (untouched)' },
+  { value: 'REVIEW_REQUIRED', label: 'Review required' },
+  { value: 'VERIFIED', label: 'Verified (operator signoff)' },
+  { value: 'CANONICALIZED', label: 'Canonicalized' },
+];
 
 function asString(value: number | null): string {
   return value === null ? '' : String(value);
@@ -51,6 +62,12 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
     airportRouteFlag: standard.airportRouteFlag,
     notes: standard.notes || '',
     isActive: standard.isActive,
+    // Cleanup Phase v1 — operator can override the canonical code (rare,
+    // but useful when the FROM_TO derivation gets it wrong for a custom
+    // route) and explicitly promote to VERIFIED after refining the numbers.
+    canonicalRouteCode: standard.canonicalRouteCode || '',
+    reviewStatus: standard.reviewStatus || '',
+    suspiciousDurationFlag: Boolean(standard.suspiciousDurationFlag),
   });
 
   // overnightRisk is intentionally NOT a confidence-classifier input —
@@ -91,6 +108,9 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
           airportRouteFlag: state.airportRouteFlag,
           notes: state.notes || null,
           isActive: state.isActive,
+          canonicalRouteCode: state.canonicalRouteCode || null,
+          reviewStatus: state.reviewStatus || null,
+          suspiciousDurationFlag: state.suspiciousDurationFlag,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -239,6 +259,63 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
           <br />
           <span style={{ fontSize: '0.78rem' }}>{confidence.detail}</span>
         </p>
+      </section>
+
+      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+        <h3 style={{ marginTop: 0 }}>Canonical code &amp; review</h3>
+        <p style={{ marginTop: 0, color: '#667085', fontSize: '0.85rem' }}>
+          The original <code>routeCode</code> column above stays intact for legacy
+          lookup compatibility. <code>canonicalRouteCode</code> is the short
+          FROM_TO operational identifier ops moves to (AMM_PET, PET_WR, etc.).
+          The bulk Apply action on the listing page sets these automatically;
+          override here for special cases.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Canonical route code</span>
+            <input
+              value={state.canonicalRouteCode}
+              onChange={(e) => setState((s) => ({ ...s, canonicalRouteCode: e.target.value }))}
+              placeholder="AMM_PET"
+              style={{ fontFamily: 'monospace' }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Review status</span>
+            <select
+              value={state.reviewStatus}
+              onChange={(e) => setState((s) => ({ ...s, reviewStatus: e.target.value }))}
+            >
+              {REVIEW_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value || 'unset'} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem',
+              padding: '0.5rem',
+              border: '1px solid #e4e7ec',
+              borderRadius: 8,
+              background: '#fff',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={state.suspiciousDurationFlag}
+              onChange={(e) => setState((s) => ({ ...s, suspiciousDurationFlag: e.target.checked }))}
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span style={{ flex: 1 }}>
+              <strong style={{ fontSize: '0.88rem', color: '#101828', display: 'block' }}>Suspicious duration</strong>
+              <span style={{ fontSize: '0.78rem', color: '#667085' }}>
+                Duration looks like an excursion day length rather than realistic transfer time.
+              </span>
+            </span>
+          </label>
+        </div>
       </section>
 
       <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>

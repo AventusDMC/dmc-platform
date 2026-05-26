@@ -1746,12 +1746,35 @@ model RouteStandard {
   // route" tag and ops know which rows still need a review pass. Values:
   // 'AUTO_BOOTSTRAP' | 'IMPORTED' | 'MANUAL' (or null for legacy rows).
   source                    String?
+  // Canonical operational route code (FROM_TO short form — AMM_PET,
+  // PET_WR, WR_AQJ etc.). The original routeCode column is preserved
+  // for legacy lookups (quote items, vouchers, dispatch references
+  // captured by the old code keep resolving), but the operational
+  // truth layer moves to canonicalRouteCode. Null until the
+  // canonicalization step assigns one. Not unique — multiple legacy
+  // codes may map to the same canonical code during the cleanup
+  // (mergeDuplicates resolves them into one VERIFIED standard).
+  canonicalRouteCode        String?
+  // Review workflow status. AUTO_BOOTSTRAP = freshly bootstrapped, not
+  // yet reviewed. REVIEW_REQUIRED = sanity check flagged the row
+  // (suspicious duration, missing data, messy code). VERIFIED = ops
+  // signed off on the numbers. CANONICALIZED = canonicalRouteCode is
+  // assigned AND the row is the "winning" standard for that code.
+  reviewStatus              String?
+  // Set by detectSuspiciousDuration during bootstrap or recompute.
+  // True when the inherited duration looks like an excursion day
+  // length rather than realistic transfer time (e.g. Dead Sea->Petra
+  // 11 h, Wadi Rum->Aqaba 8 h). Drives the refinement dashboard
+  // "needs attention" counter.
+  suspiciousDurationFlag    Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
   @@index([isActive, routeCode])
   @@index([fromCity, toCity])
   @@index([source])
+  @@index([canonicalRouteCode])
+  @@index([reviewStatus])
   @@map("route_standards")
 }
 
