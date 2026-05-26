@@ -600,6 +600,116 @@ export type ConfidenceStatus =
   | 'SEASON_CONFLICT'
   | 'VERIFIED';
 
+/**
+ * VERIFIED gating — does this contract meet the bar to be marked
+ * VERIFIED right now?
+ *
+ * Rules (must ALL be true):
+ *   1. Zero high-severity supplement findings.
+ *   2. Zero high-severity season findings.
+ *   3. Pricing completeness above the configured threshold
+ *      (default 80% — operators can intentionally leave some combos
+ *      unavailable, but not the majority).
+ *   4. Has at least one rate row (a contract with no rates can't be
+ *      "operationally trusted" — nothing to be trusted).
+ *
+ * Returns a structured reason list so the UI can show the operator
+ * exactly what's blocking them. Operators NEVER auto-promote — they
+ * still have to click Mark Verified. This helper just decides whether
+ * the button is enabled.
+ */
+export function canMarkVerified(input: {
+  supplementFindings: SupplementFinding[];
+  seasonFindings: SeasonFinding[];
+  pricingCompleteness: { complete: boolean; missingCount: number; totalExpected?: number };
+  rateCount: number;
+}): { allowed: boolean; blockers: string[]; warnings: string[] } {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  const highSupplements = input.supplementFindings.filter((f) => f.severity === 'high');
+  if (highSupplements.length > 0) {
+    blockers.push(`${highSupplements.length} high-severity supplement finding(s) unresolved.`);
+  }
+
+  const highSeasons = input.seasonFindings.filter((f) => f.severity === 'high');
+  if (highSeasons.length > 0) {
+    blockers.push(`${highSeasons.length} high-severity season finding(s) unresolved.`);
+  }
+
+  if (input.rateCount === 0) {
+    blockers.push('Contract has no rate rows — nothing to verify.');
+  }
+
+  // Pricing completeness threshold check. We compute the percentage
+  // when totalExpected is available; otherwise we fall back to the
+  // `complete` flag.
+  if (!input.pricingCompleteness.complete) {
+    const total = input.pricingCompleteness.totalExpected ?? null;
+    if (total && total > 0) {
+      const completedRatio = 1 - input.pricingCompleteness.missingCount / total;
+      if (completedRatio < 0.8) {
+        blockers.push(
+          `Pricing completeness is ${(completedRatio * 100).toFixed(0)}% — below the 80% threshold required to verify.`,
+        );
+      } else {
+        warnings.push(
+          `${input.pricingCompleteness.missingCount} pricing combo(s) missing — verifying anyway is allowed but operator should confirm they are intentional.`,
+        );
+      }
+    } else {
+      warnings.push(
+        `${input.pricingCompleteness.missingCount} pricing combo(s) missing — operator should confirm they are intentional.`,
+      );
+    }
+  }
+
+  // Medium-severity findings don't block but get surfaced as warnings.
+  const mediumSupplements = input.supplementFindings.filter((f) => f.severity === 'medium');
+  if (mediumSupplements.length > 0) {
+    warnings.push(`${mediumSupplements.length} medium-severity supplement finding(s) — review before saving.`);
+  }
+  const mediumSeasons = input.seasonFindings.filter((f) => f.severity === 'medium');
+  if (mediumSeasons.length > 0) {
+    warnings.push(`${mediumSeasons.length} medium-severity season finding(s) — review before saving.`);
+  }
+
+  return { allowed: blockers.length === 0, blockers, warnings };
+}
+
+/**
+ * Compute a 0-100 health score combining all validator outputs.
+ * Used by the Correction Workspace top-summary card.
+ *   - Start at 100
+ *   - Subtract 25 per high-severity finding
+ *   - Subtract 5 per medium-severity finding
+ *   - Subtract up to 30 for missing pricing combos (proportional)
+ *   - Clamp to [0, 100]
+ */
+export function computeHealthScore(input: {
+  supplementFindings: SupplementFinding[];
+  seasonFindings: SeasonFinding[];
+  pricingCompleteness: { complete: boolean; missingCount: number; totalExpected?: number };
+}): number {
+  let score = 100;
+  const allFindings = [...input.supplementFindings, ...input.seasonFindings];
+  for (const finding of allFindings) {
+    if (finding.severity === 'high') score -= 25;
+    else if (finding.severity === 'medium') score -= 5;
+  }
+  if (!input.pricingCompleteness.complete) {
+    const total = input.pricingCompleteness.totalExpected ?? 0;
+    if (total > 0) {
+      const ratio = Math.min(input.pricingCompleteness.missingCount / total, 1);
+      score -= Math.round(ratio * 30);
+    } else {
+      // Unknown total — flat 10 point penalty.
+      score -= 10;
+    }
+  }
+  return Math.max(0, Math.min(100, score));
+}
+
 export function recommendConfidence(input: {
   currentStatus: ConfidenceStatus;
   supplementFindings: SupplementFinding[];
