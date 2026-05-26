@@ -20,6 +20,7 @@ import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
 import { ProgramTemplateImportPanel } from './ProgramTemplateImportPanel';
+import { TouringRouteJourneyFlowStrip } from './TouringRouteJourneyFlowStrip';
 import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';
 import laneStyles from './QuoteServiceLaneBoard.module.css';
 import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
@@ -2431,6 +2432,15 @@ function QuoteServiceCard({
           <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
             Departure: {item.touringRoute.startCity} | Route: {formatExcursionTouringRoutePath(item.touringRoute)}
           </p>
+        ) : null}
+        {/* Touring Legs Phase 2A — quiet journey-flow strip with drive
+            duration / buffer / distance / risk chips, drawn from the
+            touring route's Route Standard legs summary. Renders nothing
+            if the touring route has no legs yet, so quotes against
+            un-segmented touring routes look exactly as before. Pricing
+            is never touched by this strip. */}
+        {item.touringRoute?.id ? (
+          <TouringRouteJourneyFlowStrip touringRouteId={item.touringRoute.id} />
         ) : null}
       </div>
       {isExternalPackage ? (
