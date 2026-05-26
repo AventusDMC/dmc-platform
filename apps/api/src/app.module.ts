@@ -121,6 +121,8 @@ import { RouteStandardsController } from './route-standards/route-standards.cont
 import { RouteStandardsService } from './route-standards/route-standards.service';
 import { OperationalAreasController } from './operational-areas/operational-areas.controller';
 import { OperationalAreasService } from './operational-areas/operational-areas.service';
+import { QuotesGuidedController } from './quotes-guided/quotes-guided.controller';
+import { QuotesGuidedService } from './quotes-guided/quotes-guided.service';
 import {
   TouringRouteLegsByRouteController,
   TouringRouteLegsController,
@@ -204,6 +206,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RoutesController,
     RouteStandardsController,
     OperationalAreasController,
+    QuotesGuidedController,
     TouringRouteLegsByRouteController,
     TouringRouteLegsSummaryController,
     TouringRouteLegsController,
@@ -285,6 +288,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RoutesService,
     RouteStandardsService,
     OperationalAreasService,
+    QuotesGuidedService,
     TouringRouteLegsService,
     SeasonsService,
     ItinerariesService,

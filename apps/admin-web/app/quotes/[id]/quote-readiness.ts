@@ -1,6 +1,20 @@
 import { getPlannerCategoryForService, normalizeServiceTaxonomyText } from '../../lib/service-taxonomy';
 
-export type QuoteReadinessStep = 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
+export type QuoteReadinessStep =
+  | 'overview'
+  // Guided Quote Builder Maturity Phase v2 — linear journey
+  // orchestration step. Renders the GuidedJourneyComposer panel on
+  // the itinerary tab. Readiness model never produces 'journey-
+  // composer' as a checklist destination, but the union has to
+  // include it so the QuoteWorkspaceStep alias in page.tsx stays
+  // assignment-compatible with buildStepHref.
+  | 'journey-composer'
+  | 'itinerary'
+  | 'services'
+  | 'pricing'
+  | 'group-pricing'
+  | 'review'
+  | 'preview';
 export type QuotePricingFocus =
   | 'all'
   | 'unpriced'
@@ -204,6 +218,10 @@ type QuoteWorkspaceStep = QuoteReadinessStep;
 
 const QUOTE_STEP_TARGET_TABS: Record<QuoteWorkspaceStep, QuoteWorkspaceStepTarget> = {
   overview: 'overview',
+  // Guided journey composer routes to the itinerary tab — same as
+  // 'itinerary' step. The page.tsx branch on activeStep decides which
+  // panel renders.
+  'journey-composer': 'itinerary',
   itinerary: 'itinerary',
   services: 'services',
   pricing: 'pricing',

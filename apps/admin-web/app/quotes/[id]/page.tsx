@@ -39,6 +39,7 @@ import { QuotesForm } from '../QuotesForm';
 import { ConvertToBookingButton } from './ConvertToBookingButton';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import { QuoteItineraryWorkspace } from './QuoteItineraryWorkspace';
+import { GuidedJourneyComposer } from './GuidedJourneyComposer';
 import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
 import { CancelQuoteButton } from './CancelQuoteButton';
@@ -691,7 +692,15 @@ type QuoteDetailsPageProps = {
 };
 
 type QuoteDetailTab = 'overview' | 'itinerary' | 'hotels' | 'transport' | 'services' | 'pricing' | 'proposal' | 'versions' | 'review';
-type QuoteWorkspaceStep = 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
+type QuoteWorkspaceStep =
+  | 'overview'
+  | 'journey-composer'
+  | 'itinerary'
+  | 'services'
+  | 'pricing'
+  | 'group-pricing'
+  | 'review'
+  | 'preview';
 
 const QUOTE_DETAIL_TABS: Array<{ id: QuoteDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -719,6 +728,10 @@ const QUOTE_DASHBOARD_WORKFLOW = ['Draft', 'Pricing', 'Review', 'Sent', 'Accepte
 
 const QUOTE_WORKSPACE_STEPS: Array<{ id: QuoteWorkspaceStep; label: string; targetTab: QuoteDetailTab }> = [
   { id: 'overview', label: 'Overview', targetTab: 'overview' },
+  // Guided Quote Builder Maturity Phase v2 — calm, structured journey
+  // composition for junior staff. Routes to the Itinerary tab; renders
+  // GuidedJourneyComposer in place of the advanced service planner.
+  { id: 'journey-composer', label: 'Journey', targetTab: 'itinerary' },
   { id: 'itinerary', label: 'Itinerary', targetTab: 'itinerary' },
   { id: 'services', label: 'Services', targetTab: 'services' },
   { id: 'pricing', label: 'Pricing', targetTab: 'pricing' },
@@ -3134,7 +3147,20 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             </div>
           ) : null}
 
-          {activeTab === 'itinerary' ? (
+          {activeTab === 'itinerary' && activeStep === 'journey-composer' ? (
+            // Guided Quote Builder Maturity Phase v2 — calm,
+            // structured journey orchestration view. Renders in
+            // place of the advanced service planner when the
+            // ?step=journey-composer query param is set. The panel
+            // is read-only; operators switch back to advanced via
+            // the in-panel button (which uses the URL below).
+            <GuidedJourneyComposer
+              quote={quote as any}
+              advancedWorkspaceUrl={`/quotes/${quote.id}?tab=itinerary&step=itinerary`}
+            />
+          ) : null}
+
+          {activeTab === 'itinerary' && activeStep !== 'journey-composer' ? (
             <QuoteItineraryWorkspace
               apiBaseUrl={ACTION_API_BASE_URL}
               quote={quote}
