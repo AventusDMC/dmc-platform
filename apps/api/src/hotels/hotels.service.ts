@@ -68,6 +68,159 @@ export class HotelsService {
     return Promise.all(hotels.map((hotel: any) => this.serializeHotel(hotel)));
   }
 
+  /**
+   * Hotel Master Room Categories freeze fix — lightweight per-room
+   * summary used by /hotels?tab=room-categories. Designed to AVOID:
+   *
+   *   - the N+1 supplier resolution that runs in findAll().serializeHotel
+   *   - eager loading of factSheet / hotelCategory / contracts / rates
+   *   - the duplicate /api/hotels fetch the old admin page made on the
+   *     room-categories tab
+   *
+   * Returns one row per HotelRoomCategory with the hotel name/city,
+   * active flag, basic timestamps, and (via _count) the number of
+   * linked hotelRates + quoteItems. The per-category rate matrix and
+   * full contract data load only when the operator expands a row.
+   *
+   * Optional `hotelId` lets the same service back the spec-mandated
+   * /hotels/:id/room-categories-summary route without duplicating the
+   * aggregation logic.
+   */
+  async findRoomCategoriesSummary(filters: { hotelId?: string } = {}) {
+    const categories = await (this.prisma.hotelRoomCategory as any).findMany({
+      where: filters.hotelId ? { hotelId: filters.hotelId } : undefined,
+      orderBy: [
+        { isActive: 'desc' },
+        { name: 'asc' },
+      ],
+      // Narrow select — no description blob, no nested rates / contracts.
+      select: {
+        id: true,
+        hotelId: true,
+        name: true,
+        code: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        hotel: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            cityRecord: { select: { name: true } },
+            _count: { select: { contracts: true } },
+          },
+        },
+        _count: {
+          select: {
+            hotelRates: true,
+            quoteItems: true,
+          },
+        },
+      },
+    });
+
+    return (categories as any[]).map((category) => ({
+      id: category.id,
+      hotelId: category.hotelId,
+      name: category.name,
+      code: category.code,
+      isActive: category.isActive,
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt,
+      hotelName: category.hotel?.name || 'Unknown',
+      hotelCity: category.hotel?.cityRecord?.name || category.hotel?.city || '',
+      hotelContractCount: category.hotel?._count?.contracts || 0,
+      // Linked rate count — drives the safe-mode banner heuristic and
+      // is shown next to the category name so operators can spot a
+      // category referenced by many rates before they touch it.
+      linkedRateCount: category._count?.hotelRates || 0,
+      linkedQuoteItemCount: category._count?.quoteItems || 0,
+    }));
+  }
+
+  /**
+   * Per-category detail — fired when the operator expands a row. Pulls
+   * only the data needed for the expanded view: small contract list +
+   * a capped sample of rate rows. Pricing engine never reads this.
+   */
+  async findRoomCategoryDetail(categoryId: string) {
+    const category = await (this.prisma.hotelRoomCategory as any).findUnique({
+      where: { id: categoryId },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        description: true,
+        isActive: true,
+        hotelId: true,
+        hotel: {
+          select: { id: true, name: true, city: true },
+        },
+        _count: {
+          select: {
+            hotelRates: true,
+            quoteItems: true,
+            supplements: true,
+            allotments: true,
+          },
+        },
+      },
+    });
+    throwIfNotFound(category, 'Hotel room category');
+
+    // Pull only distinct contract names referencing this category via
+    // rates. SQL groupBy keeps the result bounded to N contracts even
+    // on rate matrices with thousands of rows.
+    const rateGroups = await (this.prisma.hotelRate as any).groupBy({
+      by: ['contractId'],
+      where: { roomCategoryId: categoryId },
+      _count: { _all: true },
+    });
+    const contractIds = (rateGroups as any[]).map((g) => g.contractId);
+    const contracts = contractIds.length
+      ? await (this.prisma.hotelContract as any).findMany({
+          where: { id: { in: contractIds } },
+          select: {
+            id: true,
+            name: true,
+            validFrom: true,
+            validTo: true,
+            currency: true,
+            confidence: true,
+          },
+        })
+      : [];
+    const rateCountByContract = new Map<string, number>(
+      (rateGroups as any[]).map((g) => [g.contractId, g._count._all]),
+    );
+
+    return {
+      id: category!.id,
+      hotelId: category!.hotelId,
+      name: category!.name,
+      code: category!.code,
+      description: category!.description,
+      isActive: category!.isActive,
+      hotel: category!.hotel,
+      counts: {
+        rates: category!._count?.hotelRates || 0,
+        quoteItems: category!._count?.quoteItems || 0,
+        supplements: category!._count?.supplements || 0,
+        allotments: category!._count?.allotments || 0,
+      },
+      contracts: (contracts as any[]).map((contract) => ({
+        id: contract.id,
+        name: contract.name,
+        validFrom: contract.validFrom,
+        validTo: contract.validTo,
+        currency: contract.currency,
+        confidence: contract.confidence,
+        rateCount: rateCountByContract.get(contract.id) || 0,
+      })),
+    };
+  }
+
   async findOne(id: string) {
     const hotel = await (this.prisma.hotel as any).findUnique({
       where: { id },
