@@ -169,3 +169,78 @@ test('findDirectorySummary: select clause does NOT request factSheet (regression
   // Heavy roomCategories list must not be selected — only the _count.
   assert.equal(findManyCall.args.select.roomCategories, undefined);
 });
+
+// ---------------------------------------------------------------------------
+// Schema validation regression — the Hotel Prisma model has NO `isActive`
+// column. The first cut of this endpoint selected `isActive: true` which
+// blew up production with "Unknown field `isActive` for select statement
+// on model `Hotel`". Operators saw "Page Unresponsive" because the
+// admin page kept retrying the failing request.
+// ---------------------------------------------------------------------------
+test('findDirectorySummary: select clause does NOT request isActive (Hotel has no such field)', async () => {
+  const prisma = buildFakePrisma({ hotels: [baseHotel()] });
+  const service = new HotelsService(prisma as any);
+  await service.findDirectorySummary();
+  const findManyCall = (prisma as any).__calls.find((c: any) => c.method === 'findMany');
+  assert.equal(
+    findManyCall.args.select.isActive,
+    undefined,
+    'Hotel.isActive does not exist in the Prisma schema — selecting it triggers PrismaClientValidationError.',
+  );
+});
+
+test('findDirectorySummary: select clause matches the Hotel schema (allow-list regression guard)', async () => {
+  // Allow-list = every field name the Hotel model exposes today. The
+  // select clause must only contain keys from this set OR known relation
+  // names. Catches future drift if someone adds a `select.xyz: true`
+  // without checking the schema first.
+  const HOTEL_SCALAR_ALLOWLIST = new Set([
+    'id',
+    'name',
+    'city',
+    'category',
+    'supplierId',
+    'resolvedSupplierId',
+    'supplierName',
+    'createdAt',
+    'updatedAt',
+    'cityId',
+    'hotelCategoryId',
+  ]);
+  const HOTEL_RELATION_ALLOWLIST = new Set([
+    'cityRecord',
+    'hotelCategory',
+    'factSheet',
+    'contracts',
+    'rates',
+    'roomCategories',
+    'quoteHotelOptions',
+    'quoteItems',
+    'dmcQuoteHotelOptions',
+    '_count',
+  ]);
+  const prisma = buildFakePrisma({ hotels: [baseHotel()] });
+  const service = new HotelsService(prisma as any);
+  await service.findDirectorySummary();
+  const findManyCall = (prisma as any).__calls.find((c: any) => c.method === 'findMany');
+  const selectedKeys = Object.keys(findManyCall.args.select);
+  for (const key of selectedKeys) {
+    const valid = HOTEL_SCALAR_ALLOWLIST.has(key) || HOTEL_RELATION_ALLOWLIST.has(key);
+    assert.ok(
+      valid,
+      `select clause referenced "${key}" which is not a valid Hotel field. Check the Prisma schema.`,
+    );
+  }
+});
+
+test('findDirectorySummary: response shape preserves isActive as a derived boolean (not from DB)', async () => {
+  // Existing admin consumers expect `summary[i].isActive: boolean`. The
+  // backend now returns a synthesized `true` because soft-delete on Hotel
+  // happens via the relational graph, not a flag. This test locks the
+  // contract so the admin Next.js page keeps type-checking cleanly.
+  const prisma = buildFakePrisma({ hotels: [baseHotel()] });
+  const service = new HotelsService(prisma as any);
+  const summary = await service.findDirectorySummary();
+  assert.equal(typeof summary[0].isActive, 'boolean');
+  assert.equal(summary[0].isActive, true);
+});

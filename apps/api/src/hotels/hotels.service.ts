@@ -92,6 +92,13 @@ export class HotelsService {
   async findDirectorySummary() {
     const rows = await (this.prisma.hotel as any).findMany({
       orderBy: [{ name: 'asc' }],
+      // The Hotel Prisma model has NO `isActive` column — soft-deletion
+      // happens via the relational graph (e.g. removing all active
+      // contracts) rather than a flag on the hotel row. Earlier draft
+      // of this select clause included `isActive: true` and broke
+      // production with Prisma's "Unknown field" validation error.
+      // Operators saw "Page Unresponsive" because the controller kept
+      // rethrowing the validation exception on every request retry.
       select: {
         id: true,
         name: true,
@@ -99,7 +106,6 @@ export class HotelsService {
         category: true,
         supplierId: true,
         supplierName: true,
-        isActive: true,
         cityRecord: { select: { id: true, name: true } },
         hotelCategory: { select: { id: true, name: true } },
         _count: {
@@ -140,7 +146,11 @@ export class HotelsService {
         name: hotel.name,
         city: hotel.cityRecord?.name || hotel.city || '',
         category: hotel.hotelCategory?.name || hotel.category || '',
-        isActive: hotel.isActive,
+        // Hotel rows are always considered active — see schema note in
+        // the select clause above. The field is preserved here as `true`
+        // so the response shape doesn't break existing consumers (admin
+        // page typed `HotelDirectorySummary.isActive: boolean`).
+        isActive: true,
         supplierName: hotel.supplierName || null,
         contractCount: hotel._count?.contracts || 0,
         roomCategoryCount: hotel._count?.roomCategories || 0,
