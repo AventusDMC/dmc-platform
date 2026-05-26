@@ -374,6 +374,12 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
         >
           <section className="section-stack">
             <nav className="commercial-actions-row" aria-label="Hotel import actions">
+              {/* Quick access to the Contract Health dashboard so
+                  operators don't have to fish through the side nav to
+                  triage imported / unverified contracts. */}
+              <Link className="commercial-action-link" href="/hotel-contract-health">
+                Open Contract Health
+              </Link>
               <Link className="commercial-action-link" href="/contracts/import">
                 Import Hotel Contract
               </Link>

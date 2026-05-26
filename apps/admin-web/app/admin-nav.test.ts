@@ -75,6 +75,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
     catalogGroup.children.map((child) => [child.label, child.href]),
     [
       ['Hotels', '/hotels'],
+      ['Contract Health', '/hotel-contract-health'],
       ['Packages', '/packages'],
       ['Import Contract', '/contracts/import'],
       ['Import History', '/contracts/import/history'],
@@ -86,6 +87,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Restaurants', '/restaurants'],
       ['Transfer Routes', '/routes'],
       ['Route Standards', '/route-standards'],
+      ['Operational Areas', '/operational-areas'],
       ['Services', '/catalog?tab=services'],
       ['Suppliers', '/suppliers'],
       ['Transport Pricing', '/transport?tab=pricing-rules'],
