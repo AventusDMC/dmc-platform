@@ -144,6 +144,31 @@ export class RouteStandardsController {
     return this.routeStandardsService.mergeDuplicates(body?.targetId, body?.mergedIds || []);
   }
 
+  // -------------------------------------------------------------------
+  // Refinement Assistant v1 — queue + one-click + bulk apply.
+  //
+  // GET  /refinement/queue           → prioritized actionable suggestions
+  // POST /refinement/apply           → approve a single (rowId, field, value)
+  // POST /refinement/apply-bulk      → approve an array of suggestions
+  // -------------------------------------------------------------------
+
+  @Get('refinement/queue')
+  refinementQueue() {
+    return this.routeStandardsService.buildRefinementQueue();
+  }
+
+  @Post('refinement/apply')
+  @Roles('admin', 'operations')
+  applyRefinement(@Body() body: { rowId: string; field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm'; value: string | number }) {
+    return this.routeStandardsService.applyRefinementSuggestion(body);
+  }
+
+  @Post('refinement/apply-bulk')
+  @Roles('admin', 'operations')
+  applyRefinementBulk(@Body() body: { items: Array<{ rowId: string; field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm'; value: string | number }> }) {
+    return this.routeStandardsService.applyBulkRefinementSuggestions(body?.items || []);
+  }
+
   /**
    * Excel export — one row per route standard. Sheet name fixed at
    * "Route Standards" so the import path can validate it.

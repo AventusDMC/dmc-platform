@@ -4,6 +4,7 @@ import { AdminBreadcrumbs } from '../components/AdminBreadcrumbs';
 import { RouteStandardBootstrapPanel } from './RouteStandardBootstrapPanel';
 import { RouteStandardImportPanel } from './RouteStandardImportPanel';
 import { RouteStandardRefinementPanel } from './RouteStandardRefinementPanel';
+import { RouteStandardRefinementAssistantPanel } from './RouteStandardRefinementAssistantPanel';
 import { computeTimingConfidenceLabel } from './route-standard-display';
 
 export const dynamic = 'force-dynamic';
@@ -86,6 +87,8 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
       <RouteStandardBootstrapPanel />
 
       <RouteStandardRefinementPanel />
+
+      <RouteStandardRefinementAssistantPanel />
 
       <RouteStandardImportPanel />
 
