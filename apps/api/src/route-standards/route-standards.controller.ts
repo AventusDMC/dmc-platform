@@ -179,6 +179,41 @@ export class RouteStandardsController {
   }
 
   // -------------------------------------------------------------------
+  // Auto-Cleanup Assistant v1
+  //
+  // GET  /cleanup/classification        → classified rows + counters
+  // POST /cleanup/deactivate-non-route  → bulk soft-deactivate
+  // POST /cleanup/apply-timing-bulk     → bulk timing apply
+  // GET  /cleanup/report                → .xlsx download
+  // -------------------------------------------------------------------
+
+  @Get('cleanup/classification')
+  cleanupClassification() {
+    return this.routeStandardsService.getCleanupClassification();
+  }
+
+  @Post('cleanup/deactivate-non-route')
+  @Roles('admin', 'operations')
+  bulkDeactivateNonRoute() {
+    return this.routeStandardsService.bulkDeactivateNonMovementRows();
+  }
+
+  @Post('cleanup/apply-timing-bulk')
+  @Roles('admin', 'operations')
+  bulkApplyTiming() {
+    return this.routeStandardsService.bulkApplyHighConfidenceTiming();
+  }
+
+  @Get('cleanup/report')
+  async cleanupReport(): Promise<StreamableFile> {
+    const { fileName, buffer } = await this.routeStandardsService.exportCleanupReport();
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  // -------------------------------------------------------------------
   // Route Code Generator + Duplicate Protection v1
   //
   // GET  /areas                    → operational area dictionary

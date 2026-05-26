@@ -7,6 +7,14 @@ import {
   mergeDefaultFlagsFor,
 } from './operational-areas';
 import { OperationalAreasService } from '../operational-areas/operational-areas.service';
+import {
+  classifyRouteStandard,
+  suggestTimingForRoute,
+  rowHasTiming,
+  isProtectedRow,
+  detectSuspiciousMovementDuration,
+  RouteClassification,
+} from './route-standards-cleanup';
 
 // CRUD service for RouteStandard. Phase 1 = pure data layer; Phase 2 will
 // add lookup helpers for quote/dispatch/voucher integration.
@@ -1661,6 +1669,290 @@ export class RouteStandardsService {
       message:
         'This is a Touring Route made from multiple legs. Each leg is a standalone Route Standard the operator can refine independently.',
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Route Standards Auto-Cleanup Assistant v1
+  //
+  // Classifies every Route Standard, surfaces non-movement rows for
+  // cleanup, and suggests timing for true MOVEMENT_LEG rows that are
+  // missing distance / duration.
+  //
+  // Everything is soft: bulk-deactivate sets isActive=false, never
+  // deletes; bulk-apply-timing only fills empty cells on unprotected
+  // MOVEMENT_LEG rows.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Return every active+inactive Route Standard tagged with its
+   * classification, suspicious-timing flag, recommended action, and a
+   * timing suggestion when relevant. Drives the cleanup dashboard.
+   */
+  async getCleanupClassification() {
+    const rows: any[] = await (this.prisma as any).routeStandard.findMany({
+      orderBy: [{ isActive: 'desc' }, { routeCode: 'asc' }],
+    });
+
+    const enriched = rows.map((row) => {
+      const classification = classifyRouteStandard(row);
+      const suspicious = detectSuspiciousMovementDuration({
+        ...row,
+        classification: classification.classification,
+      });
+      const protectedRow = isProtectedRow(row);
+      const hasTiming = rowHasTiming(row);
+      // Only compute a timing suggestion for movement legs that need it.
+      // Skip for protected rows + rows that already have full timing.
+      let suggestion = null as ReturnType<typeof suggestTimingForRoute> | null;
+      if (
+        classification.classification === 'MOVEMENT_LEG' &&
+        !protectedRow &&
+        !hasTiming
+      ) {
+        suggestion = suggestTimingForRoute(row, rows as any);
+      }
+      return {
+        id: row.id,
+        routeCode: row.routeCode,
+        canonicalRouteCode: row.canonicalRouteCode ?? null,
+        routeName: row.routeName,
+        fromCity: row.fromCity ?? null,
+        toCity: row.toCity ?? null,
+        standardDistanceKm: row.standardDistanceKm ?? null,
+        standardDurationHours: row.standardDurationHours ?? null,
+        operationalBufferMinutes: row.operationalBufferMinutes ?? null,
+        isActive: Boolean(row.isActive),
+        reviewStatus: row.reviewStatus ?? null,
+        source: row.source ?? null,
+        suspicious: suspicious.suspicious,
+        suspiciousReason: suspicious.reason,
+        isProtected: protectedRow,
+        hasTiming,
+        classification: classification.classification,
+        recommendedAction: classification.recommendedAction,
+        classificationReason: classification.reason,
+        classificationConfidence: classification.confidence,
+        timingSuggestion: suggestion,
+      };
+    });
+
+    const counters = {
+      total: enriched.length,
+      active: enriched.filter((r) => r.isActive).length,
+      movementLegs: enriched.filter((r) => r.classification === 'MOVEMENT_LEG').length,
+      touringPrograms: enriched.filter((r) => r.classification === 'TOURING_PROGRAM').length,
+      activities: enriched.filter((r) => r.classification === 'ACTIVITY_EXPERIENCE').length,
+      roundTripPrograms: enriched.filter((r) => r.classification === 'ROUND_TRIP_PROGRAM').length,
+      multiStopFlows: enriched.filter((r) => r.classification === 'MULTI_STOP_FLOW').length,
+      unknownReview: enriched.filter((r) => r.classification === 'UNKNOWN_REVIEW').length,
+      suspiciousMovement: enriched.filter((r) => r.suspicious).length,
+      movementMissingTiming: enriched.filter(
+        (r) => r.classification === 'MOVEMENT_LEG' && r.isActive && !r.hasTiming,
+      ).length,
+      timingSuggestionsHighConfidence: enriched.filter(
+        (r) => r.timingSuggestion?.confidence === 'high',
+      ).length,
+      timingSuggestionsReverse: enriched.filter(
+        (r) => r.timingSuggestion?.confidence === 'reverse_inherited',
+      ).length,
+    };
+
+    return { rows: enriched, counters };
+  }
+
+  /**
+   * Bulk-deactivate clearly non-movement rows. Only touches:
+   *   - TOURING_PROGRAM
+   *   - ACTIVITY_EXPERIENCE
+   *   - ROUND_TRIP_PROGRAM
+   *   - MULTI_STOP_FLOW
+   *
+   * Never touches: MOVEMENT_LEG, UNKNOWN_REVIEW, VERIFIED, MANUAL,
+   * already-deactivated rows.
+   *
+   * Soft only — sets isActive=false. Audit trail (createdAt/updatedAt)
+   * stays intact, the row can be reactivated, and legacy lookups still
+   * resolve the routeCode → row.
+   */
+  async bulkDeactivateNonMovementRows() {
+    const { rows } = await this.getCleanupClassification();
+    const candidates = rows.filter(
+      (r) =>
+        r.isActive &&
+        !r.isProtected &&
+        (r.classification === 'TOURING_PROGRAM' ||
+          r.classification === 'ACTIVITY_EXPERIENCE' ||
+          r.classification === 'ROUND_TRIP_PROGRAM' ||
+          r.classification === 'MULTI_STOP_FLOW') &&
+        // High/medium confidence only — UNKNOWN can't slip into the
+        // first filter anyway, but be explicit.
+        (r.classificationConfidence === 'high' ||
+          r.classificationConfidence === 'medium'),
+    );
+
+    const results: Array<{
+      id: string;
+      routeCode: string;
+      classification: RouteClassification;
+      deactivated: boolean;
+    }> = [];
+    for (const row of candidates) {
+      await (this.prisma as any).routeStandard.update({
+        where: { id: row.id },
+        data: { isActive: false },
+      });
+      results.push({
+        id: row.id,
+        routeCode: row.routeCode,
+        classification: row.classification,
+        deactivated: true,
+      });
+    }
+    return {
+      deactivatedCount: results.length,
+      skippedProtectedCount: rows.filter(
+        (r) =>
+          r.isActive &&
+          r.isProtected &&
+          (r.classification === 'TOURING_PROGRAM' ||
+            r.classification === 'ACTIVITY_EXPERIENCE' ||
+            r.classification === 'ROUND_TRIP_PROGRAM' ||
+            r.classification === 'MULTI_STOP_FLOW'),
+      ).length,
+      results,
+    };
+  }
+
+  /**
+   * Bulk-apply high-confidence timing suggestions. Touches only:
+   *   - classification === 'MOVEMENT_LEG'
+   *   - !isProtected (not VERIFIED, not source=MANUAL)
+   *   - !hasTiming (don't overwrite operator's existing numbers)
+   *   - suggestion.confidence === 'high' OR 'reverse_inherited'
+   */
+  async bulkApplyHighConfidenceTiming() {
+    const { rows } = await this.getCleanupClassification();
+    const applyable = rows.filter(
+      (r) =>
+        r.classification === 'MOVEMENT_LEG' &&
+        !r.isProtected &&
+        !r.hasTiming &&
+        r.timingSuggestion &&
+        (r.timingSuggestion.confidence === 'high' ||
+          r.timingSuggestion.confidence === 'reverse_inherited'),
+    );
+
+    const results: Array<{
+      id: string;
+      routeCode: string;
+      appliedSource: string;
+      distanceKm: number | null;
+      durationHours: number | null;
+      bufferMinutes: number | null;
+    }> = [];
+    for (const row of applyable) {
+      const s = row.timingSuggestion!;
+      await (this.prisma as any).routeStandard.update({
+        where: { id: row.id },
+        data: {
+          standardDistanceKm: s.distanceKm,
+          standardDurationHours: s.durationHours,
+          operationalBufferMinutes: s.bufferMinutes,
+          longDistanceFlag: s.flags.longDistanceFlag,
+          mountainRoadFlag: s.flags.mountainRoadFlag,
+          borderCrossingFlag: s.flags.borderCrossingFlag,
+          airportRouteFlag: s.flags.airportRouteFlag,
+          overnightRisk: s.flags.overnightRisk,
+          // Recompute suspicious flag honestly with the new duration.
+          suspiciousDurationFlag: detectSuspiciousMovementDuration({
+            canonicalRouteCode: row.canonicalRouteCode,
+            routeCode: row.routeCode,
+            standardDurationHours: s.durationHours,
+            classification: 'MOVEMENT_LEG',
+          }).suspicious,
+        },
+      });
+      results.push({
+        id: row.id,
+        routeCode: row.routeCode,
+        appliedSource: s.source,
+        distanceKm: s.distanceKm,
+        durationHours: s.durationHours,
+        bufferMinutes: s.bufferMinutes,
+      });
+    }
+    return {
+      appliedCount: results.length,
+      results,
+    };
+  }
+
+  /**
+   * Export the cleanup classification as an .xlsx workbook with one
+   * row per Route Standard + the spec's columns.
+   */
+  async exportCleanupReport(): Promise<{ fileName: string; buffer: Buffer }> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ExcelJS = require('exceljs');
+    const { rows } = await this.getCleanupClassification();
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Cleanup Report');
+    sheet.addRow([
+      'routeCode',
+      'canonicalRouteCode',
+      'name',
+      'from',
+      'to',
+      'classification',
+      'reason',
+      'recommendedAction',
+      'confidence',
+      'active',
+      'reviewStatus',
+      'source',
+      'suspicious',
+      'suspiciousReason',
+      'standardDistanceKm',
+      'standardDurationHours',
+      'operationalBufferMinutes',
+      'timingSuggestionSource',
+      'timingSuggestionConfidence',
+      'timingSuggestionDistanceKm',
+      'timingSuggestionDurationHours',
+      'timingSuggestionBufferMinutes',
+    ]);
+    sheet.getRow(1).font = { bold: true };
+    for (const row of rows) {
+      sheet.addRow([
+        row.routeCode,
+        row.canonicalRouteCode ?? '',
+        row.routeName,
+        row.fromCity ?? '',
+        row.toCity ?? '',
+        row.classification,
+        row.classificationReason,
+        row.recommendedAction,
+        row.classificationConfidence,
+        row.isActive ? 'Yes' : 'No',
+        row.reviewStatus ?? '',
+        row.source ?? '',
+        row.suspicious ? 'Yes' : 'No',
+        row.suspiciousReason ?? '',
+        row.standardDistanceKm ?? '',
+        row.standardDurationHours ?? '',
+        row.operationalBufferMinutes ?? '',
+        row.timingSuggestion?.source ?? '',
+        row.timingSuggestion?.confidence ?? '',
+        row.timingSuggestion?.distanceKm ?? '',
+        row.timingSuggestion?.durationHours ?? '',
+        row.timingSuggestion?.bufferMinutes ?? '',
+      ]);
+    }
+    sheet.columns.forEach((column: any) => {
+      column.width = 22;
+    });
+    const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+    return { fileName: 'route-standards-cleanup-report.xlsx', buffer };
   }
 }
 
