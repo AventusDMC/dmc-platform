@@ -1778,6 +1778,39 @@ model RouteStandard {
   @@map("route_standards")
 }
 
+// Operational Areas Catalog v1 — canonical movement endpoints used by the
+// Route Builder + Canonical Builder + Touring Routes + Dispatch + Transfers
+// + Excursion composition. Codes (AMM, QAIA, PET, …) drive the FROM_TO
+// canonical route-code generator. Replaces the hardcoded dictionary that
+// previously lived in apps/api/src/route-standards/operational-areas.ts.
+model OperationalArea {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  // CITY | AIRPORT | BORDER | HOTEL_ZONE | TOURISM_SITE | CAMP_AREA | PORT | RESORT_AREA
+  type        String
+  city        String
+  region      String?
+  country     String   @default("Jordan")
+  isActive    Boolean  @default(true)
+  // Default risk flags suggested when this area is on either side of a
+  // route. mergeDefaultFlags ORs the flags from both endpoints in the
+  // Route Builder so airport legs auto-suggest airportRouteFlag, border
+  // legs auto-suggest borderCrossingFlag, etc. Operator can always
+  // override per row.
+  airportRouteFlagDefault    Boolean @default(false)
+  borderCrossingFlagDefault  Boolean @default(false)
+  mountainRoadFlagDefault    Boolean @default(false)
+  overnightRiskDefault       Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, code])
+  @@index([city])
+  @@index([type])
+  @@map("operational_areas")
+}
+
 model ServiceType {
   id               String            @id @default(uuid()) @db.Uuid
   name             String

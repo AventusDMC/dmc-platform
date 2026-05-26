@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  OPERATIONAL_AREAS,
   OperationalArea,
-  getAreaByCode,
-  getAreaById,
-  mergeDefaultFlags,
+  pickAreaById,
+  pickAreaByCode,
+  mergeDefaultFlagsFor,
 } from './operational-areas';
+import { OperationalAreasService } from '../operational-areas/operational-areas.service';
 
 // CRUD service for RouteStandard. Phase 1 = pure data layer; Phase 2 will
 // add lookup helpers for quote/dispatch/voucher integration.
@@ -510,7 +510,27 @@ function mapTransferRouteToStandardInput(route: any): RouteStandardInput {
 
 @Injectable()
 export class RouteStandardsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // OperationalAreasService is optional at the type level so existing
+    // unit tests that only exercise non-area methods (CRUD, refinement,
+    // cleanup, bulkUpsert) don't have to pass a fake. NestJS DI always
+    // injects it at runtime, and the area-aware methods throw a clear
+    // error if it's missing — see loadAreas() below.
+    private readonly operationalAreasService?: OperationalAreasService,
+  ) {}
+
+  /** Helper used by all area-aware methods below. Loads the current
+   *  catalog once per operation and lets the pure helpers in
+   *  operational-areas.ts do the lookups on the in-memory list. */
+  private async loadAreas(): Promise<OperationalArea[]> {
+    if (!this.operationalAreasService) {
+      throw new Error(
+        'OperationalAreasService not injected — required for previewRouteCreation / createWithGeneration / createMultiStopRoute / listOperationalAreas',
+      );
+    }
+    return (await this.operationalAreasService.findAll({ onlyActive: true })) as OperationalArea[];
+  }
 
   findAll() {
     return (this.prisma as any).routeStandard.findMany({
@@ -1359,9 +1379,14 @@ export class RouteStandardsService {
   // canonical codes + duplicate detection.
   // -------------------------------------------------------------------------
 
-  /** Return the operational-area dictionary the Route Builder dropdowns render. */
-  listOperationalAreas() {
-    return OPERATIONAL_AREAS;
+  /** Return the operational-area dictionary the Route Builder dropdowns
+   *  render. Now sourced from the DB-backed OperationalAreasService
+   *  (Operational Areas Catalog v1). Kept as an alias under
+   *  /route-standards/areas so existing UI consumers don't need to
+   *  switch endpoints — the dedicated /operational-areas endpoint is
+   *  available for new consumers. */
+  async listOperationalAreas() {
+    return this.loadAreas();
   }
 
   /**
@@ -1382,15 +1407,16 @@ export class RouteStandardsService {
    * Pure read — never writes. Operator inspects + clicks Confirm to commit.
    */
   async previewRouteCreation(input: { fromAreaId?: string; toAreaId?: string; fromAreaCode?: string; toAreaCode?: string }) {
+    const areas = await this.loadAreas();
     const fromArea = input.fromAreaId
-      ? getAreaById(input.fromAreaId)
+      ? pickAreaById(areas, input.fromAreaId)
       : input.fromAreaCode
-        ? getAreaByCode(input.fromAreaCode)
+        ? pickAreaByCode(areas, input.fromAreaCode)
         : null;
     const toArea = input.toAreaId
-      ? getAreaById(input.toAreaId)
+      ? pickAreaById(areas, input.toAreaId)
       : input.toAreaCode
-        ? getAreaByCode(input.toAreaCode)
+        ? pickAreaByCode(areas, input.toAreaCode)
         : null;
     if (!fromArea || !toArea) {
       throw new BadRequestException('Both fromArea and toArea are required (by id or code)');
@@ -1399,7 +1425,9 @@ export class RouteStandardsService {
       throw new BadRequestException('From and To areas cannot be the same — same-area transfers are not modelled as route standards');
     }
     const suggestedCode = `${fromArea.code}_${toArea.code}`;
-    const suggestedRouteName = `${fromArea.displayName} → ${toArea.displayName}`;
+    // Operational Areas Catalog v1 — `name` replaces `displayName` from
+    // the old in-file dictionary. Build the same "From → To" label.
+    const suggestedRouteName = `${fromArea.name} → ${toArea.name}`;
 
     // Three-pass match — canonical first, then legacy routeCode, then city pair.
     let existingMatch: any = await (this.prisma as any).routeStandard.findFirst({
@@ -1439,7 +1467,7 @@ export class RouteStandardsService {
           }
         : null,
       action: existingMatch ? 'use-existing' : 'create',
-      defaultFlags: mergeDefaultFlags(fromArea, toArea),
+      defaultFlags: mergeDefaultFlagsFor(fromArea, toArea),
     };
   }
 
@@ -1554,9 +1582,10 @@ export class RouteStandardsService {
     if (stops.length < 3) {
       throw new BadRequestException('Multi-stop route requires at least 3 stops — for 2 stops, use the single-leg builder');
     }
+    const areas = await this.loadAreas();
     const resolved: OperationalArea[] = [];
     for (const stop of stops) {
-      const area = stop.areaId ? getAreaById(stop.areaId) : getAreaByCode(stop.areaCode);
+      const area = stop.areaId ? pickAreaById(areas, stop.areaId) : pickAreaByCode(areas, stop.areaCode);
       if (!area) {
         throw new BadRequestException(`Unknown stop: ${stop.areaId || stop.areaCode}`);
       }
@@ -1596,7 +1625,7 @@ export class RouteStandardsService {
         });
         continue;
       }
-      const flags = mergeDefaultFlags(fromArea, toArea);
+      const flags = mergeDefaultFlagsFor(fromArea, toArea);
       const created = await this.create({
         routeCode: legPreview.suggestedCode,
         routeName: legPreview.suggestedRouteName,

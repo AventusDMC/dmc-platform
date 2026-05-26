@@ -119,6 +119,8 @@ import { SuppliersController } from './suppliers/suppliers.controller';
 import { SuppliersService } from './suppliers/suppliers.service';
 import { RouteStandardsController } from './route-standards/route-standards.controller';
 import { RouteStandardsService } from './route-standards/route-standards.service';
+import { OperationalAreasController } from './operational-areas/operational-areas.controller';
+import { OperationalAreasService } from './operational-areas/operational-areas.service';
 import { ServiceTypesController } from './service-types/service-types.controller';
 import { ServiceTypesService } from './service-types/service-types.service';
 import { SupportTextTemplatesController } from './support-text-templates/support-text-templates.controller';
@@ -195,6 +197,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ReportsController,
     RoutesController,
     RouteStandardsController,
+    OperationalAreasController,
     SeasonsController,
     ItinerariesController,
     ServicesController,
@@ -272,6 +275,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ReportsService,
     RoutesService,
     RouteStandardsService,
+    OperationalAreasService,
     SeasonsService,
     ItinerariesService,
     ServicesService,

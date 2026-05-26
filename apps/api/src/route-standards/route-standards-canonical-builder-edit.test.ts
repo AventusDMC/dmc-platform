@@ -2,7 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { RouteStandardsService } from './route-standards.service';
-import { findAreaByCity, OPERATIONAL_AREAS } from './operational-areas';
+import { pickAreaByCity, OperationalArea } from './operational-areas';
+
+// Operational Areas Catalog v1 — the dictionary now lives in the DB, but
+// the tests still need a deterministic in-memory snapshot to feed the
+// service. Mirror the migration seed.
+const JORDAN_AREAS_FIXTURE: OperationalArea[] = [
+  { id: 'a-amm', code: 'AMM', name: 'Amman City', type: 'CITY', city: 'Amman' },
+  { id: 'a-qaia', code: 'QAIA', name: 'Queen Alia International Airport', type: 'AIRPORT', city: 'Amman', airportRouteFlagDefault: true },
+  { id: 'a-pet', code: 'PET', name: 'Petra Visitor Center', type: 'TOURISM_SITE', city: 'Petra' },
+  { id: 'a-wr', code: 'WR', name: 'Wadi Rum Camp Area', type: 'CAMP_AREA', city: 'Wadi Rum' },
+  { id: 'a-aqj', code: 'AQJ', name: 'Aqaba City', type: 'CITY', city: 'Aqaba' },
+  { id: 'a-ds', code: 'DS', name: 'Dead Sea Resort Area', type: 'RESORT_AREA', city: 'Dead Sea' },
+  { id: 'a-jer', code: 'JER', name: 'Jerash Archaeological Site', type: 'TOURISM_SITE', city: 'Jerash' },
+  { id: 'a-mad', code: 'MAD', name: 'Madaba', type: 'CITY', city: 'Madaba' },
+  { id: 'a-neb', code: 'NEB', name: 'Mount Nebo', type: 'TOURISM_SITE', city: 'Madaba' },
+  { id: 'a-irb', code: 'IRB', name: 'Irbid', type: 'CITY', city: 'Irbid' },
+  { id: 'a-allenby', code: 'ALLENBY', name: 'Allenby / King Hussein Bridge', type: 'BORDER', city: 'Dead Sea', borderCrossingFlagDefault: true },
+  { id: 'a-shb', code: 'SHB', name: 'Sheikh Hussein Border', type: 'BORDER', city: 'Irbid', borderCrossingFlagDefault: true },
+];
+
+const fakeAreasService = {
+  findAll: async (_filters?: any) => JORDAN_AREAS_FIXTURE,
+} as any;
 
 // Route Standard Edit Page Canonical Builder v1 — tests for:
 //   1. findAreaByCity preselection helper (mirrors the client-side helper
@@ -63,42 +85,42 @@ function buildFakePrisma(initial: Array<any> = []) {
 }
 
 // -----------------------------------------------------------------------
-// findAreaByCity
+// pickAreaByCity — pure preference-order helper
 // -----------------------------------------------------------------------
-test('findAreaByCity: returns the CITY-type area when a city has multiple area entries (Amman → Amman City, not QAIA)', () => {
-  const found = findAreaByCity('Amman');
+test('pickAreaByCity: returns the CITY-type area when a city has multiple area entries (Amman → Amman City, not QAIA)', () => {
+  const found = pickAreaByCity(JORDAN_AREAS_FIXTURE, 'Amman');
   assert.ok(found);
   assert.equal(found?.code, 'AMM');
   assert.equal(found?.type, 'CITY');
 });
 
-test('findAreaByCity: returns ATTRACTION when city has no CITY-type area (Petra → Petra Visitor Center)', () => {
-  // 'Petra' anchors only Petra Visitor Center (ATTRACTION), not a city
-  // entry. Helper falls back through PREFERRED_TYPE_ORDER until it
-  // finds a match.
-  const found = findAreaByCity('Petra');
+test('pickAreaByCity: returns TOURISM_SITE when city has no CITY-type area (Petra → Petra Visitor Center)', () => {
+  // 'Petra' anchors only Petra Visitor Center (TOURISM_SITE), not a
+  // city entry. Helper falls back through PREFERRED_TYPE_ORDER until
+  // it finds a match.
+  const found = pickAreaByCity(JORDAN_AREAS_FIXTURE, 'Petra');
   assert.ok(found);
   assert.equal(found?.code, 'PET');
-  assert.equal(found?.type, 'ATTRACTION');
+  assert.equal(found?.type, 'TOURISM_SITE');
 });
 
-test('findAreaByCity: case-insensitive', () => {
-  assert.equal(findAreaByCity('amman')?.code, 'AMM');
-  assert.equal(findAreaByCity('AMMAN')?.code, 'AMM');
-  assert.equal(findAreaByCity('  Amman  ')?.code, 'AMM');
+test('pickAreaByCity: case-insensitive', () => {
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, 'amman')?.code, 'AMM');
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, 'AMMAN')?.code, 'AMM');
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, '  Amman  ')?.code, 'AMM');
 });
 
-test('findAreaByCity: null on miss / empty / nullish', () => {
-  assert.equal(findAreaByCity(null), null);
-  assert.equal(findAreaByCity(undefined), null);
-  assert.equal(findAreaByCity(''), null);
-  assert.equal(findAreaByCity('Atlantis'), null);
+test('pickAreaByCity: null on miss / empty / nullish', () => {
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, null), null);
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, undefined), null);
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, ''), null);
+  assert.equal(pickAreaByCity(JORDAN_AREAS_FIXTURE, 'Atlantis'), null);
 });
 
-test('findAreaByCity: preferType lets a caller force the AIRPORT variant when both exist', () => {
+test('pickAreaByCity: preferType lets a caller force the AIRPORT variant when both exist', () => {
   // Amman has Amman City (CITY) + Queen Alia (AIRPORT). Caller can ask
   // for AIRPORT explicitly.
-  const found = findAreaByCity('Amman', { preferType: 'AIRPORT' });
+  const found = pickAreaByCity(JORDAN_AREAS_FIXTURE, 'Amman', { preferType: 'AIRPORT' });
   assert.equal(found?.code, 'QAIA');
   assert.equal(found?.type, 'AIRPORT');
 });
@@ -122,7 +144,7 @@ test('update: applying canonicalRouteCode via the PATCH endpoint never touches r
       reviewStatus: 'AUTO_BOOTSTRAP',
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
 
   // Simulate the PATCH body the Canonical Builder sends.
   await service.update('row-1', {
@@ -161,7 +183,7 @@ test('previewRouteCreation: returns existingMatch.id so the edit page can filter
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   assert.ok(preview.existingMatch);
   // Critical: id is exposed so the client can compare against standardId.
@@ -190,7 +212,7 @@ test('previewRouteCreation: returns existingMatch.id != currentRowId when a DIFF
       isActive: true,
     },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const preview = await service.previewRouteCreation({ fromAreaCode: 'AMM', toAreaCode: 'PET' });
   // existingMatch is the OTHER row, not the editing-row.
   assert.equal(preview.existingMatch?.id, 'conflicting-row');
@@ -213,7 +235,7 @@ test('reverse-route helper: editing AMM_PET → previewRouteCreation with swappe
     },
     // PET_AMM is intentionally absent
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const reverse = await service.previewRouteCreation({ fromAreaCode: 'PET', toAreaCode: 'AMM' });
   assert.equal(reverse.suggestedCode, 'PET_AMM');
   // Reverse doesn't exist → existingMatch is null → UI shows "missing".
@@ -225,7 +247,7 @@ test('reverse-route helper: when PET_AMM also exists, the helper reports it as p
     { id: 'amm-pet', routeCode: 'AMM_PET', canonicalRouteCode: 'AMM_PET', routeName: 'Amman → Petra', isActive: true },
     { id: 'pet-amm', routeCode: 'PET_AMM', canonicalRouteCode: 'PET_AMM', routeName: 'Petra → Amman', isActive: true },
   ]);
-  const service = new RouteStandardsService(prisma as any);
+  const service = new RouteStandardsService(prisma as any, fakeAreasService);
   const reverse = await service.previewRouteCreation({ fromAreaCode: 'PET', toAreaCode: 'AMM' });
   assert.ok(reverse.existingMatch);
   assert.equal(reverse.existingMatch?.id, 'pet-amm');
