@@ -81,6 +81,45 @@ type GuidedSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Hotel suggestion types (v2A) -----
+type CommercialTier = 'Luxury' | 'Standard' | 'Budget';
+type OperationalConfidence =
+  | 'Operationally smooth'
+  | 'Moderate coordination'
+  | 'Seasonal pressure'
+  | 'Remote logistics';
+
+type SuggestedHotel = {
+  id: string;
+  name: string;
+  city: string;
+  category: string;
+  tier: CommercialTier;
+  hasActiveContract: boolean;
+  recommendedMealPlan: {
+    code: 'BB' | 'HB' | 'FB';
+    label: string;
+    reason: string;
+  };
+  operationalConfidence: OperationalConfidence;
+  notes: string[];
+};
+
+type DestinationHotelSuggestions = {
+  destination: string;
+  matchedAreaCode: string | null;
+  tiers: Record<CommercialTier, SuggestedHotel[]>;
+  totalHotelCount: number;
+  hasAnySuggestions: boolean;
+  fallbackHint: string | null;
+};
+
+type HotelSuggestionsResponse = {
+  destinations: string[];
+  suggestions: DestinationHotelSuggestions[];
+  notes: string[];
+};
+
 export function GuidedJourneyComposer({
   quote,
   advancedWorkspaceUrl,
@@ -142,6 +181,41 @@ export function GuidedJourneyComposer({
       cancelled = true;
     };
   }, [quote.arrivalCity, destinations.join('|')]);
+
+  // v2A — hotel suggestions per destination, fetched independently so
+  // the journey-flow + pacing data shows even if hotels fail to load.
+  const [hotelData, setHotelData] = useState<HotelSuggestionsResponse | null>(null);
+  const [hotelsLoading, setHotelsLoading] = useState(false);
+  useEffect(() => {
+    if (destinations.length === 0) {
+      setHotelData(null);
+      return;
+    }
+    let cancelled = false;
+    setHotelsLoading(true);
+    (async () => {
+      try {
+        const response = await fetch('/api/quotes/guided/hotel-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destinations }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.message || `Hotel suggestions failed (${response.status})`);
+        if (!cancelled) setHotelData(payload as HotelSuggestionsResponse);
+      } catch {
+        // Soft-fail — the rest of the panel still renders. The fallback
+        // section below shows a "use the hotel selector" link when no
+        // data is available.
+        if (!cancelled) setHotelData(null);
+      } finally {
+        if (!cancelled) setHotelsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [destinations.join('|')]);
 
   // Quote readiness — pure derivation from quote state, no API hit.
   const readiness = computeQuoteReadiness(quote);
@@ -215,7 +289,20 @@ export function GuidedJourneyComposer({
       {/* Section 3 — Suggested Touring Routes per destination */}
       {data ? <SuggestedTouringRoutesSection suggestions={data.suggestions} /> : null}
 
-      {/* Section 4 — Quote readiness checklist */}
+      {/* Section 4 — Suggested Hotels per destination (v2A) */}
+      <SuggestedHotelsSection
+        hotelData={hotelData}
+        loading={hotelsLoading}
+        destinations={destinations}
+        // Hotel cards link into the Hotels tab on the advanced workspace
+        // (with the quote id and the hotelId in the URL). v2A does NOT
+        // auto-insert into a quote day — that requires the existing
+        // add-hotel flow which carries occupancy / room category /
+        // contract resolution logic the spec asked us to preserve.
+        quoteId={quote.id}
+      />
+
+      {/* Section 5 — Quote readiness checklist */}
       <ReadinessSection readiness={readiness} />
 
       <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.78rem', textAlign: 'center' }}>
@@ -581,6 +668,268 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
         <p style={{ margin: 0, color: '#0f172a', fontWeight: 600, fontSize: '0.88rem' }}>{item.label}</p>
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.82rem' }}>{item.detail}</p>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v2A — Suggested Hotels section
+// ---------------------------------------------------------------------------
+
+function SuggestedHotelsSection({
+  hotelData,
+  loading,
+  destinations,
+  quoteId,
+}: {
+  hotelData: HotelSuggestionsResponse | null;
+  loading: boolean;
+  destinations: string[];
+  quoteId: string;
+}) {
+  if (destinations.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 10,
+        padding: '1rem 1.1rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p
+            style={{
+              color: '#475569',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: 0,
+            }}
+          >
+            Suggested hotels
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+            Per destination, grouped by commercial tier. Each card shows the recommended meal plan,
+            operational confidence, and short notes. Adding hotels happens in the Advanced Workspace —
+            the link on each card jumps you there with the hotel pre-selected.
+          </p>
+        </div>
+        <a
+          href={`/quotes/${quoteId}?tab=hotels`}
+          style={{
+            padding: '0.35rem 0.7rem',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            background: '#f8fafc',
+            color: '#0c4a6e',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Open standard hotel selector →
+        </a>
+      </div>
+
+      {loading && !hotelData ? (
+        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Reading hotel catalog for these destinations…
+        </p>
+      ) : null}
+
+      {!loading && !hotelData ? (
+        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Could not load hotel suggestions. Open the standard hotel selector to search by name or city.
+        </p>
+      ) : null}
+
+      {hotelData ? (
+        <div style={{ marginTop: '0.7rem', display: 'grid', gap: '1rem' }}>
+          {hotelData.suggestions.map((destSugg) => (
+            <DestinationHotelGroup key={destSugg.destination} group={destSugg} quoteId={quoteId} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DestinationHotelGroup({
+  group,
+  quoteId,
+}: {
+  group: DestinationHotelSuggestions;
+  quoteId: string;
+}) {
+  const tiers: Array<{ key: CommercialTier; label: string; chipBg: string; chipText: string }> = [
+    { key: 'Luxury', label: 'Luxury', chipBg: '#eef2ff', chipText: '#3730a3' },
+    { key: 'Standard', label: 'Standard', chipBg: '#ecfdf3', chipText: '#067647' },
+    { key: 'Budget', label: 'Budget', chipBg: '#fff7ed', chipText: '#854d0e' },
+  ];
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>{group.destination}</p>
+        {group.matchedAreaCode ? (
+          <span
+            style={{
+              background: '#f1f5f9',
+              color: '#475569',
+              padding: '0.05rem 0.4rem',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontFamily: 'monospace',
+            }}
+          >
+            {group.matchedAreaCode}
+          </span>
+        ) : null}
+        <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>
+          {group.totalHotelCount} hotel{group.totalHotelCount === 1 ? '' : 's'}
+        </span>
+      </div>
+      {!group.hasAnySuggestions ? (
+        <div
+          style={{
+            padding: '0.55rem 0.7rem',
+            background: '#fefce8',
+            border: '1px solid #fde68a',
+            borderRadius: 8,
+            color: '#854d0e',
+            fontSize: '0.82rem',
+          }}
+        >
+          {group.fallbackHint ||
+            `No hotels matched "${group.destination}". Use the standard hotel selector to search.`}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {tiers.map(({ key, label, chipBg, chipText }) =>
+            group.tiers[key].length > 0 ? (
+              <div key={key}>
+                <p
+                  style={{
+                    margin: '0 0 0.3rem',
+                    color: '#475569',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {label}
+                </p>
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {group.tiers[key].map((hotel) => (
+                    <HotelCard key={hotel.id} hotel={hotel} quoteId={quoteId} tierChip={{ bg: chipBg, text: chipText, label }} />
+                  ))}
+                </div>
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HotelCard({
+  hotel,
+  quoteId,
+  tierChip,
+}: {
+  hotel: SuggestedHotel;
+  quoteId: string;
+  tierChip: { bg: string; text: string; label: string };
+}) {
+  const confidenceColors: Record<OperationalConfidence, { bg: string; text: string; border: string }> = {
+    'Operationally smooth': { bg: '#ecfdf3', text: '#067647', border: '#abefc6' },
+    'Moderate coordination': { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' },
+    'Seasonal pressure': { bg: '#fef3c7', text: '#854d0e', border: '#fde68a' },
+    'Remote logistics': { bg: '#fff7ed', text: '#7c2d12', border: '#fed7aa' },
+  };
+  const cc = confidenceColors[hotel.operationalConfidence];
+  return (
+    <div
+      style={{
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        padding: '0.55rem 0.7rem',
+        display: 'grid',
+        gap: '0.3rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.92rem', fontWeight: 600 }}>{hotel.name}</p>
+        <a
+          href={`/quotes/${quoteId}?tab=hotels&hotelId=${encodeURIComponent(hotel.id)}`}
+          style={{
+            color: '#0c4a6e',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+          title="Open in Advanced Workspace's Hotels tab"
+        >
+          Add in Hotels tab →
+        </a>
+      </div>
+      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span
+          style={{
+            background: tierChip.bg,
+            color: tierChip.text,
+            padding: '0.05rem 0.4rem',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            fontWeight: 700,
+          }}
+        >
+          {hotel.category || tierChip.label}
+        </span>
+        <span
+          style={{
+            background: cc.bg,
+            color: cc.text,
+            border: `1px solid ${cc.border}`,
+            padding: '0.05rem 0.45rem',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            fontWeight: 600,
+          }}
+        >
+          {hotel.operationalConfidence}
+        </span>
+        <span
+          style={{
+            background: '#eef2ff',
+            color: '#3730a3',
+            padding: '0.05rem 0.4rem',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            fontWeight: 600,
+          }}
+          title={hotel.recommendedMealPlan.reason}
+        >
+          Meal plan: {hotel.recommendedMealPlan.code} recommended
+        </span>
+      </div>
+      {hotel.notes.length > 0 ? (
+        <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
+          {hotel.notes.join(' · ')}
+        </p>
+      ) : null}
+      {!hotel.hasActiveContract ? (
+        <p style={{ margin: 0, color: '#854d0e', fontSize: '0.74rem' }}>
+          ⚠ No active contract on file — supplier may need confirmation before booking.
+        </p>
+      ) : null}
     </div>
   );
 }

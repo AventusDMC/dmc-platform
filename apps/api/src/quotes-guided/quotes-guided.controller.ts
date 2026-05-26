@@ -19,4 +19,17 @@ export class QuotesGuidedController {
       destinations: Array.isArray(body?.destinations) ? body.destinations : [],
     });
   }
+
+  /**
+   * v2A — Intelligent Hotel Suggestions. Per-destination tiered hotel
+   * shortlist (Luxury / Standard / Budget) with operational confidence
+   * + recommended meal plan + quick notes. Pure read — never touches
+   * pricing.
+   */
+  @Post('hotel-suggestions')
+  hotelSuggestions(@Body() body: { destinations?: string[] }) {
+    return this.service.getHotelSuggestionsForJourney({
+      destinations: Array.isArray(body?.destinations) ? body.destinations : [],
+    });
+  }
 }
