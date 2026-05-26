@@ -5,6 +5,7 @@ import { RouteStandardBootstrapPanel } from './RouteStandardBootstrapPanel';
 import { RouteStandardImportPanel } from './RouteStandardImportPanel';
 import { RouteStandardRefinementPanel } from './RouteStandardRefinementPanel';
 import { RouteStandardRefinementAssistantPanel } from './RouteStandardRefinementAssistantPanel';
+import { RouteStandardBuilderPanel } from './RouteStandardBuilderPanel';
 import { computeTimingConfidenceLabel } from './route-standard-display';
 
 export const dynamic = 'force-dynamic';
@@ -92,62 +93,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
 
       <RouteStandardImportPanel />
 
-      <section
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e4e7ec',
-          borderRadius: 10,
-          padding: '1rem',
-          marginBottom: '1rem',
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>Add route standard</h2>
-        <p style={{ color: '#667085', marginTop: 0, fontSize: '0.88rem' }}>
-          Each route standard is uniquely identified by its <code>routeCode</code> — use the existing touring-route or
-          transfer-route operational code (e.g., <code>AMM_PET</code>). Codes are normalized to UPPER_SNAKE on save.
-        </p>
-        <form
-          method="POST"
-          action="/api/route-standards"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}
-        >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Route code *</span>
-            <input name="routeCode" required placeholder="AMM_PET" style={{ fontFamily: 'monospace' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Route name *</span>
-            <input name="routeName" required placeholder="Amman to Petra" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>From city</span>
-            <input name="fromCity" placeholder="Amman" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>To city</span>
-            <input name="toCity" placeholder="Petra" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Distance (km)</span>
-            <input name="standardDistanceKm" type="number" step="0.1" placeholder="235" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Duration (hours)</span>
-            <input name="standardDurationHours" type="number" step="0.1" placeholder="3.5" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Buffer (min)</span>
-            <input name="operationalBufferMinutes" type="number" step="5" placeholder="30" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', gridColumn: '1 / -1' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Notes</span>
-            <input name="notes" placeholder="Operational notes (e.g., construction zone, restroom stop suggested)" />
-          </label>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <button type="submit" className="primary-button">Add route standard</button>
-          </div>
-        </form>
-      </section>
+      <RouteStandardBuilderPanel />
 
       <section style={{ background: '#ffffff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>
