@@ -76,6 +76,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       '/hotels',
       '/hotel-categories',
       '/hotel-contracts',
+      '/hotel-contract-health',
       '/contracts/import',
       '/hotel-rates',
       '/hotel-room-categories',
@@ -93,6 +94,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     helper: 'Hotels, activities, transport, guides, restaurants, transfer routes, services, and suppliers',
     children: [
       { label: 'Hotels', href: '/hotels' },
+      { label: 'Contract Health', href: '/hotel-contract-health' },
       { label: 'Packages', href: '/packages' },
       { label: 'Import Contract', href: '/contracts/import' },
       { label: 'Import History', href: '/contracts/import/history' },
