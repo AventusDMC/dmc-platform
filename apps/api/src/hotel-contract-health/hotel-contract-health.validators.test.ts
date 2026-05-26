@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  canMarkVerified,
+  computeHealthScore,
   diffContractSnapshots,
   interpretRates,
   isPricingComplete,
@@ -367,4 +369,146 @@ test('isPricingComplete: missing room x occupancy x meal-plan combo reported', (
 test('isPricingComplete: returns false when no rates exist at all', () => {
   const result = isPricingComplete(['rc1'], []);
   assert.equal(result.complete, false);
+});
+
+// ---------------------------------------------------------------------------
+// VERIFIED gating (Correction Workspace v1)
+// ---------------------------------------------------------------------------
+test('canMarkVerified: blocks promotion when high-severity supplement findings exist', () => {
+  const result = canMarkVerified({
+    supplementFindings: [
+      { kind: 'DUPLICATE_TYPE_SAME_ROOM', severity: 'high', message: 'dup', supplementIds: ['a', 'b'] },
+    ],
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+    rateCount: 10,
+  });
+  assert.equal(result.allowed, false);
+  assert.ok(result.blockers.some((b) => b.toLowerCase().includes('supplement')));
+});
+
+test('canMarkVerified: blocks promotion when high-severity season findings exist', () => {
+  const result = canMarkVerified({
+    supplementFindings: [],
+    seasonFindings: [
+      { kind: 'OVERLAPPING_SEASONS', severity: 'high', message: 'overlap', seasonIds: ['x', 'y'] },
+    ],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+    rateCount: 10,
+  });
+  assert.equal(result.allowed, false);
+  assert.ok(result.blockers.some((b) => b.toLowerCase().includes('season')));
+});
+
+test('canMarkVerified: blocks promotion when no rate rows exist', () => {
+  const result = canMarkVerified({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 0 },
+    rateCount: 0,
+  });
+  assert.equal(result.allowed, false);
+  assert.ok(result.blockers.some((b) => b.toLowerCase().includes('no rate')));
+});
+
+test('canMarkVerified: pricing completeness below 80% blocks; above 80% warns', () => {
+  // Below 80% → blocked
+  const blocked = canMarkVerified({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: false, missingCount: 30, totalExpected: 100 },
+    rateCount: 70,
+  });
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.blockers.some((b) => b.toLowerCase().includes('completeness')));
+
+  // Above 80% but not complete → allowed with warning
+  const warned = canMarkVerified({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: false, missingCount: 10, totalExpected: 100 },
+    rateCount: 90,
+  });
+  assert.equal(warned.allowed, true);
+  assert.ok(warned.warnings.length > 0);
+});
+
+test('canMarkVerified: allows promotion when clean (no findings, complete pricing, ≥1 rate)', () => {
+  const result = canMarkVerified({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+    rateCount: 10,
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.blockers.length, 0);
+});
+
+test('canMarkVerified: medium findings surface as warnings (not blockers)', () => {
+  const result = canMarkVerified({
+    supplementFindings: [
+      { kind: 'MISSING_PRICING_BASIS', severity: 'medium', message: 'basis', supplementIds: ['a'] },
+    ],
+    seasonFindings: [
+      { kind: 'GAP_IN_VALIDITY', severity: 'medium', message: 'gap', seasonIds: ['x', 'y'] },
+    ],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+    rateCount: 10,
+  });
+  assert.equal(result.allowed, true);
+  assert.ok(result.warnings.length >= 2);
+});
+
+// ---------------------------------------------------------------------------
+// Health score
+// ---------------------------------------------------------------------------
+test('computeHealthScore: starts at 100 with clean inputs', () => {
+  const score = computeHealthScore({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+  });
+  assert.equal(score, 100);
+});
+
+test('computeHealthScore: 25 points per high-severity finding', () => {
+  const score = computeHealthScore({
+    supplementFindings: [
+      { kind: 'DUPLICATE_TYPE_SAME_ROOM', severity: 'high', message: '', supplementIds: [] },
+    ],
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+  });
+  assert.equal(score, 75);
+});
+
+test('computeHealthScore: clamps to 0 even with many findings', () => {
+  const score = computeHealthScore({
+    supplementFindings: Array.from({ length: 10 }, (_, i) => ({
+      kind: 'DUPLICATE_TYPE_SAME_ROOM' as const,
+      severity: 'high' as const,
+      message: '',
+      supplementIds: [`s-${i}`],
+    })),
+    seasonFindings: [],
+    pricingCompleteness: { complete: true, missingCount: 0, totalExpected: 10 },
+  });
+  assert.equal(score, 0);
+});
+
+test('computeHealthScore: incomplete pricing subtracts proportionally up to 30', () => {
+  // 100% missing → -30 (capped)
+  const all = computeHealthScore({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: false, missingCount: 10, totalExpected: 10 },
+  });
+  assert.equal(all, 70);
+  // 50% missing → -15
+  const half = computeHealthScore({
+    supplementFindings: [],
+    seasonFindings: [],
+    pricingCompleteness: { complete: false, missingCount: 5, totalExpected: 10 },
+  });
+  assert.equal(half, 85);
 });

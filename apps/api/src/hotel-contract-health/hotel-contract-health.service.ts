@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  canMarkVerified,
+  computeHealthScore,
   diffContractSnapshots,
   interpretRates,
   isPricingComplete,
@@ -288,6 +290,208 @@ export class HotelContractHealthService {
         verifiedBy: input.status === 'VERIFIED' ? input.verifiedBy || existing.verifiedBy || null : existing.verifiedBy,
         verificationNotes: input.notes === undefined ? existing.verificationNotes : input.notes,
       },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Correction Workspace v1 — comprehensive per-contract payload for
+  // the dedicated /hotel-contracts/:id/correction route. Composes the
+  // existing validators with operational-impact counts + VERIFIED
+  // gating + health score so the UI can render a focused repair page
+  // in a single round-trip.
+  //
+  // Read-only. The corrections themselves go through the repair
+  // endpoints below (supplement repair / confidence update / room
+  // mapping correction). The workspace endpoint never mutates pricing
+  // data — it only reads.
+  // ---------------------------------------------------------------------------
+
+  async getCorrectionWorkspace(contractId: string) {
+    const contract = await this.loadFullContract(contractId);
+    if (!contract) throw new NotFoundException('Hotel contract not found');
+
+    const rateMealPlans: string[] = Array.from(
+      new Set((contract.rates || []).map((r: any) => String(r.mealPlan || '')).filter(Boolean)),
+    );
+    const supplementFindings = validateSupplements(contract.supplements || [], { rateMealPlans });
+    const seasonFindings = validateSeasons(derivedSeasonsFromRates(contract.rates || []), {
+      validFrom: contract.validFrom,
+      validTo: contract.validTo,
+    });
+    const interpretation = interpretRates((contract.rates || []).slice(0, 50));
+    const roomCategoryIds = (contract.hotel?.roomCategories || []).map((r: any) => r.id);
+    const pricingCheck = isPricingComplete(roomCategoryIds, contract.rates || []);
+    const totalExpected = pricingCheck.complete
+      ? (contract.rates || []).length
+      : (contract.rates || []).length + pricingCheck.missing.length;
+    const verificationGate = canMarkVerified({
+      supplementFindings,
+      seasonFindings,
+      pricingCompleteness: {
+        complete: pricingCheck.complete,
+        missingCount: pricingCheck.missing.length,
+        totalExpected,
+      },
+      rateCount: (contract.rates || []).length,
+    });
+    const healthScore = computeHealthScore({
+      supplementFindings,
+      seasonFindings,
+      pricingCompleteness: {
+        complete: pricingCheck.complete,
+        missingCount: pricingCheck.missing.length,
+        totalExpected,
+      },
+    });
+    const operationalImpact = await this.getOperationalImpact(contract.hotelId);
+    const confidenceSuggestion = recommendConfidence({
+      currentStatus: (contract.confidence as ConfidenceStatus) || 'IMPORTED_UNVERIFIED',
+      supplementFindings,
+      seasonFindings,
+      pricingComplete: pricingCheck.complete,
+    });
+
+    // Room mapping section: for each room category in the contract's
+    // hotel, surface the suggested standard categories (operator may
+    // map an imported name to multiple buckets).
+    const roomMappings = (contract.hotel?.roomCategories || []).map((room: any) => ({
+      id: room.id,
+      name: room.name,
+      code: room.code,
+      isActive: room.isActive,
+      suggestion: suggestRoomMappings(room.name || ''),
+    }));
+
+    return {
+      // Top summary card.
+      summary: {
+        contractId: contract.id,
+        contractName: contract.name,
+        hotelId: contract.hotelId,
+        hotelName: contract.hotel?.name || 'Unknown hotel',
+        hotelCity: contract.hotel?.city || '',
+        confidence: contract.confidence,
+        lastVerifiedAt: contract.lastVerifiedAt,
+        verifiedBy: contract.verifiedBy,
+        verificationNotes: contract.verificationNotes,
+        validFrom: contract.validFrom,
+        validTo: contract.validTo,
+        currency: contract.currency,
+        rateCount: (contract.rates || []).length,
+        supplementCount: (contract.supplements || []).length,
+        roomCategoryCount: roomCategoryIds.length,
+        healthScore,
+      },
+      // Per-section issue payloads.
+      sections: {
+        roomMappings,
+        supplements: {
+          findings: supplementFindings,
+          rows: contract.supplements || [],
+        },
+        seasons: {
+          findings: seasonFindings,
+          rows: derivedSeasonsFromRates(contract.rates || []),
+        },
+        pricingCompleteness: {
+          complete: pricingCheck.complete,
+          missingCount: pricingCheck.missing.length,
+          missing: pricingCheck.missing.slice(0, 100),
+          totalExpected,
+        },
+      },
+      // Live preview block.
+      interpretation,
+      // Operational impact card.
+      operationalImpact,
+      // VERIFIED gating + recommended next status.
+      verificationGate,
+      confidenceSuggestion,
+    };
+  }
+
+  async getOperationalImpact(hotelId: string) {
+    // Active quote usage — quoteItem rows that still reference this
+    // hotel. Future departures — bookings whose travelDate is >= today.
+    // Both are read-only counts; we never join the heavy snapshot blob.
+    try {
+      const [activeQuoteItemCount, futureBookingCount] = await Promise.all([
+        (this.prisma as any).quoteItem
+          .count({ where: { hotelId } })
+          .catch(() => 0),
+        (this.prisma as any).booking
+          ?.count({
+            where: {
+              services: { some: { hotelId } },
+              travelDate: { gte: new Date() },
+              status: { not: 'cancelled' },
+            },
+          })
+          .catch(() => 0),
+      ]);
+      return {
+        activeQuoteItemCount: Number(activeQuoteItemCount) || 0,
+        futureBookingCount: Number(futureBookingCount) || 0,
+        notes: [] as string[],
+      };
+    } catch {
+      // If the schema shape doesn't match, return zero counts rather
+      // than failing the whole workspace request.
+      return { activeQuoteItemCount: 0, futureBookingCount: 0, notes: ['Operational impact unavailable in this environment.'] };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Supplement repair — operator-driven fixes for the findings the
+  // validator surfaces. Each operation is narrow + audit-safe:
+  // historical quotes / bookings never see these mutations because
+  // they reference rate rows + frozen snapshots, not the supplement
+  // row directly.
+  // ---------------------------------------------------------------------------
+
+  async repairSupplement(
+    supplementId: string,
+    input: {
+      action: 'DEACTIVATE' | 'SET_CHARGE_BASIS' | 'SET_AMOUNT' | 'MARK_INTENTIONAL';
+      chargeBasis?: string;
+      amount?: number;
+      note?: string;
+    },
+  ) {
+    const supplement = await (this.prisma as any).hotelContractSupplement?.findUnique({ where: { id: supplementId } });
+    if (!supplement) throw new NotFoundException('Supplement not found');
+
+    const data: Record<string, unknown> = {};
+    switch (input.action) {
+      case 'DEACTIVATE':
+        data.isActive = false;
+        break;
+      case 'SET_CHARGE_BASIS':
+        if (!input.chargeBasis) throw new BadRequestException('chargeBasis is required for SET_CHARGE_BASIS');
+        data.chargeBasis = input.chargeBasis;
+        break;
+      case 'SET_AMOUNT':
+        if (input.amount === undefined || !Number.isFinite(input.amount) || input.amount < 0) {
+          throw new BadRequestException('amount must be a non-negative number');
+        }
+        data.amount = input.amount;
+        break;
+      case 'MARK_INTENTIONAL':
+        // Append a marker to notes — keeps the row visible to operators
+        // as "duplicate but kept on purpose" without touching pricing.
+        data.notes = [supplement.notes, '(intentional duplicate)'].filter(Boolean).join(' ');
+        break;
+      default:
+        throw new BadRequestException(`Unknown repair action: ${input.action}`);
+    }
+
+    if (input.note) {
+      data.notes = [supplement.notes, input.note].filter(Boolean).join(' | ');
+    }
+
+    return (this.prisma as any).hotelContractSupplement.update({
+      where: { id: supplementId },
+      data,
     });
   }
 

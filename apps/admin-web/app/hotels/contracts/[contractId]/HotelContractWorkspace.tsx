@@ -850,6 +850,12 @@ export function HotelContractWorkspace({
         </div>
         {shouldHydrateDrawerForms ? (
           <div className="contract-hero-actions">
+            {/* Correction Workspace v1 deep link — sits inside the
+                contract hero so operators reviewing a contract can
+                jump straight into the focused repair page. */}
+            <Link className="compact-button" href={`/hotel-contracts/${contract.id}/correction`}>
+              Open Correction Workspace
+            </Link>
             <button type="button" className="compact-button" onClick={() => setDrawer({ type: 'contract' })}>
               Edit contract
             </button>

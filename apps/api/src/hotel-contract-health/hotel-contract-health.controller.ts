@@ -47,12 +47,41 @@ export class HotelContractHealthController {
   }
 
   // PATCH /hotel-contract-health/contracts/:id/confidence — operator-driven
-  // confidence updates. The only mutation this controller performs.
+  // confidence updates. The only mutation this controller performs on
+  // the contract itself.
   @Patch('contracts/:id/confidence')
   updateConfidence(
     @Param('id') id: string,
     @Body() body: { status: ConfidenceStatus; verifiedBy?: string | null; notes?: string | null },
   ) {
     return this.service.updateConfidence(id, body);
+  }
+
+  // GET /hotel-contract-health/contracts/:id/correction-workspace —
+  // composite payload for the focused Correction Workspace page.
+  // Composes findings + interpretation + operational impact + VERIFIED
+  // gating + room mapping suggestions into one round trip.
+  @Get('contracts/:id/correction-workspace')
+  getCorrectionWorkspace(@Param('id') id: string) {
+    return this.service.getCorrectionWorkspace(id);
+  }
+
+  // PATCH /hotel-contract-health/supplements/:id — narrow supplement
+  // repair. Operator picks an action (DEACTIVATE / SET_CHARGE_BASIS /
+  // SET_AMOUNT / MARK_INTENTIONAL). Historical quotes / bookings never
+  // see these mutations because they reference frozen rate rows and
+  // booking snapshots, not the supplement row.
+  @Patch('supplements/:supplementId')
+  repairSupplement(
+    @Param('supplementId') supplementId: string,
+    @Body()
+    body: {
+      action: 'DEACTIVATE' | 'SET_CHARGE_BASIS' | 'SET_AMOUNT' | 'MARK_INTENTIONAL';
+      chargeBasis?: string;
+      amount?: number;
+      note?: string;
+    },
+  ) {
+    return this.service.repairSupplement(supplementId, body);
   }
 }

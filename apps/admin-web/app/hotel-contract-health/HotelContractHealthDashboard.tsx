@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 
 // Hotel Contract Stabilization & Trustworthiness v2 — interactive
 // dashboard component. Renders the lightweight dashboard sections, the
@@ -335,13 +336,24 @@ export function HotelContractHealthDashboard({
                     </td>
                     <td>{row.inActiveQuote ? 'Yes' : 'No'}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="compact-button"
-                        onClick={() => setSelectedContractId(row.contractId)}
-                      >
-                        Open
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="compact-button"
+                          onClick={() => setSelectedContractId(row.contractId)}
+                        >
+                          Open
+                        </button>
+                        {/* Deep-link into the focused Correction Workspace.
+                            Operators land directly on a single-contract
+                            repair page instead of bouncing through tabs. */}
+                        <Link
+                          className="compact-button"
+                          href={`/hotel-contracts/${row.contractId}/correction`}
+                        >
+                          Open Correction Workspace
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -359,9 +371,19 @@ export function HotelContractHealthDashboard({
               <h2 style={{ marginTop: 0, marginBottom: '0.25rem' }}>Validation detail</h2>
               {validation ? <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>{validation.name}</p> : null}
             </div>
-            <button type="button" className="compact-button" onClick={() => setSelectedContractId(null)}>
-              Close
-            </button>
+            <div style={{ display: 'flex', gap: '0.3rem' }}>
+              {validation ? (
+                <Link
+                  className="primary-button"
+                  href={`/hotel-contracts/${validation.contractId}/correction`}
+                >
+                  Open Correction Workspace
+                </Link>
+              ) : null}
+              <button type="button" className="compact-button" onClick={() => setSelectedContractId(null)}>
+                Close
+              </button>
+            </div>
           </div>
 
           {validationLoading ? <p className="empty-state">Loading validation…</p> : null}
