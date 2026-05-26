@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // Operational Areas Catalog v1 — admin manager component for the
@@ -62,6 +62,15 @@ const EMPTY_FORM: FormState = {
   overnightRiskDefault: false,
 };
 
+type PreviewResponse = {
+  suggestedCode: string;
+  alternatives: string[];
+  existingMatch: { id: string; code: string; name: string; type: string; city: string; isActive: boolean } | null;
+  similarMatch: { id: string; code: string; name: string; type: string; city: string } | null;
+  confidence: 'unique' | 'similar_exists' | 'duplicate' | 'empty';
+  reason: string;
+};
+
 export function OperationalAreasManager({ initialAreas }: { initialAreas: OperationalArea[] }) {
   const router = useRouter();
   const [areas, setAreas] = useState<OperationalArea[]>(initialAreas);
@@ -73,6 +82,72 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Auto-Code Generation v1 — live preview + confidence state. The
+  // `codeManuallyEdited` flag stops auto-generation once the operator
+  // types into the Code field directly; clearing the field re-enables
+  // auto-generation (so they can switch back without losing their
+  // place).
+  const [preview, setPreview] = useState<PreviewResponse | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced preview-code call — triggers on name/type change and on
+  // editingId change (so switching to edit mode previews against the
+  // existing code with excludeId filtering self-matches).
+  useEffect(() => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    if (!form.name.trim()) {
+      setPreview(null);
+      return;
+    }
+    previewTimer.current = setTimeout(async () => {
+      setPreviewing(true);
+      try {
+        const response = await fetch('/api/operational-areas/preview-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name,
+            type: form.type,
+            excludeId: editingId || undefined,
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          setPreview(null);
+          return;
+        }
+        const result = payload as PreviewResponse;
+        setPreview(result);
+        // Auto-fill the Code field with the suggestion unless the
+        // operator has manually edited it.
+        if (!codeManuallyEdited && result.suggestedCode) {
+          setForm((f) => ({ ...f, code: result.suggestedCode }));
+        }
+      } catch {
+        setPreview(null);
+      } finally {
+        setPreviewing(false);
+      }
+    }, 250);
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, [form.name, form.type, editingId, codeManuallyEdited]);
+
+  // Apply default-flag suggestions from the area type — operator can
+  // still override per row. We only set flags when not editing (avoid
+  // clobbering operator-tuned values).
+  useEffect(() => {
+    if (editingId) return;
+    if (form.type === 'AIRPORT') {
+      setForm((f) => ({ ...f, airportRouteFlagDefault: true }));
+    } else if (form.type === 'BORDER') {
+      setForm((f) => ({ ...f, borderCrossingFlagDefault: true }));
+    }
+  }, [form.type, editingId]);
 
   const visibleAreas = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -119,6 +194,8 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
       setSuccess(`${editingId ? 'Updated' : 'Created'} ${payload.code}.`);
       setForm(EMPTY_FORM);
       setEditingId(null);
+      setCodeManuallyEdited(false);
+      setPreview(null);
       await refresh();
       router.refresh();
     } catch (err) {
@@ -181,6 +258,11 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
       mountainRoadFlagDefault: area.mountainRoadFlagDefault,
       overnightRiskDefault: area.overnightRiskDefault,
     });
+    // Edit mode starts with the existing code treated as "manually set"
+    // so the preview doesn't immediately rewrite it from the name. The
+    // operator can hit ↻ Use suggested to switch back.
+    setCodeManuallyEdited(true);
+    setPreview(null);
     setSuccess(null);
     setError(null);
   }
@@ -188,6 +270,8 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
   function cancelEdit() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setCodeManuallyEdited(false);
+    setPreview(null);
   }
 
   return (
@@ -209,15 +293,10 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
           either side of a route — operators can always override per row.
         </p>
         <form onSubmit={submitForm} style={{ display: 'grid', gap: '0.75rem' }}>
+          {/* Name FIRST — the live preview generates the Code from it.
+              Operators think in place names; ERP generates the canonical
+              identity. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-            <FieldText
-              label="Code *"
-              value={form.code}
-              onChange={(v) => setForm((f) => ({ ...f, code: v }))}
-              placeholder="AMM"
-              monospace
-              required
-            />
             <FieldText
               label="Name *"
               value={form.name}
@@ -225,6 +304,28 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
               placeholder="Amman City"
               required
             />
+            <CodeFieldWithPreview
+              value={form.code}
+              onChange={(v) => {
+                setCodeManuallyEdited(true);
+                setForm((f) => ({ ...f, code: v }));
+              }}
+              onReset={() => {
+                setCodeManuallyEdited(false);
+                if (preview?.suggestedCode) {
+                  setForm((f) => ({ ...f, code: preview.suggestedCode }));
+                }
+              }}
+              preview={preview}
+              previewing={previewing}
+              manuallyEdited={codeManuallyEdited}
+              onAdoptAlternative={(alt) => {
+                setForm((f) => ({ ...f, code: alt }));
+                setCodeManuallyEdited(true);
+              }}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Type *</span>
               <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} required>
@@ -297,14 +398,28 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
               {success}
             </p>
           ) : null}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="submit" className="primary-button" disabled={busy}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={busy || preview?.confidence === 'duplicate'}
+              title={
+                preview?.confidence === 'duplicate'
+                  ? 'Code is a duplicate — pick an alternative or rename before saving.'
+                  : undefined
+              }
+            >
               {busy ? 'Saving…' : editingId ? 'Save changes' : 'Add area'}
             </button>
             {editingId ? (
               <button type="button" className="secondary-button" onClick={cancelEdit} disabled={busy}>
                 Cancel edit
               </button>
+            ) : null}
+            {preview?.confidence === 'duplicate' ? (
+              <span style={{ color: '#7c2d12', fontSize: '0.78rem' }}>
+                Save blocked — duplicate code. Pick an alternative above or rename.
+              </span>
             ) : null}
           </div>
         </form>
@@ -445,6 +560,130 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
         )}
       </section>
     </>
+  );
+}
+
+function CodeFieldWithPreview({
+  value,
+  onChange,
+  onReset,
+  preview,
+  previewing,
+  manuallyEdited,
+  onAdoptAlternative,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onReset: () => void;
+  preview: PreviewResponse | null;
+  previewing: boolean;
+  manuallyEdited: boolean;
+  onAdoptAlternative: (alt: string) => void;
+}) {
+  // Color-coded confidence chip + alternative chips. Operator workflow:
+  //   1. Type the Name. Code auto-fills with the ERP suggestion.
+  //   2. If chip is green → save normally.
+  //   3. If chip is red (duplicate) → click an alternative chip OR
+  //      manually rename the Code. Either way, save is blocked while
+  //      the chip is red.
+  //   4. If they want full manual control, they can type into the Code
+  //      field directly — auto-fill stops until they hit the ↻ reset.
+  const confidence = preview?.confidence || (previewing ? 'pending' : 'empty');
+  const chipMeta = (() => {
+    switch (confidence) {
+      case 'unique':
+        return { color: '#067647', bg: '#ecfdf3', border: '#abefc6', dot: '🟢', label: 'Unique & safe' };
+      case 'similar_exists':
+        return { color: '#8b5e34', bg: '#fef3c7', border: '#fcd34d', dot: '🟡', label: 'Similar area exists' };
+      case 'duplicate':
+        return { color: '#7c2d12', bg: '#fee2e2', border: '#fca5a5', dot: '🔴', label: 'Duplicate code' };
+      case 'pending':
+        return { color: '#475467', bg: '#f9fafb', border: '#e4e7ec', dot: '…', label: 'Checking…' };
+      default:
+        return { color: '#98a2b3', bg: '#f9fafb', border: '#e4e7ec', dot: '', label: 'Type a name to preview' };
+    }
+  })();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Code *</span>
+        {manuallyEdited ? (
+          <button
+            type="button"
+            onClick={onReset}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              color: '#0c4a6e',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+            }}
+            title="Discard manual edits and use the auto-generated suggestion"
+          >
+            ↻ Use suggested
+          </button>
+        ) : null}
+      </div>
+      <input
+        required
+        value={value}
+        placeholder="Auto-generated from the name"
+        onChange={(e) => onChange(e.target.value.toUpperCase())}
+        style={{ fontFamily: 'monospace', textTransform: 'uppercase' }}
+      />
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+          marginTop: '0.15rem',
+          background: chipMeta.bg,
+          border: `1px solid ${chipMeta.border}`,
+          color: chipMeta.color,
+          borderRadius: 999,
+          padding: '0.1rem 0.55rem',
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          width: 'fit-content',
+        }}
+      >
+        <span>{chipMeta.dot}</span>
+        <span>{chipMeta.label}</span>
+      </div>
+      {preview?.reason && preview.confidence !== 'unique' && preview.confidence !== 'empty' ? (
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: '#475467', lineHeight: 1.35 }}>
+          {preview.reason}
+        </p>
+      ) : null}
+      {preview && preview.alternatives.length > 0 ? (
+        <div style={{ marginTop: '0.3rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: '#475467' }}>Try:</span>
+          {preview.alternatives.map((alt) => (
+            <button
+              key={alt}
+              type="button"
+              onClick={() => onAdoptAlternative(alt)}
+              style={{
+                background: '#fff',
+                border: '1px solid #d0d5dd',
+                color: '#0c4a6e',
+                padding: '0.1rem 0.55rem',
+                borderRadius: 999,
+                fontSize: '0.72rem',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {alt}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
