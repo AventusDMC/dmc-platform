@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { HotelsService } from './hotels.service';
 
 type CreateHotelBody = {
@@ -37,6 +37,27 @@ export class HotelsController {
   @Get()
   findAll() {
     return this.hotelsService.findAll();
+  }
+
+  // Hotel Master Room Categories freeze fix — lightweight summary route.
+  // MUST stay before @Get(':id') so the literal path "room-categories-
+  // summary" isn't interpreted as a UUID (same trap as PR #104's
+  // /areas + PR #118's /room-types-summary).
+  @Get('room-categories-summary')
+  findRoomCategoriesSummary(@Query('hotelId') hotelId?: string) {
+    return this.hotelsService.findRoomCategoriesSummary({ hotelId });
+  }
+
+  // Per-category detail loaded only when the operator expands a row.
+  @Get('room-categories/:categoryId')
+  findRoomCategoryDetail(@Param('categoryId') categoryId: string) {
+    return this.hotelsService.findRoomCategoryDetail(categoryId);
+  }
+
+  // Spec-mandated per-hotel variant. Wraps the same service method.
+  @Get(':id/room-categories-summary')
+  findHotelRoomCategoriesSummary(@Param('id') hotelId: string) {
+    return this.hotelsService.findRoomCategoriesSummary({ hotelId });
   }
 
   @Get(':id')
