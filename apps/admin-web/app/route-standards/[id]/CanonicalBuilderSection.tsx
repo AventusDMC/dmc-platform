@@ -61,6 +61,14 @@ type Props = {
   currentCanonicalRouteCode: string | null;
   currentFromCity: string | null;
   currentToCity: string | null;
+  // Edit Page Canonical Builder v1.1 — these power the "Create reverse
+  // route" button. The reverse leg gets the current row's distance /
+  // duration / buffer as defaults (symmetric transfers are the common
+  // case), then operator can refine afterwards.
+  currentStandardDistanceKm: number | null;
+  currentStandardDurationHours: number | null;
+  currentOperationalBufferMinutes: number | null;
+  currentNotes: string | null;
 };
 
 const PREFERRED_TYPE_ORDER: OperationalAreaType[] = ['CITY', 'ATTRACTION', 'BORDER', 'AIRPORT'];
@@ -87,6 +95,10 @@ export function CanonicalBuilderSection({
   currentCanonicalRouteCode,
   currentFromCity,
   currentToCity,
+  currentStandardDistanceKm,
+  currentStandardDurationHours,
+  currentOperationalBufferMinutes,
+  currentNotes,
 }: Props) {
   const router = useRouter();
   const [areas, setAreas] = useState<OperationalArea[]>([]);
@@ -100,6 +112,7 @@ export function CanonicalBuilderSection({
   const [previewing, setPreviewing] = useState(false);
 
   const [reversePreview, setReversePreview] = useState<PreviewResponse | null>(null);
+  const [creatingReverse, setCreatingReverse] = useState(false);
 
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +205,51 @@ export function CanonicalBuilderSection({
 
   const suggestionUnchanged =
     preview?.suggestedCode && preview.suggestedCode === currentCanonicalRouteCode;
+
+  // Edit Page Canonical Builder v1.1 — create the reverse leg directly
+  // from this page using the current row's distance / duration / buffer
+  // as symmetric defaults. Calls the same create-with-generation endpoint
+  // the listing-page Route Builder uses, so duplicate detection runs the
+  // same way (refuses to create if PET_AMM already exists, which the
+  // reverse-route helper guards against by checking first).
+  async function createReverseRoute() {
+    if (!fromAreaId || !toAreaId || creatingReverse) return;
+    setCreatingReverse(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch('/api/route-standards/create-with-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Swap from/to: editing AMM_PET → create PET_AMM
+          fromAreaId: toAreaId,
+          toAreaId: fromAreaId,
+          standardDistanceKm: currentStandardDistanceKm,
+          standardDurationHours: currentStandardDurationHours,
+          operationalBufferMinutes: currentOperationalBufferMinutes,
+          notes: currentNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message || `Create reverse failed (${response.status})`);
+      if (payload.action === 'use-existing') {
+        setSuccess(
+          `Reverse route ${reversePreview?.suggestedCode} already exists — nothing to create. Open it from the listing page.`,
+        );
+      } else {
+        const code = payload.primary?.canonicalRouteCode || payload.primary?.routeCode || reversePreview?.suggestedCode;
+        setSuccess(
+          `Created reverse route ${code} using this row's distance / duration / buffer as defaults. Refine if needed.`,
+        );
+      }
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Create reverse failed');
+    } finally {
+      setCreatingReverse(false);
+    }
+  }
 
   async function applyCanonicalCode() {
     if (!preview || conflictingMatch || applying) return;
@@ -299,27 +357,54 @@ export function CanonicalBuilderSection({
         />
       ) : null}
 
-      {/* Reverse route helper */}
+      {/* Reverse route helper — inline "Create reverse route" button when
+          missing, so operators don't have to leave the edit page to add
+          the symmetric leg. */}
       {reversePreview ? (
-        <p
-          style={{
-            marginTop: '0.5rem',
-            color: reversePreview.existingMatch ? '#067647' : '#8b5e34',
-            fontSize: '0.85rem',
-          }}
-        >
-          {reversePreview.existingMatch ? (
-            <>
-              ✓ Reverse route <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>{reversePreview.suggestedCode}</code> exists
-              ({reversePreview.existingMatch.routeName}).
-            </>
-          ) : (
-            <>
-              ⚠ Reverse route <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>{reversePreview.suggestedCode}</code> is missing.
-              Operators usually create both directions for symmetric transfers — visit the listing page's Route Builder to add it.
-            </>
-          )}
-        </p>
+        reversePreview.existingMatch ? (
+          <p style={{ marginTop: '0.5rem', color: '#067647', fontSize: '0.85rem' }}>
+            ✓ Reverse route{' '}
+            <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>{reversePreview.suggestedCode}</code>{' '}
+            exists ({reversePreview.existingMatch.routeName}).
+          </p>
+        ) : (
+          <div
+            style={{
+              marginTop: '0.5rem',
+              padding: '0.55rem 0.75rem',
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              borderRadius: 8,
+              display: 'flex',
+              gap: '0.75rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ color: '#8b5e34', fontSize: '0.88rem', flex: 1, minWidth: 240 }}>
+              ⚠ Reverse route{' '}
+              <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>
+                {reversePreview.suggestedCode}
+              </code>{' '}
+              is missing. Most symmetric transfers need both directions —{' '}
+              {currentStandardDistanceKm != null || currentStandardDurationHours != null ? (
+                <>this row's distance / duration / buffer will be copied as defaults.</>
+              ) : (
+                <>create with empty timing now and refine afterwards.</>
+              )}
+            </span>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={createReverseRoute}
+              disabled={creatingReverse}
+              style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+              title={`Create ${reversePreview.suggestedCode} now using this row's values as defaults`}
+            >
+              {creatingReverse ? 'Creating…' : `Create ${reversePreview.suggestedCode}`}
+            </button>
+          </div>
+        )
       ) : null}
 
       {error ? <p className="form-error" style={{ marginTop: '0.5rem' }}>{error}</p> : null}
