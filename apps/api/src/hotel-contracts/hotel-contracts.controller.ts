@@ -73,6 +73,15 @@ export class HotelContractsController {
     return this.hotelContractsService.getAllotmentDailySummary(id, allotmentId, bookingDate ? new Date(bookingDate) : undefined);
   }
 
+  // Lightweight aggregated Room Types view. MUST stay before @Get(':id')
+  // — otherwise Nest matches "room-types-summary" as a UUID and the
+  // service throws a Prisma 500 on the invalid ID lookup. Same trap as
+  // the Operational Areas /areas endpoint fix in PR #104.
+  @Get(':id/room-types-summary')
+  findRoomTypesSummary(@Param('id') id: string) {
+    return this.hotelContractsService.findRoomTypesSummary(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Query('summary') summary?: string) {
     return summary === '1' || summary === 'true'

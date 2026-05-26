@@ -45,14 +45,21 @@ export class HotelRatesController {
   constructor(private readonly hotelRatesService: HotelRatesService) {}
 
   @Get()
-  findAll(@Query('contractId') contractId?: string, @Query('limit') limit?: string, @Query('offset') offset?: string) {
+  findAll(
+    @Query('contractId') contractId?: string,
+    @Query('roomCategoryId') roomCategoryId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
     logHotelRateTiming('[hotel-rates] request:start', {
       contractId: contractId || null,
+      roomCategoryId: roomCategoryId || null,
       limit: limit || null,
       offset: offset || null,
     });
     return this.hotelRatesService.findAll({
       contractId: contractId || null,
+      roomCategoryId: roomCategoryId || null,
       limit: limit === undefined ? null : Number(limit),
       offset: offset === undefined ? null : Number(offset),
     });
