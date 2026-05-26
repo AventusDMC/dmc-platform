@@ -45,6 +45,17 @@ export class OperationalAreasController {
     return this.operationalAreasService.findByCode(code);
   }
 
+  /**
+   * Live preview of the auto-generated code for a name + type. Used by
+   * the admin form's debounced "as you type" preview. Pure read — no
+   * writes. excludeId lets the edit form skip self-matches.
+   */
+  @Post('preview-code')
+  @Roles('admin', 'operations')
+  previewCode(@Body() body: { name: string; type?: string; excludeId?: string }) {
+    return this.operationalAreasService.previewAreaCode(body);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.operationalAreasService.findOne(id);
