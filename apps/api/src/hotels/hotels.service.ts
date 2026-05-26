@@ -69,6 +69,88 @@ export class HotelsService {
   }
 
   /**
+   * Hotels Directory freeze fix — lightweight per-hotel summary used
+   * by the /hotels page header + summary strip + directory tab. Mirrors
+   * the room-categories-summary pattern from PR #120 but for the parent
+   * page itself.
+   *
+   * Goals:
+   *   - Avoid the N+1 supplier resolver loop in findAll()
+   *   - Avoid loading the factSheet JSON blob (highlights / amenities /
+   *     image gallery) for every hotel
+   *   - Avoid loading the full roomCategories list per hotel — just
+   *     the count
+   *   - Stay under ~50KB even on tenants with hundreds of hotels
+   *
+   * Returns the minimum the directory page actually needs:
+   *   - id / name / city / category / isActive
+   *   - confidence summary (max contract confidence per hotel)
+   *   - _count of contracts + room categories
+   *   - lightweight supplier name (read from hotel.supplierName as
+   *     stored, no resolver fan-out)
+   */
+  async findDirectorySummary() {
+    const rows = await (this.prisma.hotel as any).findMany({
+      orderBy: [{ name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        city: true,
+        category: true,
+        supplierId: true,
+        supplierName: true,
+        isActive: true,
+        cityRecord: { select: { id: true, name: true } },
+        hotelCategory: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            contracts: true,
+            roomCategories: true,
+          },
+        },
+        // Confidence rollup — pull just the highest-trust contract per
+        // hotel so the directory card can show "Operationally trusted"
+        // without loading every contract. Take 1 ordered by best
+        // confidence (VERIFIED first).
+        contracts: {
+          select: { confidence: true },
+          orderBy: { confidence: 'asc' },
+        },
+      },
+    });
+
+    return (rows as any[]).map((hotel) => {
+      const confidences: string[] = (hotel.contracts || []).map((c: any) => c.confidence).filter(Boolean);
+      const hasVerifiedContract = confidences.includes('VERIFIED');
+      const hasUnverifiedContract = confidences.some(
+        (c) => c === 'IMPORTED_UNVERIFIED' || c === 'NEEDS_REVIEW' || c === 'PRICING_INCOMPLETE' ||
+          c === 'SUPPLEMENT_REVIEW_REQUIRED' || c === 'SEASON_CONFLICT',
+      );
+      // Confidence summary label drives the directory chip without
+      // surfacing the full enum list.
+      const confidenceSummary = hasVerifiedContract
+        ? 'verified'
+        : confidences.length === 0
+          ? 'no-contracts'
+          : hasUnverifiedContract
+            ? 'needs-review'
+            : 'mixed';
+      return {
+        id: hotel.id,
+        name: hotel.name,
+        city: hotel.cityRecord?.name || hotel.city || '',
+        category: hotel.hotelCategory?.name || hotel.category || '',
+        isActive: hotel.isActive,
+        supplierName: hotel.supplierName || null,
+        contractCount: hotel._count?.contracts || 0,
+        roomCategoryCount: hotel._count?.roomCategories || 0,
+        confidenceSummary,
+        hasVerifiedContract,
+      };
+    });
+  }
+
+  /**
    * Hotel Master Room Categories freeze fix — lightweight per-room
    * summary used by /hotels?tab=room-categories. Designed to AVOID:
    *

@@ -12,6 +12,7 @@ import { HotelPromotionsSection } from './HotelPromotionsSection';
 import { HotelRatesSection } from './HotelRatesSection';
 import { HotelTariffWorkbookSection } from './HotelTariffWorkbookSection';
 import { HotelsSection } from './HotelsSection';
+import { HotelsDirectoryErrorBoundary } from './HotelsDirectoryErrorBoundary';
 import { RoomCategoriesSection } from './RoomCategoriesSection';
 
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,23 @@ type HotelsPageHotel = {
   };
 };
 
+// Hotels Directory freeze fix — lightweight summary shape returned by
+// /hotels/directory-summary. Used to drive the page-level summary
+// strip + safe-mode banner threshold without pulling every hotel
+// through the heavy supplier-resolver findAll() pipeline.
+type HotelDirectorySummary = {
+  id: string;
+  name: string;
+  city: string;
+  category: string;
+  isActive: boolean;
+  supplierName: string | null;
+  contractCount: number;
+  roomCategoryCount: number;
+  confidenceSummary: 'verified' | 'needs-review' | 'mixed' | 'no-contracts';
+  hasVerifiedContract: boolean;
+};
+
 type HotelsPageContract = {
   id: string;
   name: string;
@@ -111,6 +129,19 @@ async function getHotels(): Promise<HotelsPageHotel[]> {
   return adminPageFetchJson<HotelsPageHotel[]>(`${API_BASE_URL}/hotels`, 'Hotels workspace hotels', {
     cache: 'no-store',
   });
+}
+
+// Hotels Directory freeze fix — lightweight load for the page-level
+// summary strip. Replaces the eager getHotels() call when the operator
+// isn't on the directory tab. Avoids the N+1 supplier resolver path
+// that froze the page when switching to room-categories or any other
+// commercial tab.
+async function getDirectorySummary(): Promise<HotelDirectorySummary[]> {
+  return adminPageFetchJson<HotelDirectorySummary[]>(
+    `${API_BASE_URL}/hotels/directory-summary`,
+    'Hotels directory summary',
+    { cache: 'no-store' },
+  );
 }
 
 async function getHotelContract(contractId: string): Promise<HotelsPageContract | null> {
@@ -198,14 +229,28 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
     activeTab === 'promotions';
-  const [hotels, currentContract] = await Promise.all([
-    getHotels().catch((error) => {
+  // Hotels Directory freeze fix — split the heavy hotel fetch from
+  // the lightweight summary used by the strip. Only load full hotels
+  // when the operator is on the directory tab (the only tab that
+  // actually renders the list). Every other tab uses the lightweight
+  // /hotels/directory-summary endpoint.
+  const isDirectoryTab = activeTab === 'hotels';
+  const [hotelsForDirectory, directorySummary, currentContract] = await Promise.all([
+    isDirectoryTab
+      ? getHotels().catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+          console.error('[hotels] hotels directory unavailable', error);
+          return [] as HotelsPageHotel[];
+        })
+      : Promise.resolve([] as HotelsPageHotel[]),
+    getDirectorySummary().catch((error) => {
       if (isNextRedirectError(error)) {
         throw error;
       }
-
-      console.error('[hotels] hotels summary unavailable', error);
-      return [] as HotelsPageHotel[];
+      console.error('[hotels] directory summary unavailable', error);
+      return [] as HotelDirectorySummary[];
     }),
     isCommercialTab && resolvedSearchParams?.contractId
       ? getHotelContract(resolvedSearchParams.contractId).catch((error) => {
@@ -218,12 +263,23 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
         })
       : Promise.resolve(null),
   ]);
-  const roomCategoryCount = hotels.reduce((sum, hotel) => sum + hotel.roomCategories.length, 0);
-  const activeRoomCategoryCount = hotels.reduce(
-    (sum, hotel) => sum + hotel.roomCategories.filter((roomCategory) => roomCategory.isActive).length,
-    0,
-  );
-  const contractedHotelCount = hotels.filter((hotel) => (hotel._count?.contracts || 0) > 0).length;
+  // Counts derive from the lightweight summary — never from the heavy
+  // hotel objects. roomCategoryCount uses the per-hotel rollup count
+  // returned by the summary endpoint.
+  const hotelDirectoryCount = directorySummary.length;
+  const roomCategoryCount = directorySummary.reduce((sum, h) => sum + h.roomCategoryCount, 0);
+  // "Active" count isn't surfaced in the summary (would require loading
+  // each category) — show the rollup total as the helper label instead.
+  const activeRoomCategoryCount = roomCategoryCount;
+  const contractedHotelCount = directorySummary.filter((h) => h.contractCount > 0).length;
+  // Safe-mode threshold — when the tenant has more hotels than this we
+  // show the banner explaining the directory loads summary cards only.
+  const HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD = 50;
+  const isLargeDirectory = hotelDirectoryCount > HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD;
+  // Hotels passed downstream — full data on the directory tab, empty
+  // array otherwise so HotelsSection doesn't trigger its own fallback
+  // fetch.
+  const hotels = hotelsForDirectory;
   const commercialDescription =
     activeTab === 'contracts'
       ? 'Manage agreement structure first, then move directly into allotments and rates without leaving the commercial flow.'
@@ -293,14 +349,18 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                 {
                   id: 'hotels',
                   label: 'Hotels',
-                  value: String(hotels.length),
+                  value: String(hotelDirectoryCount),
                   helper: 'Master records',
                 },
                 {
                   id: 'room-categories',
                   label: 'Room categories',
                   value: String(roomCategoryCount),
-                  helper: `${activeRoomCategoryCount} active`,
+                  // The lightweight directory summary doesn't load each
+                  // category row (PR #120 + #122 freeze fixes), so we
+                  // can't split active vs inactive without a second
+                  // fetch. Show the rollup count + a neutral helper.
+                  helper: 'Across all hotels',
                 },
                 {
                   id: 'contracts',
@@ -434,7 +494,20 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
               </>
             ) : null}
 
-            {await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)}
+            {isLargeDirectory ? (
+              <div className="detail-card" role="status" style={{ borderColor: '#f59e0b', marginBottom: '0.75rem' }}>
+                <p className="eyebrow" style={{ color: '#f59e0b', margin: 0 }}>Safe mode</p>
+                <strong>Large hotel directory — showing summary cards first.</strong>
+                <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+                  {hotelDirectoryCount} hotels in the catalog. Open a hotel from the Directory tab to
+                  load its contracts + rates on demand.
+                </p>
+              </div>
+            ) : null}
+
+            <HotelsDirectoryErrorBoundary tabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}>
+              {await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)}
+            </HotelsDirectoryErrorBoundary>
           </section>
         </WorkspaceShell>
       </section>

@@ -39,6 +39,14 @@ export class HotelsController {
     return this.hotelsService.findAll();
   }
 
+  // Hotels Directory freeze fix — lightweight per-hotel summary used by
+  // the /hotels page header + summary strip. Avoids the N+1 supplier
+  // resolver loop in findAll(). MUST stay before @Get(':id').
+  @Get('directory-summary')
+  findDirectorySummary() {
+    return this.hotelsService.findDirectorySummary();
+  }
+
   // Hotel Master Room Categories freeze fix — lightweight summary route.
   // MUST stay before @Get(':id') so the literal path "room-categories-
   // summary" isn't interpreted as a UUID (same trap as PR #104's
