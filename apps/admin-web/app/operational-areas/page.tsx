@@ -17,6 +17,8 @@ type OperationalArea = {
   borderCrossingFlagDefault: boolean;
   mountainRoadFlagDefault: boolean;
   overnightRiskDefault: boolean;
+  // Preferred Operational Area Logic — lower wins on city + type ties.
+  priority: number | null;
   createdAt: string;
   updatedAt: string;
 };

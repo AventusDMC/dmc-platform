@@ -1829,6 +1829,12 @@ model OperationalArea {
   borderCrossingFlagDefault  Boolean @default(false)
   mountainRoadFlagDefault    Boolean @default(false)
   overnightRiskDefault       Boolean @default(false)
+  // Preferred Operational Area Logic (v2C addendum) — operationally
+  // primary areas get a low priority value so they win when multiple
+  // areas share a city + type. Example: QAIA=1, Marka=2 within
+  // AIRPORT for Amman. NULL = lowest priority (falls back to
+  // PREFERRED_TYPE_ORDER and alphabetical sort).
+  priority                  Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   // Touring Route Legs v1 — back-relations so we can include the area's

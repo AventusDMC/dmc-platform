@@ -185,6 +185,113 @@ export type ExperienceSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Transport suggestion types (v2C) -----
+
+export type VehicleClass = 'SEDAN' | 'MINIVAN' | 'COASTER' | 'BUS';
+
+// Spec's pax-band → vehicle class mapping. seatRange is the practical
+// operational capacity (not the manufacturer max — leaves luggage room).
+export const VEHICLE_CLASSES: Record<
+  VehicleClass,
+  {
+    label: string;
+    icon: string;
+    minPax: number;
+    maxPax: number;
+    typicalExample: string;
+    luggageNote: string;
+  }
+> = {
+  SEDAN: {
+    label: 'Sedan',
+    icon: '🚗',
+    minPax: 1,
+    maxPax: 2,
+    typicalExample: 'Mercedes E-class · Toyota Camry',
+    luggageNote: 'Two suitcases + small bags fit comfortably.',
+  },
+  MINIVAN: {
+    label: 'Minivan',
+    icon: '🚐',
+    minPax: 3,
+    maxPax: 6,
+    typicalExample: 'Mercedes Vito · Hyundai H-1',
+    luggageNote: 'Comfortable for 4 pax + full luggage; tight at 6 pax with large bags.',
+  },
+  COASTER: {
+    label: 'Coaster',
+    icon: '🚌',
+    minPax: 7,
+    maxPax: 15,
+    typicalExample: 'Toyota Coaster · Mitsubishi Rosa',
+    luggageNote: 'Good luggage hold; comfortable for groups + long-distance touring.',
+  },
+  BUS: {
+    label: 'Bus',
+    icon: '🚍',
+    minPax: 16,
+    maxPax: 45,
+    typicalExample: 'Mercedes Tourismo · Higer KLQ',
+    luggageNote: 'Full luggage hold; standard for groups, schools, and pilgrim journeys.',
+  },
+};
+
+export type LegTransportInsight = {
+  fromCity: string;
+  toCity: string;
+  canonicalCode: string | null;
+  // Each overlay maps onto a single chip the UI renders. Keys are
+  // stable so the UI can color-code them; copy is the operator-facing
+  // label.
+  overlays: Array<{
+    key: 'AIRPORT_TIMING' | 'MOUNTAIN_ROAD' | 'LONG_DISTANCE' | 'BORDER_CROSSING' | 'DESERT_LOGISTICS' | 'OVERNIGHT_TRANSITION';
+    label: string;
+    tone: 'amber' | 'red' | 'blue';
+  }>;
+  driveHours: number | null;
+  distanceKm: number | null;
+};
+
+export type TransportRecommendation = {
+  vehicleClass: VehicleClass;
+  label: string;
+  icon: string;
+  seatRange: string;
+  typicalExample: string;
+  luggageNote: string;
+  // "Recommended for: 4 adults · 7-night Jordan journey" — the spec's
+  // sample headline.
+  recommendationLine: string;
+  // The "Preferred operational choice" badge — only on when pax sits in
+  // the comfortable middle of the vehicle's range AND the journey
+  // doesn't have extreme legs.
+  preferredOperationalChoice: boolean;
+  // Comfort notes specific to this journey: long-distance comfort
+  // recommended / desert route vehicle preferred / mountain-road
+  // experienced driver recommended / tight luggage capacity.
+  comfortNotes: string[];
+  operationalConfidenceLabel: 'Operationally smooth' | 'Moderate coordination' | 'High coordination required';
+};
+
+export type TransportSuggestionsResponse = {
+  paxCount: number;
+  destinations: string[];
+  // Null when paxCount is 0/missing — UI shows fallback hint.
+  recommendation: TransportRecommendation | null;
+  legs: LegTransportInsight[];
+  // Journey-level pacing summary.
+  pacing: {
+    label:
+      | 'Comfortable pacing'
+      | 'Long-distance touring day'
+      | 'High coordination transfer day'
+      | 'Tight luggage capacity';
+    tone: 'calm' | 'balanced' | 'intense';
+    explanation: string;
+  };
+  notes: string[];
+};
+
 @Injectable()
 export class QuotesGuidedService {
   constructor(private readonly prisma: PrismaService) {}
@@ -241,7 +348,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
       (this.prisma as any).routeStandard.findMany({
         where: { isActive: true },
@@ -372,7 +479,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
     ]);
 
@@ -483,7 +590,7 @@ export class QuotesGuidedService {
       }),
       (this.prisma as any).operationalArea.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, name: true, city: true, type: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
       }),
     ]);
 
@@ -559,6 +666,134 @@ export class QuotesGuidedService {
 
     return { destinations, suggestions, highlights, notes };
   }
+
+  /**
+   * Guided v2C — per-journey transport recommendation + per-leg
+   * confidence overlays. Pure read across operational_areas +
+   * route_standards; never touches pricing or dispatch.
+   *
+   * Inputs: arrivalCity, ordered destinations, total paxCount.
+   * Outputs: recommended vehicle class (sized by pax), per-leg
+   * overlays (airport timing / mountain / border / long-distance /
+   * desert logistics), journey-level transport pacing.
+   *
+   * The "Preferred operational choice" badge is set when pax sits in
+   * the comfortable middle of the vehicle's range AND no leg exceeds
+   * 6h drive (which would call for a specialist long-haul vehicle).
+   *
+   * The recommendation never instructs the operator to book a
+   * specific vehicle — it's a starting point for the Transport tab on
+   * the advanced workspace, which carries supplier rate resolution
+   * and vehicle-supplier matching logic this read-only service does
+   * not touch.
+   */
+  async getTransportSuggestionsForJourney(input: {
+    arrivalCity?: string | null;
+    destinations: string[];
+    paxCount: number;
+  }): Promise<TransportSuggestionsResponse> {
+    const destinations = (input.destinations || [])
+      .map((d) => String(d || '').trim())
+      .filter(Boolean);
+    const paxCount = Math.max(0, Number.isFinite(Number(input.paxCount)) ? Math.floor(Number(input.paxCount)) : 0);
+
+    if (paxCount === 0) {
+      return {
+        paxCount: 0,
+        destinations,
+        recommendation: null,
+        legs: [],
+        pacing: {
+          label: 'Comfortable pacing',
+          tone: 'calm',
+          explanation: 'Set the pax count on the quote to see a vehicle recommendation.',
+        },
+        notes: ['Pax count is 0 — fill in adults / children on the overview tab to unlock transport suggestions.'],
+      };
+    }
+
+    // Single batched load of the catalogs we need for per-leg overlays.
+    const [operationalAreas, routeStandards] = await Promise.all([
+      (this.prisma as any).operationalArea.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, name: true, city: true, type: true, priority: true },
+      }),
+      (this.prisma as any).routeStandard.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          routeCode: true,
+          canonicalRouteCode: true,
+          fromCity: true,
+          toCity: true,
+          standardDistanceKm: true,
+          standardDurationHours: true,
+          longDistanceFlag: true,
+          mountainRoadFlag: true,
+          borderCrossingFlag: true,
+          airportRouteFlag: true,
+        },
+      }),
+    ]);
+
+    // Build per-leg insights between consecutive destinations. Include
+    // the arrival hop (arrivalCity → first destination) when arrivalCity
+    // differs from the first destination.
+    const legs: LegTransportInsight[] = [];
+    const stops = input.arrivalCity && input.arrivalCity.trim() && input.arrivalCity.trim().toLowerCase() !== destinations[0]?.toLowerCase()
+      ? [input.arrivalCity.trim(), ...destinations]
+      : [...destinations];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const insight = deriveLegTransportInsights(
+        stops[i],
+        stops[i + 1],
+        routeStandards as any[],
+        operationalAreas as any[],
+      );
+      if (insight) legs.push(insight);
+    }
+
+    const longestLegHours = legs.reduce(
+      (max, leg) => (leg.driveHours != null && leg.driveHours > max ? leg.driveHours : max),
+      0,
+    );
+    const totalDriveHours = legs.reduce(
+      (sum, leg) => sum + (leg.driveHours != null ? leg.driveHours : 0),
+      0,
+    );
+    const hasMountainLeg = legs.some((l) => l.overlays.some((o) => o.key === 'MOUNTAIN_ROAD'));
+    const hasDesertLeg = legs.some((l) => l.overlays.some((o) => o.key === 'DESERT_LOGISTICS'));
+    const hasBorderLeg = legs.some((l) => l.overlays.some((o) => o.key === 'BORDER_CROSSING'));
+    const hasAirportLeg = legs.some((l) => l.overlays.some((o) => o.key === 'AIRPORT_TIMING'));
+
+    const recommendation = buildTransportRecommendation({
+      paxCount,
+      destinationCount: destinations.length,
+      longestLegHours,
+      totalDriveHours,
+      hasMountainLeg,
+      hasDesertLeg,
+      hasBorderLeg,
+      hasAirportLeg,
+    });
+
+    const pacing = assessJourneyTransportPacing({
+      legs,
+      paxCount,
+      vehicleClass: recommendation?.vehicleClass,
+      longestLegHours,
+      totalDriveHours,
+    });
+
+    const notes: string[] = [];
+    if (legs.length === 0 && destinations.length > 1) {
+      notes.push(
+        "Inter-city drives aren't backed by Route Standards yet — overlays unavailable for those legs.",
+      );
+    }
+
+    return { paxCount, destinations, recommendation, legs, pacing, notes };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,19 +803,66 @@ export class QuotesGuidedService {
 /** Best-match operational area for a destination city name. Falls back
  *  to null when nothing matches. Case-insensitive. */
 export function pickAreaForCity(
-  areas: Array<{ id: string; code: string; name: string; city: string; type: string }>,
+  areas: Array<{ id: string; code: string; name: string; city: string; type: string; priority?: number | null }>,
   destination: string,
-): { id: string; code: string; name: string; city: string; type: string } | null {
+): { id: string; code: string; name: string; city: string; type: string; priority?: number | null } | null {
   const term = destination.trim().toLowerCase();
   if (!term) return null;
-  // Exact name match first (Petra Visitor Center → PET)
-  const nameHit = areas.find((a) => a.name.toLowerCase() === term);
-  if (nameHit) return nameHit;
-  // Then anchor city match — prefer CITY type when multiple share a city.
+
+  // Step 1: exact name match — but still apply priority when multiple
+  // rows somehow match the same display name (rare but possible).
+  const nameHits = areas.filter((a) => a.name.toLowerCase() === term);
+  if (nameHits.length === 1) return nameHits[0];
+  if (nameHits.length > 1) {
+    const sorted = [...nameHits].sort(compareAreasByPriority);
+    return sorted[0];
+  }
+
+  // Step 2: anchor city match — priority-aware. When multiple areas
+  // share a city, lower `priority` wins (QAIA=1 beats Marka=2 for
+  // Amman AIRPORT). NULL priority sorts last, falling back to the
+  // PREFERRED_TYPE_ORDER and then alphabetical.
   const cityHits = areas.filter((a) => a.city.toLowerCase() === term);
   if (cityHits.length === 0) return null;
   if (cityHits.length === 1) return cityHits[0];
-  return cityHits.find((a) => a.type === 'CITY') || cityHits[0];
+  const sorted = [...cityHits].sort(compareAreasByPriority);
+  return sorted[0];
+}
+
+// Preferred type order — used as a tie-breaker when priority is NULL.
+const PREFERRED_TYPE_ORDER: Array<string> = [
+  'CITY',
+  'TOURISM_SITE',
+  'RESORT_AREA',
+  'CAMP_AREA',
+  'BORDER',
+  'HOTEL_ZONE',
+  'PORT',
+  'AIRPORT',
+];
+
+/**
+ * Sort areas for "primary operational area" selection.
+ *
+ *   1. Lower `priority` integer wins (NULL = lowest priority, sorts last)
+ *   2. Tie → PREFERRED_TYPE_ORDER (CITY before AIRPORT, etc.)
+ *   3. Tie → alphabetical by name
+ *
+ * Exported so admin tooling + tests can reuse the same comparator.
+ */
+export function compareAreasByPriority<T extends { type: string; name: string; priority?: number | null }>(
+  a: T,
+  b: T,
+): number {
+  const pa = a.priority ?? 999;
+  const pb = b.priority ?? 999;
+  if (pa !== pb) return pa - pb;
+  const ta = PREFERRED_TYPE_ORDER.indexOf(a.type);
+  const tb = PREFERRED_TYPE_ORDER.indexOf(b.type);
+  const taOrd = ta < 0 ? 99 : ta;
+  const tbOrd = tb < 0 ? 99 : tb;
+  if (taOrd !== tbOrd) return taOrd - tbOrd;
+  return a.name.localeCompare(b.name);
 }
 
 /** Touring routes that operationally serve a destination — by startCity,
@@ -728,7 +1010,7 @@ export function assessPacing(
       totalDriveHours,
       longestSingleLegHours: longestLegHours,
       longLegCount,
-      explanation: `${longLegCount} legs exceed 4h — back-to-back long drives leave little margin for delays or sightseeing.`,
+      explanation: `${longLegCount} legs exceed 4h — back-to-back long drives leave little slack for delays or sightseeing.`,
     };
   }
   if (totalDriveHours >= 6) {
@@ -1044,5 +1326,224 @@ export function enrichActivityForSuggestion(activity: {
       durationHours: activity.durationHours,
       durationMinutes: activity.durationMinutes,
     }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Transport suggestion helpers (v2C) — exported pure for tests.
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a pax count onto the spec's four vehicle classes. Returns null
+ * when pax is 0 (UI shows a hint to fill in pax count first) or above
+ * the largest bus capacity (UI suggests splitting into multiple
+ * vehicles — a follow-on PR can add a multi-vehicle recommendation).
+ */
+export function recommendVehicleClassByPax(paxCount: number): VehicleClass | null {
+  if (paxCount < 1) return null;
+  if (paxCount <= 2) return 'SEDAN';
+  if (paxCount <= 6) return 'MINIVAN';
+  if (paxCount <= 15) return 'COASTER';
+  if (paxCount <= 45) return 'BUS';
+  return null;
+}
+
+/**
+ * Build the per-leg insight describing risk/terrain overlays between
+ * two consecutive stops. Returns null when no matching Route Standard
+ * is found AND area lookup fails — caller skips that leg silently.
+ */
+export function deriveLegTransportInsights(
+  fromCity: string,
+  toCity: string,
+  routeStandards: Array<{
+    routeCode: string;
+    canonicalRouteCode: string | null;
+    fromCity: string | null;
+    toCity: string | null;
+    standardDistanceKm: number | null;
+    standardDurationHours: number | null;
+    longDistanceFlag: boolean;
+    mountainRoadFlag: boolean;
+    borderCrossingFlag: boolean;
+    airportRouteFlag: boolean;
+  }>,
+  areas: Array<{ code: string; city: string; name: string; type: string }>,
+): LegTransportInsight | null {
+  const fromArea = pickAreaForCity(areas as any[], fromCity);
+  const toArea = pickAreaForCity(areas as any[], toCity);
+  let std: any = null;
+  if (fromArea && toArea) {
+    const canonical = `${fromArea.code}_${toArea.code}`;
+    std = routeStandards.find(
+      (r) =>
+        (r.canonicalRouteCode || '').toUpperCase() === canonical ||
+        (r.routeCode || '').toUpperCase() === canonical,
+    );
+  }
+  if (!std) {
+    std = routeStandards.find(
+      (r) =>
+        r.fromCity?.toLowerCase() === fromCity.toLowerCase() &&
+        r.toCity?.toLowerCase() === toCity.toLowerCase(),
+    );
+  }
+
+  const overlays: LegTransportInsight['overlays'] = [];
+
+  // Risk-flag-driven overlays (from Route Standard when present).
+  if (std?.airportRouteFlag) {
+    overlays.push({ key: 'AIRPORT_TIMING', label: 'Airport timing sensitive', tone: 'blue' });
+  }
+  if (std?.mountainRoadFlag) {
+    overlays.push({ key: 'MOUNTAIN_ROAD', label: 'Mountain-road route', tone: 'amber' });
+  }
+  if (std?.longDistanceFlag || (std?.standardDurationHours != null && Number(std.standardDurationHours) >= 5)) {
+    overlays.push({ key: 'LONG_DISTANCE', label: 'Long-distance drive', tone: 'amber' });
+  }
+  if (std?.borderCrossingFlag) {
+    overlays.push({ key: 'BORDER_CROSSING', label: 'Border crossing route', tone: 'red' });
+  }
+
+  // Terrain-driven overlays from city/area names — these complement
+  // the Route Standard flags so Wadi Rum / Aqaba legs surface desert
+  // logistics even when the standard has no terrain flag set.
+  const text = `${fromCity} ${toCity} ${fromArea?.city || ''} ${toArea?.city || ''}`.toLowerCase();
+  if (/wadi rum|aqaba|desert/.test(text)) {
+    if (!overlays.some((o) => o.key === 'DESERT_LOGISTICS')) {
+      overlays.push({ key: 'DESERT_LOGISTICS', label: 'Desert logistics', tone: 'amber' });
+    }
+  }
+
+  return {
+    fromCity,
+    toCity,
+    canonicalCode: std?.canonicalRouteCode || std?.routeCode || null,
+    overlays,
+    driveHours: std?.standardDurationHours ?? null,
+    distanceKm: std?.standardDistanceKm ?? null,
+  };
+}
+
+/** Compose the journey-level vehicle recommendation. */
+export function buildTransportRecommendation(input: {
+  paxCount: number;
+  destinationCount: number;
+  longestLegHours: number;
+  totalDriveHours: number;
+  hasMountainLeg: boolean;
+  hasDesertLeg: boolean;
+  hasBorderLeg: boolean;
+  hasAirportLeg: boolean;
+}): TransportRecommendation | null {
+  const cls = recommendVehicleClassByPax(input.paxCount);
+  if (!cls) return null;
+  const meta = VEHICLE_CLASSES[cls];
+
+  // Comfort notes derived from the leg overlays.
+  const comfortNotes: string[] = [];
+  if (input.longestLegHours >= 5 || input.totalDriveHours >= 10) {
+    comfortNotes.push('Long-distance comfort recommended — pick a unit with reclining seats and AC.');
+  }
+  if (input.hasDesertLeg) {
+    comfortNotes.push('Desert route vehicle preferred — confirm dust-handling + spare-water provisioning.');
+  }
+  if (input.hasMountainLeg) {
+    comfortNotes.push('Mountain-road experienced driver recommended.');
+  }
+  if (input.hasBorderLeg) {
+    comfortNotes.push('Border crossing in itinerary — confirm paperwork + visa status with the supplier.');
+  }
+  if (input.hasAirportLeg) {
+    comfortNotes.push('Airport leg present — confirm pickup timing 90 min before flight.');
+  }
+  // Luggage tightness: pax sitting at the high end of the vehicle's range.
+  if (input.paxCount >= meta.maxPax - 1 && cls !== 'BUS') {
+    comfortNotes.push('Tight luggage capacity at this pax count — consider sizing up if luggage is heavy.');
+  }
+
+  // "Preferred operational choice" — pax in the comfortable middle of
+  // the vehicle's range AND no extreme leg.
+  const midRangeBuffer = Math.max(1, Math.floor((meta.maxPax - meta.minPax) / 4));
+  const inComfortableMiddle =
+    input.paxCount >= meta.minPax + midRangeBuffer && input.paxCount <= meta.maxPax - midRangeBuffer;
+  const noExtremeLeg = input.longestLegHours < 6 && !input.hasBorderLeg;
+  const preferredOperationalChoice = inComfortableMiddle && noExtremeLeg;
+
+  // Operational confidence label — drawn from leg shape.
+  const opConfidence: TransportRecommendation['operationalConfidenceLabel'] =
+    input.longestLegHours >= 6 || input.totalDriveHours >= 10
+      ? 'High coordination required'
+      : input.hasMountainLeg || input.hasBorderLeg
+        ? 'Moderate coordination'
+        : 'Operationally smooth';
+
+  const seatRange = `${meta.minPax}–${meta.maxPax} pax`;
+  const recommendationLine =
+    input.destinationCount > 1
+      ? `${input.paxCount} pax · ${input.destinationCount}-city Jordan journey`
+      : `${input.paxCount} pax · Jordan journey`;
+
+  return {
+    vehicleClass: cls,
+    label: meta.label,
+    icon: meta.icon,
+    seatRange,
+    typicalExample: meta.typicalExample,
+    luggageNote: meta.luggageNote,
+    recommendationLine,
+    preferredOperationalChoice,
+    comfortNotes,
+    operationalConfidenceLabel: opConfidence,
+  };
+}
+
+/** Journey-level transport pacing — supplements the per-leg overlays. */
+export function assessJourneyTransportPacing(input: {
+  legs: LegTransportInsight[];
+  paxCount: number;
+  vehicleClass: VehicleClass | undefined;
+  longestLegHours: number;
+  totalDriveHours: number;
+}): TransportSuggestionsResponse['pacing'] {
+  // Tight luggage check wins first when the vehicle would be near
+  // capacity — luggage stress is the most common silent failure on
+  // Jordan ops.
+  if (input.vehicleClass) {
+    const meta = VEHICLE_CLASSES[input.vehicleClass];
+    if (input.paxCount >= meta.maxPax - 1 && input.vehicleClass !== 'BUS') {
+      return {
+        label: 'Tight luggage capacity',
+        tone: 'intense',
+        explanation:
+          `${input.paxCount} pax in a ${meta.label} leaves limited room for heavy luggage. ` +
+          `Consider sizing up to the next vehicle class if guests bring large suitcases.`,
+      };
+    }
+  }
+  if (input.longestLegHours >= 6) {
+    return {
+      label: 'Long-distance touring day',
+      tone: 'intense',
+      explanation:
+        `One leg is ${input.longestLegHours}h — operator should plan rest stops and confirm driver comfort.`,
+    };
+  }
+  if (input.totalDriveHours >= 10 || input.legs.filter((l) => (l.driveHours ?? 0) >= 4).length >= 2) {
+    return {
+      label: 'High coordination transfer day',
+      tone: 'intense',
+      explanation:
+        `${input.totalDriveHours}h of driving across ${input.legs.length} leg${input.legs.length === 1 ? '' : 's'}. ` +
+        `Tight transfer timing — confirm pickup windows + buffer minutes with the supplier.`,
+    };
+  }
+  return {
+    label: 'Comfortable pacing',
+    tone: 'calm',
+    explanation:
+      input.totalDriveHours > 0
+        ? `${input.totalDriveHours}h of driving across ${input.legs.length} leg${input.legs.length === 1 ? '' : 's'} — comfortable pacing.`
+        : 'Single destination or no recorded drive — minimal transport coordination needed.',
   };
 }

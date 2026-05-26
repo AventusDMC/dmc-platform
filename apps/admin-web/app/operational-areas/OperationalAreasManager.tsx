@@ -23,6 +23,9 @@ type OperationalArea = {
   borderCrossingFlagDefault: boolean;
   mountainRoadFlagDefault: boolean;
   overnightRiskDefault: boolean;
+  // Preferred Operational Area Logic — lower wins when multiple areas
+  // share a city + type. NULL = lowest priority.
+  priority: number | null;
 };
 
 const AREA_TYPES = [
@@ -47,6 +50,9 @@ type FormState = {
   borderCrossingFlagDefault: boolean;
   mountainRoadFlagDefault: boolean;
   overnightRiskDefault: boolean;
+  // String here so the input can be blank — converted to int / null
+  // before sending to the API.
+  priority: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -60,6 +66,7 @@ const EMPTY_FORM: FormState = {
   borderCrossingFlagDefault: false,
   mountainRoadFlagDefault: false,
   overnightRiskDefault: false,
+  priority: '',
 };
 
 type PreviewResponse = {
@@ -209,6 +216,9 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
         body: JSON.stringify({
           ...form,
           region: form.region || null,
+          // Priority is an int? on the API. Blank input = NULL (lowest
+          // priority, falls back to PREFERRED_TYPE_ORDER + alphabetical).
+          priority: form.priority.trim() === '' ? null : Number(form.priority),
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -279,6 +289,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
       borderCrossingFlagDefault: area.borderCrossingFlagDefault,
       mountainRoadFlagDefault: area.mountainRoadFlagDefault,
       overnightRiskDefault: area.overnightRiskDefault,
+      priority: area.priority != null ? String(area.priority) : '',
     });
     // Edit mode starts with the existing code treated as "manually set"
     // so the preview doesn't immediately rewrite it from the name. The
@@ -377,6 +388,27 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
               onChange={(v) => setForm((f) => ({ ...f, country: v }))}
               placeholder="Jordan"
             />
+            {/* Preferred Operational Area Logic — lower wins when
+                multiple areas share the same city + type (e.g. QAIA=1
+                beats Marka=2 for AIRPORT/Amman). Blank = lowest. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>
+                Priority
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={form.priority}
+                placeholder="e.g. 1"
+                onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+                title="Lower number wins when multiple areas share the same city + type. Leave blank for default (lowest priority)."
+              />
+              <span style={{ fontSize: '0.72rem', color: '#667085', lineHeight: 1.35 }}>
+                Lower wins when multiple areas share a city + type.
+                Blank = lowest. e.g. QAIA = 1 beats Marka = 2.
+              </span>
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.5rem' }}>
             <FlagCard
@@ -502,6 +534,12 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Type</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>City</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Region</th>
+                  <th
+                    style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}
+                    title="Preferred Operational Area — lower wins on ties"
+                  >
+                    Priority
+                  </th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Defaults</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Active</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}></th>
@@ -523,6 +561,9 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                       <td style={{ padding: '0.5rem', color: '#475467' }}>{a.type.replace(/_/g, ' ')}</td>
                       <td style={{ padding: '0.5rem' }}>{a.city}</td>
                       <td style={{ padding: '0.5rem', color: '#475467' }}>{a.region || <em style={{ color: '#98a2b3' }}>—</em>}</td>
+                      <td style={{ padding: '0.5rem', color: '#475467', textAlign: 'center', fontFamily: 'monospace' }}>
+                        {a.priority != null ? a.priority : <em style={{ color: '#98a2b3' }}>—</em>}
+                      </td>
                       <td style={{ padding: '0.5rem', color: '#475467', fontSize: '0.78rem' }}>
                         {flags.length > 0 ? flags.join(' · ') : <em style={{ color: '#98a2b3' }}>—</em>}
                       </td>

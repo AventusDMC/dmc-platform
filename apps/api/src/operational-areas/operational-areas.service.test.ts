@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { OperationalAreasService, normalizeAreaCode, OPERATIONAL_AREA_TYPES } from './operational-areas.service';
+import {
+  OperationalAreasService,
+  normalizeAreaCode,
+  OPERATIONAL_AREA_TYPES,
+  compareAreasByPriority,
+} from './operational-areas.service';
 
 // Operational Areas Catalog v1 — service-level tests for the DB-backed
 // CRUD that powers the Route Builder + Canonical Builder + Touring
@@ -209,6 +214,116 @@ test('findAll: onlyActive filters out deactivated rows', async () => {
   const active = await service.findAll({ onlyActive: true });
   assert.equal(active.length, 1);
   assert.equal((active[0] as any).code, 'AMM');
+});
+
+// ---------------------------------------------------------------------------
+// Preferred Operational Area Logic (v2C addendum)
+// ---------------------------------------------------------------------------
+test('compareAreasByPriority: lower priority wins (QAIA=1 beats Marka=2 for AIRPORT)', () => {
+  const qaia = { type: 'AIRPORT', name: 'Queen Alia International', priority: 1 };
+  const marka = { type: 'AIRPORT', name: 'Marka Airport', priority: 2 };
+  const sorted = [marka, qaia].sort(compareAreasByPriority);
+  assert.equal(sorted[0].name, 'Queen Alia International');
+});
+
+test('compareAreasByPriority: NULL priority loses to any set priority', () => {
+  const unrated = { type: 'BORDER', name: 'Aaa Unrated Border', priority: null as number | null };
+  const rated = { type: 'BORDER', name: 'Sheikh Hussein', priority: 2 };
+  const sorted = [unrated, rated].sort(compareAreasByPriority);
+  // Sheikh Hussein wins even though it's later alphabetically — explicit
+  // priority always beats NULL.
+  assert.equal(sorted[0].name, 'Sheikh Hussein');
+});
+
+test('compareAreasByPriority: ALLENBY=1 beats SHB=2 beats WAB=3 for BORDER', () => {
+  const allenby = { type: 'BORDER', name: 'King Hussein Bridge (Allenby)', priority: 1 };
+  const shb = { type: 'BORDER', name: 'Sheikh Hussein', priority: 2 };
+  const wab = { type: 'BORDER', name: 'Wadi Araba', priority: 3 };
+  const sorted = [wab, shb, allenby].sort(compareAreasByPriority);
+  assert.deepEqual(
+    sorted.map((s) => s.priority),
+    [1, 2, 3],
+  );
+});
+
+test('compareAreasByPriority: same priority falls back to PREFERRED_TYPE_ORDER (CITY before AIRPORT)', () => {
+  const airport = { type: 'AIRPORT', name: 'Some Airport', priority: 1 };
+  const city = { type: 'CITY', name: 'Some City', priority: 1 };
+  const sorted = [airport, city].sort(compareAreasByPriority);
+  assert.equal(sorted[0].type, 'CITY');
+});
+
+test('compareAreasByPriority: same priority + same type falls back to alphabetical name', () => {
+  const b = { type: 'CITY', name: 'Bbbb', priority: 1 };
+  const a = { type: 'CITY', name: 'Aaaa', priority: 1 };
+  const sorted = [b, a].sort(compareAreasByPriority);
+  assert.equal(sorted[0].name, 'Aaaa');
+});
+
+test('compareAreasByPriority: both NULL falls back to PREFERRED_TYPE_ORDER + alphabetical', () => {
+  const c = { type: 'AIRPORT', name: 'Camp Z', priority: null as number | null };
+  const a = { type: 'CITY', name: 'Bbb', priority: null as number | null };
+  const b = { type: 'CITY', name: 'Aaa', priority: null as number | null };
+  const sorted = [c, a, b].sort(compareAreasByPriority);
+  // CITY before AIRPORT; within CITY, Aaa before Bbb.
+  assert.equal(sorted[0].name, 'Aaa');
+  assert.equal(sorted[1].name, 'Bbb');
+  assert.equal(sorted[2].name, 'Camp Z');
+});
+
+test('findByCity: priority beats type-order — QAIA=1 wins for Amman even though CITY normally wins', async () => {
+  const prisma = buildFakePrisma([
+    // Operator demoted the CITY row to priority 2; QAIA is priority 1.
+    // Priority should beat the default CITY-before-AIRPORT ordering.
+    { id: 'a-amm', code: 'AMM', name: 'Amman City', type: 'CITY', city: 'Amman', isActive: true, priority: 2 },
+    { id: 'a-qaia', code: 'QAIA', name: 'Queen Alia', type: 'AIRPORT', city: 'Amman', isActive: true, priority: 1 },
+  ]);
+  const service = new OperationalAreasService(prisma as any);
+  const found = await service.findByCity('Amman');
+  assert.equal(found?.code, 'QAIA');
+});
+
+test('findByCity: preferType + priority — picks QAIA over Marka for AIRPORT/Amman', async () => {
+  const prisma = buildFakePrisma([
+    { id: 'a-amm', code: 'AMM', name: 'Amman City', type: 'CITY', city: 'Amman', isActive: true, priority: 1 },
+    { id: 'a-qaia', code: 'QAIA', name: 'Queen Alia', type: 'AIRPORT', city: 'Amman', isActive: true, priority: 1 },
+    { id: 'a-marka', code: 'MARKA', name: 'Marka Airport', type: 'AIRPORT', city: 'Amman', isActive: true, priority: 2 },
+  ]);
+  const service = new OperationalAreasService(prisma as any);
+  const found = await service.findByCity('Amman', { preferType: 'AIRPORT' });
+  assert.equal(found?.code, 'QAIA');
+});
+
+test('create + update: priority is normalized + persisted', async () => {
+  const prisma = buildFakePrisma();
+  const service = new OperationalAreasService(prisma as any);
+  const created = await service.create({
+    code: 'QAIA',
+    name: 'Queen Alia International',
+    type: 'AIRPORT',
+    city: 'Amman',
+    priority: 1,
+  });
+  assert.equal(created.priority, 1);
+  const updated = await service.update(created.id, { priority: 2 });
+  assert.equal(updated.priority, 2);
+  // Setting to null clears the priority.
+  const cleared = await service.update(created.id, { priority: null });
+  assert.equal(cleared.priority, null);
+});
+
+test('create: priority normalization rejects negatives + non-numeric', async () => {
+  const prisma = buildFakePrisma();
+  const service = new OperationalAreasService(prisma as any);
+  const created = await service.create({
+    code: 'TEST',
+    name: 'Test Area',
+    type: 'CITY',
+    city: 'Testville',
+    priority: -5 as any,
+  });
+  // Negative becomes NULL (treated as "operator didn't opine").
+  assert.equal(created.priority, null);
 });
 
 test('findAll: type filter narrows to a single category', async () => {
