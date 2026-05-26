@@ -1,5 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  OPERATIONAL_AREAS,
+  OperationalArea,
+  getAreaByCode,
+  getAreaById,
+  mergeDefaultFlags,
+} from './operational-areas';
 
 // CRUD service for RouteStandard. Phase 1 = pure data layer; Phase 2 will
 // add lookup helpers for quote/dispatch/voucher integration.
@@ -1302,7 +1309,31 @@ export class RouteStandardsService {
         // explicitly carries another source — auto-bootstrapped rows that
         // get re-imported via Excel correctly transition to IMPORTED.
         const data = buildCreateData({ ...row, source: row.source ?? 'IMPORTED' });
-        const existing = await (this.prisma as any).routeStandard.findUnique({ where: { routeCode: data.routeCode } });
+        // Route Code Generator v1 — dedupe in priority order:
+        //   1. exact routeCode match (existing behaviour)
+        //   2. canonicalRouteCode match against incoming routeCode
+        //      (covers re-importing an old workbook whose code is the
+        //      legacy long form; matches the canonicalized row)
+        //   3. canonicalRouteCode match against incoming canonicalRouteCode
+        //      (covers fresh workbooks that carry the FROM_TO short form)
+        //   4. routeCode match against incoming canonicalRouteCode
+        // First hit wins → update; nothing → create.
+        let existing = await (this.prisma as any).routeStandard.findUnique({ where: { routeCode: data.routeCode } });
+        if (!existing) {
+          existing = await (this.prisma as any).routeStandard.findFirst({
+            where: { canonicalRouteCode: data.routeCode },
+          });
+        }
+        if (!existing && data.canonicalRouteCode) {
+          existing = await (this.prisma as any).routeStandard.findFirst({
+            where: {
+              OR: [
+                { canonicalRouteCode: data.canonicalRouteCode },
+                { routeCode: data.canonicalRouteCode },
+              ],
+            },
+          });
+        }
         if (existing) {
           await (this.prisma as any).routeStandard.update({ where: { id: existing.id }, data });
           updated += 1;
@@ -1316,6 +1347,291 @@ export class RouteStandardsService {
     }
 
     return { created, updated, errors, total: rows.length };
+  }
+
+  // -------------------------------------------------------------------------
+  // Route Code Generator + Duplicate Protection v1
+  //
+  // The Route Builder UI calls these to: (a) populate the From/To dropdowns
+  // with the canonical Operational Area dictionary, (b) preview what a
+  // single-leg / round-trip / multi-stop creation will produce before
+  // writing, and (c) atomically create the route(s) with auto-generated
+  // canonical codes + duplicate detection.
+  // -------------------------------------------------------------------------
+
+  /** Return the operational-area dictionary the Route Builder dropdowns render. */
+  listOperationalAreas() {
+    return OPERATIONAL_AREAS;
+  }
+
+  /**
+   * Preview what a single-leg creation will produce.
+   *
+   * Returns:
+   *   - suggestedCode: the auto-generated FROM_TO canonical code
+   *   - suggestedRouteName: "fromArea → toArea" pre-filled name
+   *   - existingMatch: any existing standard that would conflict —
+   *       matched in priority order:
+   *         1. canonicalRouteCode == suggestedCode
+   *         2. routeCode == suggestedCode (legacy override)
+   *         3. fromCity + toCity matches the area cities
+   *   - action: 'create' | 'use-existing' (recommendation)
+   *   - defaultFlags: smart defaults from the area dictionary (airport
+   *       leg → airportRouteFlag, border crossing → borderCrossingFlag, etc.)
+   *
+   * Pure read — never writes. Operator inspects + clicks Confirm to commit.
+   */
+  async previewRouteCreation(input: { fromAreaId?: string; toAreaId?: string; fromAreaCode?: string; toAreaCode?: string }) {
+    const fromArea = input.fromAreaId
+      ? getAreaById(input.fromAreaId)
+      : input.fromAreaCode
+        ? getAreaByCode(input.fromAreaCode)
+        : null;
+    const toArea = input.toAreaId
+      ? getAreaById(input.toAreaId)
+      : input.toAreaCode
+        ? getAreaByCode(input.toAreaCode)
+        : null;
+    if (!fromArea || !toArea) {
+      throw new BadRequestException('Both fromArea and toArea are required (by id or code)');
+    }
+    if (fromArea.code === toArea.code) {
+      throw new BadRequestException('From and To areas cannot be the same — same-area transfers are not modelled as route standards');
+    }
+    const suggestedCode = `${fromArea.code}_${toArea.code}`;
+    const suggestedRouteName = `${fromArea.displayName} → ${toArea.displayName}`;
+
+    // Three-pass match — canonical first, then legacy routeCode, then city pair.
+    let existingMatch: any = await (this.prisma as any).routeStandard.findFirst({
+      where: { canonicalRouteCode: suggestedCode },
+    });
+    let matchReason: 'canonical_code' | 'legacy_code' | 'city_pair' | null = existingMatch ? 'canonical_code' : null;
+
+    if (!existingMatch) {
+      existingMatch = await (this.prisma as any).routeStandard.findFirst({
+        where: { routeCode: suggestedCode },
+      });
+      if (existingMatch) matchReason = 'legacy_code';
+    }
+    if (!existingMatch) {
+      existingMatch = await (this.prisma as any).routeStandard.findFirst({
+        where: { fromCity: fromArea.city, toCity: toArea.city, isActive: true },
+      });
+      if (existingMatch) matchReason = 'city_pair';
+    }
+
+    return {
+      fromArea,
+      toArea,
+      suggestedCode,
+      suggestedRouteName,
+      existingMatch: existingMatch
+        ? {
+            id: existingMatch.id,
+            routeCode: existingMatch.routeCode,
+            canonicalRouteCode: existingMatch.canonicalRouteCode,
+            routeName: existingMatch.routeName,
+            standardDistanceKm: existingMatch.standardDistanceKm,
+            standardDurationHours: existingMatch.standardDurationHours,
+            isActive: existingMatch.isActive,
+            reviewStatus: existingMatch.reviewStatus,
+            matchReason,
+          }
+        : null,
+      action: existingMatch ? 'use-existing' : 'create',
+      defaultFlags: mergeDefaultFlags(fromArea, toArea),
+    };
+  }
+
+  /**
+   * Create a single leg with auto-generated canonical code + duplicate
+   * detection. If a match is found AND options.forceCreate is false (the
+   * default), refuses to create and returns the existing row so the
+   * operator can decide via the UI. Pass forceCreate=true after the
+   * operator confirms "create anyway" in the preview dialog.
+   *
+   * options.alsoCreateReverse: if true, also creates the reverse leg
+   * (toArea → fromArea) using the same numeric values (distance, duration,
+   * buffer) and a mirrored route name. Useful for symmetric transfers.
+   */
+  async createWithGeneration(
+    input: {
+      fromAreaId?: string;
+      toAreaId?: string;
+      fromAreaCode?: string;
+      toAreaCode?: string;
+      standardDistanceKm?: number | null;
+      standardDurationHours?: number | null;
+      operationalBufferMinutes?: number | null;
+      notes?: string | null;
+      longDistanceFlag?: boolean;
+      overnightRisk?: boolean;
+      mountainRoadFlag?: boolean;
+      borderCrossingFlag?: boolean;
+      airportRouteFlag?: boolean;
+    },
+    options: { forceCreate?: boolean; alsoCreateReverse?: boolean } = {},
+  ) {
+    const preview = await this.previewRouteCreation(input);
+    if (preview.existingMatch && !options.forceCreate) {
+      return {
+        action: 'use-existing',
+        existingMatch: preview.existingMatch,
+        message: `Route ${preview.suggestedCode} already exists — pass forceCreate=true to override, or open the existing row to refine.`,
+      };
+    }
+
+    const flags = {
+      longDistanceFlag: input.longDistanceFlag ?? preview.defaultFlags.airportRouteFlag === false ? Boolean(input.longDistanceFlag) : Boolean(input.longDistanceFlag),
+      overnightRisk: Boolean(input.overnightRisk ?? preview.defaultFlags.overnightRisk),
+      mountainRoadFlag: Boolean(input.mountainRoadFlag ?? preview.defaultFlags.mountainRoadFlag),
+      borderCrossingFlag: Boolean(input.borderCrossingFlag ?? preview.defaultFlags.borderCrossingFlag),
+      airportRouteFlag: Boolean(input.airportRouteFlag ?? preview.defaultFlags.airportRouteFlag),
+    };
+
+    const primary = await this.create({
+      routeCode: preview.suggestedCode,
+      routeName: preview.suggestedRouteName,
+      fromCity: preview.fromArea.city,
+      toCity: preview.toArea.city,
+      standardDistanceKm: input.standardDistanceKm ?? null,
+      standardDurationHours: input.standardDurationHours ?? null,
+      operationalBufferMinutes: input.operationalBufferMinutes ?? null,
+      notes: input.notes ?? null,
+      canonicalRouteCode: preview.suggestedCode,
+      reviewStatus: 'CANONICALIZED',
+      source: 'MANUAL',
+      ...flags,
+    });
+
+    let reverse: any = null;
+    if (options.alsoCreateReverse) {
+      const reversePreview = await this.previewRouteCreation({
+        fromAreaCode: preview.toArea.code,
+        toAreaCode: preview.fromArea.code,
+      });
+      if (!reversePreview.existingMatch) {
+        reverse = await this.create({
+          routeCode: reversePreview.suggestedCode,
+          routeName: reversePreview.suggestedRouteName,
+          fromCity: preview.toArea.city,
+          toCity: preview.fromArea.city,
+          standardDistanceKm: input.standardDistanceKm ?? null,
+          standardDurationHours: input.standardDurationHours ?? null,
+          operationalBufferMinutes: input.operationalBufferMinutes ?? null,
+          notes: input.notes ?? null,
+          canonicalRouteCode: reversePreview.suggestedCode,
+          reviewStatus: 'CANONICALIZED',
+          source: 'MANUAL',
+          ...flags,
+        });
+      } else {
+        reverse = { skipped: true, reason: 'reverse_already_exists', existingId: reversePreview.existingMatch.id };
+      }
+    }
+
+    return { action: 'created', primary, reverse };
+  }
+
+  /**
+   * Multi-stop touring helper. Input is an ordered list of area codes
+   * (or ids) — e.g. ['AMM', 'MAD', 'NEB', 'PET']. Generates N-1 legs
+   * (AMM_MAD, MAD_NEB, NEB_PET) using previewRouteCreation per pair,
+   * creating the new ones and skipping any that already exist (the
+   * touring route is a composition of legs; existing legs stay intact).
+   *
+   * Returns per-leg result so the operator sees which legs were
+   * created vs reused.
+   */
+  async createMultiStopRoute(input: {
+    stops: Array<{ areaId?: string; areaCode?: string }>;
+    sharedFields?: {
+      operationalBufferMinutes?: number | null;
+      notes?: string | null;
+    };
+  }) {
+    const stops = Array.isArray(input.stops) ? input.stops : [];
+    if (stops.length < 3) {
+      throw new BadRequestException('Multi-stop route requires at least 3 stops — for 2 stops, use the single-leg builder');
+    }
+    const resolved: OperationalArea[] = [];
+    for (const stop of stops) {
+      const area = stop.areaId ? getAreaById(stop.areaId) : getAreaByCode(stop.areaCode);
+      if (!area) {
+        throw new BadRequestException(`Unknown stop: ${stop.areaId || stop.areaCode}`);
+      }
+      resolved.push(area);
+    }
+
+    const results: Array<{
+      legNumber: number;
+      fromCode: string;
+      toCode: string;
+      suggestedCode: string;
+      action: 'created' | 'reused';
+      rowId: string;
+    }> = [];
+
+    for (let i = 0; i < resolved.length - 1; i++) {
+      const fromArea = resolved[i];
+      const toArea = resolved[i + 1];
+      if (fromArea.code === toArea.code) {
+        // Skip identical-area legs silently — common when a multi-stop has
+        // repeats like AMM → AMM city walking tours that aren't real
+        // transfer legs.
+        continue;
+      }
+      const legPreview = await this.previewRouteCreation({
+        fromAreaCode: fromArea.code,
+        toAreaCode: toArea.code,
+      });
+      if (legPreview.existingMatch) {
+        results.push({
+          legNumber: i + 1,
+          fromCode: fromArea.code,
+          toCode: toArea.code,
+          suggestedCode: legPreview.suggestedCode,
+          action: 'reused',
+          rowId: legPreview.existingMatch.id,
+        });
+        continue;
+      }
+      const flags = mergeDefaultFlags(fromArea, toArea);
+      const created = await this.create({
+        routeCode: legPreview.suggestedCode,
+        routeName: legPreview.suggestedRouteName,
+        fromCity: fromArea.city,
+        toCity: toArea.city,
+        operationalBufferMinutes: input.sharedFields?.operationalBufferMinutes ?? null,
+        notes: input.sharedFields?.notes ?? null,
+        canonicalRouteCode: legPreview.suggestedCode,
+        reviewStatus: 'CANONICALIZED',
+        source: 'MANUAL',
+        longDistanceFlag: false,
+        overnightRisk: flags.overnightRisk,
+        mountainRoadFlag: flags.mountainRoadFlag,
+        borderCrossingFlag: flags.borderCrossingFlag,
+        airportRouteFlag: flags.airportRouteFlag,
+      });
+      results.push({
+        legNumber: i + 1,
+        fromCode: fromArea.code,
+        toCode: toArea.code,
+        suggestedCode: legPreview.suggestedCode,
+        action: 'created',
+        rowId: created.id,
+      });
+    }
+
+    return {
+      stopCount: resolved.length,
+      legCount: results.length,
+      createdCount: results.filter((r) => r.action === 'created').length,
+      reusedCount: results.filter((r) => r.action === 'reused').length,
+      legs: results,
+      message:
+        'This is a Touring Route made from multiple legs. Each leg is a standalone Route Standard the operator can refine independently.',
+    };
   }
 }
 

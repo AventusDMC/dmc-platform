@@ -169,6 +169,64 @@ export class RouteStandardsController {
     return this.routeStandardsService.applyBulkRefinementSuggestions(body?.items || []);
   }
 
+  // -------------------------------------------------------------------
+  // Route Code Generator + Duplicate Protection v1
+  //
+  // GET  /areas                    → operational area dictionary
+  // POST /preview-creation         → suggested code + existing-match preview
+  // POST /create-with-generation   → create one leg with auto-gen + reverse
+  // POST /create-multi-stop        → N-1 legs from an ordered stop list
+  // -------------------------------------------------------------------
+
+  @Get('areas')
+  listAreas() {
+    return this.routeStandardsService.listOperationalAreas();
+  }
+
+  @Post('preview-creation')
+  @Roles('admin', 'operations')
+  previewCreation(@Body() body: { fromAreaId?: string; toAreaId?: string; fromAreaCode?: string; toAreaCode?: string }) {
+    return this.routeStandardsService.previewRouteCreation(body);
+  }
+
+  @Post('create-with-generation')
+  @Roles('admin', 'operations')
+  createWithGeneration(
+    @Body()
+    body: {
+      fromAreaId?: string;
+      toAreaId?: string;
+      fromAreaCode?: string;
+      toAreaCode?: string;
+      standardDistanceKm?: number | null;
+      standardDurationHours?: number | null;
+      operationalBufferMinutes?: number | null;
+      notes?: string | null;
+      longDistanceFlag?: boolean;
+      overnightRisk?: boolean;
+      mountainRoadFlag?: boolean;
+      borderCrossingFlag?: boolean;
+      airportRouteFlag?: boolean;
+      forceCreate?: boolean;
+      alsoCreateReverse?: boolean;
+    },
+  ) {
+    const { forceCreate, alsoCreateReverse, ...input } = body || {};
+    return this.routeStandardsService.createWithGeneration(input, { forceCreate, alsoCreateReverse });
+  }
+
+  @Post('create-multi-stop')
+  @Roles('admin', 'operations')
+  createMultiStop(
+    @Body()
+    body: {
+      stops: Array<{ areaId?: string; areaCode?: string }>;
+      sharedFields?: { operationalBufferMinutes?: number | null; notes?: string | null };
+    },
+  ) {
+    return this.routeStandardsService.createMultiStopRoute(body);
+  }
+
   /**
    * Excel export — one row per route standard. Sheet name fixed at
    * "Route Standards" so the import path can validate it.
