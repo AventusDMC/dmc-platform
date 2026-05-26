@@ -73,6 +73,15 @@ export class RouteStandardsController {
     return this.routeStandardsService.findAll();
   }
 
+  // IMPORTANT: All static-path GETs must be declared BEFORE the @Get(':id')
+  // route. NestJS routes match in declaration order, and ':id' would
+  // otherwise catch /areas (treating 'areas' as the row id) → 500 from
+  // Prisma's UUID type check. Same for any future single-segment GET.
+  @Get('areas')
+  listAreas() {
+    return this.routeStandardsService.listOperationalAreas();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.routeStandardsService.findOne(id);
@@ -177,11 +186,6 @@ export class RouteStandardsController {
   // POST /create-with-generation   → create one leg with auto-gen + reverse
   // POST /create-multi-stop        → N-1 legs from an ordered stop list
   // -------------------------------------------------------------------
-
-  @Get('areas')
-  listAreas() {
-    return this.routeStandardsService.listOperationalAreas();
-  }
 
   @Post('preview-creation')
   @Roles('admin', 'operations')
