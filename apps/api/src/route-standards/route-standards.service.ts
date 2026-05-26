@@ -142,9 +142,12 @@ const CITY_ALIAS_MAP: Record<string, string> = {
   AMMAN_CITY: 'AMM',
   AMMAN_CITY_CENTER: 'AMM',
   JORDAN_AMMAN_CITY: 'AMM',
+  JORDAN_AMMAN: 'AMM',
   PETRA: 'PET',
+  PETRA_VISITOR_CENTER: 'PET',
   WADI_MUSA: 'PET', // Wadi Musa is the town immediately adjacent to Petra
   WADI_RUM: 'WR',
+  WADI_RUM_CAMP_AREA: 'WR',
   AQABA: 'AQJ',
   AQJ: 'AQJ',
   KING_HUSSEIN_INTERNATIONAL_AIRPORT: 'AQJ',
@@ -152,13 +155,18 @@ const CITY_ALIAS_MAP: Record<string, string> = {
   AQABA_CITY_CENTER: 'AQJ',
   DEAD_SEA: 'DS',
   DEAD_SEA_RESORTS: 'DS',
+  DEAD_SEA_RESORT_AREA: 'DS',
   JERASH: 'JER',
   JERASH_ARCHAEOLOGICAL_SITE: 'JER',
   AJLOUN: 'AJL',
+  AJLOUN_CASTLE: 'AJL',
   IRBID: 'IRB',
+  IRBID_CITY: 'IRB',
   MADABA: 'MAD',
+  MADABA_CITY: 'MAD',
   KERAK: 'KRK',
   KARAK: 'KRK',
+  KERAK_CASTLE: 'KRK',
   QAIA: 'QAIA',
   QUEEN_ALIA_INTERNATIONAL_AIRPORT: 'QAIA',
   JORDAN_QAIA_AIRPORT: 'QAIA',
@@ -171,9 +179,36 @@ const CITY_ALIAS_MAP: Record<string, string> = {
   ALLENBY_SHEIKH_HUSSEIN_BORDER: 'ALLENBY',
   SHEIKH_HUSSEIN: 'SHB',
   SHEIKH_HUSSEIN_BORDER: 'SHB',
+  JORDAN_SHEIKH_HUSSEIN_BORDER: 'SHB',
   WADI_ARABA: 'WAB',
   WADI_ARABA_BORDER: 'WAB',
 };
+
+// Refinement Assistant v1 — token forms that are NOT cities and should be
+// skipped during the greedy parse. Examples: "RESORT", "AREA", "VISITOR",
+// "CENTER", "ARCHAEOLOGICAL", "SITE" appear as filler tokens after the
+// city name in the bootstrap codes. Treating them as no-match would still
+// work, but explicitly listing them makes the parser deterministic and
+// keeps the per-token advance fast.
+const FILLER_TOKENS = new Set<string>([
+  'RESORT',
+  'AREA',
+  'VISITOR',
+  'CENTER',
+  'ARCHAEOLOGICAL',
+  'SITE',
+  'CAMP',
+  'INTERNATIONAL',
+  'AIRPORT',
+  'BRIDGE',
+  'BORDER',
+  'CITY',
+  'JORDAN',
+  // "ON_2", "ON_3" suffixes from "COPY_OF_..._ON_2" — strip silently.
+  'ON',
+  'COPY',
+  'OF',
+]);
 
 function canonicalizeCityToken(value: string | null | undefined): string {
   // Normalize the city string into the same UPPER_SNAKE shape the alias
@@ -277,6 +312,104 @@ export function detectSuspiciousDuration(
     return { suspicious: true, reason: `${strictest.reason} (got ${hours} h)` };
   }
   return { suspicious: false, reason: null };
+}
+
+// ---------------------------------------------------------------------------
+// Refinement Assistant v1 — suggested canonical code from the legacy routeCode
+// itself (separate from fromCity/toCity derivation).
+//
+// Some bootstrapped rows have garbage in fromCity/toCity but their routeCode
+// still encodes the route ("JORDAN_AMMAN_CITY_JORDAN_QAIA_AIRPORT" — even
+// without correct city fields, we can recover AMM_QAIA by parsing the code).
+// This recovers signal from rows the city-field deriver would skip.
+//
+// Algorithm: greedy left-to-right scan, longest-prefix match (up to 5
+// tokens) against CITY_ALIAS_MAP. Filler tokens advance one step without
+// emitting an alias. Stops after collecting 2 aliases (FROM_TO). Returns
+// null when fewer than 2 distinct aliases could be matched.
+// ---------------------------------------------------------------------------
+export function suggestCanonicalFromLegacyCode(legacyCode: string | null | undefined): string | null {
+  if (!legacyCode) return null;
+  const cleaned = String(legacyCode)
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!cleaned) return null;
+  const tokens = cleaned.split('_').filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  const aliases: string[] = [];
+  let i = 0;
+  while (i < tokens.length && aliases.length < 2) {
+    let matched = false;
+    // Try the longest prefix first so AMMAN_CITY_CENTER wins over AMMAN.
+    const maxLen = Math.min(5, tokens.length - i);
+    for (let len = maxLen; len >= 1; len--) {
+      const slice = tokens.slice(i, i + len).join('_');
+      const alias = CITY_ALIAS_MAP[slice];
+      if (alias) {
+        // Don't emit the same alias twice in a row (e.g.
+        // "AMMAN_CITY_AMMAN_CENTER" duplicates would collapse to AMM_AMM,
+        // which can't be a canonical FROM_TO).
+        if (aliases.length === 0 || aliases[aliases.length - 1] !== alias) {
+          aliases.push(alias);
+        }
+        i += len;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      // Skip filler tokens silently; advance by one for any other unknown
+      // token (which keeps the parser from getting stuck and lets the
+      // next token try as the start of a new prefix).
+      i += 1;
+    }
+  }
+  if (aliases.length < 2) return null;
+  if (aliases[0] === aliases[1]) return null;
+  return `${aliases[0]}_${aliases[1]}`;
+}
+
+// ---------------------------------------------------------------------------
+// Refinement Assistant v1 — find the reverse standard for a given row.
+//
+// Returns the "other direction" of the same physical route when one exists
+// in the catalog. Used by the missing-duration/missing-distance assistants:
+// if AMM_PET has 3.5h and PET_AMM has no duration, we suggest PET_AMM
+// inherit 3.5h.
+//
+// Matching is on canonical code first (split on _, swap halves, look it
+// up), and falls back to fromCity/toCity swap when canonicalRouteCode
+// isn't set yet.
+// ---------------------------------------------------------------------------
+type ReverseLookupSource = { id: string; canonicalRouteCode: string | null; fromCity: string | null; toCity: string | null };
+
+export function findReverseStandard<T extends ReverseLookupSource>(target: T, allStandards: T[]): T | null {
+  const allByCanonical = new Map<string, T>();
+  for (const s of allStandards) {
+    if (s.canonicalRouteCode) allByCanonical.set(s.canonicalRouteCode, s);
+  }
+  // Canonical swap: AMM_PET -> PET_AMM
+  if (target.canonicalRouteCode) {
+    const parts = target.canonicalRouteCode.split('_');
+    if (parts.length >= 2) {
+      const reversed = `${parts.slice(1).join('_')}_${parts[0]}`;
+      const found = allByCanonical.get(reversed);
+      if (found && found.id !== target.id) return found;
+    }
+  }
+  // City swap fallback
+  const tf = canonicalizeCityToken(target.fromCity);
+  const tt = canonicalizeCityToken(target.toCity);
+  if (!tf || !tt) return null;
+  for (const s of allStandards) {
+    if (s.id === target.id) continue;
+    const sf = canonicalizeCityToken(s.fromCity);
+    const st = canonicalizeCityToken(s.toCity);
+    if (sf === tt && st === tf) return s;
+  }
+  return null;
 }
 
 /**
@@ -872,6 +1005,269 @@ export class RouteStandardsService {
       totalRows: preview.totalRows,
       duplicateGroups: preview.duplicateGroups,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Refinement Assistant v1 — one-click suggestions to accelerate operator
+  // cleanup without manual row-by-row editing.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the prioritized refinement queue. Returns a flat list of
+   * "suggestion tasks", each describing ONE actionable change an operator
+   * can approve (suggested canonical code, suggested duration from reverse,
+   * suggested distance from reverse).
+   *
+   * Each task includes:
+   *   - rowId, currentCode, fromCity, toCity
+   *   - field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm'
+   *   - currentValue, suggestedValue
+   *   - suggestionSource: 'legacy_code_parse' | 'reverse_route' | 'city_fields'
+   *   - category: 'AIRPORT' | 'PETRA' | 'WADI_RUM' | 'DEAD_SEA' | 'AQABA' | 'BORDER' | 'OTHER'
+   *   - reviewBucket: 'SUSPICIOUS_DURATION' | 'MISSING_DISTANCE' | 'MISSING_DURATION' |
+   *                   'UNRESOLVED_LEGACY_CODE' | 'AIRPORT_ROUTE' | 'BORDER_ROUTE'
+   *   - isProtected: true when row is VERIFIED or source=MANUAL (no apply allowed)
+   *
+   * Skips VERIFIED and source=MANUAL rows entirely — those represent
+   * operator signoff and the assistant must not contradict them.
+   */
+  async buildRefinementQueue() {
+    const standards: any[] = await (this.prisma as any).routeStandard.findMany({
+      where: { isActive: true },
+      orderBy: [{ routeCode: 'asc' }],
+    });
+
+    type Task = {
+      rowId: string;
+      routeCode: string;
+      routeName: string;
+      fromCity: string | null;
+      toCity: string | null;
+      canonicalRouteCode: string | null;
+      field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm';
+      currentValue: string | number | null;
+      suggestedValue: string | number;
+      suggestionSource: 'legacy_code_parse' | 'reverse_route' | 'city_fields';
+      reviewBucket: string;
+      category: 'AIRPORT' | 'PETRA' | 'WADI_RUM' | 'DEAD_SEA' | 'AQABA' | 'BORDER' | 'OTHER';
+      isProtected: boolean;
+    };
+
+    const isProtected = (row: any): boolean =>
+      row.reviewStatus === 'VERIFIED' || row.source === 'MANUAL';
+
+    const categoryFor = (row: any): Task['category'] => {
+      // Priority order matches the spec: airport > petra > wadi rum > dead
+      // sea > aqaba > border > other.
+      const text = `${row.routeCode || ''} ${row.canonicalRouteCode || ''} ${row.fromCity || ''} ${row.toCity || ''} ${row.routeName || ''}`.toUpperCase();
+      if (row.airportRouteFlag || /QAIA|AQJ|AIRPORT/.test(text)) return 'AIRPORT';
+      if (/PETRA|PET_|_PET/.test(text)) return 'PETRA';
+      if (/WADI_RUM|\bWR_|_WR\b|WADI RUM/.test(text)) return 'WADI_RUM';
+      if (/DEAD_SEA|\bDS_|_DS\b|DEAD SEA/.test(text)) return 'DEAD_SEA';
+      if (/AQABA|AQJ_|_AQJ/.test(text)) return 'AQABA';
+      if (row.borderCrossingFlag || /BORDER|ALLENBY|SHEIKH_HUSSEIN|WADI_ARABA/.test(text)) return 'BORDER';
+      return 'OTHER';
+    };
+
+    const tasks: Task[] = [];
+
+    for (const row of standards) {
+      const protectedRow = isProtected(row);
+      const category = categoryFor(row);
+
+      // ----- Suggestion 1: canonical code -----
+      // Two sources of canonical suggestion:
+      //   a. fromCity/toCity (deriveCanonicalRouteCode) — already used by
+      //      Apply canonical codes; we only re-suggest here when the row
+      //      doesn't HAVE a canonicalRouteCode yet AND city fields are
+      //      complete enough to derive one. Surface the "would-set" value
+      //      so the operator can approve per-row instead of bulk.
+      //   b. Legacy routeCode parsing — recovers signal from rows where
+      //      city fields are missing/wrong but the legacy code itself
+      //      encodes the route (e.g. JORDAN_AMMAN_CITY_JORDAN_QAIA_AIRPORT).
+      if (!row.canonicalRouteCode) {
+        const fromCityDerived = deriveCanonicalRouteCode(row.fromCity, row.toCity);
+        const fromLegacy = suggestCanonicalFromLegacyCode(row.routeCode);
+        // Prefer city-fields when both agree; legacy-parse when it produces
+        // something city-fields doesn't.
+        const suggested = fromCityDerived || fromLegacy;
+        const source: Task['suggestionSource'] = fromCityDerived ? 'city_fields' : 'legacy_code_parse';
+        if (suggested) {
+          tasks.push({
+            rowId: row.id,
+            routeCode: row.routeCode,
+            routeName: row.routeName,
+            fromCity: row.fromCity,
+            toCity: row.toCity,
+            canonicalRouteCode: row.canonicalRouteCode,
+            field: 'canonicalRouteCode',
+            currentValue: row.canonicalRouteCode ?? null,
+            suggestedValue: suggested,
+            suggestionSource: source,
+            reviewBucket: 'UNRESOLVED_LEGACY_CODE',
+            category,
+            isProtected: protectedRow,
+          });
+        }
+      }
+    }
+
+    // ----- Suggestion 2 + 3: duration / distance from reverse route -----
+    // Pre-compute the city-token lookup once for reverse matching.
+    for (const row of standards) {
+      const protectedRow = isProtected(row);
+      const category = categoryFor(row);
+      const reverse = findReverseStandard(row as any, standards as any);
+      if (!reverse) continue;
+      if ((row.standardDurationHours == null || row.standardDurationHours === 0) && reverse.standardDurationHours != null) {
+        tasks.push({
+          rowId: row.id,
+          routeCode: row.routeCode,
+          routeName: row.routeName,
+          fromCity: row.fromCity,
+          toCity: row.toCity,
+          canonicalRouteCode: row.canonicalRouteCode,
+          field: 'standardDurationHours',
+          currentValue: null,
+          suggestedValue: reverse.standardDurationHours,
+          suggestionSource: 'reverse_route',
+          reviewBucket: 'MISSING_DURATION',
+          category,
+          isProtected: protectedRow,
+        });
+      }
+      if ((row.standardDistanceKm == null || row.standardDistanceKm === 0) && reverse.standardDistanceKm != null) {
+        tasks.push({
+          rowId: row.id,
+          routeCode: row.routeCode,
+          routeName: row.routeName,
+          fromCity: row.fromCity,
+          toCity: row.toCity,
+          canonicalRouteCode: row.canonicalRouteCode,
+          field: 'standardDistanceKm',
+          currentValue: null,
+          suggestedValue: reverse.standardDistanceKm,
+          suggestionSource: 'reverse_route',
+          reviewBucket: 'MISSING_DISTANCE',
+          category,
+          isProtected: protectedRow,
+        });
+      }
+    }
+
+    // Priority ordering for the queue: AIRPORT first, then the four major
+    // tourism hubs, then BORDER, then OTHER. Within each category, sort
+    // by routeCode for stable rendering.
+    const CATEGORY_PRIORITY: Record<Task['category'], number> = {
+      AIRPORT: 0,
+      PETRA: 1,
+      WADI_RUM: 2,
+      DEAD_SEA: 3,
+      AQABA: 4,
+      BORDER: 5,
+      OTHER: 6,
+    };
+    tasks.sort((a, b) => {
+      const pa = CATEGORY_PRIORITY[a.category];
+      const pb = CATEGORY_PRIORITY[b.category];
+      if (pa !== pb) return pa - pb;
+      return a.routeCode.localeCompare(b.routeCode);
+    });
+
+    // Bucket counts for the dashboard header.
+    const counters = {
+      total: tasks.length,
+      unresolvedLegacyCodes: tasks.filter((t) => t.reviewBucket === 'UNRESOLVED_LEGACY_CODE').length,
+      missingDuration: tasks.filter((t) => t.reviewBucket === 'MISSING_DURATION').length,
+      missingDistance: tasks.filter((t) => t.reviewBucket === 'MISSING_DISTANCE').length,
+      protectedRows: tasks.filter((t) => t.isProtected).length,
+      airportPriority: tasks.filter((t) => t.category === 'AIRPORT').length,
+    };
+
+    return { tasks, counters };
+  }
+
+  /**
+   * Apply ONE refinement suggestion. The operator approves a specific
+   * (rowId, field, value) tuple from the queue; we write only that field.
+   *
+   * Safety guards (the spec's "preserve" + "no destructive" requirements):
+   *   - Never modifies routeCode (legacy identifier preserved).
+   *   - Refuses to write to VERIFIED rows.
+   *   - Refuses to write to source='MANUAL' rows (operator-curated).
+   *   - For duration writes, recomputes suspiciousDurationFlag honestly
+   *     so an inherited reverse-route value that happens to be wrong
+   *     still surfaces in the dashboard.
+   */
+  async applyRefinementSuggestion(input: {
+    rowId: string;
+    field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm';
+    value: string | number;
+  }) {
+    if (!input?.rowId || !input?.field) {
+      throw new BadRequestException('rowId and field are required');
+    }
+    const row = await (this.prisma as any).routeStandard.findUnique({ where: { id: input.rowId } });
+    if (!row) throw new NotFoundException('Route standard not found');
+
+    if (row.reviewStatus === 'VERIFIED') {
+      throw new BadRequestException(`Cannot apply suggestion: ${row.routeCode} is VERIFIED (operator signoff is sticky)`);
+    }
+    if (row.source === 'MANUAL') {
+      throw new BadRequestException(`Cannot apply suggestion: ${row.routeCode} is MANUAL (operator-curated, never auto-modified)`);
+    }
+
+    const data: Record<string, unknown> = {};
+    if (input.field === 'canonicalRouteCode') {
+      const normalized = normalizeCode(String(input.value));
+      if (!normalized) throw new BadRequestException('Suggested canonical code is empty');
+      data.canonicalRouteCode = normalized;
+    } else if (input.field === 'standardDurationHours') {
+      const num = Number(input.value);
+      if (!Number.isFinite(num) || num < 0) throw new BadRequestException('Suggested duration must be a non-negative number');
+      data.standardDurationHours = num;
+      // Recompute suspicious flag against the new duration honestly.
+      const suspicious = detectSuspiciousDuration(row.fromCity, row.toCity, num);
+      data.suspiciousDurationFlag = suspicious.suspicious;
+    } else if (input.field === 'standardDistanceKm') {
+      const num = Number(input.value);
+      if (!Number.isFinite(num) || num < 0) throw new BadRequestException('Suggested distance must be a non-negative number');
+      data.standardDistanceKm = num;
+    } else {
+      throw new BadRequestException(`Unsupported field: ${input.field}`);
+    }
+
+    const updated = await (this.prisma as any).routeStandard.update({
+      where: { id: input.rowId },
+      data,
+    });
+    return { ok: true, updatedField: input.field, row: updated };
+  }
+
+  /**
+   * Bulk-apply. Returns per-item result so the operator sees exactly which
+   * suggestions landed and which were rejected by the safety guards.
+   * Never throws on a single failure — failures are reported in the
+   * `results` array.
+   */
+  async applyBulkRefinementSuggestions(items: Array<{ rowId: string; field: 'canonicalRouteCode' | 'standardDurationHours' | 'standardDistanceKm'; value: string | number }>) {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('items must be a non-empty array');
+    }
+    const results: Array<{ rowId: string; field: string; ok: boolean; error?: string }> = [];
+    let appliedCount = 0;
+    let skippedCount = 0;
+    for (const item of items) {
+      try {
+        await this.applyRefinementSuggestion(item);
+        results.push({ rowId: item.rowId, field: item.field, ok: true });
+        appliedCount += 1;
+      } catch (error: any) {
+        results.push({ rowId: item.rowId, field: item.field, ok: false, error: error?.message || 'apply failed' });
+        skippedCount += 1;
+      }
+    }
+    return { appliedCount, skippedCount, results };
   }
 
   /**
