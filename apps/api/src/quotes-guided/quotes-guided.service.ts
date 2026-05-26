@@ -94,6 +94,10 @@ export type SuggestedHotel = {
   // 'Luxury' / 'Standard' / 'Budget' derived from category.
   tier: CommercialTier;
   hasActiveContract: boolean;
+  // Hotel Contract Trustworthiness v2 — true when ANY active contract
+  // for this hotel carries confidence = VERIFIED. Drives the sort
+  // boost + "Operationally trusted" label in the Guided picker.
+  hasVerifiedContract: boolean;
   recommendedMealPlan: RecommendedMealPlan;
   operationalConfidence: OperationalConfidence;
   // Short heuristic notes shown to the operator.
@@ -473,7 +477,9 @@ export class QuotesGuidedService {
           hotelCategory: { select: { name: true } },
           contracts: {
             where: { validFrom: { lte: today }, validTo: { gte: today } },
-            select: { id: true },
+            // Pull confidence so the Guided picker can boost VERIFIED
+            // hotels and surface the "Operationally trusted" label.
+            select: { id: true, confidence: true },
           },
         },
       }),
@@ -499,11 +505,18 @@ export class QuotesGuidedService {
         const enriched = enrichHotelForSuggestion(h, dest);
         tiers[enriched.tier].push(enriched);
       }
-      // Cap each tier at 4 so the UI stays scannable; sort by hotels
-      // with active contracts first, then alphabetical.
+      // Cap each tier at 4 so the UI stays scannable. Sort order:
+      //   1. VERIFIED contracts win (Trustworthiness v2 boost)
+      //   2. Then hotels with any active contract
+      //   3. Then alphabetical
+      // Verified hotels also surface the "Operationally trusted" label
+      // via enrichHotelForSuggestion → notes.
       for (const tier of Object.keys(tiers) as CommercialTier[]) {
         tiers[tier] = tiers[tier]
           .sort((a, b) => {
+            if (a.hasVerifiedContract !== b.hasVerifiedContract) {
+              return a.hasVerifiedContract ? -1 : 1;
+            }
             if (a.hasActiveContract !== b.hasActiveContract) {
               return a.hasActiveContract ? -1 : 1;
             }
@@ -1159,10 +1172,21 @@ export function deriveQuickNotes(hotel: { name: string; city: string; category: 
 
 /** Combine all per-hotel derivations into the suggestion shape. */
 export function enrichHotelForSuggestion(
-  hotel: { id: string; name: string; city: string; category: string; contracts?: Array<{ id: string }> },
+  hotel: { id: string; name: string; city: string; category: string; contracts?: Array<{ id: string; confidence?: string | null }> },
   destination: string,
 ): SuggestedHotel {
   const hasActiveContract = Array.isArray(hotel.contracts) && hotel.contracts.length > 0;
+  // Hotel Contract Trustworthiness v2 — VERIFIED contracts surface the
+  // "Operationally trusted" label + win sort tie-breaks against
+  // unverified hotels in the Guided picker. We only mark trusted when
+  // an ACTIVE contract is VERIFIED (an expired verified contract
+  // shouldn't promote the hotel).
+  const hasVerifiedContract =
+    Array.isArray(hotel.contracts) && hotel.contracts.some((c) => c.confidence === 'VERIFIED');
+  const notes = deriveQuickNotes(hotel);
+  if (hasVerifiedContract) {
+    notes.unshift('Operationally trusted');
+  }
   return {
     id: hotel.id,
     name: hotel.name,
@@ -1170,12 +1194,13 @@ export function enrichHotelForSuggestion(
     category: hotel.category,
     tier: deriveCommercialTier(hotel.category),
     hasActiveContract,
+    hasVerifiedContract,
     recommendedMealPlan: recommendMealPlanForDestination(destination),
     operationalConfidence: deriveOperationalConfidence({
       name: hotel.name,
       hasActiveContract,
     }),
-    notes: deriveQuickNotes(hotel),
+    notes,
   };
 }
 

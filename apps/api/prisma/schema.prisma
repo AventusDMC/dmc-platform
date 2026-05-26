@@ -498,8 +498,17 @@ model HotelContract {
   childPolicyAuditLogs        HotelContractChildPolicyAuditLog[]
   quoteItems                  QuoteItem[]
   packageComponents           PackageTemplateComponent[]
+  // Hotel Contract Stabilization & Trustworthiness v2 — operator-driven
+  // confidence rating. IMPORTED_UNVERIFIED is the default state for
+  // newly-imported PDFs; operators move contracts up through the rest
+  // of the flow as they verify rooms / supplements / seasons.
+  confidence                  HotelContractConfidence             @default(IMPORTED_UNVERIFIED)
+  lastVerifiedAt              DateTime?
+  verifiedBy                  String?
+  verificationNotes           String?
 
   @@index([hotelId])
+  @@index([confidence])
   @@map("hotel_contracts")
 }
 
@@ -2970,6 +2979,33 @@ enum HotelOccupancyType {
   SGL
   DBL
   TPL
+}
+
+// Hotel Contract Stabilization & Trustworthiness v2 — operator-driven
+// confidence rating. Drives the Contract Health Dashboard, Correction
+// Queue prioritization, and the Guided Hotel Suggestions ranking boost.
+//
+//   IMPORTED_UNVERIFIED       — default for freshly-imported PDFs.
+//   NEEDS_REVIEW              — operator flagged something but didn't
+//                               finish triage. Sits in the queue.
+//   PRICING_INCOMPLETE        — rates rows missing for some occupancy /
+//                               meal-plan combos that the operator
+//                               expects to exist.
+//   SUPPLEMENT_REVIEW_REQUIRED — supplement conflicts detected (duplicate
+//                               HB supplements, HB-included + HB supplement
+//                               combo, missing pricing basis).
+//   SEASON_CONFLICT           — overlapping / gap / duplicate seasons.
+//   VERIFIED                  — operator has confirmed the contract is
+//                               trustworthy. Ranks higher in Guided
+//                               Hotel Suggestions; shows "Operationally
+//                               trusted" badge in quote workspace.
+enum HotelContractConfidence {
+  IMPORTED_UNVERIFIED
+  NEEDS_REVIEW
+  PRICING_INCOMPLETE
+  SUPPLEMENT_REVIEW_REQUIRED
+  SEASON_CONFLICT
+  VERIFIED
 }
 
 enum HotelRatePricingMode {

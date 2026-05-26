@@ -131,6 +131,58 @@ test('deriveQuickNotes: Dead Sea resort chains flag beach access', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Verified contract boost (Hotel Contract Trustworthiness v2)
+// ---------------------------------------------------------------------------
+test('enrichHotelForSuggestion: VERIFIED contract surfaces "Operationally trusted" note + hasVerifiedContract', () => {
+  const enriched = enrichHotelForSuggestion(
+    {
+      id: 'h-verified',
+      name: 'Movenpick Petra',
+      city: 'Petra',
+      category: '5*',
+      contracts: [{ id: 'c-1', confidence: 'VERIFIED' }],
+    },
+    'Petra',
+  );
+  assert.equal(enriched.hasVerifiedContract, true);
+  assert.equal(enriched.notes[0], 'Operationally trusted');
+});
+
+test('enrichHotelForSuggestion: unverified contract does NOT promote hasVerifiedContract', () => {
+  const enriched = enrichHotelForSuggestion(
+    {
+      id: 'h-unverified',
+      name: 'Movenpick Petra',
+      city: 'Petra',
+      category: '5*',
+      contracts: [{ id: 'c-1', confidence: 'IMPORTED_UNVERIFIED' }],
+    },
+    'Petra',
+  );
+  assert.equal(enriched.hasVerifiedContract, false);
+  assert.ok(!enriched.notes.includes('Operationally trusted'));
+});
+
+test('getHotelSuggestionsForJourney: VERIFIED contracts win sort tie-breaks within the same tier', async () => {
+  const prisma = buildFakePrisma({
+    hotels: [
+      // Both have active contracts; only h-verified is VERIFIED. The
+      // verified one should sort first regardless of alphabetical order.
+      { id: 'h-zzz', name: 'ZZZ Hotel', city: 'Petra', category: '5*', contracts: [{ id: 'c1', confidence: 'VERIFIED' }] },
+      { id: 'h-aaa', name: 'AAA Hotel', city: 'Petra', category: '5*', contracts: [{ id: 'c2', confidence: 'IMPORTED_UNVERIFIED' }] },
+    ],
+    operationalAreas: [],
+  });
+  const service = new QuotesGuidedService(prisma as any);
+  const response = await service.getHotelSuggestionsForJourney({ destinations: ['Petra'] });
+  const luxuryTier = response.suggestions[0].tiers.Luxury;
+  assert.equal(luxuryTier[0].name, 'ZZZ Hotel');
+  assert.equal(luxuryTier[0].hasVerifiedContract, true);
+  assert.equal(luxuryTier[1].name, 'AAA Hotel');
+  assert.equal(luxuryTier[1].hasVerifiedContract, false);
+});
+
+// ---------------------------------------------------------------------------
 // enrichHotelForSuggestion — composes all helpers
 // ---------------------------------------------------------------------------
 test('enrichHotelForSuggestion: full Petra hotel example', () => {
