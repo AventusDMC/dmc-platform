@@ -174,6 +174,38 @@ export function getAreaByCode(code: string | null | undefined): OperationalArea 
   return OPERATIONAL_AREAS.find((a) => a.code === normalized) || null;
 }
 
+/**
+ * Best-match operational area for a given city name. When multiple areas
+ * share a city (e.g. Amman → Amman City + QAIA + nothing else), prefer
+ * the CITY type, then ATTRACTION, then BORDER, then AIRPORT. Used by the
+ * Route Standard edit page to preselect the From/To dropdowns from the
+ * row's existing fromCity / toCity values.
+ *
+ * Returns null when no area anchors to the given city.
+ */
+const PREFERRED_TYPE_ORDER: OperationalAreaType[] = ['CITY', 'ATTRACTION', 'BORDER', 'AIRPORT'];
+export function findAreaByCity(
+  city: string | null | undefined,
+  options: { preferType?: OperationalAreaType } = {},
+): OperationalArea | null {
+  if (!city) return null;
+  const normalized = String(city).trim().toLowerCase();
+  if (!normalized) return null;
+  const matches = OPERATIONAL_AREAS.filter((a) => a.city.toLowerCase() === normalized);
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  // Preference order: caller's preferType wins, then PREFERRED_TYPE_ORDER.
+  const types: OperationalAreaType[] = options.preferType
+    ? [options.preferType, ...PREFERRED_TYPE_ORDER.filter((t) => t !== options.preferType)]
+    : PREFERRED_TYPE_ORDER;
+  for (const type of types) {
+    const found = matches.find((a) => a.type === type);
+    if (found) return found;
+  }
+  // Fall back to first match (should not be reached given the type list above).
+  return matches[0];
+}
+
 /** Convenience — merge default flags from both endpoints. Operator can
  *  override in the form; this just provides smart defaults. */
 export function mergeDefaultFlags(
