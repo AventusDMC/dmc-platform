@@ -121,6 +121,12 @@ import { RouteStandardsController } from './route-standards/route-standards.cont
 import { RouteStandardsService } from './route-standards/route-standards.service';
 import { OperationalAreasController } from './operational-areas/operational-areas.controller';
 import { OperationalAreasService } from './operational-areas/operational-areas.service';
+import {
+  TouringRouteLegsByRouteController,
+  TouringRouteLegsController,
+  TouringRouteLegsSummaryController,
+} from './touring-route-legs/touring-route-legs.controller';
+import { TouringRouteLegsService } from './touring-route-legs/touring-route-legs.service';
 import { ServiceTypesController } from './service-types/service-types.controller';
 import { ServiceTypesService } from './service-types/service-types.service';
 import { SupportTextTemplatesController } from './support-text-templates/support-text-templates.controller';
@@ -198,6 +204,9 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RoutesController,
     RouteStandardsController,
     OperationalAreasController,
+    TouringRouteLegsByRouteController,
+    TouringRouteLegsSummaryController,
+    TouringRouteLegsController,
     SeasonsController,
     ItinerariesController,
     ServicesController,
@@ -276,6 +285,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RoutesService,
     RouteStandardsService,
     OperationalAreasService,
+    TouringRouteLegsService,
     SeasonsService,
     ItinerariesService,
     ServicesService,
