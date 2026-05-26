@@ -90,9 +90,58 @@ type RoomCategoryFormProps = {
     description: string;
     isActive: boolean;
   };
+  // ROOM_CATEGORY_FORM_SAFE=1 — when true the form renders plain
+  // uncontrolled HTML inputs (defaultValue, FormData on submit). No
+  // useState for field values, no per-keystroke React re-renders.
+  // Used to confirm the freeze lives in the controlled-input churn
+  // (vs the rest of the form lifecycle).
+  formSafeMode?: boolean;
 };
 
-function RoomCategoryForm({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel, initialValues }: RoomCategoryFormProps) {
+function RoomCategoryForm({
+  apiBaseUrl,
+  hotels,
+  hotelId,
+  categoryId,
+  submitLabel,
+  initialValues,
+  formSafeMode = false,
+}: RoomCategoryFormProps) {
+  // Diagnostic instrumentation — counts every render, hashes the
+  // defaultValues object so churn from a freshly-allocated parent
+  // prop shows up in the perf overlay.
+  useRenderCounter('RoomCategoryForm');
+  // Tighter limit than the manager wrappers — the form is a leaf and
+  // shouldn't render more than a few dozen times per interaction. If
+  // it crosses 50 renders in 2 seconds we're in a loop.
+  useHardRenderGuard('RoomCategoryForm', { limit: 50, windowMs: 2000 });
+
+  if (formSafeMode) {
+    return (
+      <RoomCategoryFormSafe
+        apiBaseUrl={apiBaseUrl}
+        hotels={hotels}
+        hotelId={hotelId}
+        categoryId={categoryId}
+        submitLabel={submitLabel}
+        initialValues={initialValues}
+      />
+    );
+  }
+
+  return (
+    <RoomCategoryFormControlled
+      apiBaseUrl={apiBaseUrl}
+      hotels={hotels}
+      hotelId={hotelId}
+      categoryId={categoryId}
+      submitLabel={submitLabel}
+      initialValues={initialValues}
+    />
+  );
+}
+
+function RoomCategoryFormControlled({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel, initialValues }: RoomCategoryFormProps) {
   const router = useRouter();
   const [selectedHotelId, setSelectedHotelId] = useState(initialValues?.hotelId || hotelId || hotels[0]?.id || '');
   const [name, setName] = useState(initialValues?.name || '');
@@ -192,6 +241,119 @@ function RoomCategoryForm({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel
   );
 }
 
+// ROOM_CATEGORY_FORM_SAFE — uncontrolled-input variant for the
+// freeze hunt. Every field uses `defaultValue` and `name=` instead of
+// `value` + `onChange`. Submit reads via `new FormData(event.target)`,
+// not via per-field React state. The only state on the component is
+// `isSubmitting` + `error` — flipped only inside the submit handler,
+// never on render. If THIS variant still freezes, the loop is
+// somewhere upstream (the manager, the section, the router); if it
+// renders cleanly, the freeze is in the controlled-input churn.
+function RoomCategoryFormSafe({
+  apiBaseUrl,
+  hotels,
+  hotelId,
+  categoryId,
+  submitLabel,
+  initialValues,
+}: RoomCategoryFormProps) {
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const isEditing = Boolean(categoryId);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError('');
+    const formData = new FormData(event.currentTarget);
+    const formHotelId = hotelId || (formData.get('hotelId') as string) || '';
+    const formName = (formData.get('name') as string) || '';
+    const formCode = (formData.get('code') as string) || '';
+    const formDescription = (formData.get('description') as string) || '';
+    const formIsActive = formData.get('isActive') === 'active';
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/hotels/${formHotelId}/room-categories${categoryId ? `/${categoryId}` : ''}`,
+        {
+          method: categoryId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formName,
+            code: formCode || undefined,
+            description: formDescription || undefined,
+            isActive: formIsActive,
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'create'} hotel room category.`),
+        );
+      }
+      if (!isEditing) {
+        event.currentTarget.reset();
+      }
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : `Could not ${isEditing ? 'update' : 'create'} hotel room category.`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      className="entity-form compact-form"
+      onSubmit={handleSubmit}
+      data-testid="room-category-form-safe"
+      data-form-mode="safe"
+    >
+      <p className="table-subcopy">
+        Form safe mode — uncontrolled inputs only. No React state per keystroke. If this renders
+        cleanly, the freeze is in the controlled-input variant.
+      </p>
+      <div className="form-row form-row-4">
+        {!hotelId ? (
+          <label>
+            Hotel
+            <select name="hotelId" defaultValue={initialValues?.hotelId || hotels[0]?.id || ''} required>
+              {hotels.map((hotel) => (
+                <option key={hotel.id} value={hotel.id}>
+                  {hotel.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label>
+          Name
+          <input name="name" defaultValue={initialValues?.name || ''} placeholder="Standard" required />
+        </label>
+        <label>
+          Code
+          <input name="code" defaultValue={initialValues?.code || ''} placeholder="STD" />
+        </label>
+        <label>
+          Description
+          <input name="description" defaultValue={initialValues?.description || ''} placeholder="Optional" />
+        </label>
+        <label>
+          Status
+          <select name="isActive" defaultValue={(initialValues?.isActive ?? true) ? 'active' : 'inactive'}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save category' : 'Add category')}
+      </button>
+      {error ? <p className="form-error">{error}</p> : null}
+    </form>
+  );
+}
+
 // Binary isolation modes — RoomCategoriesSection passes the active
 // mode in via prop. Each mode selectively enables a layer of the
 // manager so we can binary-search the runaway-render culprit:
@@ -208,11 +370,13 @@ export function RoomCategoriesManager({
   hotels,
   initialSummary,
   isolationMode = 'full',
+  formSafeMode = false,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
   isolationMode?: RoomCategoriesIsolationMode;
+  formSafeMode?: boolean;
 }) {
   // Diagnostic counters fire only when `?debugPerf=1` toggles the
   // overlay panel. Without the flag these are no-ops.
@@ -228,6 +392,7 @@ export function RoomCategoriesManager({
         hotels={hotels}
         initialSummary={initialSummary}
         isolationMode={isolationMode}
+        formSafeMode={formSafeMode}
       />
     </RoomCategoriesErrorBoundary>
   );
@@ -238,11 +403,13 @@ function RoomCategoriesManagerInner({
   hotels,
   initialSummary,
   isolationMode,
+  formSafeMode,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
   isolationMode: RoomCategoriesIsolationMode;
+  formSafeMode: boolean;
 }) {
   useRenderCounter('RoomCategoriesManagerInner');
   useHardRenderGuard('RoomCategoriesManagerInner');
@@ -396,7 +563,12 @@ function RoomCategoriesManagerInner({
   return (
     <div className="entity-list" data-isolation-mode={isolationMode}>
       {enableForm ? (
-        <RoomCategoryForm apiBaseUrl={apiBaseUrl} hotels={hotels} submitLabel="Add room category" />
+        <RoomCategoryForm
+          apiBaseUrl={apiBaseUrl}
+          hotels={hotels}
+          submitLabel="Add room category"
+          formSafeMode={formSafeMode}
+        />
       ) : (
         <p className="table-subcopy">
           Form disabled by isolation mode <code>{isolationMode}</code>. Switch to <code>form</code> or higher to enable.
@@ -508,6 +680,7 @@ function RoomCategoriesManagerInner({
                               hotelId={category.hotelId}
                               categoryId={category.id}
                               submitLabel="Save category"
+                              formSafeMode={formSafeMode}
                               initialValues={{
                                 hotelId: category.hotelId,
                                 name: category.name,
