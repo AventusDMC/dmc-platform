@@ -92,6 +92,10 @@ export default async function RouteStandardEditPage({ params }: { params: Promis
           currentCanonicalRouteCode={standard.canonicalRouteCode}
           currentFromCity={standard.fromCity}
           currentToCity={standard.toCity}
+          currentStandardDistanceKm={standard.standardDistanceKm}
+          currentStandardDurationHours={standard.standardDurationHours}
+          currentOperationalBufferMinutes={standard.operationalBufferMinutes}
+          currentNotes={standard.notes}
         />
         <RouteStandardEditor standard={standard} />
       </div>
