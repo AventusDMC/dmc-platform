@@ -363,7 +363,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
 
       <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Notes &amp; status</h3>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Operational notes</span>
           <textarea
             rows={3}
@@ -371,16 +371,37 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             onChange={(e) => setState((s) => ({ ...s, notes: e.target.value }))}
             placeholder="e.g., Construction zone between km 60-80. Restroom stop suggested at Mujib viewpoint."
           />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem' }}>
+        </div>
+        <div
+          onClick={() => setState((s) => ({ ...s, isActive: !s.isActive }))}
+          role="checkbox"
+          aria-checked={state.isActive}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              e.preventDefault();
+              setState((s) => ({ ...s, isActive: !s.isActive }));
+            }
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginTop: '0.7rem',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
           <input
             type="checkbox"
             checked={state.isActive}
             onChange={(e) => setState((s) => ({ ...s, isActive: e.target.checked }))}
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 18, height: 18, flexShrink: 0 }}
           />
-          <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>Active</span>
+          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#101828' }}>Active</span>
           <span style={{ fontSize: '0.78rem', color: '#667085' }}>(unchecked = retained for history but excluded from lookups)</span>
-        </label>
+        </div>
       </section>
 
       {error ? <p className="form-error">{error}</p> : null}
