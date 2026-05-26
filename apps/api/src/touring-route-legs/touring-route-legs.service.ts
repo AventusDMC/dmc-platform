@@ -335,4 +335,329 @@ export class TouringRouteLegsService {
       flow: flowAreaNames.join(' → '),
     };
   }
+
+  // -------------------------------------------------------------------------
+  // Auto-Leg Builder from Stops v1
+  //
+  // Touring Routes already have ordered TouringRouteStops; this builder
+  // converts those stops into Route Legs without manual entry.
+  //
+  // Pipeline (preview + apply share it):
+  //   1. Load ordered stops for the touring route
+  //   2. Match each stop to an OperationalArea via:
+  //        location.name (exact, case-insensitive) →
+  //        city.name (exact, case-insensitive) →
+  //        OperationalArea.city (anchor) with PREFERRED_TYPE_ORDER
+  //   3. Generate consecutive DRIVE legs (Stop N → Stop N+1), skipping
+  //      pairs where both stops resolve to the same area
+  //   4. For each generated leg: try to resolve the RouteStandard by
+  //      canonical FROM_TO code (existing lookup behaviour)
+  //   5. Compare against existing legs — match by (fromAreaId, toAreaId)
+  //      regardless of sequence:
+  //        - if a matching leg exists → mark as "reused"
+  //        - else → mark as "new"
+  //   6. Preview returns the full plan without writing.
+  //      Apply writes the "new" legs in sequence; replaceExisting=true
+  //      deletes ALL existing legs first.
+  //
+  // TouringRoutePricing is NOT consulted anywhere in this path — pricing
+  // remains the commercial authority and is untouched by leg generation.
+  // -------------------------------------------------------------------------
+
+  async generateLegsFromStops(input: {
+    touringRouteId: string;
+    mode?: 'preview' | 'apply';
+    replaceExisting?: boolean;
+  }) {
+    const touringRouteId = requireString(input.touringRouteId, 'touringRouteId');
+    const mode = input.mode || 'preview';
+
+    // Load everything in parallel.
+    const [stops, existingLegs, areas] = await Promise.all([
+      (this.prisma as any).touringRouteStop.findMany({
+        where: { touringRouteId },
+        orderBy: { order: 'asc' },
+      }),
+      (this.prisma as any).touringRouteLeg.findMany({
+        where: { touringRouteId },
+        orderBy: { sequence: 'asc' },
+      }),
+      (this.prisma as any).operationalArea.findMany({
+        where: { isActive: true },
+      }),
+    ]);
+
+    if (!stops || stops.length === 0) {
+      return {
+        mode,
+        stops: [],
+        legs: [],
+        message: 'No stops on this touring route — add stops first, then re-run the auto-builder.',
+        applied: false,
+        createdCount: 0,
+        reusedCount: 0,
+        replacedCount: 0,
+      };
+    }
+
+    // Resolve each stop to an OperationalArea.
+    const resolvedStops = (stops as any[]).map((stop) => ({
+      stopId: stop.id,
+      order: stop.order,
+      city: stop.city,
+      location: stop.location || null,
+      matchedArea: matchStopToArea(stop, areas as any[]),
+    }));
+
+    // Pair up consecutive stops into DRIVE legs.
+    type GeneratedLeg = {
+      sequence: number;
+      fromStopId: string;
+      toStopId: string;
+      fromArea: any | null;
+      toArea: any | null;
+      suggestedCode: string | null;
+      routeStandardId: string | null;
+      routeStandard: any | null;
+      status: 'new' | 'reused' | 'skipped_same_area' | 'skipped_unmatched_area';
+      reusedLegId: string | null;
+    };
+    const generated: GeneratedLeg[] = [];
+    let sequence = 1;
+    for (let i = 0; i < resolvedStops.length - 1; i++) {
+      const fromStop = resolvedStops[i];
+      const toStop = resolvedStops[i + 1];
+
+      // Skip pairs we can't model.
+      if (!fromStop.matchedArea || !toStop.matchedArea) {
+        generated.push({
+          sequence,
+          fromStopId: fromStop.stopId,
+          toStopId: toStop.stopId,
+          fromArea: fromStop.matchedArea,
+          toArea: toStop.matchedArea,
+          suggestedCode: null,
+          routeStandardId: null,
+          routeStandard: null,
+          status: 'skipped_unmatched_area',
+          reusedLegId: null,
+        });
+        sequence += 1;
+        continue;
+      }
+      if (fromStop.matchedArea.code === toStop.matchedArea.code) {
+        generated.push({
+          sequence,
+          fromStopId: fromStop.stopId,
+          toStopId: toStop.stopId,
+          fromArea: fromStop.matchedArea,
+          toArea: toStop.matchedArea,
+          suggestedCode: null,
+          routeStandardId: null,
+          routeStandard: null,
+          status: 'skipped_same_area',
+          reusedLegId: null,
+        });
+        sequence += 1;
+        continue;
+      }
+
+      // Both areas confirmed non-null + distinct. Lift them into locals
+      // so TypeScript can narrow the closure used by the `find` below.
+      const fromArea = fromStop.matchedArea;
+      const toArea = toStop.matchedArea;
+      const suggestedCode = `${fromArea.code}_${toArea.code}`;
+
+      // Look up the RouteStandard by canonical FROM_TO.
+      const standard = await (this.prisma as any).routeStandard.findFirst({
+        where: {
+          OR: [{ canonicalRouteCode: suggestedCode }, { routeCode: suggestedCode }],
+          isActive: true,
+        },
+      });
+
+      // Duplicate detection against existing legs — match by area pair
+      // regardless of sequence. This is what makes re-running the
+      // generator after a manual edit idempotent.
+      const matchingExisting = (existingLegs as any[]).find(
+        (l) =>
+          l.fromAreaId === fromArea.id &&
+          l.toAreaId === toArea.id &&
+          l.legType === 'DRIVE',
+      );
+
+      generated.push({
+        sequence,
+        fromStopId: fromStop.stopId,
+        toStopId: toStop.stopId,
+        fromArea,
+        toArea,
+        suggestedCode,
+        routeStandardId: standard?.id || null,
+        routeStandard: standard || null,
+        status: matchingExisting ? 'reused' : 'new',
+        reusedLegId: matchingExisting?.id || null,
+      });
+      sequence += 1;
+    }
+
+    // Counts for the response banner.
+    const newCount = generated.filter((g) => g.status === 'new').length;
+    const reusedCount = generated.filter((g) => g.status === 'reused').length;
+    const skippedSameArea = generated.filter((g) => g.status === 'skipped_same_area').length;
+    const skippedUnmatched = generated.filter((g) => g.status === 'skipped_unmatched_area').length;
+    const missingStandardCount = generated.filter((g) => g.status === 'new' && !g.routeStandardId).length;
+
+    // Preview mode — never writes.
+    if (mode !== 'apply') {
+      return {
+        mode: 'preview' as const,
+        stops: resolvedStops,
+        legs: generated,
+        existingLegCount: (existingLegs as any[]).length,
+        newCount,
+        reusedCount,
+        skippedSameArea,
+        skippedUnmatched,
+        missingStandardCount,
+        replaceExistingProposed: Boolean(input.replaceExisting),
+        applied: false,
+        createdCount: 0,
+        replacedCount: 0,
+        message:
+          newCount === 0
+            ? 'No new legs to create — all matched stop pairs already have legs.'
+            : `Would create ${newCount} new leg${newCount === 1 ? '' : 's'}${
+                reusedCount > 0 ? `, reuse ${reusedCount}` : ''
+              }${
+                skippedUnmatched > 0
+                  ? `, skip ${skippedUnmatched} stop pair${skippedUnmatched === 1 ? '' : 's'} with unmatched areas`
+                  : ''
+              }.`,
+      };
+    }
+
+    // Apply mode — write legs in a transaction so partial failures
+    // don't leave the touring route half-built.
+    return (this.prisma as any).$transaction(async (tx: any) => {
+      let replacedCount = 0;
+      if (input.replaceExisting) {
+        const deleted = await tx.touringRouteLeg.deleteMany({ where: { touringRouteId } });
+        replacedCount = deleted.count || 0;
+      }
+      const liveLegs = input.replaceExisting
+        ? []
+        : await tx.touringRouteLeg.findMany({
+            where: { touringRouteId },
+            orderBy: { sequence: 'desc' },
+            select: { sequence: true },
+          });
+      let nextSequence = (liveLegs[0]?.sequence ?? 0) + 1;
+      let createdCount = 0;
+      const createdLegs: any[] = [];
+      for (const leg of generated) {
+        // Re-evaluate reuse status after potential replace.
+        const isReuseCandidate = !input.replaceExisting && leg.status === 'reused';
+        if (isReuseCandidate) continue;
+        if (leg.status === 'skipped_same_area' || leg.status === 'skipped_unmatched_area') continue;
+        // Replace-mode: every matched-area pair becomes a fresh leg.
+        if (input.replaceExisting && !leg.fromArea) continue;
+
+        const created = await tx.touringRouteLeg.create({
+          data: {
+            touringRouteId,
+            sequence: nextSequence,
+            legType: 'DRIVE',
+            fromAreaId: leg.fromArea?.id || null,
+            toAreaId: leg.toArea?.id || null,
+            routeStandardId: leg.routeStandardId,
+          },
+        });
+        createdLegs.push(created);
+        nextSequence += 1;
+        createdCount += 1;
+      }
+      return {
+        mode: 'apply' as const,
+        applied: true,
+        stops: resolvedStops,
+        legs: generated,
+        existingLegCount: (existingLegs as any[]).length,
+        newCount,
+        reusedCount,
+        skippedSameArea,
+        skippedUnmatched,
+        missingStandardCount,
+        createdCount,
+        replacedCount,
+        createdLegIds: createdLegs.map((l) => l.id),
+        message:
+          replacedCount > 0
+            ? `Replaced ${replacedCount} prior leg${replacedCount === 1 ? '' : 's'} and created ${createdCount} new from stops.`
+            : `Created ${createdCount} new leg${createdCount === 1 ? '' : 's'} from stops${
+                reusedCount > 0 ? ` (${reusedCount} already existed)` : ''
+              }.`,
+      };
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stop → OperationalArea matching helper. Exported for tests.
+//
+// Priority order (first hit wins):
+//   1. stop.location exactly matches an OperationalArea.name (case-insensitive)
+//   2. stop.city exactly matches an OperationalArea.name (case-insensitive)
+//   3. stop.city matches an OperationalArea.city — pick best via
+//      PREFERRED_TYPE_ORDER (CITY > TOURISM_SITE > RESORT_AREA > CAMP_AREA
+//      > BORDER > HOTEL_ZONE > PORT > AIRPORT)
+//
+// Returns null when no reasonable match exists — the UI surfaces this
+// as "couldn't match" so the operator can add the area manually.
+// ---------------------------------------------------------------------------
+const PREFERRED_TYPE_ORDER_FOR_MATCH = [
+  'CITY',
+  'TOURISM_SITE',
+  'RESORT_AREA',
+  'CAMP_AREA',
+  'BORDER',
+  'HOTEL_ZONE',
+  'PORT',
+  'AIRPORT',
+];
+
+export function matchStopToArea(
+  stop: { city: string; location: string | null | undefined },
+  areas: Array<{ id: string; code: string; name: string; type: string; city: string }>,
+): { id: string; code: string; name: string; type: string; city: string } | null {
+  const norm = (v: string | null | undefined) => String(v || '').trim().toLowerCase();
+  const locationNorm = norm(stop.location);
+  const cityNorm = norm(stop.city);
+  if (!cityNorm && !locationNorm) return null;
+
+  // Step 1: exact-match against location.
+  if (locationNorm) {
+    const byLocation = areas.find((a) => norm(a.name) === locationNorm);
+    if (byLocation) return byLocation;
+  }
+  // Step 2: exact-match against city (matches single-token names like
+  // "Petra" → Petra Visitor Center isn't an exact name match but
+  // "Madaba" → Madaba IS).
+  if (cityNorm) {
+    const byCityName = areas.find((a) => norm(a.name) === cityNorm);
+    if (byCityName) return byCityName;
+  }
+  // Step 3: match by area.city anchor with preferred-type ordering.
+  if (cityNorm) {
+    const candidates = areas.filter((a) => norm(a.city) === cityNorm);
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      for (const type of PREFERRED_TYPE_ORDER_FOR_MATCH) {
+        const hit = candidates.find((a) => a.type === type);
+        if (hit) return hit;
+      }
+      return candidates[0];
+    }
+  }
+  return null;
 }

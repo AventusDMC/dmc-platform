@@ -35,6 +35,25 @@ export class TouringRouteLegsByRouteController {
   ) {
     return this.service.reorder(touringRouteId, body?.orderedIds || []);
   }
+
+  /**
+   * Auto-Leg Builder from Stops v1. Generates ordered DRIVE legs from
+   * the touring route's existing TouringRouteStops. Preview returns the
+   * full plan without writing; apply writes the new legs (replaceExisting
+   * wipes prior legs first).
+   */
+  @Post('generate-from-stops')
+  @Roles('admin', 'operations')
+  generateFromStops(
+    @Param('touringRouteId') touringRouteId: string,
+    @Body() body: { mode?: 'preview' | 'apply'; replaceExisting?: boolean },
+  ) {
+    return this.service.generateLegsFromStops({
+      touringRouteId,
+      mode: body?.mode,
+      replaceExisting: body?.replaceExisting,
+    });
+  }
 }
 
 @Controller('touring-routes/:touringRouteId')
