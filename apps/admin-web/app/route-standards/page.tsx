@@ -6,6 +6,7 @@ import { RouteStandardImportPanel } from './RouteStandardImportPanel';
 import { RouteStandardRefinementPanel } from './RouteStandardRefinementPanel';
 import { RouteStandardRefinementAssistantPanel } from './RouteStandardRefinementAssistantPanel';
 import { RouteStandardBuilderPanel } from './RouteStandardBuilderPanel';
+import { RouteStandardCleanupAssistantPanel } from './RouteStandardCleanupAssistantPanel';
 import { computeTimingConfidenceLabel } from './route-standard-display';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,8 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
       <RouteStandardRefinementPanel />
 
       <RouteStandardRefinementAssistantPanel />
+
+      <RouteStandardCleanupAssistantPanel />
 
       <RouteStandardImportPanel />
 
