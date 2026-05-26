@@ -54,6 +54,11 @@ type HotelsPageProps = {
     // Step up through table → form → expand → full to identify
     // which layer trips the runaway render.
     cats?: string;
+    // ROOM_CATEGORY_FORM_SAFE — render uncontrolled HTML inputs in
+    // the create form instead of the controlled-state variant. Used
+    // to split the freeze hunt between "form mounts" and "controlled
+    // input churn".
+    formSafe?: string;
   }>;
 };
 
@@ -179,11 +184,15 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
     }
 
     if (activeTab === 'room-categories') {
-      // Room Categories binary-isolation hunt — propagate ?cats= into
-      // the section so each layer (minimal / table / form / expand /
-      // full) renders independently. Default mode is `minimal` —
-      // operators step up via the ladder UI rendered by the section.
-      return await RoomCategoriesSection({ catsMode: params?.cats });
+      // Room Categories binary-isolation hunt — propagate ?cats= and
+      // ?formSafe= into the section. The section walks operators
+      // through table → form → expand → full to identify which layer
+      // trips the runaway. formSafe toggles between controlled and
+      // uncontrolled form variants.
+      return await RoomCategoriesSection({
+        catsMode: params?.cats,
+        formSafeMode: params?.formSafe === '1',
+      });
     }
     if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });
     if (activeTab === 'allotments') return await HotelAllotmentsSection({ contractId: params?.contractId });

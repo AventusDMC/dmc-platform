@@ -78,9 +78,15 @@ function collectHotelOptions(summary: RoomCategorySummary[]) {
 type RoomCategoriesSectionProps = {
   hotelId?: string;
   catsMode?: string;
+  // ROOM_CATEGORY_FORM_SAFE — when `?formSafe=1` is in the URL, the
+  // RoomCategoryForm renders uncontrolled HTML inputs instead of the
+  // controlled-state variant. Lets us split "is the freeze in the
+  // form component as a whole" from "is the freeze in controlled-
+  // input churn specifically".
+  formSafeMode?: boolean;
 };
 
-export async function RoomCategoriesSection({ hotelId, catsMode }: RoomCategoriesSectionProps = {}) {
+export async function RoomCategoriesSection({ hotelId, catsMode, formSafeMode = false }: RoomCategoriesSectionProps = {}) {
   const isolationMode = resolveIsolationMode(catsMode);
   const summary = await getRoomCategoriesSummary(hotelId);
   const hotels = collectHotelOptions(summary);
@@ -96,7 +102,7 @@ export async function RoomCategoriesSection({ hotelId, catsMode }: RoomCategorie
         description="Binary isolation — minimal mode. Click an option below to enable the next layer."
         context={<p data-testid="room-categories-minimal-count">Loaded {summary.length} room categories.</p>}
       >
-        <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} />
+        <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} formSafeMode={formSafeMode} />
       </TableSectionShell>
     );
   }
@@ -113,12 +119,13 @@ export async function RoomCategoriesSection({ hotelId, catsMode }: RoomCategorie
         </p>
       }
     >
-      <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} />
+      <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} formSafeMode={formSafeMode} />
       <RoomCategoriesManager
         apiBaseUrl={API_BASE_URL}
         hotels={hotels}
         initialSummary={summary}
         isolationMode={isolationMode}
+        formSafeMode={formSafeMode}
       />
     </TableSectionShell>
   );
@@ -126,13 +133,15 @@ export async function RoomCategoriesSection({ hotelId, catsMode }: RoomCategorie
 
 // Server-rendered ladder that lets operators step through the
 // isolation modes without typing URLs. Each Link preserves the
-// load/tab params and only flips `cats`.
+// load/tab/formSafe params and only flips `cats`.
 function RoomCategoriesIsolationLadder({
   currentMode,
   hotelId,
+  formSafeMode,
 }: {
   currentMode: RoomCategoriesIsolationMode;
   hotelId: string | undefined;
+  formSafeMode: boolean;
 }) {
   const modes: Array<{ id: RoomCategoriesIsolationMode; label: string; helper: string }> = [
     { id: 'minimal', label: 'Minimal', helper: 'Static count only — zero client mounts' },
@@ -164,6 +173,7 @@ function RoomCategoriesIsolationLadder({
         params.set('tab', 'room-categories');
         params.set('load', '1');
         if (hotelId) params.set('hotelId', hotelId);
+        if (formSafeMode) params.set('formSafe', '1');
         params.set('cats', mode.id);
         const href = `/hotels?${params.toString()}`;
         const isCurrent = mode.id === currentMode;
@@ -189,6 +199,48 @@ function RoomCategoriesIsolationLadder({
           </a>
         );
       })}
+      {/* formSafe toggle — separate ladder row so operators can switch
+          to uncontrolled-input form variant without leaving the
+          current cats= mode. */}
+      <FormSafeToggleLink hotelId={hotelId} currentMode={currentMode} formSafeMode={formSafeMode} />
     </nav>
+  );
+}
+
+function FormSafeToggleLink({
+  hotelId,
+  currentMode,
+  formSafeMode,
+}: {
+  hotelId: string | undefined;
+  currentMode: RoomCategoriesIsolationMode;
+  formSafeMode: boolean;
+}) {
+  const params = new URLSearchParams();
+  params.set('tab', 'room-categories');
+  params.set('load', '1');
+  params.set('cats', currentMode);
+  if (hotelId) params.set('hotelId', hotelId);
+  if (!formSafeMode) params.set('formSafe', '1');
+  const href = `/hotels?${params.toString()}`;
+  return (
+    <a
+      href={href}
+      title={formSafeMode ? 'Restore controlled-input form' : 'Switch form to uncontrolled HTML inputs (no React state churn)'}
+      data-testid="room-categories-form-safe-toggle"
+      style={{
+        padding: '0.25rem 0.6rem',
+        fontSize: '0.78rem',
+        fontWeight: 600,
+        borderRadius: 999,
+        textDecoration: 'none',
+        background: formSafeMode ? '#dc2626' : '#fff',
+        color: formSafeMode ? '#fff' : '#dc2626',
+        border: `1px solid ${formSafeMode ? '#dc2626' : '#fecaca'}`,
+        marginLeft: 'auto',
+      }}
+    >
+      {formSafeMode ? 'Form: SAFE' : 'Form: SAFE off'}
+    </a>
   );
 }
