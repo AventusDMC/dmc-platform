@@ -220,11 +220,18 @@ export class OperationalAreasService {
    *
    * excludeId lets the EDIT form ignore the row it's editing when checking
    * for duplicates (otherwise it'd flag itself).
+   *
+   * When `manualCode` is provided (operator typed into the Code field
+   * directly OR adopted an alternative chip), duplicate detection
+   * validates THAT code instead of the auto-generated one. The auto-
+   * generated suggestion is still returned so the form can offer
+   * ↻ Use suggested.
    */
   async previewAreaCode(input: {
     name: string;
     type?: OperationalAreaType | string;
     excludeId?: string;
+    manualCode?: string;
   }) {
     const name = (input.name || '').trim();
     if (!name) {
@@ -232,25 +239,34 @@ export class OperationalAreasService {
         suggestedCode: '',
         alternatives: [] as string[],
         existingMatch: null,
+        similarMatch: null,
         confidence: 'empty' as const,
         reason: 'Name is empty.',
+        usingManualCode: false,
       };
     }
     const type = (input.type as OperationalAreaType) || undefined;
     const suggestedCode = suggestAreaCodeFromName(name, type);
-    if (!suggestedCode) {
+    const manualCode = input.manualCode ? normalizeAreaCode(input.manualCode) : '';
+    // The code we actually validate against the catalog is whichever the
+    // operator is about to save: their manual code wins, else the
+    // auto-generated one.
+    const codeToCheck = manualCode || suggestedCode;
+    if (!codeToCheck) {
       return {
         suggestedCode: '',
         alternatives: [] as string[],
         existingMatch: null,
+        similarMatch: null,
         confidence: 'empty' as const,
         reason: 'Could not derive a code from the name — type one manually.',
+        usingManualCode: false,
       };
     }
 
     // Hard duplicate: another row already has the exact code.
     const exactMatch = await (this.prisma as any).operationalArea.findUnique({
-      where: { code: suggestedCode },
+      where: { code: codeToCheck },
     });
     const conflictsWithSelf = exactMatch && exactMatch.id === input.excludeId;
     const conflictingMatch = exactMatch && !conflictsWithSelf ? exactMatch : null;
@@ -262,7 +278,10 @@ export class OperationalAreasService {
     // same.
     const similar = !conflictingMatch ? await this.findSimilarAreaByName(name, input.excludeId) : null;
 
-    const alternatives = conflictingMatch ? this.buildAlternativeCodes(suggestedCode, type) : [];
+    // Alternatives are seeded from whichever code we're checking
+    // (manual or generated) — so adopting an alternative chip swaps to
+    // a free alias.
+    const alternatives = conflictingMatch ? this.buildAlternativeCodes(codeToCheck, type) : [];
     const availableAlternatives: string[] = [];
     if (alternatives.length > 0) {
       const matches = await (this.prisma as any).operationalArea.findMany({
@@ -282,7 +301,15 @@ export class OperationalAreasService {
         : 'unique';
 
     return {
+      // suggestedCode = the auto-generated suggestion (drives the
+      // "↻ Use suggested" button + the auto-fill behaviour). Never
+      // changes based on manualCode.
       suggestedCode,
+      // The code we actually validated. When the operator manually
+      // typed AQS, this is AQS — the chip / alternatives / reason all
+      // describe AQS's situation, not AQJ's.
+      checkedCode: codeToCheck,
+      usingManualCode: Boolean(manualCode && manualCode !== suggestedCode),
       alternatives: availableAlternatives,
       existingMatch: conflictingMatch
         ? {
@@ -306,7 +333,7 @@ export class OperationalAreasService {
       confidence,
       reason:
         confidence === 'duplicate'
-          ? `Code ${suggestedCode} is already in use by ${conflictingMatch?.name} (${conflictingMatch?.code}). Pick an alternative or rename.`
+          ? `Code ${codeToCheck} is already in use by ${conflictingMatch?.name} (${conflictingMatch?.code}). Pick an alternative or rename.`
           : confidence === 'similar_exists'
             ? `A similarly-named area already exists: ${similar?.name} (${similar?.code}). Verify this isn't a duplicate operational identity before creating.`
             : 'Unique and safe.',
