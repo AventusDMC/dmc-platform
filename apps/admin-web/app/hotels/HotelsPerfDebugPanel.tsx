@@ -52,6 +52,55 @@ export function useRenderCounter(name: string) {
   }
 }
 
+// Hard render guard — fail loud when a component clearly enters a
+// runaway render. Distinguished from useRenderCounter: this one
+// THROWS so the React error boundary catches it and renders a
+// friendly fallback. Use a per-mount counter (refs, not module map)
+// because the goal here is to catch within a single render burst,
+// not over the lifetime of the SPA.
+const HARD_GUARD_COUNTERS = new Map<string, { count: number; mountedAt: number }>();
+const HARD_GUARD_LIMIT = 100;
+const HARD_GUARD_WINDOW_MS = 1_000;
+
+export function useHardRenderGuard(name: string, options: { limit?: number; windowMs?: number } = {}) {
+  if (typeof window === 'undefined') return;
+  const limit = options.limit ?? HARD_GUARD_LIMIT;
+  const windowMs = options.windowMs ?? HARD_GUARD_WINDOW_MS;
+  const existing = HARD_GUARD_COUNTERS.get(name);
+  const now = Date.now();
+  if (!existing || now - existing.mountedAt > windowMs) {
+    HARD_GUARD_COUNTERS.set(name, { count: 1, mountedAt: now });
+    return;
+  }
+  existing.count += 1;
+  if (existing.count > limit) {
+    // Reset before throw so a recovered boundary doesn't immediately
+    // throw again on the next mount.
+    HARD_GUARD_COUNTERS.delete(name);
+    throw new Error(`Runaway render detected in ${name} — ${existing.count} renders in ${now - existing.mountedAt}ms`);
+  }
+}
+
+// Test-only — reset hard-guard state between scenarios.
+export function __resetHardGuardCountersForTesting() {
+  HARD_GUARD_COUNTERS.clear();
+}
+
+// Measures the wall-clock cost of an arbitrary block. Logs a warning
+// when the block takes longer than `slowMs`. Used to time expensive
+// memo derivations inside RoomCategoriesManager during the isolation
+// hunt.
+export function measurePerf<T>(label: string, fn: () => T, slowMs = 16): T {
+  if (typeof performance === 'undefined') return fn();
+  const startedAt = performance.now();
+  const result = fn();
+  const durationMs = performance.now() - startedAt;
+  if (durationMs > slowMs) {
+    console.warn(`[hotels-perf] ${label} took ${durationMs.toFixed(1)}ms (slow threshold ${slowMs}ms)`);
+  }
+  return result;
+}
+
 export function HotelsPerfDebugPanel({ enabled }: { enabled: boolean }) {
   const [, forceUpdate] = useState(0);
   const originalFetchRef = useRef<typeof fetch | null>(null);

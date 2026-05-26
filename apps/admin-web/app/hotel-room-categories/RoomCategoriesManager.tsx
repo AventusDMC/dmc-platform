@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { RoomCategoriesErrorBoundary } from './RoomCategoriesErrorBoundary';
+import {
+  measurePerf,
+  useHardRenderGuard,
+  useRenderCounter,
+} from '../hotels/HotelsPerfDebugPanel';
 
 // Hotel Master Room Categories Manager.
 //
@@ -187,18 +192,43 @@ function RoomCategoryForm({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel
   );
 }
 
+// Binary isolation modes — RoomCategoriesSection passes the active
+// mode in via prop. Each mode selectively enables a layer of the
+// manager so we can binary-search the runaway-render culprit:
+//   minimal — Section returns early; manager never mounts.
+//   table   — Manager mounts but renders only the read-only table.
+//             No form, no expand, no delete buttons.
+//   form    — Adds the inline create form.
+//   expand  — Adds the per-row expand button + detail fetcher.
+//   full    — Everything (default behaviour before the hunt).
+type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full';
+
 export function RoomCategoriesManager({
   apiBaseUrl,
   hotels,
   initialSummary,
+  isolationMode = 'full',
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
+  isolationMode?: RoomCategoriesIsolationMode;
 }) {
+  // Diagnostic counters fire only when `?debugPerf=1` toggles the
+  // overlay panel. Without the flag these are no-ops.
+  useRenderCounter('RoomCategoriesManager');
+  // Hard guard — if this wrapper renders > 100 times in 1 second the
+  // error boundary surfaces a friendly message instead of locking
+  // the browser. Catches the runaway before the tab dies.
+  useHardRenderGuard('RoomCategoriesManager');
   return (
     <RoomCategoriesErrorBoundary>
-      <RoomCategoriesManagerInner apiBaseUrl={apiBaseUrl} hotels={hotels} initialSummary={initialSummary} />
+      <RoomCategoriesManagerInner
+        apiBaseUrl={apiBaseUrl}
+        hotels={hotels}
+        initialSummary={initialSummary}
+        isolationMode={isolationMode}
+      />
     </RoomCategoriesErrorBoundary>
   );
 }
@@ -207,11 +237,18 @@ function RoomCategoriesManagerInner({
   apiBaseUrl,
   hotels,
   initialSummary,
+  isolationMode,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
+  isolationMode: RoomCategoriesIsolationMode;
 }) {
+  useRenderCounter('RoomCategoriesManagerInner');
+  useHardRenderGuard('RoomCategoriesManagerInner');
+  const enableForm = isolationMode === 'form' || isolationMode === 'expand' || isolationMode === 'full';
+  const enableExpand = isolationMode === 'expand' || isolationMode === 'full';
+  const enableDelete = isolationMode === 'full';
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -221,13 +258,18 @@ function RoomCategoriesManagerInner({
     {},
   );
 
+  // Sort is wrapped in measurePerf so the dev console warns if this
+  // ever exceeds 16ms (one frame). If the freeze ever lands here, we
+  // see it in the console before the browser locks.
   const sortedRows = useMemo<RoomCategorySummary[]>(
     () =>
-      [...initialSummary].sort((left, right) => {
-        const hotelComparison = left.hotelName.localeCompare(right.hotelName);
-        if (hotelComparison !== 0) return hotelComparison;
-        return left.name.localeCompare(right.name);
-      }),
+      measurePerf('RoomCategoriesManager.sortedRows', () =>
+        [...initialSummary].sort((left, right) => {
+          const hotelComparison = left.hotelName.localeCompare(right.hotelName);
+          if (hotelComparison !== 0) return hotelComparison;
+          return left.name.localeCompare(right.name);
+        }),
+      ),
     [initialSummary],
   );
 
@@ -235,22 +277,48 @@ function RoomCategoriesManagerInner({
   // the threshold we surface a banner so operators know detail loads
   // on demand instead of upfront.
   const isLargeHotelSetup = useMemo(
-    () => sortedRows.some((row) => row.linkedRateCount > LARGE_HOTEL_LINKED_RATE_THRESHOLD),
+    () =>
+      measurePerf('RoomCategoriesManager.isLargeHotelSetup', () =>
+        sortedRows.some((row) => row.linkedRateCount > LARGE_HOTEL_LINKED_RATE_THRESHOLD),
+      ),
     [sortedRows],
   );
 
   const handleExpand = useCallback(
     async (categoryId: string) => {
-      if (expandedId === categoryId) {
-        setExpandedId(null);
-        return;
-      }
-      setExpandedId(categoryId);
+      // BUG-HUNT NOTE — previous version of this callback listed
+      // `details` AND `expandedId` in its deps, so EVERY setDetails
+      // call (loading + resolved + error) recreated the callback
+      // identity. Combined with the fact that the JSX creates a new
+      // arrow per row (`onClick={() => handleExpand(category.id)}`),
+      // every fetch tick caused the whole row list to recompute. Not
+      // an infinite loop on its own, but a strong candidate for
+      // render churn during expand.
+      //
+      // The fix: rely on the SETTER FORM of setDetails (current => ...)
+      // for the cache check too, so the callback no longer needs
+      // `details` in deps. The callback identity is now stable across
+      // the fetch lifecycle.
+      let cacheHit = false;
+      setDetails((current) => {
+        if (current[categoryId]?.data) {
+          cacheHit = true;
+          return current;
+        }
+        return current;
+      });
+      // Collapse-expand toggle uses the setter form too so expandedId
+      // doesn't have to be in deps.
+      let alreadyExpanded = false;
+      setExpandedId((current) => {
+        if (current === categoryId) {
+          alreadyExpanded = true;
+          return null;
+        }
+        return categoryId;
+      });
+      if (alreadyExpanded || cacheHit) return;
 
-      if (details[categoryId]?.data) {
-        // Cached.
-        return;
-      }
       setDetails((current) => ({
         ...current,
         [categoryId]: { loading: true, data: null, error: null },
@@ -283,7 +351,9 @@ function RoomCategoriesManagerInner({
         }));
       }
     },
-    [apiBaseUrl, expandedId, details],
+    // Deps stripped to just the URL — the setter-form lookups above
+    // mean expandedId and details no longer drive identity churn.
+    [apiBaseUrl],
   );
 
   async function handleDelete(category: RoomCategorySummary) {
@@ -324,8 +394,14 @@ function RoomCategoriesManagerInner({
   }
 
   return (
-    <div className="entity-list">
-      <RoomCategoryForm apiBaseUrl={apiBaseUrl} hotels={hotels} submitLabel="Add room category" />
+    <div className="entity-list" data-isolation-mode={isolationMode}>
+      {enableForm ? (
+        <RoomCategoryForm apiBaseUrl={apiBaseUrl} hotels={hotels} submitLabel="Add room category" />
+      ) : (
+        <p className="table-subcopy">
+          Form disabled by isolation mode <code>{isolationMode}</code>. Switch to <code>form</code> or higher to enable.
+        </p>
+      )}
 
       {error ? <p className="form-error">{error}</p> : null}
 
@@ -374,35 +450,41 @@ function RoomCategoriesManagerInner({
                       <td className="numeric-cell">{category.linkedQuoteItemCount}</td>
                       <td>
                         <div className="table-action-row">
-                          <button
-                            type="button"
-                            className="compact-button"
-                            onClick={() => handleExpand(category.id)}
-                            aria-expanded={isExpanded}
-                            aria-controls={`room-category-detail-${category.id}`}
-                          >
-                            {isExpanded ? 'Hide detail' : 'Detail'}
-                          </button>
-                          <button
-                            type="button"
-                            className="compact-button"
-                            onClick={() => setEditingId((current) => (current === category.id ? null : category.id))}
-                          >
-                            {isEditing ? 'Close edit' : 'Edit'}
-                          </button>
-                          <button
-                            type="button"
-                            className="compact-button compact-button-danger"
-                            onClick={() => handleDelete(category)}
-                            disabled={deletingId === category.id}
-                          >
-                            {deletingId === category.id ? 'Deleting...' : 'Delete'}
-                          </button>
+                          {enableExpand ? (
+                            <button
+                              type="button"
+                              className="compact-button"
+                              onClick={() => handleExpand(category.id)}
+                              aria-expanded={isExpanded}
+                              aria-controls={`room-category-detail-${category.id}`}
+                            >
+                              {isExpanded ? 'Hide detail' : 'Detail'}
+                            </button>
+                          ) : null}
+                          {enableForm ? (
+                            <button
+                              type="button"
+                              className="compact-button"
+                              onClick={() => setEditingId((current) => (current === category.id ? null : category.id))}
+                            >
+                              {isEditing ? 'Close edit' : 'Edit'}
+                            </button>
+                          ) : null}
+                          {enableDelete ? (
+                            <button
+                              type="button"
+                              className="compact-button compact-button-danger"
+                              onClick={() => handleDelete(category)}
+                              disabled={deletingId === category.id}
+                            >
+                              {deletingId === category.id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
 
-                    {isExpanded ? (
+                    {enableExpand && isExpanded ? (
                       <tr>
                         <td colSpan={7} id={`room-category-detail-${category.id}`}>
                           {!detail || detail.loading ? (
@@ -416,7 +498,7 @@ function RoomCategoriesManagerInner({
                       </tr>
                     ) : null}
 
-                    {isEditing ? (
+                    {enableForm && isEditing ? (
                       <tr>
                         <td colSpan={7}>
                           <div className="inline-entity-editor">

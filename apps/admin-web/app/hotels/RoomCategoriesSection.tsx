@@ -2,22 +2,55 @@ import { adminPageFetchJson } from '../lib/admin-server';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { RoomCategoriesManager, type RoomCategorySummary } from '../hotel-room-categories/RoomCategoriesManager';
 
-// Hotel Master Room Categories freeze fix.
+// Hotel Master Room Categories — binary isolation ladder.
 //
-// The previous version of this section fetched the full hotels list
-// a SECOND time (duplicating the call that the parent page already
-// made for the summary strip). On top of that, the heavy hotels list
-// endpoint serializes every hotel through resolveOperationalSupplier
-// which fans out to a per-hotel supplier lookup. With more than ~20
-// hotels the duplicate fetch + N+1 supplier resolution chain produced
-// the "Page Unresponsive" symptom.
+// PR #125 confirmed the freeze persists AFTER the lightweight summary
+// endpoint loads cleanly — the runaway render is inside a Room
+// Categories client subcomponent. This module is now the binary-
+// search gate for the hunt.
 //
-// We now hit a dedicated lightweight summary endpoint that returns
-// only what the tab needs (no supplier resolution, no contract blob,
-// no rate matrix). The cross-hotel listing renders from the summary;
-// per-category detail loads on demand when an operator expands a row.
+// `?cats=<mode>` controls how much of the Room Categories tree
+// hydrates. We start with the most minimal payload and re-enable
+// layers one-by-one until the freeze returns; the LAST layer added
+// is the culprit.
+//
+// Modes (least heavy → heaviest):
+//   minimal       — only "Loaded X room categories" static text.
+//                   No client component mounts.
+//   table         — adds the table rows. No form, no expand, no
+//                   delete. Read-only static grid.
+//   form          — adds the inline create form below the table.
+//   expand        — adds expandable detail loader (the
+//                   per-category /hotels/room-categories/:id fetch).
+//   full          — everything (default, matches pre-isolation
+//                   behaviour). Operator can verify the issue
+//                   reproduces.
+//
+// We default to `minimal` so the page never freezes again from a
+// cold visit. Operators (or QA) add `?cats=full` to reproduce the
+// runaway and identify which layer trips it.
 
 const API_BASE_URL = '/api';
+
+export type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full';
+
+function resolveIsolationMode(value: string | undefined): RoomCategoriesIsolationMode {
+  switch (value) {
+    case 'full':
+    case 'expand':
+    case 'form':
+    case 'table':
+    case 'minimal':
+      return value;
+    default:
+      // Default to minimal — see module header. The shell already
+      // forces operators to click "Load room categories" before this
+      // section even mounts, so they've explicitly consented to
+      // loading at this point; we keep it minimal until they opt
+      // into more.
+      return 'minimal';
+  }
+}
 
 async function getRoomCategoriesSummary(hotelId?: string): Promise<RoomCategorySummary[]> {
   const url = hotelId
@@ -44,12 +77,29 @@ function collectHotelOptions(summary: RoomCategorySummary[]) {
 
 type RoomCategoriesSectionProps = {
   hotelId?: string;
+  catsMode?: string;
 };
 
-export async function RoomCategoriesSection({ hotelId }: RoomCategoriesSectionProps = {}) {
+export async function RoomCategoriesSection({ hotelId, catsMode }: RoomCategoriesSectionProps = {}) {
+  const isolationMode = resolveIsolationMode(catsMode);
   const summary = await getRoomCategoriesSummary(hotelId);
   const hotels = collectHotelOptions(summary);
   const activeCount = summary.filter((row) => row.isActive).length;
+
+  // Minimal isolation mode — no client component mounts, just the
+  // count. If this freezes, the runaway is OUTSIDE the Room
+  // Categories subtree (probably WorkspaceShell or the summary strip).
+  if (isolationMode === 'minimal') {
+    return (
+      <TableSectionShell
+        title="Room Category Setup"
+        description="Binary isolation — minimal mode. Click an option below to enable the next layer."
+        context={<p data-testid="room-categories-minimal-count">Loaded {summary.length} room categories.</p>}
+      >
+        <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} />
+      </TableSectionShell>
+    );
+  }
 
   return (
     <TableSectionShell
@@ -63,7 +113,82 @@ export async function RoomCategoriesSection({ hotelId }: RoomCategoriesSectionPr
         </p>
       }
     >
-      <RoomCategoriesManager apiBaseUrl={API_BASE_URL} hotels={hotels} initialSummary={summary} />
+      <RoomCategoriesIsolationLadder currentMode={isolationMode} hotelId={hotelId} />
+      <RoomCategoriesManager
+        apiBaseUrl={API_BASE_URL}
+        hotels={hotels}
+        initialSummary={summary}
+        isolationMode={isolationMode}
+      />
     </TableSectionShell>
+  );
+}
+
+// Server-rendered ladder that lets operators step through the
+// isolation modes without typing URLs. Each Link preserves the
+// load/tab params and only flips `cats`.
+function RoomCategoriesIsolationLadder({
+  currentMode,
+  hotelId,
+}: {
+  currentMode: RoomCategoriesIsolationMode;
+  hotelId: string | undefined;
+}) {
+  const modes: Array<{ id: RoomCategoriesIsolationMode; label: string; helper: string }> = [
+    { id: 'minimal', label: 'Minimal', helper: 'Static count only — zero client mounts' },
+    { id: 'table', label: 'Table', helper: 'Adds read-only summary table' },
+    { id: 'form', label: 'Form', helper: 'Adds inline create form' },
+    { id: 'expand', label: 'Expand', helper: 'Adds per-row detail loader' },
+    { id: 'full', label: 'Full', helper: 'Everything (default before isolation)' },
+  ];
+  return (
+    <nav
+      aria-label="Room categories isolation ladder"
+      data-testid="room-categories-isolation-ladder"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.4rem',
+        padding: '0.6rem',
+        background: '#f9fafb',
+        border: '1px dashed #d0d5dd',
+        borderRadius: 8,
+        marginBottom: '0.75rem',
+      }}
+    >
+      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475467', marginRight: '0.3rem' }}>
+        Isolation:
+      </span>
+      {modes.map((mode) => {
+        const params = new URLSearchParams();
+        params.set('tab', 'room-categories');
+        params.set('load', '1');
+        if (hotelId) params.set('hotelId', hotelId);
+        params.set('cats', mode.id);
+        const href = `/hotels?${params.toString()}`;
+        const isCurrent = mode.id === currentMode;
+        return (
+          <a
+            key={mode.id}
+            href={href}
+            title={mode.helper}
+            data-testid={`room-categories-isolation-${mode.id}`}
+            aria-current={isCurrent ? 'page' : undefined}
+            style={{
+              padding: '0.25rem 0.6rem',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              borderRadius: 999,
+              textDecoration: 'none',
+              background: isCurrent ? '#1d4ed8' : '#fff',
+              color: isCurrent ? '#fff' : '#1d4ed8',
+              border: `1px solid ${isCurrent ? '#1d4ed8' : '#bfdbfe'}`,
+            }}
+          >
+            {mode.label}
+          </a>
+        );
+      })}
+    </nav>
   );
 }
