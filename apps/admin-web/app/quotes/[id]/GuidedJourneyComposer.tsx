@@ -185,6 +185,60 @@ type ExperienceSuggestionsResponse = {
   notes: string[];
 };
 
+// ----- Transport suggestion types (v2C) -----
+type VehicleClass = 'SEDAN' | 'MINIVAN' | 'COASTER' | 'BUS';
+
+type LegOverlayKey =
+  | 'AIRPORT_TIMING'
+  | 'MOUNTAIN_ROAD'
+  | 'LONG_DISTANCE'
+  | 'BORDER_CROSSING'
+  | 'DESERT_LOGISTICS'
+  | 'OVERNIGHT_TRANSITION';
+
+type LegTransportInsight = {
+  fromCity: string;
+  toCity: string;
+  canonicalCode: string | null;
+  overlays: Array<{
+    key: LegOverlayKey;
+    label: string;
+    tone: 'amber' | 'red' | 'blue';
+  }>;
+  driveHours: number | null;
+  distanceKm: number | null;
+};
+
+type TransportRecommendation = {
+  vehicleClass: VehicleClass;
+  label: string;
+  icon: string;
+  seatRange: string;
+  typicalExample: string;
+  luggageNote: string;
+  recommendationLine: string;
+  preferredOperationalChoice: boolean;
+  comfortNotes: string[];
+  operationalConfidenceLabel: 'Operationally smooth' | 'Moderate coordination' | 'High coordination required';
+};
+
+type TransportSuggestionsResponse = {
+  paxCount: number;
+  destinations: string[];
+  recommendation: TransportRecommendation | null;
+  legs: LegTransportInsight[];
+  pacing: {
+    label:
+      | 'Comfortable pacing'
+      | 'Long-distance touring day'
+      | 'High coordination transfer day'
+      | 'Tight luggage capacity';
+    tone: 'calm' | 'balanced' | 'intense';
+    explanation: string;
+  };
+  notes: string[];
+};
+
 export function GuidedJourneyComposer({
   quote,
   advancedWorkspaceUrl,
@@ -246,6 +300,43 @@ export function GuidedJourneyComposer({
       cancelled = true;
     };
   }, [quote.arrivalCity, destinations.join('|')]);
+
+  // v2C — transport suggestions for the journey. paxCount comes from
+  // the quote header (adults + children). Same soft-fail semantics.
+  const [transportData, setTransportData] = useState<TransportSuggestionsResponse | null>(null);
+  const [transportLoading, setTransportLoading] = useState(false);
+  const paxCount = (quote.adults || 0) + (quote.children || 0);
+  useEffect(() => {
+    if (destinations.length === 0 && !quote.arrivalCity) {
+      setTransportData(null);
+      return;
+    }
+    let cancelled = false;
+    setTransportLoading(true);
+    (async () => {
+      try {
+        const response = await fetch('/api/quotes/guided/transport-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            arrivalCity: quote.arrivalCity ?? null,
+            destinations,
+            paxCount,
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.message || `Transport suggestions failed (${response.status})`);
+        if (!cancelled) setTransportData(payload as TransportSuggestionsResponse);
+      } catch {
+        if (!cancelled) setTransportData(null);
+      } finally {
+        if (!cancelled) setTransportLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quote.arrivalCity, destinations.join('|'), paxCount]);
 
   // v2B — experience suggestions per destination, fetched independently.
   // Same soft-fail semantics as hotels: if this call errors the rest of
@@ -408,7 +499,15 @@ export function GuidedJourneyComposer({
         quoteId={quote.id}
       />
 
-      {/* Section 6 — Quote readiness checklist */}
+      {/* Section 6 — Suggested Transport (v2C) */}
+      <SuggestedTransportSection
+        transportData={transportData}
+        loading={transportLoading}
+        paxCount={paxCount}
+        quoteId={quote.id}
+      />
+
+      {/* Section 7 — Quote readiness checklist */}
       <ReadinessSection readiness={readiness} />
 
       <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.78rem', textAlign: 'center' }}>
@@ -1392,6 +1491,325 @@ function ExperienceCard({
           {exp.notes.join(' · ')}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v2C — Suggested Transport section
+// ---------------------------------------------------------------------------
+
+function SuggestedTransportSection({
+  transportData,
+  loading,
+  paxCount,
+  quoteId,
+}: {
+  transportData: TransportSuggestionsResponse | null;
+  loading: boolean;
+  paxCount: number;
+  quoteId: string;
+}) {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 10,
+        padding: '1rem 1.1rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p
+            style={{
+              color: '#475569',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: 0,
+            }}
+          >
+            Suggested transport
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+            Vehicle sizing based on pax count + journey rhythm. Per-leg overlays surface route-specific
+            risks (airport timing, mountain road, border crossing, desert logistics). Booking happens
+            on the Transport tab — the link below jumps you there.
+          </p>
+        </div>
+        <a
+          href={`/quotes/${quoteId}?tab=transport`}
+          style={{
+            padding: '0.35rem 0.7rem',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            background: '#f8fafc',
+            color: '#0c4a6e',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Open standard transport selector →
+        </a>
+      </div>
+
+      {loading && !transportData ? (
+        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Reading routes + risk overlays for this journey…
+        </p>
+      ) : null}
+
+      {paxCount === 0 ? (
+        <p style={{ marginTop: '0.6rem', color: '#854d0e', fontSize: '0.82rem' }}>
+          Pax count is 0 — fill in adults / children on the overview tab to unlock the vehicle recommendation.
+        </p>
+      ) : null}
+
+      {transportData && transportData.recommendation ? (
+        <div style={{ marginTop: '0.7rem', display: 'grid', gap: '0.75rem' }}>
+          <TransportRecommendationCard recommendation={transportData.recommendation} paxCount={transportData.paxCount} />
+
+          <TransportPacingCard pacing={transportData.pacing} />
+
+          {transportData.legs.length > 0 ? (
+            <div>
+              <p
+                style={{
+                  color: '#475569',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  margin: '0 0 0.4rem',
+                }}
+              >
+                Per-leg route confidence
+              </p>
+              <div style={{ display: 'grid', gap: '0.4rem' }}>
+                {transportData.legs.map((leg, idx) => (
+                  <LegOverlayRow key={`${leg.fromCity}-${leg.toCity}-${idx}`} leg={leg} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {transportData.notes.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#64748b', fontSize: '0.82rem' }}>
+              {transportData.notes.map((note, i) => (
+                <li key={i}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {transportData && !transportData.recommendation && paxCount > 0 ? (
+        <p style={{ marginTop: '0.6rem', color: '#854d0e', fontSize: '0.82rem' }}>
+          Pax count {paxCount} is above the 45-seat coach capacity — split the group across multiple vehicles via the standard selector.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function TransportRecommendationCard({
+  recommendation,
+  paxCount,
+}: {
+  recommendation: TransportRecommendation;
+  paxCount: number;
+}) {
+  const confidenceColors: Record<TransportRecommendation['operationalConfidenceLabel'], { bg: string; text: string; border: string }> = {
+    'Operationally smooth': { bg: '#ecfdf3', text: '#067647', border: '#abefc6' },
+    'Moderate coordination': { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' },
+    'High coordination required': { bg: '#fef3c7', text: '#854d0e', border: '#fde68a' },
+  };
+  const cc = confidenceColors[recommendation.operationalConfidenceLabel];
+  return (
+    <div
+      style={{
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: 10,
+        padding: '0.85rem 1rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
+        <div style={{ fontSize: '2.2rem', lineHeight: 1, flexShrink: 0 }} aria-hidden>
+          {recommendation.icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem', flexWrap: 'wrap' }}>
+            <p style={{ margin: 0, color: '#0f172a', fontSize: '1.05rem', fontWeight: 700 }}>
+              {recommendation.label}
+            </p>
+            <span style={{ color: '#64748b', fontSize: '0.82rem' }}>{recommendation.seatRange}</span>
+            {recommendation.preferredOperationalChoice ? (
+              <span
+                style={{
+                  background: '#fef3c7',
+                  color: '#854d0e',
+                  border: '1px solid #fde68a',
+                  padding: '0.05rem 0.5rem',
+                  borderRadius: 999,
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                }}
+                title="Sweet-spot pax fit with no extreme journey legs — strongest operator-preferred match for this journey."
+              >
+                ⭐ Preferred operational choice
+              </span>
+            ) : null}
+          </div>
+          <p style={{ margin: '0.15rem 0 0', color: '#475569', fontSize: '0.85rem' }}>
+            Recommended for: <strong>{recommendation.recommendationLine}</strong>
+          </p>
+          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+            Typical examples: {recommendation.typicalExample}
+          </p>
+          <p style={{ margin: '0.25rem 0 0', color: '#475569', fontSize: '0.78rem' }}>
+            {recommendation.luggageNote}
+          </p>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.45rem' }}>
+            <span
+              style={{
+                background: cc.bg,
+                color: cc.text,
+                border: `1px solid ${cc.border}`,
+                padding: '0.1rem 0.55rem',
+                borderRadius: 999,
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {recommendation.operationalConfidenceLabel === 'Operationally smooth' ? '🟢 ' :
+                recommendation.operationalConfidenceLabel === 'Moderate coordination' ? '🔵 ' : '🟡 '}
+              {recommendation.operationalConfidenceLabel}
+            </span>
+            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>
+              {paxCount} pax
+            </span>
+          </div>
+          {recommendation.comfortNotes.length > 0 ? (
+            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>
+              {recommendation.comfortNotes.map((note, i) => (
+                <li key={i}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TransportPacingCard({ pacing }: { pacing: TransportSuggestionsResponse['pacing'] }) {
+  const tone = {
+    calm: { bg: '#ecfdf3', text: '#067647', border: '#abefc6' },
+    balanced: { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' },
+    intense: { bg: '#fef3c7', text: '#854d0e', border: '#fde68a' },
+  }[pacing.tone];
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: `1px solid ${tone.border}`,
+        borderRadius: 8,
+        padding: '0.55rem 0.75rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem' }}>
+        <span
+          style={{
+            background: tone.bg,
+            color: tone.text,
+            padding: '0.1rem 0.55rem',
+            borderRadius: 999,
+            fontSize: '0.78rem',
+            fontWeight: 700,
+          }}
+        >
+          {pacing.label}
+        </span>
+      </div>
+      <p style={{ margin: '0.4rem 0 0', color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>
+        {pacing.explanation}
+      </p>
+    </div>
+  );
+}
+
+function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
+  const overlayColors = {
+    blue: { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' },
+    amber: { bg: '#fef3c7', text: '#854d0e', border: '#fde68a' },
+    red: { bg: '#fee2e2', text: '#7c2d12', border: '#fca5a5' },
+  };
+  return (
+    <div
+      style={{
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        padding: '0.5rem 0.7rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.88rem', fontWeight: 600 }}>
+          {leg.fromCity} → {leg.toCity}
+          {leg.canonicalCode ? (
+            <code
+              style={{
+                marginLeft: '0.4rem',
+                background: '#f1f5f9',
+                color: '#475569',
+                padding: '0.05rem 0.35rem',
+                borderRadius: 4,
+                fontSize: '0.74rem',
+              }}
+            >
+              {leg.canonicalCode}
+            </code>
+          ) : null}
+        </p>
+        {leg.driveHours != null ? (
+          <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+            {leg.driveHours}h
+            {leg.distanceKm != null ? ` · ${leg.distanceKm} km` : ''}
+          </span>
+        ) : null}
+      </div>
+      {leg.overlays.length > 0 ? (
+        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
+          {leg.overlays.map((o) => {
+            const c = overlayColors[o.tone];
+            return (
+              <span
+                key={o.key}
+                style={{
+                  background: c.bg,
+                  color: c.text,
+                  border: `1px solid ${c.border}`,
+                  padding: '0.05rem 0.45rem',
+                  borderRadius: 999,
+                  fontSize: '0.68rem',
+                  fontWeight: 600,
+                }}
+              >
+                {o.label}
+              </span>
+            );
+          })}
+        </div>
+      ) : (
+        <p style={{ margin: '0.2rem 0 0', color: '#94a3b8', fontSize: '0.76rem' }}>
+          Standard transfer · no special operational notes
+        </p>
+      )}
     </div>
   );
 }

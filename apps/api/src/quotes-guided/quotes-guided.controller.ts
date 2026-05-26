@@ -45,4 +45,20 @@ export class QuotesGuidedController {
       destinations: Array.isArray(body?.destinations) ? body.destinations : [],
     });
   }
+
+  /**
+   * v2C — Vehicle & Transport Intelligence. Returns the recommended
+   * vehicle class for the journey's pax count + per-leg route
+   * confidence overlays (airport / mountain / border / desert) +
+   * journey-level transport pacing assessment. Pure read; never
+   * touches pricing or dispatch.
+   */
+  @Post('transport-suggestions')
+  transportSuggestions(@Body() body: { arrivalCity?: string | null; destinations?: string[]; paxCount?: number }) {
+    return this.service.getTransportSuggestionsForJourney({
+      arrivalCity: body?.arrivalCity ?? null,
+      destinations: Array.isArray(body?.destinations) ? body.destinations : [],
+      paxCount: Number.isFinite(Number(body?.paxCount)) ? Number(body?.paxCount) : 0,
+    });
+  }
 }
