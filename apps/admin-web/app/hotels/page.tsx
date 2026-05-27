@@ -59,6 +59,10 @@ type HotelsPageProps = {
     // to split the freeze hunt between "form mounts" and "controlled
     // input churn".
     formSafe?: string;
+    // EXPAND_SAFE — render only category name in detail panel, no
+    // contracts list, no counts grid, no derived grouping. Used to
+    // bisect the `?cats=expand` freeze.
+    expandSafe?: string;
   }>;
 };
 
@@ -192,6 +196,7 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
       return await RoomCategoriesSection({
         catsMode: params?.cats,
         formSafeMode: params?.formSafe === '1',
+        expandSafeMode: params?.expandSafe === '1',
       });
     }
     if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });

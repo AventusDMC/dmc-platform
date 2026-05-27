@@ -1,11 +1,12 @@
 'use client';
 
-import { FormEvent, Fragment, useCallback, useMemo, useState } from 'react';
+import { FormEvent, Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { RoomCategoriesErrorBoundary } from './RoomCategoriesErrorBoundary';
 import {
+  guardDetailFetch,
   measurePerf,
   useHardRenderGuard,
   useRenderCounter,
@@ -378,12 +379,14 @@ export function RoomCategoriesManager({
   initialSummary,
   isolationMode = 'full',
   formSafeMode = false,
+  expandSafeMode = false,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
   isolationMode?: RoomCategoriesIsolationMode;
   formSafeMode?: boolean;
+  expandSafeMode?: boolean;
 }) {
   // Diagnostic counters fire only when `?debugPerf=1` toggles the
   // overlay panel. Without the flag these are no-ops.
@@ -400,6 +403,7 @@ export function RoomCategoriesManager({
         initialSummary={initialSummary}
         isolationMode={isolationMode}
         formSafeMode={formSafeMode}
+        expandSafeMode={expandSafeMode}
       />
     </RoomCategoriesErrorBoundary>
   );
@@ -411,12 +415,14 @@ function RoomCategoriesManagerInner({
   initialSummary,
   isolationMode,
   formSafeMode,
+  expandSafeMode,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
   isolationMode: RoomCategoriesIsolationMode;
   formSafeMode: boolean;
+  expandSafeMode: boolean;
 }) {
   useRenderCounter('RoomCategoriesManagerInner');
   useHardRenderGuard('RoomCategoriesManagerInner');
@@ -461,41 +467,48 @@ function RoomCategoriesManagerInner({
     [sortedRows],
   );
 
+  // CRITICAL BUG-HUNT NOTE — Round 3.
+  //
+  // PR #126 used the "setter-form for cache check" pattern, but I
+  // realized that's a setState call with the SAME reference returned,
+  // which still triggers React to enqueue an update even though the
+  // value is unchanged. In some Strict-Mode or batched-update flows
+  // that double-enqueue can manifest as render churn.
+  //
+  // Round 3 fix: track in-flight fetches via a useRef so the cache
+  // check never enters React's render queue. Also short-circuit
+  // BEFORE calling setExpandedId so a repeat click on the same row
+  // doesn't fire two state updates.
+  //
+  // The fetch guard counts per-category invocations and throws if
+  // the same row fires > 5 fetches in 2 seconds. The error boundary
+  // catches the throw and surfaces "Repeated detail hydration loop
+  // detected" instead of letting the browser lock.
+  const detailsRef = useRef<typeof details>(details);
+  detailsRef.current = details;
+  const expandedIdRef = useRef<typeof expandedId>(expandedId);
+  expandedIdRef.current = expandedId;
+
   const handleExpand = useCallback(
     async (categoryId: string) => {
-      // BUG-HUNT NOTE — previous version of this callback listed
-      // `details` AND `expandedId` in its deps, so EVERY setDetails
-      // call (loading + resolved + error) recreated the callback
-      // identity. Combined with the fact that the JSX creates a new
-      // arrow per row (`onClick={() => handleExpand(category.id)}`),
-      // every fetch tick caused the whole row list to recompute. Not
-      // an infinite loop on its own, but a strong candidate for
-      // render churn during expand.
-      //
-      // The fix: rely on the SETTER FORM of setDetails (current => ...)
-      // for the cache check too, so the callback no longer needs
-      // `details` in deps. The callback identity is now stable across
-      // the fetch lifecycle.
-      let cacheHit = false;
-      setDetails((current) => {
-        if (current[categoryId]?.data) {
-          cacheHit = true;
-          return current;
-        }
-        return current;
-      });
-      // Collapse-expand toggle uses the setter form too so expandedId
-      // doesn't have to be in deps.
-      let alreadyExpanded = false;
-      setExpandedId((current) => {
-        if (current === categoryId) {
-          alreadyExpanded = true;
-          return null;
-        }
-        return categoryId;
-      });
-      if (alreadyExpanded || cacheHit) return;
-
+      // 1. Collapse if already expanded — single setState only.
+      if (expandedIdRef.current === categoryId) {
+        setExpandedId(null);
+        return;
+      }
+      // 2. Open the row.
+      setExpandedId(categoryId);
+      // 3. Cache hit? Bail before any fetch / setState churn.
+      if (detailsRef.current[categoryId]?.data) {
+        return;
+      }
+      // 4. Already loading this row? Don't double-fire.
+      if (detailsRef.current[categoryId]?.loading) {
+        return;
+      }
+      // 5. New fetch — guard counts it. > 5 fetches in 2 seconds for
+      //    the same row throws "Repeated detail hydration loop detected".
+      guardDetailFetch(categoryId);
       setDetails((current) => ({
         ...current,
         [categoryId]: { loading: true, data: null, error: null },
@@ -528,8 +541,8 @@ function RoomCategoriesManagerInner({
         }));
       }
     },
-    // Deps stripped to just the URL — the setter-form lookups above
-    // mean expandedId and details no longer drive identity churn.
+    // Stable deps — refs read live state without forcing the
+    // callback identity to churn.
     [apiBaseUrl],
   );
 
@@ -674,7 +687,7 @@ function RoomCategoriesManagerInner({
                           ) : detail.error ? (
                             <p className="form-error">{detail.error}</p>
                           ) : detail.data ? (
-                            <RoomCategoryDetailPanel detail={detail.data} />
+                            <RoomCategoryDetailPanel detail={detail.data} expandSafeMode={expandSafeMode} />
                           ) : null}
                         </td>
                       </tr>
@@ -714,7 +727,27 @@ function RoomCategoriesManagerInner({
   );
 }
 
-function RoomCategoryDetailPanel({ detail }: { detail: CategoryDetail }) {
+function RoomCategoryDetailPanel({ detail, expandSafeMode = false }: { detail: CategoryDetail; expandSafeMode?: boolean }) {
+  useRenderCounter('RoomCategoryDetailPanel');
+  useHardRenderGuard('RoomCategoryDetailPanel', { limit: 50, windowMs: 2000 });
+
+  // expandSafeMode — bare-minimum render. No contracts list, no
+  // counts grid, no derived grouping. Just the category name. If the
+  // freeze persists in this mode, the loop is OUTSIDE the panel
+  // itself (handleExpand / fetch / setDetails). If it disappears,
+  // the loop is in one of the derived sections.
+  if (expandSafeMode) {
+    return (
+      <div data-testid="room-category-detail-panel-safe">
+        <strong>{detail.name}</strong>
+        <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: 0 }}>
+          expandSafe — derived sections disabled. {detail.contracts.length} contracts, {detail.counts.rates} rates
+          available (not rendered).
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="contract-list-stack" data-testid="room-category-detail-panel">
       <div className="contract-list-row contract-list-row-wide">

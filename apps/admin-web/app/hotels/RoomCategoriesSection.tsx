@@ -86,9 +86,19 @@ type RoomCategoriesSectionProps = {
   // form component as a whole" from "is the freeze in controlled-
   // input churn specifically".
   formSafeMode?: boolean;
+  // EXPAND_SAFE — when `?expandSafe=1` is in the URL, the
+  // RoomCategoryDetailPanel renders only the category name, no
+  // contracts list, no counts grid, no derived grouping. Used to
+  // bisect the `?cats=expand` freeze.
+  expandSafeMode?: boolean;
 };
 
-export async function RoomCategoriesSection({ hotelId, catsMode, formSafeMode = false }: RoomCategoriesSectionProps = {}) {
+export async function RoomCategoriesSection({
+  hotelId,
+  catsMode,
+  formSafeMode = false,
+  expandSafeMode = false,
+}: RoomCategoriesSectionProps = {}) {
   const isolationMode = resolveIsolationMode(catsMode);
   const summary = await getRoomCategoriesSummary(hotelId);
   const hotels = collectHotelOptions(summary);
@@ -146,6 +156,7 @@ export async function RoomCategoriesSection({ hotelId, catsMode, formSafeMode = 
         initialSummary={summary}
         isolationMode={isolationMode}
         formSafeMode={formSafeMode}
+        expandSafeMode={expandSafeMode}
       />
     </TableSectionShell>
   );
