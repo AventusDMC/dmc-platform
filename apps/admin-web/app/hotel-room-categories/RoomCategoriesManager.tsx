@@ -9,6 +9,7 @@ import {
   measurePerf,
   useHardRenderGuard,
   useRenderCounter,
+  withRouterCallGuard,
 } from '../hotels/HotelsPerfDebugPanel';
 
 // Hotel Master Room Categories Manager.
@@ -142,7 +143,10 @@ function RoomCategoryForm({
 }
 
 function RoomCategoryFormControlled({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel, initialValues }: RoomCategoryFormProps) {
-  const router = useRouter();
+  // withRouterCallGuard counts router calls — if push/replace/refresh
+  // fires > 20 times in 2 seconds we throw so the error boundary
+  // surfaces a "Router synchronization loop detected" diagnostic.
+  const router = withRouterCallGuard(useRouter());
   const [selectedHotelId, setSelectedHotelId] = useState(initialValues?.hotelId || hotelId || hotels[0]?.id || '');
   const [name, setName] = useState(initialValues?.name || '');
   const [code, setCode] = useState(initialValues?.code || '');
@@ -257,7 +261,10 @@ function RoomCategoryFormSafe({
   submitLabel,
   initialValues,
 }: RoomCategoryFormProps) {
-  const router = useRouter();
+  // withRouterCallGuard counts router calls — if push/replace/refresh
+  // fires > 20 times in 2 seconds we throw so the error boundary
+  // surfaces a "Router synchronization loop detected" diagnostic.
+  const router = withRouterCallGuard(useRouter());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(categoryId);
@@ -416,7 +423,10 @@ function RoomCategoriesManagerInner({
   const enableForm = isolationMode === 'form' || isolationMode === 'expand' || isolationMode === 'full';
   const enableExpand = isolationMode === 'expand' || isolationMode === 'full';
   const enableDelete = isolationMode === 'full';
-  const router = useRouter();
+  // withRouterCallGuard counts router calls — if push/replace/refresh
+  // fires > 20 times in 2 seconds we throw so the error boundary
+  // surfaces a "Router synchronization loop detected" diagnostic.
+  const router = withRouterCallGuard(useRouter());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);

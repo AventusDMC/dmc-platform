@@ -86,6 +86,64 @@ export function __resetHardGuardCountersForTesting() {
   HARD_GUARD_COUNTERS.clear();
 }
 
+// Router-call guard — detects `router.replace` / `router.push` storms.
+// Operators reported the freeze persists even with uncontrolled inputs;
+// suspicion is now on a router/searchParams synchronization loop. This
+// guard wraps a `useRouter()` instance so we can count actual mutations
+// to the URL. If more than 20 fire in 2 seconds, throws so the error
+// boundary can surface a diagnostic instead of letting the browser lock.
+//
+// Usage: const router = useGuardedRouter(); router.replace(href).
+const ROUTER_CALL_COUNTER = { count: 0, firstSeen: 0 };
+const ROUTER_CALL_LIMIT = 20;
+const ROUTER_CALL_WINDOW_MS = 2_000;
+
+type GuardedRouterMethod = 'push' | 'replace' | 'refresh' | 'back' | 'forward' | 'prefetch';
+
+function guardRouterCall(method: GuardedRouterMethod) {
+  const now = Date.now();
+  if (now - ROUTER_CALL_COUNTER.firstSeen > ROUTER_CALL_WINDOW_MS) {
+    ROUTER_CALL_COUNTER.firstSeen = now;
+    ROUTER_CALL_COUNTER.count = 0;
+  }
+  ROUTER_CALL_COUNTER.count += 1;
+  if (typeof console !== 'undefined' && (method === 'push' || method === 'replace')) {
+    console.log(`[hotels-perf] router.${method} #${ROUTER_CALL_COUNTER.count} within ${now - ROUTER_CALL_COUNTER.firstSeen}ms`);
+  }
+  if (ROUTER_CALL_COUNTER.count > ROUTER_CALL_LIMIT) {
+    const elapsed = now - ROUTER_CALL_COUNTER.firstSeen;
+    ROUTER_CALL_COUNTER.count = 0;
+    ROUTER_CALL_COUNTER.firstSeen = now;
+    throw new Error(
+      `Router synchronization loop detected — router.${method} called ${ROUTER_CALL_LIMIT + 1}+ times in ${elapsed}ms`,
+    );
+  }
+}
+
+// Test-only escape hatch — reset router call counter between scenarios.
+export function __resetRouterCallCounterForTesting() {
+  ROUTER_CALL_COUNTER.count = 0;
+  ROUTER_CALL_COUNTER.firstSeen = 0;
+}
+
+// Wraps a router instance so every push/replace/refresh increments the
+// counter. Logs each call when console.log is available; throws when
+// the threshold is exceeded.
+export function withRouterCallGuard<T extends Record<string, any>>(router: T): T {
+  if (typeof window === 'undefined') return router;
+  const guarded = { ...router } as Record<string, any>;
+  const methods: GuardedRouterMethod[] = ['push', 'replace', 'refresh', 'back', 'forward', 'prefetch'];
+  for (const method of methods) {
+    const original = router[method];
+    if (typeof original !== 'function') continue;
+    guarded[method] = (...args: unknown[]) => {
+      guardRouterCall(method);
+      return original.apply(router, args);
+    };
+  }
+  return guarded as T;
+}
+
 // Measures the wall-clock cost of an arbitrary block. Logs a warning
 // when the block takes longer than `slowMs`. Used to time expensive
 // memo derivations inside RoomCategoriesManager during the isolation

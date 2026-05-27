@@ -1,6 +1,7 @@
 import { adminPageFetchJson } from '../lib/admin-server';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { RoomCategoriesManager, type RoomCategorySummary } from '../hotel-room-categories/RoomCategoriesManager';
+import { BareRoomCategoryForm } from '../hotel-room-categories/BareRoomCategoryForm';
 
 // Hotel Master Room Categories — binary isolation ladder.
 //
@@ -32,7 +33,7 @@ import { RoomCategoriesManager, type RoomCategorySummary } from '../hotel-room-c
 
 const API_BASE_URL = '/api';
 
-export type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full';
+export type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full' | 'formSafeOnly';
 
 function resolveIsolationMode(value: string | undefined): RoomCategoriesIsolationMode {
   switch (value) {
@@ -41,6 +42,7 @@ function resolveIsolationMode(value: string | undefined): RoomCategoriesIsolatio
     case 'form':
     case 'table':
     case 'minimal':
+    case 'formSafeOnly':
       return value;
     default:
       // Default to minimal — see module header. The shell already
@@ -91,6 +93,24 @@ export async function RoomCategoriesSection({ hotelId, catsMode, formSafeMode = 
   const summary = await getRoomCategoriesSummary(hotelId);
   const hotels = collectHotelOptions(summary);
   const activeCount = summary.filter((row) => row.isActive).length;
+
+  // formSafeOnly — the nuclear isolation level. Bypasses everything:
+  // no TableSectionShell, no isolation ladder, no manager wrapper,
+  // no error boundary, no render counters. Just the form leaf mounted
+  // bare. If THIS freezes, the runaway is in something React itself
+  // does during hydration of the form (router subscription, context
+  // provider chain, etc.), NOT in our code. If it renders cleanly,
+  // the issue is in one of the wrappers we stripped.
+  if (isolationMode === 'formSafeOnly') {
+    return (
+      <section data-testid="room-categories-form-safe-only" style={{ padding: '1rem' }}>
+        <p style={{ fontSize: '0.78rem', color: '#475467', margin: '0 0 0.5rem' }}>
+          formSafeOnly — bare form mount, zero shell. Loaded {summary.length} room categories.
+        </p>
+        <BareRoomCategoryForm apiBaseUrl={API_BASE_URL} hotels={hotels} />
+      </section>
+    );
+  }
 
   // Minimal isolation mode — no client component mounts, just the
   // count. If this freezes, the runaway is OUTSIDE the Room
@@ -144,6 +164,7 @@ function RoomCategoriesIsolationLadder({
   formSafeMode: boolean;
 }) {
   const modes: Array<{ id: RoomCategoriesIsolationMode; label: string; helper: string }> = [
+    { id: 'formSafeOnly', label: 'Form-only', helper: 'Bare form mount — no shell, no router, no React state' },
     { id: 'minimal', label: 'Minimal', helper: 'Static count only — zero client mounts' },
     { id: 'table', label: 'Table', helper: 'Adds read-only summary table' },
     { id: 'form', label: 'Form', helper: 'Adds inline create form' },
