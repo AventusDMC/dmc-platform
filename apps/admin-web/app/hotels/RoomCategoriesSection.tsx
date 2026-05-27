@@ -22,15 +22,41 @@ async function getRoomCategoriesSummary(hotelId?: string): Promise<RoomCategoryS
 
 // Minimal list of (hotel id, name, city) tuples for the "add room
 // category" form dropdown. Built from the summary rows so we never
-// hit the heavy /api/hotels list endpoint.
+// hit the heavy /api/hotels list endpoint. Coerces null name/city
+// to '' so a bad import row can't crash the sort.
 function collectHotelOptions(summary: RoomCategorySummary[]) {
   const byId = new Map<string, { id: string; name: string; city: string }>();
   for (const row of summary) {
     if (!byId.has(row.hotelId)) {
-      byId.set(row.hotelId, { id: row.hotelId, name: row.hotelName, city: row.hotelCity });
+      byId.set(row.hotelId, {
+        id: row.hotelId,
+        name: row.hotelName || '',
+        city: row.hotelCity || '',
+      });
     }
   }
-  return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(byId.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+// Diagnostic: scan the summary for rows that are likely to break
+// downstream rendering (null hotelName / name / id). Logs every
+// offender to the Vercel function logs so operators can identify
+// and clean up bad contract imports without having to dig through
+// the database. Pure logging — no behaviour change.
+function logSuspectRows(summary: RoomCategorySummary[]) {
+  const suspects = summary.filter(
+    (row) => !row.id || !row.hotelId || !row.hotelName || !row.name,
+  );
+  if (suspects.length === 0) return;
+  console.warn(
+    `[room-categories] ${suspects.length} suspect row(s) detected — likely bad imports`,
+    suspects.map((row) => ({
+      id: row.id,
+      hotelId: row.hotelId,
+      hotelName: row.hotelName,
+      name: row.name,
+    })),
+  );
 }
 
 type RoomCategoriesSectionProps = {
@@ -39,6 +65,7 @@ type RoomCategoriesSectionProps = {
 
 export async function RoomCategoriesSection({ hotelId }: RoomCategoriesSectionProps = {}) {
   const summary = await getRoomCategoriesSummary(hotelId);
+  logSuspectRows(summary);
   const hotels = collectHotelOptions(summary);
   const activeCount = summary.filter((row) => row.isActive).length;
 
