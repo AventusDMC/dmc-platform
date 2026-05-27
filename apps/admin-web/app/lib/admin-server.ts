@@ -119,6 +119,30 @@ function normalizeAdminApiInput(input: string | URL, requestHeaders: Headers) {
   return input;
 }
 
+// Top-of-page session gate. Call this at the very top of an admin
+// server component BEFORE any Suspense boundary mounts. If no session
+// cookie is present, redirects to /login as a clean HTTP 307 (no
+// streamed body conflict).
+//
+// Why this exists: streaming Suspense + a redirect thrown from inside
+// a suspended async component produces a malformed response — Next.js
+// emits both an HTTP 307 status AND a streaming body containing
+// NEXT_REDIRECT error chunks. Some browsers (Chrome incognito hit
+// this in production) render the partial body instead of following
+// the redirect, leaving the user on a blank page. Calling the gate
+// at the top of the page guarantees the redirect fires BEFORE any
+// streaming has begun.
+export async function requireAdminSession(): Promise<string> {
+  const cookieStore = await cookies();
+  const requestHeaders = await headers();
+  const pathname = requestHeaders.get('x-dmc-pathname') || requestHeaders.get('next-url') || '/';
+  const sessionToken = cookieStore.get('dmc_session')?.value || '';
+  if (!sessionToken) {
+    redirect(buildLoginRedirectPath(pathname));
+  }
+  return sessionToken;
+}
+
 export async function adminPageFetch(input: string | URL, init: AdminPageFetchInit = {}) {
   const cookieStore = await cookies();
   const requestHeaders = await headers();
