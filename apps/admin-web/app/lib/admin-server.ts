@@ -7,7 +7,27 @@ const DEFAULT_PRODUCTION_APP_URL = 'https://dmc-platform-admin-web.vercel.app';
 type AdminPageFetchInit = RequestInit & {
   allowAnonymous?: boolean;
   allow404?: boolean;
+  // Server-side fetches MUST fail-fast when the backend hangs —
+  // otherwise an `await` inside an async server component blocks
+  // streaming forever and the browser eventually shows "Page
+  // Unresponsive". Default 8s. Pass `timeoutMs: 0` to disable.
+  timeoutMs?: number;
 };
+
+const DEFAULT_ADMIN_FETCH_TIMEOUT_MS = 8_000;
+
+export class AdminFetchTimeoutError extends Error {
+  readonly status = 504;
+
+  constructor(label: string, timeoutMs: number) {
+    super(`Admin API request "${label}" timed out after ${timeoutMs}ms`);
+    this.name = 'AdminFetchTimeoutError';
+  }
+}
+
+export function isAdminFetchTimeoutError(error: unknown): error is AdminFetchTimeoutError {
+  return error instanceof AdminFetchTimeoutError || (error instanceof Error && error.name === 'AdminFetchTimeoutError');
+}
 
 export class AdminForbiddenError extends Error {
   readonly status = 403;
@@ -111,11 +131,43 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
     nextHeaders.set('Cookie', `dmc_session=${sessionToken}`);
   }
 
-  const response = await fetch(normalizeAdminApiInput(input, requestHeaders), {
+  // 8s timeout via AbortController so a hung backend can't block the
+  // page render indefinitely. Caller-supplied signals are linked.
+  const timeoutMs = init.timeoutMs ?? DEFAULT_ADMIN_FETCH_TIMEOUT_MS;
+  const timeoutController = timeoutMs > 0 ? new AbortController() : null;
+  const timeoutHandle = timeoutController
+    ? setTimeout(() => timeoutController.abort(), timeoutMs)
+    : null;
+  if (timeoutController && init.signal) {
+    if (init.signal.aborted) {
+      timeoutController.abort();
+    } else {
+      init.signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
+    }
+  }
+
+  const fetchInit: RequestInit = {
     ...init,
     headers: nextHeaders,
     cache: init.cache ?? 'no-store',
-  });
+    signal: timeoutController ? timeoutController.signal : init.signal,
+  };
+  delete (fetchInit as { timeoutMs?: number }).timeoutMs;
+
+  let response: Response;
+  try {
+    response = await fetch(normalizeAdminApiInput(input, requestHeaders), fetchInit);
+  } catch (caughtError) {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (caughtError instanceof Error && caughtError.name === 'AbortError') {
+      if (init.signal?.aborted) {
+        throw caughtError;
+      }
+      throw new AdminFetchTimeoutError(String(input), timeoutMs);
+    }
+    throw caughtError;
+  }
+  if (timeoutHandle) clearTimeout(timeoutHandle);
 
   if (response.status === 401) {
     redirect(buildSessionExpiredPath(pathname));
