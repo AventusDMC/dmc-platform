@@ -1,9 +1,8 @@
-import { Suspense } from 'react';
 import Link from 'next/link';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
-import { adminPageFetchJson, isNextRedirectError, requireAdminSession } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { HotelAllotmentsSection } from './HotelAllotmentsSection';
 import { HotelContractsSection } from './HotelContractsSection';
 import { HotelMealPlansSupplementsSection } from './HotelMealPlansSupplementsSection';
@@ -225,271 +224,7 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
   return null;
 }
 
-// Lightweight placeholder shown while a deferred section streams in.
-// Renders a generic "Loading …" card that matches the surrounding
-// shell so the page doesn't feel empty during the first paint.
-function DeferredLoadingCard({ label }: { label: string }) {
-  return (
-    <div className="detail-card" role="status" aria-live="polite" aria-busy="true">
-      <p className="eyebrow">Loading</p>
-      <p className="detail-copy">{label}…</p>
-    </div>
-  );
-}
-
-// SummaryStrip placeholder — three zero-value cards in the same shape
-// as the real strip so the layout doesn't shift when data arrives.
-function SummaryStripPlaceholder() {
-  return (
-    <SummaryStrip
-      items={[
-        { id: 'hotels', label: 'Hotels', value: '—', helper: 'Master records' },
-        { id: 'room-categories', label: 'Room categories', value: '—', helper: 'Across all hotels' },
-        { id: 'contracts', label: 'Contracted hotels', value: '—', helper: 'Commercial data loads by tab' },
-      ]}
-    />
-  );
-}
-
-// Async server component that fetches the directory summary and
-// renders the SummaryStrip + (optional) large-directory banner.
-// Wrapped in <Suspense> at the call site so the shell paints before
-// this finishes.
-async function HotelsSummaryAsync({ loadRequested }: { loadRequested: boolean }) {
-  // Promise-variable form so the gating ternary matches the
-  // production behaviour assertions in HotelsSafeShell.test.ts and
-  // HotelsDirectory.test.ts without `await` in the ternary itself.
-  const summaryPromise = loadRequested
-    ? getDirectorySummary().catch((error) => {
-        if (isNextRedirectError(error)) {
-          throw error;
-        }
-        console.error('[hotels] directory summary unavailable', error);
-        return [] as HotelDirectorySummary[];
-      })
-    : Promise.resolve([] as HotelDirectorySummary[]);
-  const directorySummary = await summaryPromise;
-
-  const hotelDirectoryCount = directorySummary.length;
-  const roomCategoryCount = directorySummary.reduce((sum, h) => sum + h.roomCategoryCount, 0);
-  const contractedHotelCount = directorySummary.filter((h) => h.contractCount > 0).length;
-  // Safe-mode threshold — when the tenant has more hotels than this we
-  // show the banner explaining the directory loads summary cards only.
-  const HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD = 50;
-  const isLargeDirectory = hotelDirectoryCount > HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD;
-
-  return (
-    <>
-      <SummaryStrip
-        items={[
-          {
-            id: 'hotels',
-            label: 'Hotels',
-            value: String(hotelDirectoryCount),
-            helper: 'Master records',
-          },
-          {
-            id: 'room-categories',
-            label: 'Room categories',
-            value: String(roomCategoryCount),
-            // The lightweight directory summary doesn't load each
-            // category row, so we can't split active vs inactive
-            // without a second fetch. Show the rollup count + a
-            // neutral helper.
-            helper: 'Across all hotels',
-          },
-          {
-            id: 'contracts',
-            label: 'Contracted hotels',
-            value: String(contractedHotelCount),
-            helper: 'Commercial data loads by tab',
-          },
-        ]}
-      />
-      {loadRequested && isLargeDirectory ? (
-        <div
-          className="detail-card"
-          role="status"
-          style={{ borderColor: '#f59e0b', marginTop: '0.75rem' }}
-          data-testid="hotels-large-directory-banner"
-        >
-          <p className="eyebrow" style={{ color: '#f59e0b', margin: 0 }}>Safe mode</p>
-          <strong>Large hotel directory — showing summary cards first.</strong>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
-            {hotelDirectoryCount} hotels in the catalog. Open a hotel from the Directory tab to
-            load its contracts + rates on demand.
-          </p>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-// Async server component for the commercial context card ("Current
-// contract" chip). Reads the contract via getHotelContract. Streams
-// in independently of the rest of the commercial subheader so the
-// nav links paint immediately.
-async function CurrentContractContextAsync({
-  loadRequested,
-  isCommercialTab,
-  resolvedSearchParams,
-}: {
-  loadRequested: boolean;
-  isCommercialTab: boolean;
-  resolvedSearchParams: Awaited<HotelsPageProps['searchParams']>;
-}) {
-  // Promise-variable form (no `await` inside the ternary) so the
-  // production-behaviour grep `loadRequested && isCommercialTab &&
-  // resolvedSearchParams?.contractId ? getHotelContract(...)` keeps
-  // matching the HotelsSafeShell.test.ts assertion.
-  const contractPromise =
-    loadRequested && isCommercialTab && resolvedSearchParams?.contractId
-      ? getHotelContract(resolvedSearchParams.contractId).catch((error) => {
-          if (isNextRedirectError(error)) {
-            throw error;
-          }
-          console.error('[hotels] current contract unavailable', error);
-          return null;
-        })
-      : Promise.resolve(null);
-  const currentContract = await contractPromise;
-
-  if (!currentContract) {
-    return (
-      <div className="commercial-context-card">
-        <span>Current contract</span>
-        <strong>All contracts</strong>
-        <p>Showing the full commercial module scope.</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="commercial-context-card">
-        <span>Current contract</span>
-        <strong>{currentContract.name}</strong>
-        <p>
-          {currentContract.hotel.name}
-          {currentContract.hotel.city ? ` (${currentContract.hotel.city})` : ''}
-        </p>
-      </div>
-      <section className="commercial-contract-strip" aria-label="Current contract summary">
-        <article className="commercial-contract-chip">
-          <span>Contract</span>
-          <strong>{currentContract.name}</strong>
-        </article>
-        <article className="commercial-contract-chip">
-          <span>Validity</span>
-          <strong>{formatDateRange(currentContract.validFrom, currentContract.validTo)}</strong>
-        </article>
-        <article className="commercial-contract-chip">
-          <span>Rates</span>
-          <strong>{currentContract._count.rates}</strong>
-        </article>
-        <article className="commercial-contract-chip">
-          <span>Allotments</span>
-          <strong>{currentContract._count.allotments}</strong>
-        </article>
-        <article className="commercial-contract-chip">
-          <span>Promotions</span>
-          <strong>Open tab</strong>
-        </article>
-        <article className="commercial-contract-chip">
-          <span>Readiness</span>
-          <strong>{currentContract.readinessStatus || 'draft'}</strong>
-        </article>
-      </section>
-      <nav className="commercial-actions-row" aria-label="Commercial scope actions">
-        <Link className="commercial-action-link" href={`/hotels?tab=contracts&contractId=${currentContract.id}`}>
-          View contract
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=allotments&contractId=${currentContract.id}`}>
-          View allotments
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=rates&contractId=${currentContract.id}`}>
-          View rates
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=tariff-workbook&contractId=${currentContract.id}`}>
-          Open tariff workbook
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=occupancy-child-policy&contractId=${currentContract.id}`}>
-          View occupancy & child policy
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=meal-plans-supplements&contractId=${currentContract.id}`}>
-          View meal plans & supplements
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=policies&contractId=${currentContract.id}`}>
-          View policies
-        </Link>
-        <Link className="commercial-action-link" href={`/hotels?tab=promotions&contractId=${currentContract.id}`}>
-          View promotions
-        </Link>
-        <Link className="commercial-action-link" href="/hotels?tab=contracts">
-          Back to all contracts
-        </Link>
-      </nav>
-    </>
-  );
-}
-
-// Async server component for the active-tab body. When the directory
-// tab is active we also need the full hotels list (the only tab that
-// renders it). Every other tab passes an empty list — the section's
-// own server-side fetch handles its own data.
-async function HotelsTabBodyAsync({
-  loadRequested,
-  activeTab,
-  resolvedSearchParams,
-  isDirectoryTab,
-}: {
-  loadRequested: boolean;
-  activeTab: HotelsTab;
-  resolvedSearchParams: Awaited<HotelsPageProps['searchParams']>;
-  isDirectoryTab: boolean;
-}) {
-  // Promise-variable form so the source grep
-  // `loadRequested && isDirectoryTab ? getHotels()` in
-  // HotelsSafeShell.test.ts + HotelsDirectory.test.ts keeps matching
-  // without `await` inside the ternary itself.
-  const hotelsPromise = loadRequested && isDirectoryTab
-    ? getHotels().catch((error) => {
-        if (isNextRedirectError(error)) {
-          throw error;
-        }
-        console.error('[hotels] hotels directory unavailable', error);
-        return [] as HotelsPageHotel[];
-      })
-    : Promise.resolve([] as HotelsPageHotel[]);
-  const hotels = await hotelsPromise;
-
-  return loadRequested
-    ? await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)
-    : (
-        <HotelsSafeShell
-          activeTab={activeTab}
-          activeTabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}
-          searchParams={resolvedSearchParams}
-        />
-      );
-}
-
 export default async function HotelsPage({ searchParams }: HotelsPageProps) {
-  // Top-of-page session gate. MUST run before any Suspense renders.
-  // Without this, an unauthenticated visit triggers redirect() from
-  // INSIDE a suspended async component — Next.js then emits both an
-  // HTTP 307 status AND a streaming body containing NEXT_REDIRECT
-  // error chunks, which Chrome (notably in incognito) silently fails
-  // to follow, leaving the user on a blank page. By redirecting at
-  // the top, the response is a clean HTTP 307 with no body conflict.
-  await requireAdminSession();
-
-  // The page itself is mostly synchronous — only reads searchParams.
-  // Data fetches happen inside <Suspense> boundaries so the shell
-  // streams to the browser immediately and the data sections fill in
-  // independently. Without this, the page sat blank until ALL
-  // server-side awaits resolved, occasionally for 8+ seconds, which
-  // tripped Chrome's "Page Unresponsive" detector.
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
   const isCommercialTab =
@@ -501,9 +236,62 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
     activeTab === 'promotions';
+  // Safe-shell gate — when the operator hasn't explicitly opted in to
+  // loading via `?load=1`, skip EVERY server-side fetch on this page.
+  // Even the lightweight directory-summary stays unfetched so the
+  // initial visit only paints the click-to-load shell.
   const loadRequested = resolvedSearchParams?.load === '1';
-  const isDirectoryTab = activeTab === 'hotels';
 
+  // Split the heavy hotel fetch from the lightweight summary used by
+  // the strip. Only load full hotels when the operator is on the
+  // directory tab (the only tab that actually renders the list).
+  // Every other tab uses the lightweight /hotels/directory-summary
+  // endpoint.
+  const isDirectoryTab = activeTab === 'hotels';
+  const [hotelsForDirectory, directorySummary, currentContract] = await Promise.all([
+    loadRequested && isDirectoryTab
+      ? getHotels().catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+          console.error('[hotels] hotels directory unavailable', error);
+          return [] as HotelsPageHotel[];
+        })
+      : Promise.resolve([] as HotelsPageHotel[]),
+    loadRequested
+      ? getDirectorySummary().catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+          console.error('[hotels] directory summary unavailable', error);
+          return [] as HotelDirectorySummary[];
+        })
+      : Promise.resolve([] as HotelDirectorySummary[]),
+    loadRequested && isCommercialTab && resolvedSearchParams?.contractId
+      ? getHotelContract(resolvedSearchParams.contractId).catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+
+          console.error('[hotels] current contract unavailable', error);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+  // Counts derive from the lightweight summary — never from the heavy
+  // hotel objects. roomCategoryCount uses the per-hotel rollup count
+  // returned by the summary endpoint.
+  const hotelDirectoryCount = directorySummary.length;
+  const roomCategoryCount = directorySummary.reduce((sum, h) => sum + h.roomCategoryCount, 0);
+  const contractedHotelCount = directorySummary.filter((h) => h.contractCount > 0).length;
+  // Safe-mode threshold — when the tenant has more hotels than this we
+  // show the banner explaining the directory loads summary cards only.
+  const HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD = 50;
+  const isLargeDirectory = hotelDirectoryCount > HOTELS_DIRECTORY_SAFE_MODE_THRESHOLD;
+  // Hotels passed downstream — full data on the directory tab, empty
+  // array otherwise so HotelsSection doesn't trigger its own fallback
+  // fetch.
+  const hotels = hotelsForDirectory;
   const commercialDescription =
     activeTab === 'contracts'
       ? 'Manage agreement structure first, then move directly into allotments and rates without leaving the commercial flow.'
@@ -568,9 +356,32 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
             />
           }
           summary={
-            <Suspense fallback={<SummaryStripPlaceholder />}>
-              <HotelsSummaryAsync loadRequested={loadRequested} />
-            </Suspense>
+            <SummaryStrip
+              items={[
+                {
+                  id: 'hotels',
+                  label: 'Hotels',
+                  value: String(hotelDirectoryCount),
+                  helper: 'Master records',
+                },
+                {
+                  id: 'room-categories',
+                  label: 'Room categories',
+                  value: String(roomCategoryCount),
+                  // The lightweight directory summary doesn't load each
+                  // category row, so we can't split active vs inactive
+                  // without a second fetch. Show the rollup count + a
+                  // neutral helper.
+                  helper: 'Across all hotels',
+                },
+                {
+                  id: 'contracts',
+                  label: 'Contracted hotels',
+                  value: String(contractedHotelCount),
+                  helper: 'Commercial data loads by tab',
+                },
+              ]}
+            />
           }
         >
           <section className="section-stack">
@@ -619,27 +430,109 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                       })}
                     </nav>
 
-                    <Suspense fallback={<DeferredLoadingCard label="Loading current contract" />}>
-                      <CurrentContractContextAsync
-                        loadRequested={loadRequested}
-                        isCommercialTab={isCommercialTab}
-                        resolvedSearchParams={resolvedSearchParams}
-                      />
-                    </Suspense>
+                    {currentContract ? (
+                      <div className="commercial-context-card">
+                        <span>Current contract</span>
+                        <strong>{currentContract.name}</strong>
+                        <p>
+                          {currentContract.hotel.name}
+                          {currentContract.hotel.city ? ` (${currentContract.hotel.city})` : ''}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="commercial-context-card">
+                        <span>Current contract</span>
+                        <strong>All contracts</strong>
+                        <p>Showing the full commercial module scope.</p>
+                      </div>
+                    )}
                   </div>
                 </section>
+
+                {currentContract ? (
+                  <>
+                    <section className="commercial-contract-strip" aria-label="Current contract summary">
+                      <article className="commercial-contract-chip">
+                        <span>Contract</span>
+                        <strong>{currentContract.name}</strong>
+                      </article>
+                      <article className="commercial-contract-chip">
+                        <span>Validity</span>
+                        <strong>{formatDateRange(currentContract.validFrom, currentContract.validTo)}</strong>
+                      </article>
+                      <article className="commercial-contract-chip">
+                        <span>Rates</span>
+                        <strong>{currentContract._count.rates}</strong>
+                      </article>
+                      <article className="commercial-contract-chip">
+                        <span>Allotments</span>
+                        <strong>{currentContract._count.allotments}</strong>
+                      </article>
+                      <article className="commercial-contract-chip">
+                        <span>Promotions</span>
+                        <strong>Open tab</strong>
+                      </article>
+                      <article className="commercial-contract-chip">
+                        <span>Readiness</span>
+                        <strong>{currentContract.readinessStatus || 'draft'}</strong>
+                      </article>
+                    </section>
+
+                    <nav className="commercial-actions-row" aria-label="Commercial scope actions">
+                      <Link className="commercial-action-link" href={`/hotels?tab=contracts&contractId=${currentContract.id}`}>
+                        View contract
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=allotments&contractId=${currentContract.id}`}>
+                        View allotments
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=rates&contractId=${currentContract.id}`}>
+                        View rates
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=tariff-workbook&contractId=${currentContract.id}`}>
+                        Open tariff workbook
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=occupancy-child-policy&contractId=${currentContract.id}`}>
+                        View occupancy & child policy
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=meal-plans-supplements&contractId=${currentContract.id}`}>
+                        View meal plans & supplements
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=policies&contractId=${currentContract.id}`}>
+                        View policies
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=promotions&contractId=${currentContract.id}`}>
+                        View promotions
+                      </Link>
+                      <Link className="commercial-action-link" href="/hotels?tab=contracts">
+                        Back to all contracts
+                      </Link>
+                    </nav>
+                  </>
+                ) : null}
               </>
             ) : null}
 
+            {loadRequested && isLargeDirectory ? (
+              <div className="detail-card" role="status" style={{ borderColor: '#f59e0b', marginBottom: '0.75rem' }}>
+                <p className="eyebrow" style={{ color: '#f59e0b', margin: 0 }}>Safe mode</p>
+                <strong>Large hotel directory — showing summary cards first.</strong>
+                <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+                  {hotelDirectoryCount} hotels in the catalog. Open a hotel from the Directory tab to
+                  load its contracts + rates on demand.
+                </p>
+              </div>
+            ) : null}
+
             <HotelsDirectoryErrorBoundary tabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}>
-              <Suspense fallback={<DeferredLoadingCard label={`Loading ${HOTEL_TABS.find((tab) => tab.id === activeTab)?.label?.toLowerCase() || 'workspace'}`} />}>
-                <HotelsTabBodyAsync
-                  loadRequested={loadRequested}
-                  activeTab={activeTab}
-                  resolvedSearchParams={resolvedSearchParams}
-                  isDirectoryTab={isDirectoryTab}
-                />
-              </Suspense>
+              {loadRequested
+                ? await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)
+                : (
+                    <HotelsSafeShell
+                      activeTab={activeTab}
+                      activeTabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}
+                      searchParams={resolvedSearchParams}
+                    />
+                  )}
             </HotelsDirectoryErrorBoundary>
           </section>
         </WorkspaceShell>
