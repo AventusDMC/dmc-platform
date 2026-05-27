@@ -557,29 +557,52 @@ export class HotelsService {
    * call from any UI / cron / smoke test — does not write to the DB.
    */
   async getEngineHealth() {
+    // Wrap each Prisma count in its own try/catch so a single broken
+    // query doesn't take down the whole audit. Filters like
+    // `{ name: null }` can throw at runtime if Prisma considers the
+    // column non-nullable in the generated client, even when the DB
+    // column actually permits it.
+    const safeCount = async (label: string, queryFn: () => Promise<number>): Promise<number> => {
+      try {
+        return await queryFn();
+      } catch (caughtError) {
+        console.warn(`[hotels.getEngineHealth] count "${label}" threw`, caughtError);
+        return 0;
+      }
+    };
+
     const [
       hotels,
       contracts,
       rates,
       allotments,
       roomCategories,
-      roomCategoriesNullName,
+      roomCategoriesEmptyName,
       roomCategoriesNoHotel,
     ] = await Promise.all([
-      this.prisma.hotel.count(),
-      (this.prisma as any).hotelContract.count(),
-      (this.prisma as any).hotelRate.count(),
-      (this.prisma as any).hotelAllotment.count(),
-      (this.prisma as any).hotelRoomCategory.count(),
-      // Categories with empty/null name — break the UI sort comparator
-      (this.prisma as any).hotelRoomCategory.count({
-        where: { OR: [{ name: '' }, { name: null as any }] },
+      safeCount('hotels', () => this.prisma.hotel.count()),
+      safeCount('contracts', () => (this.prisma as any).hotelContract.count()),
+      safeCount('rates', () => (this.prisma as any).hotelRate.count()),
+      safeCount('allotments', () => (this.prisma as any).hotelAllotment.count()),
+      safeCount('roomCategories', () => (this.prisma as any).hotelRoomCategory.count()),
+      // Categories with empty-string name. Prisma rejects `name: null`
+      // for non-nullable columns at runtime, so we limit to empty
+      // string here and check truly-orphan rows via the raw SQL
+      // probe below. Empty string is the realistic bad-import shape.
+      safeCount('roomCategoriesEmptyName', () =>
+        (this.prisma as any).hotelRoomCategory.count({ where: { name: '' } }),
+      ),
+      // Orphaned categories — uses raw SQL because Prisma's typed
+      // `where: { hotel: null }` syntax is unreliable for relation
+      // filters. Casts to bigint defensively (Prisma returns BigInt
+      // from $queryRaw for COUNT in some adapter versions).
+      safeCount('roomCategoriesNoHotel', async () => {
+        const rows = await (this.prisma as any).$queryRawUnsafe(
+          `SELECT COUNT(*)::bigint AS c FROM hotel_room_categories rc LEFT JOIN hotels h ON h.id = rc."hotelId" WHERE h.id IS NULL`,
+        );
+        const raw = Array.isArray(rows) && rows.length > 0 ? rows[0].c : 0;
+        return typeof raw === 'bigint' ? Number(raw) : Number(raw || 0);
       }),
-      // Categories whose hotel record is gone (cascade should prevent
-      // this; counts > 0 means historical raw deletes happened).
-      (this.prisma as any).hotelRoomCategory.count({
-        where: { hotel: null as any },
-      }).catch(() => 0),
     ]);
 
     return {
@@ -591,7 +614,7 @@ export class HotelsService {
         roomCategories,
       },
       problems: {
-        roomCategoriesWithEmptyName: roomCategoriesNullName,
+        roomCategoriesWithEmptyName: roomCategoriesEmptyName,
         roomCategoriesWithoutHotel: roomCategoriesNoHotel,
       },
       generatedAt: new Date().toISOString(),
