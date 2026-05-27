@@ -68,6 +68,35 @@ export class HotelsController {
     return this.hotelsService.findRoomCategoriesSummary({ hotelId });
   }
 
+  // Hotel Engine Phase 0 — read-only health audit. Returns counts of
+  // hotels / contracts / rates / allotments / room categories AND a
+  // `problems` block flagging records that are likely bad imports
+  // (null/empty room category name, orphaned categories). MUST stay
+  // before @Get(':id') so the literal path "admin" isn't read as UUID.
+  @Get('admin/engine-health')
+  getEngineHealth() {
+    return this.hotelsService.getEngineHealth();
+  }
+
+  // Hotel Engine Phase 0 — destructive cleanup. POST body must
+  // include `{ "confirm": "wipe-all-contracts" }`. Deletes every
+  // hotel contract and cascades to rates / allotments / supplements /
+  // policies / promotions via the schema's onDelete: Cascade rules.
+  // Hotels and HotelRoomCategory rows are preserved.
+  @Post('admin/wipe-contracts')
+  wipeAllContracts(@Body() body: { confirm?: string }) {
+    return this.hotelsService.wipeAllContracts(body?.confirm || '');
+  }
+
+  // Hotel Engine Phase 0 — destructive cleanup of malformed room
+  // categories with null/empty name (the rows that crashed the
+  // /hotels?tab=room-categories page client-side hydration). POST
+  // body must include `{ "confirm": "wipe-invalid-room-categories" }`.
+  @Post('admin/wipe-invalid-room-categories')
+  wipeInvalidRoomCategories(@Body() body: { confirm?: string }) {
+    return this.hotelsService.wipeInvalidRoomCategories(body?.confirm || '');
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.hotelsService.findOne(id);
