@@ -1,23 +1,19 @@
 import Link from 'next/link';
 
-// Emergency safe shell for /hotels.
+// Hotels safe shell — click-to-load gate.
 //
-// PR #122 + #124 (Hotels Directory freeze + Prisma isActive hotfix) did
-// not eliminate the "Page Unresponsive" symptom on the room-categories
-// tab. The remaining culprit is suspected to be a frontend render churn
-// / hydration loop / heavy child component mount — not backend latency.
-//
-// To unblock operators TODAY, the Hotels page is now click-gated: the
-// initial render produces ONLY this shell (header / tabs / two Load
-// buttons). The expensive tab content (HotelDirectory cards, filters,
-// room category summaries, contract summary strip) mounts ONLY after
-// the operator clicks the matching "Load" button.
+// The initial /hotels visit renders ONLY this shell (header + tabs +
+// two Load buttons). The expensive tab body (HotelDirectory cards,
+// filters, room category summaries, contract summary strip) mounts
+// ONLY after the operator clicks the matching "Load" button.
 //
 // Bypass: append `?load=1` to the URL (e.g. `/hotels?tab=room-categories&load=1`).
 // The shell links carry that flag automatically.
 //
-// This is a deliberate emergency isolation pattern — we accept the
-// extra click while we hunt for the underlying frontend loop.
+// Trade-off: one extra click on the first visit per tab, in exchange
+// for the page never doing heavy server-side work until the operator
+// has consented to it. Cold visits stay snappy and a regression in
+// any tab body can't cascade into the workspace header.
 
 export type HotelsSafeShellProps = {
   activeTab: string;
@@ -85,8 +81,7 @@ export function HotelsSafeShell({ activeTab, activeTabLabel, searchParams }: Hot
       </div>
 
       <p className="table-subcopy" style={{ marginTop: '0.75rem' }}>
-        Tip: append <code>?load=1</code> to the URL to skip this gate. Append
-        <code> ?debugPerf=1</code> to enable the render-count debug panel.
+        Tip: append <code>?load=1</code> to the URL to skip this gate.
       </p>
     </div>
   );

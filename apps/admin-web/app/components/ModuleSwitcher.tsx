@@ -3,36 +3,25 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useHardRenderGuard, useRenderCounter } from '../hotels/HotelsPerfDebugPanel';
 
-// Hotels workspace freeze hunt — Round 10.
+// Pure-render ModuleSwitcher.
 //
-// PR #131 confirmed `?wrapper=noModuleSwitcher` is stable while every
-// other Hotels page render path freezes. Conclusion: the loop lives
-// here.
+// Earlier versions allocated a `new URL(...)` per item per render and
+// walked the searchParams entries for each tab. On pages with 10+ tabs
+// and 5+ query params that's O(items × params) URL objects per render
+// — combined with `useSearchParams()` returning a fresh
+// `ReadonlyURLSearchParams` reference whenever Next.js fires a router
+// update, the active-tab computation became a hot path that could
+// stall the browser on workspaces with heavy wrapper trees.
 //
-// The original implementation called `new URL(...)` inside a synchronous
-// `items.map` AND looped `url.searchParams.entries()` ON EVERY RENDER.
-// Combined with `useSearchParams()` returning a fresh `ReadonlyURLSearchParams`
-// reference whenever Next.js fires a router update (RSC re-payload,
-// prefetch settle, etc.), each render allocated O(items × params) URL
-// objects + ran `.get()` on the live URLSearchParams for each one.
-//
-// On Hotels pages with 10+ tabs and 5+ query params, that's 50+ URL
-// constructions and ~100 searchParams.get() lookups per render — on a
-// page where the page-level loadRequested gating + commercial subnav +
-// summary strip already triggered multiple cascading re-renders during
-// hydration.
-//
-// Fix in this commit:
-//   1. Pre-compute every item's parsed (pathname, queryEntries) ONCE
-//      via useMemo, keyed on the items array reference.
-//   2. Replace `new URL(...)` with a plain string split on '?' — no
-//      allocation, no constructor.
-//   3. Compute the active-item set in a SINGLE useMemo over (items,
-//      pathname, searchParams.toString()). Children read O(1) Set.has().
-//   4. Add render counter + hard guard so if the loop reappears it
-//      throws at 50 renders / 2 seconds with a named diagnostic.
+// Today:
+//   1. parseHref() splits each item's href ONCE per items-array
+//      identity via useMemo — plain `indexOf('?')`, no URL constructor.
+//   2. The active-item Set is computed in a single useMemo keyed on
+//      (parsedItems, pathname, searchParams.toString(), activeId).
+//      Children read O(1) Set.has() in JSX.
+//   3. Falls back to caller-supplied activeId when the URL signal
+//      disagrees so at least one chip always highlights.
 
 type ModuleSwitcherItem = {
   id: string;
@@ -71,11 +60,6 @@ function parseHref(href: string): { pathname: string; queryEntries: Array<[strin
 }
 
 export function ModuleSwitcher({ ariaLabel, activeId, items }: ModuleSwitcherProps) {
-  // Diagnostic instrumentation. Loop-detection hard guard at 50 renders
-  // in 2 seconds — surfaces the diagnostic instead of locking the tab.
-  useRenderCounter('ModuleSwitcher');
-  useHardRenderGuard('ModuleSwitcher', { limit: 50, windowMs: 2000 });
-
   const pathname = usePathname() || '/';
   const searchParams = useSearchParams();
 
@@ -84,8 +68,7 @@ export function ModuleSwitcher({ ariaLabel, activeId, items }: ModuleSwitcherPro
   // the current URL. Using the string keeps the memo dep set tight.
   const searchParamsKey = searchParams ? searchParams.toString() : '';
 
-  // Pre-parse each item's href ONCE per items-array identity. The
-  // expensive new URL() construction is gone; we use a plain split.
+  // Pre-parse each item's href ONCE per items-array identity.
   const parsedItems = useMemo(
     () => items.map((item) => ({ item, parsed: parseHref(item.href) })),
     [items],

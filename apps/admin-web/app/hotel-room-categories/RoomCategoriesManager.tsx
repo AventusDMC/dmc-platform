@@ -5,27 +5,21 @@ import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { RoomCategoriesErrorBoundary } from './RoomCategoriesErrorBoundary';
-import {
-  guardDetailFetch,
-  measurePerf,
-  useHardRenderGuard,
-  useRenderCounter,
-  withRouterCallGuard,
-} from '../hotels/HotelsPerfDebugPanel';
 
 // Hotel Master Room Categories Manager.
 //
-// Refactored as part of the room-categories freeze fix:
 //   - Consumes the lightweight summary endpoint (one row per category,
-//     no nested rates/contracts/supplements)
-//   - Lazy-loads per-category detail only when the operator expands
-//   - Safe-mode banner triggers when a hotel has many linked rates
+//     no nested rates/contracts/supplements).
+//   - Lazy-loads per-category detail only when the operator expands.
+//   - Surfaces a safe-mode banner when a hotel has many linked rates.
 //   - Uses AbortController to cancel inflight detail fetches when the
-//     operator collapses or switches rows
+//     operator collapses or switches rows.
+//   - Wrapped in RoomCategoriesErrorBoundary so a render failure
+//     surfaces a friendly retry instead of freezing the tab.
 //
-// Preserves all existing CRUD endpoints — POST /hotels/:id/room-
-// categories + PATCH/DELETE under the same path. The pricing engine
-// never reads this component.
+// CRUD endpoints unchanged — POST /hotels/:id/room-categories +
+// PATCH/DELETE under the same path. The pricing engine never reads
+// this component.
 
 export type RoomCategorySummary = {
   id: string;
@@ -92,12 +86,6 @@ type RoomCategoryFormProps = {
     description: string;
     isActive: boolean;
   };
-  // ROOM_CATEGORY_FORM_SAFE=1 — when true the form renders plain
-  // uncontrolled HTML inputs (defaultValue, FormData on submit). No
-  // useState for field values, no per-keystroke React re-renders.
-  // Used to confirm the freeze lives in the controlled-input churn
-  // (vs the rest of the form lifecycle).
-  formSafeMode?: boolean;
 };
 
 function RoomCategoryForm({
@@ -107,46 +95,7 @@ function RoomCategoryForm({
   categoryId,
   submitLabel,
   initialValues,
-  formSafeMode = false,
 }: RoomCategoryFormProps) {
-  // Diagnostic instrumentation — counts every render, hashes the
-  // defaultValues object so churn from a freshly-allocated parent
-  // prop shows up in the perf overlay.
-  useRenderCounter('RoomCategoryForm');
-  // Tighter limit than the manager wrappers — the form is a leaf and
-  // shouldn't render more than a few dozen times per interaction. If
-  // it crosses 50 renders in 2 seconds we're in a loop.
-  useHardRenderGuard('RoomCategoryForm', { limit: 50, windowMs: 2000 });
-
-  if (formSafeMode) {
-    return (
-      <RoomCategoryFormSafe
-        apiBaseUrl={apiBaseUrl}
-        hotels={hotels}
-        hotelId={hotelId}
-        categoryId={categoryId}
-        submitLabel={submitLabel}
-        initialValues={initialValues}
-      />
-    );
-  }
-
-  return (
-    <RoomCategoryFormControlled
-      apiBaseUrl={apiBaseUrl}
-      hotels={hotels}
-      hotelId={hotelId}
-      categoryId={categoryId}
-      submitLabel={submitLabel}
-      initialValues={initialValues}
-    />
-  );
-}
-
-function RoomCategoryFormControlled({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel, initialValues }: RoomCategoryFormProps) {
-  // Form components only call router.refresh() inside submit handlers,
-  // never on render — the guard can't trigger a render loop here, so
-  // we use the plain useRouter() to keep the prop chain narrow.
   const router = useRouter();
   const [selectedHotelId, setSelectedHotelId] = useState(initialValues?.hotelId || hotelId || hotels[0]?.id || '');
   const [name, setName] = useState(initialValues?.name || '');
@@ -246,172 +195,21 @@ function RoomCategoryFormControlled({ apiBaseUrl, hotels, hotelId, categoryId, s
   );
 }
 
-// ROOM_CATEGORY_FORM_SAFE — uncontrolled-input variant for the
-// freeze hunt. Every field uses `defaultValue` and `name=` instead of
-// `value` + `onChange`. Submit reads via `new FormData(event.target)`,
-// not via per-field React state. The only state on the component is
-// `isSubmitting` + `error` — flipped only inside the submit handler,
-// never on render. If THIS variant still freezes, the loop is
-// somewhere upstream (the manager, the section, the router); if it
-// renders cleanly, the freeze is in the controlled-input churn.
-function RoomCategoryFormSafe({
-  apiBaseUrl,
-  hotels,
-  hotelId,
-  categoryId,
-  submitLabel,
-  initialValues,
-}: RoomCategoryFormProps) {
-  // Form components only call router.refresh() inside submit handlers,
-  // never on render — the guard can't trigger a render loop here.
-  const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const isEditing = Boolean(categoryId);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-    const formData = new FormData(event.currentTarget);
-    const formHotelId = hotelId || (formData.get('hotelId') as string) || '';
-    const formName = (formData.get('name') as string) || '';
-    const formCode = (formData.get('code') as string) || '';
-    const formDescription = (formData.get('description') as string) || '';
-    const formIsActive = formData.get('isActive') === 'active';
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/hotels/${formHotelId}/room-categories${categoryId ? `/${categoryId}` : ''}`,
-        {
-          method: categoryId ? 'PATCH' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formName,
-            code: formCode || undefined,
-            description: formDescription || undefined,
-            isActive: formIsActive,
-          }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(
-          await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'create'} hotel room category.`),
-        );
-      }
-      if (!isEditing) {
-        event.currentTarget.reset();
-      }
-      router.refresh();
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : `Could not ${isEditing ? 'update' : 'create'} hotel room category.`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <form
-      className="entity-form compact-form"
-      onSubmit={handleSubmit}
-      data-testid="room-category-form-safe"
-      data-form-mode="safe"
-    >
-      <p className="table-subcopy">
-        Form safe mode — uncontrolled inputs only. No React state per keystroke. If this renders
-        cleanly, the freeze is in the controlled-input variant.
-      </p>
-      <div className="form-row form-row-4">
-        {!hotelId ? (
-          <label>
-            Hotel
-            <select name="hotelId" defaultValue={initialValues?.hotelId || hotels[0]?.id || ''} required>
-              {hotels.map((hotel) => (
-                <option key={hotel.id} value={hotel.id}>
-                  {hotel.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          Name
-          <input name="name" defaultValue={initialValues?.name || ''} placeholder="Standard" required />
-        </label>
-        <label>
-          Code
-          <input name="code" defaultValue={initialValues?.code || ''} placeholder="STD" />
-        </label>
-        <label>
-          Description
-          <input name="description" defaultValue={initialValues?.description || ''} placeholder="Optional" />
-        </label>
-        <label>
-          Status
-          <select name="isActive" defaultValue={(initialValues?.isActive ?? true) ? 'active' : 'inactive'}>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </label>
-      </div>
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save category' : 'Add category')}
-      </button>
-      {error ? <p className="form-error">{error}</p> : null}
-    </form>
-  );
-}
-
-// Binary isolation modes — RoomCategoriesSection passes the active
-// mode in via prop. Each mode selectively enables a layer of the
-// manager so we can binary-search the runaway-render culprit:
-//   minimal — Section returns early; manager never mounts.
-//   table   — Manager mounts but renders only the read-only table.
-//             No form, no expand, no delete buttons.
-//   form    — Adds the inline create form.
-//   expand  — Adds the per-row expand button + detail fetcher.
-//   full    — Everything (default behaviour before the hunt).
-type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full';
-
 export function RoomCategoriesManager({
   apiBaseUrl,
   hotels,
   initialSummary,
-  isolationMode = 'full',
-  formSafeMode = false,
-  expandSafeMode = false,
-  disableInstrumentation = false,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
-  isolationMode?: RoomCategoriesIsolationMode;
-  formSafeMode?: boolean;
-  expandSafeMode?: boolean;
-  // ?noInstrument=1 — when true, every diagnostic hook becomes a
-  // no-op. Lets us answer "is the freeze caused by the instrumentation
-  // we added to hunt the freeze?" If the page renders cleanly under
-  // ?noInstrument=1, the loop is in one of the perf hooks (counter /
-  // hard guard / router guard / fetch patch). If it still freezes,
-  // those hooks are NOT the loop.
-  disableInstrumentation?: boolean;
 }) {
-  // Diagnostic counters fire only when `?debugPerf=1` toggles the
-  // overlay panel. Without the flag these are no-ops.
-  useRenderCounter('RoomCategoriesManager', !disableInstrumentation);
-  // Hard guard — if this wrapper renders > 100 times in 1 second the
-  // error boundary surfaces a friendly message instead of locking
-  // the browser. Catches the runaway before the tab dies.
-  useHardRenderGuard('RoomCategoriesManager', { enabled: !disableInstrumentation });
   return (
     <RoomCategoriesErrorBoundary>
       <RoomCategoriesManagerInner
         apiBaseUrl={apiBaseUrl}
         hotels={hotels}
         initialSummary={initialSummary}
-        isolationMode={isolationMode}
-        formSafeMode={formSafeMode}
-        expandSafeMode={expandSafeMode}
-        disableInstrumentation={disableInstrumentation}
       />
     </RoomCategoriesErrorBoundary>
   );
@@ -421,29 +219,12 @@ function RoomCategoriesManagerInner({
   apiBaseUrl,
   hotels,
   initialSummary,
-  isolationMode,
-  formSafeMode,
-  expandSafeMode,
-  disableInstrumentation,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
   initialSummary: RoomCategorySummary[];
-  isolationMode: RoomCategoriesIsolationMode;
-  formSafeMode: boolean;
-  expandSafeMode: boolean;
-  disableInstrumentation: boolean;
 }) {
-  useRenderCounter('RoomCategoriesManagerInner', !disableInstrumentation);
-  useHardRenderGuard('RoomCategoriesManagerInner', { enabled: !disableInstrumentation });
-  const enableForm = isolationMode === 'form' || isolationMode === 'expand' || isolationMode === 'full';
-  const enableExpand = isolationMode === 'expand' || isolationMode === 'full';
-  const enableDelete = isolationMode === 'full';
-  // withRouterCallGuard counts router calls — if push/replace/refresh
-  // fires > 20 times in 2 seconds we throw so the error boundary
-  // surfaces a "Router synchronization loop detected" diagnostic.
-  // Disabled when noInstrument=1 so we can rule out the guard itself.
-  const router = withRouterCallGuard(useRouter(), !disableInstrumentation);
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -452,18 +233,13 @@ function RoomCategoriesManagerInner({
     {},
   );
 
-  // Sort is wrapped in measurePerf so the dev console warns if this
-  // ever exceeds 16ms (one frame). If the freeze ever lands here, we
-  // see it in the console before the browser locks.
   const sortedRows = useMemo<RoomCategorySummary[]>(
     () =>
-      measurePerf('RoomCategoriesManager.sortedRows', () =>
-        [...initialSummary].sort((left, right) => {
-          const hotelComparison = left.hotelName.localeCompare(right.hotelName);
-          if (hotelComparison !== 0) return hotelComparison;
-          return left.name.localeCompare(right.name);
-        }),
-      ),
+      [...initialSummary].sort((left, right) => {
+        const hotelComparison = left.hotelName.localeCompare(right.hotelName);
+        if (hotelComparison !== 0) return hotelComparison;
+        return left.name.localeCompare(right.name);
+      }),
     [initialSummary],
   );
 
@@ -471,30 +247,14 @@ function RoomCategoriesManagerInner({
   // the threshold we surface a banner so operators know detail loads
   // on demand instead of upfront.
   const isLargeHotelSetup = useMemo(
-    () =>
-      measurePerf('RoomCategoriesManager.isLargeHotelSetup', () =>
-        sortedRows.some((row) => row.linkedRateCount > LARGE_HOTEL_LINKED_RATE_THRESHOLD),
-      ),
+    () => sortedRows.some((row) => row.linkedRateCount > LARGE_HOTEL_LINKED_RATE_THRESHOLD),
     [sortedRows],
   );
 
-  // CRITICAL BUG-HUNT NOTE — Round 3.
-  //
-  // PR #126 used the "setter-form for cache check" pattern, but I
-  // realized that's a setState call with the SAME reference returned,
-  // which still triggers React to enqueue an update even though the
-  // value is unchanged. In some Strict-Mode or batched-update flows
-  // that double-enqueue can manifest as render churn.
-  //
-  // Round 3 fix: track in-flight fetches via a useRef so the cache
-  // check never enters React's render queue. Also short-circuit
-  // BEFORE calling setExpandedId so a repeat click on the same row
-  // doesn't fire two state updates.
-  //
-  // The fetch guard counts per-category invocations and throws if
-  // the same row fires > 5 fetches in 2 seconds. The error boundary
-  // catches the throw and surfaces "Repeated detail hydration loop
-  // detected" instead of letting the browser lock.
+  // Ref-driven cache check — avoids re-rendering when handleExpand
+  // looks up the current details map. Direct setState inside the
+  // callback would re-create the callback identity on every render
+  // and re-fire the expand handler.
   const detailsRef = useRef<typeof details>(details);
   detailsRef.current = details;
   const expandedIdRef = useRef<typeof expandedId>(expandedId);
@@ -517,10 +277,6 @@ function RoomCategoriesManagerInner({
       if (detailsRef.current[categoryId]?.loading) {
         return;
       }
-      // 5. New fetch — guard counts it. > 5 fetches in 2 seconds for
-      //    the same row throws "Repeated detail hydration loop detected".
-      //    Gated by disableInstrumentation so noInstrument=1 turns it off.
-      guardDetailFetch(categoryId, !disableInstrumentation);
       setDetails((current) => ({
         ...current,
         [categoryId]: { loading: true, data: null, error: null },
@@ -596,19 +352,12 @@ function RoomCategoriesManagerInner({
   }
 
   return (
-    <div className="entity-list" data-isolation-mode={isolationMode}>
-      {enableForm ? (
-        <RoomCategoryForm
-          apiBaseUrl={apiBaseUrl}
-          hotels={hotels}
-          submitLabel="Add room category"
-          formSafeMode={formSafeMode}
-        />
-      ) : (
-        <p className="table-subcopy">
-          Form disabled by isolation mode <code>{isolationMode}</code>. Switch to <code>form</code> or higher to enable.
-        </p>
-      )}
+    <div className="entity-list">
+      <RoomCategoryForm
+        apiBaseUrl={apiBaseUrl}
+        hotels={hotels}
+        submitLabel="Add room category"
+      />
 
       {error ? <p className="form-error">{error}</p> : null}
 
@@ -657,41 +406,35 @@ function RoomCategoriesManagerInner({
                       <td className="numeric-cell">{category.linkedQuoteItemCount}</td>
                       <td>
                         <div className="table-action-row">
-                          {enableExpand ? (
-                            <button
-                              type="button"
-                              className="compact-button"
-                              onClick={() => handleExpand(category.id)}
-                              aria-expanded={isExpanded}
-                              aria-controls={`room-category-detail-${category.id}`}
-                            >
-                              {isExpanded ? 'Hide detail' : 'Detail'}
-                            </button>
-                          ) : null}
-                          {enableForm ? (
-                            <button
-                              type="button"
-                              className="compact-button"
-                              onClick={() => setEditingId((current) => (current === category.id ? null : category.id))}
-                            >
-                              {isEditing ? 'Close edit' : 'Edit'}
-                            </button>
-                          ) : null}
-                          {enableDelete ? (
-                            <button
-                              type="button"
-                              className="compact-button compact-button-danger"
-                              onClick={() => handleDelete(category)}
-                              disabled={deletingId === category.id}
-                            >
-                              {deletingId === category.id ? 'Deleting...' : 'Delete'}
-                            </button>
-                          ) : null}
+                          <button
+                            type="button"
+                            className="compact-button"
+                            onClick={() => handleExpand(category.id)}
+                            aria-expanded={isExpanded}
+                            aria-controls={`room-category-detail-${category.id}`}
+                          >
+                            {isExpanded ? 'Hide detail' : 'Detail'}
+                          </button>
+                          <button
+                            type="button"
+                            className="compact-button"
+                            onClick={() => setEditingId((current) => (current === category.id ? null : category.id))}
+                          >
+                            {isEditing ? 'Close edit' : 'Edit'}
+                          </button>
+                          <button
+                            type="button"
+                            className="compact-button compact-button-danger"
+                            onClick={() => handleDelete(category)}
+                            disabled={deletingId === category.id}
+                          >
+                            {deletingId === category.id ? 'Deleting...' : 'Delete'}
+                          </button>
                         </div>
                       </td>
                     </tr>
 
-                    {enableExpand && isExpanded ? (
+                    {isExpanded ? (
                       <tr>
                         <td colSpan={7} id={`room-category-detail-${category.id}`}>
                           {!detail || detail.loading ? (
@@ -699,17 +442,13 @@ function RoomCategoriesManagerInner({
                           ) : detail.error ? (
                             <p className="form-error">{detail.error}</p>
                           ) : detail.data ? (
-                            <RoomCategoryDetailPanel
-                              detail={detail.data}
-                              expandSafeMode={expandSafeMode}
-                              disableInstrumentation={disableInstrumentation}
-                            />
+                            <RoomCategoryDetailPanel detail={detail.data} />
                           ) : null}
                         </td>
                       </tr>
                     ) : null}
 
-                    {enableForm && isEditing ? (
+                    {isEditing ? (
                       <tr>
                         <td colSpan={7}>
                           <div className="inline-entity-editor">
@@ -719,7 +458,6 @@ function RoomCategoriesManagerInner({
                               hotelId={category.hotelId}
                               categoryId={category.id}
                               submitLabel="Save category"
-                              formSafeMode={formSafeMode}
                               initialValues={{
                                 hotelId: category.hotelId,
                                 name: category.name,
@@ -743,35 +481,7 @@ function RoomCategoriesManagerInner({
   );
 }
 
-function RoomCategoryDetailPanel({
-  detail,
-  expandSafeMode = false,
-  disableInstrumentation = false,
-}: {
-  detail: CategoryDetail;
-  expandSafeMode?: boolean;
-  disableInstrumentation?: boolean;
-}) {
-  useRenderCounter('RoomCategoryDetailPanel', !disableInstrumentation);
-  useHardRenderGuard('RoomCategoryDetailPanel', { limit: 50, windowMs: 2000, enabled: !disableInstrumentation });
-
-  // expandSafeMode — bare-minimum render. No contracts list, no
-  // counts grid, no derived grouping. Just the category name. If the
-  // freeze persists in this mode, the loop is OUTSIDE the panel
-  // itself (handleExpand / fetch / setDetails). If it disappears,
-  // the loop is in one of the derived sections.
-  if (expandSafeMode) {
-    return (
-      <div data-testid="room-category-detail-panel-safe">
-        <strong>{detail.name}</strong>
-        <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: 0 }}>
-          expandSafe — derived sections disabled. {detail.contracts.length} contracts, {detail.counts.rates} rates
-          available (not rendered).
-        </p>
-      </div>
-    );
-  }
-
+function RoomCategoryDetailPanel({ detail }: { detail: CategoryDetail }) {
   return (
     <div className="contract-list-stack" data-testid="room-category-detail-panel">
       <div className="contract-list-row contract-list-row-wide">

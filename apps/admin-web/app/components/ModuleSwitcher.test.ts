@@ -2,35 +2,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-// ModuleSwitcher freeze fix — source-grep tests for the pure-render
-// rewrite. PR #131 confirmed wrapper=noModuleSwitcher was stable, so
-// the loop was in this component. This PR removes the `new URL(...)`
-// call inside the render path, memoizes the parsed items + active set,
-// and adds the render counter + hard guard.
+// ModuleSwitcher source-grep tests covering the pure-render
+// invariants that keep the Hotels workspace stable.
 
 const moduleSwitcherSource = readFileSync(new URL('./ModuleSwitcher.tsx', import.meta.url), 'utf8');
-const debugPageSource = readFileSync(new URL('../module-switcher-debug/page.tsx', import.meta.url), 'utf8');
-const debugIslandSource = readFileSync(
-  new URL('../module-switcher-debug/ModuleSwitcherDebugIsland.tsx', import.meta.url),
-  'utf8',
-);
 
 describe('ModuleSwitcher — pure render', () => {
   it('no longer calls new URL() (the URL constructor) in the render path', () => {
-    // Count `new URL(` occurrences. Every match in the source today
-    // is INSIDE a `...` comment literal explaining the removal — there
-    // is no `new URL(` call site. We accept up to 3 prose mentions
-    // (header comment + inline note + diff narrative) but explicitly
-    // forbid the constructor being followed by an actual argument like
-    // a quoted string or a variable name without backticks around it.
+    // Count `new URL(` call-site occurrences. Comments referencing
+    // the removal use `...` ellipses so a `[^.)]` lookahead excludes
+    // those — only an actual constructor call would match.
     const ctorMatches = moduleSwitcherSource.match(/new URL\([^.)]/g) || [];
     assert.equal(
       ctorMatches.length,
       0,
       `Found ${ctorMatches.length} call-site occurrences of new URL(arg) — should be zero.`,
     );
-    // Companion: header still narrates the removal.
-    assert.match(moduleSwitcherSource, /Replace `new URL\(\.\.\.\)` with a plain string split/);
   });
 
   it('parses each href ONCE via a plain pure helper (parseHref)', () => {
@@ -60,17 +47,6 @@ describe('ModuleSwitcher — pure render', () => {
   });
 });
 
-describe('ModuleSwitcher — diagnostic guards', () => {
-  it('mounts useRenderCounter and useHardRenderGuard with the spec threshold', () => {
-    assert.match(moduleSwitcherSource, /useRenderCounter\('ModuleSwitcher'\)/);
-    assert.match(moduleSwitcherSource, /useHardRenderGuard\('ModuleSwitcher', \{ limit: 50, windowMs: 2000 \}\)/);
-  });
-
-  it('imports the guard helpers from the perf debug module', () => {
-    assert.match(moduleSwitcherSource, /useHardRenderGuard, useRenderCounter,?\s*\}?\s*\}? from '\.\.\/hotels\/HotelsPerfDebugPanel'/);
-  });
-});
-
 describe('ModuleSwitcher — no state syncing, no effects', () => {
   it('has no useEffect / useState / useLayoutEffect (render loop suspects)', () => {
     assert.doesNotMatch(moduleSwitcherSource, /\buseState\(/);
@@ -87,27 +63,14 @@ describe('ModuleSwitcher — no state syncing, no effects', () => {
     assert.match(moduleSwitcherSource, /import Link from 'next\/link'/);
     assert.match(moduleSwitcherSource, /<Link\s/);
   });
-});
 
-describe('/module-switcher-debug — standalone isolation route', () => {
-  it('mounts ModuleSwitcher under a plain main element (no shell)', () => {
-    assert.match(debugPageSource, /import \{ ModuleSwitcherDebugIsland \}/);
-    assert.doesNotMatch(debugPageSource, /<WorkspaceShell/);
-    assert.doesNotMatch(debugPageSource, /<TableSectionShell/);
-  });
-
-  it('debug island memoizes the items array on the count prop', () => {
-    assert.match(debugIslandSource, /const items = useMemo\(/);
-    assert.match(debugIslandSource, /\[count\],/);
-  });
-
-  it('debug island data-testid is exposed', () => {
-    assert.match(debugIslandSource, /data-testid="module-switcher-debug-island"/);
-  });
-
-  it("debug island uses 'use client' and imports the real ModuleSwitcher", () => {
-    assert.match(debugIslandSource, /'use client'/);
-    assert.match(debugIslandSource, /import \{ ModuleSwitcher \} from '\.\.\/components\/ModuleSwitcher'/);
+  it('does not depend on the removed perf debug panel', () => {
+    // The diagnostic hooks lived in HotelsPerfDebugPanel — the
+    // cleanup pass deleted that module. Any lingering import here
+    // would re-introduce the production dependency on diagnostics.
+    assert.doesNotMatch(moduleSwitcherSource, /HotelsPerfDebugPanel/);
+    assert.doesNotMatch(moduleSwitcherSource, /useHardRenderGuard/);
+    assert.doesNotMatch(moduleSwitcherSource, /useRenderCounter/);
   });
 });
 
