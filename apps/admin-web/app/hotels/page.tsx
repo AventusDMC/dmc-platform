@@ -63,6 +63,11 @@ type HotelsPageProps = {
     // contracts list, no counts grid, no derived grouping. Used to
     // bisect the `?cats=expand` freeze.
     expandSafe?: string;
+    // noInstrument=1 — disables every diagnostic hook we added during
+    // the freeze hunt (useRenderCounter, useHardRenderGuard,
+    // withRouterCallGuard, guardDetailFetch). Lets us rule out the
+    // instrumentation itself as the loop source.
+    noInstrument?: string;
   }>;
 };
 
@@ -197,6 +202,7 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
         catsMode: params?.cats,
         formSafeMode: params?.formSafe === '1',
         expandSafeMode: params?.expandSafe === '1',
+        disableInstrumentation: params?.noInstrument === '1',
       });
     }
     if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });

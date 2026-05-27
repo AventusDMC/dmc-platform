@@ -144,10 +144,10 @@ function RoomCategoryForm({
 }
 
 function RoomCategoryFormControlled({ apiBaseUrl, hotels, hotelId, categoryId, submitLabel, initialValues }: RoomCategoryFormProps) {
-  // withRouterCallGuard counts router calls — if push/replace/refresh
-  // fires > 20 times in 2 seconds we throw so the error boundary
-  // surfaces a "Router synchronization loop detected" diagnostic.
-  const router = withRouterCallGuard(useRouter());
+  // Form components only call router.refresh() inside submit handlers,
+  // never on render — the guard can't trigger a render loop here, so
+  // we use the plain useRouter() to keep the prop chain narrow.
+  const router = useRouter();
   const [selectedHotelId, setSelectedHotelId] = useState(initialValues?.hotelId || hotelId || hotels[0]?.id || '');
   const [name, setName] = useState(initialValues?.name || '');
   const [code, setCode] = useState(initialValues?.code || '');
@@ -262,10 +262,9 @@ function RoomCategoryFormSafe({
   submitLabel,
   initialValues,
 }: RoomCategoryFormProps) {
-  // withRouterCallGuard counts router calls — if push/replace/refresh
-  // fires > 20 times in 2 seconds we throw so the error boundary
-  // surfaces a "Router synchronization loop detected" diagnostic.
-  const router = withRouterCallGuard(useRouter());
+  // Form components only call router.refresh() inside submit handlers,
+  // never on render — the guard can't trigger a render loop here.
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(categoryId);
@@ -380,6 +379,7 @@ export function RoomCategoriesManager({
   isolationMode = 'full',
   formSafeMode = false,
   expandSafeMode = false,
+  disableInstrumentation = false,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
@@ -387,14 +387,21 @@ export function RoomCategoriesManager({
   isolationMode?: RoomCategoriesIsolationMode;
   formSafeMode?: boolean;
   expandSafeMode?: boolean;
+  // ?noInstrument=1 — when true, every diagnostic hook becomes a
+  // no-op. Lets us answer "is the freeze caused by the instrumentation
+  // we added to hunt the freeze?" If the page renders cleanly under
+  // ?noInstrument=1, the loop is in one of the perf hooks (counter /
+  // hard guard / router guard / fetch patch). If it still freezes,
+  // those hooks are NOT the loop.
+  disableInstrumentation?: boolean;
 }) {
   // Diagnostic counters fire only when `?debugPerf=1` toggles the
   // overlay panel. Without the flag these are no-ops.
-  useRenderCounter('RoomCategoriesManager');
+  useRenderCounter('RoomCategoriesManager', !disableInstrumentation);
   // Hard guard — if this wrapper renders > 100 times in 1 second the
   // error boundary surfaces a friendly message instead of locking
   // the browser. Catches the runaway before the tab dies.
-  useHardRenderGuard('RoomCategoriesManager');
+  useHardRenderGuard('RoomCategoriesManager', { enabled: !disableInstrumentation });
   return (
     <RoomCategoriesErrorBoundary>
       <RoomCategoriesManagerInner
@@ -404,6 +411,7 @@ export function RoomCategoriesManager({
         isolationMode={isolationMode}
         formSafeMode={formSafeMode}
         expandSafeMode={expandSafeMode}
+        disableInstrumentation={disableInstrumentation}
       />
     </RoomCategoriesErrorBoundary>
   );
@@ -416,6 +424,7 @@ function RoomCategoriesManagerInner({
   isolationMode,
   formSafeMode,
   expandSafeMode,
+  disableInstrumentation,
 }: {
   apiBaseUrl: string;
   hotels: HotelOption[];
@@ -423,16 +432,18 @@ function RoomCategoriesManagerInner({
   isolationMode: RoomCategoriesIsolationMode;
   formSafeMode: boolean;
   expandSafeMode: boolean;
+  disableInstrumentation: boolean;
 }) {
-  useRenderCounter('RoomCategoriesManagerInner');
-  useHardRenderGuard('RoomCategoriesManagerInner');
+  useRenderCounter('RoomCategoriesManagerInner', !disableInstrumentation);
+  useHardRenderGuard('RoomCategoriesManagerInner', { enabled: !disableInstrumentation });
   const enableForm = isolationMode === 'form' || isolationMode === 'expand' || isolationMode === 'full';
   const enableExpand = isolationMode === 'expand' || isolationMode === 'full';
   const enableDelete = isolationMode === 'full';
   // withRouterCallGuard counts router calls — if push/replace/refresh
   // fires > 20 times in 2 seconds we throw so the error boundary
   // surfaces a "Router synchronization loop detected" diagnostic.
-  const router = withRouterCallGuard(useRouter());
+  // Disabled when noInstrument=1 so we can rule out the guard itself.
+  const router = withRouterCallGuard(useRouter(), !disableInstrumentation);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -508,7 +519,8 @@ function RoomCategoriesManagerInner({
       }
       // 5. New fetch — guard counts it. > 5 fetches in 2 seconds for
       //    the same row throws "Repeated detail hydration loop detected".
-      guardDetailFetch(categoryId);
+      //    Gated by disableInstrumentation so noInstrument=1 turns it off.
+      guardDetailFetch(categoryId, !disableInstrumentation);
       setDetails((current) => ({
         ...current,
         [categoryId]: { loading: true, data: null, error: null },
@@ -687,7 +699,11 @@ function RoomCategoriesManagerInner({
                           ) : detail.error ? (
                             <p className="form-error">{detail.error}</p>
                           ) : detail.data ? (
-                            <RoomCategoryDetailPanel detail={detail.data} expandSafeMode={expandSafeMode} />
+                            <RoomCategoryDetailPanel
+                              detail={detail.data}
+                              expandSafeMode={expandSafeMode}
+                              disableInstrumentation={disableInstrumentation}
+                            />
                           ) : null}
                         </td>
                       </tr>
@@ -727,9 +743,17 @@ function RoomCategoriesManagerInner({
   );
 }
 
-function RoomCategoryDetailPanel({ detail, expandSafeMode = false }: { detail: CategoryDetail; expandSafeMode?: boolean }) {
-  useRenderCounter('RoomCategoryDetailPanel');
-  useHardRenderGuard('RoomCategoryDetailPanel', { limit: 50, windowMs: 2000 });
+function RoomCategoryDetailPanel({
+  detail,
+  expandSafeMode = false,
+  disableInstrumentation = false,
+}: {
+  detail: CategoryDetail;
+  expandSafeMode?: boolean;
+  disableInstrumentation?: boolean;
+}) {
+  useRenderCounter('RoomCategoryDetailPanel', !disableInstrumentation);
+  useHardRenderGuard('RoomCategoryDetailPanel', { limit: 50, windowMs: 2000, enabled: !disableInstrumentation });
 
   // expandSafeMode — bare-minimum render. No contracts list, no
   // counts grid, no derived grouping. Just the category name. If the

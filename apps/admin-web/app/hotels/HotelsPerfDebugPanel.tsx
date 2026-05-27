@@ -30,8 +30,8 @@ const FETCH_COUNTER = { count: 0, lastReset: Date.now() };
  * When the flag is absent, the hook is a no-op so production builds
  * pay no overhead.
  */
-export function useRenderCounter(name: string) {
-  if (typeof window === 'undefined') return;
+export function useRenderCounter(name: string, enabled: boolean = true) {
+  if (!enabled || typeof window === 'undefined') return;
   const tracker = TRACKERS.get(name) || { name, count: 0, firstSeen: Date.now() };
   tracker.count += 1;
   TRACKERS.set(name, tracker);
@@ -62,7 +62,8 @@ const HARD_GUARD_COUNTERS = new Map<string, { count: number; mountedAt: number }
 const HARD_GUARD_LIMIT = 100;
 const HARD_GUARD_WINDOW_MS = 1_000;
 
-export function useHardRenderGuard(name: string, options: { limit?: number; windowMs?: number } = {}) {
+export function useHardRenderGuard(name: string, options: { limit?: number; windowMs?: number; enabled?: boolean } = {}) {
+  if (options.enabled === false) return;
   if (typeof window === 'undefined') return;
   const limit = options.limit ?? HARD_GUARD_LIMIT;
   const windowMs = options.windowMs ?? HARD_GUARD_WINDOW_MS;
@@ -135,7 +136,8 @@ const DETAIL_FETCH_COUNTERS = new Map<string, { count: number; firstSeen: number
 const DETAIL_FETCH_LIMIT = 5;
 const DETAIL_FETCH_WINDOW_MS = 2_000;
 
-export function guardDetailFetch(categoryId: string) {
+export function guardDetailFetch(categoryId: string, enabled: boolean = true) {
+  if (!enabled) return;
   if (typeof window === 'undefined') return;
   const now = Date.now();
   const existing = DETAIL_FETCH_COUNTERS.get(categoryId);
@@ -166,7 +168,8 @@ export function __resetDetailFetchCountersForTesting() {
 // Wraps a router instance so every push/replace/refresh increments the
 // counter. Logs each call when console.log is available; throws when
 // the threshold is exceeded.
-export function withRouterCallGuard<T extends Record<string, any>>(router: T): T {
+export function withRouterCallGuard<T extends Record<string, any>>(router: T, enabled: boolean = true): T {
+  if (!enabled) return router;
   if (typeof window === 'undefined') return router;
   const guarded = { ...router } as Record<string, any>;
   const methods: GuardedRouterMethod[] = ['push', 'replace', 'refresh', 'back', 'forward', 'prefetch'];
