@@ -68,6 +68,18 @@ type HotelsPageProps = {
     // withRouterCallGuard, guardDetailFetch). Lets us rule out the
     // instrumentation itself as the loop source.
     noInstrument?: string;
+    // wrapper=<mode> — Hotels page wrapper isolation ladder. After
+    // PR #130 confirmed the manager works fine in /hotels-room-
+    // categories-debug, the loop is in one of the wrappers around
+    // the tab body. This flag strips wrappers one at a time:
+    //   full              — default — every wrapper renders.
+    //   noSummary         — drop the SummaryStrip.
+    //   noModuleSwitcher  — drop the ModuleSwitcher (uses useSearchParams).
+    //   shellOnly         — render WorkspaceShell with NO switcher
+    //                       and NO summary slot.
+    //   minimal           — render the tab body completely bare, no
+    //                       WorkspaceShell, no header, no nothing.
+    wrapper?: string;
   }>;
 };
 
@@ -276,6 +288,20 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
   // gating can be relaxed in follow-up work.
   const loadRequested = resolvedSearchParams?.load === '1';
   const debugPerfEnabled = resolvedSearchParams?.debugPerf === '1';
+  // Wrapper isolation ladder — see HotelsPageProps comment. After
+  // PR #130 confirmed the manager works in /hotels-room-categories-
+  // debug, the freeze must be in one of the wrappers around the tab
+  // body. wrapperMode lets us strip them one at a time.
+  const wrapperMode = (resolvedSearchParams?.wrapper as
+    | 'full'
+    | 'noSummary'
+    | 'noModuleSwitcher'
+    | 'shellOnly'
+    | 'minimal'
+    | undefined) || 'full';
+  const includeSummary = wrapperMode === 'full' || wrapperMode === 'noModuleSwitcher';
+  const includeModuleSwitcher = wrapperMode === 'full' || wrapperMode === 'noSummary';
+  const includeWorkspaceShell = wrapperMode !== 'minimal';
 
   // Hotels Directory freeze fix — split the heavy hotel fetch from
   // the lightweight summary used by the strip. Only load full hotels
@@ -357,14 +383,39 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     { id: 'promotions', label: 'Promotions', helper: 'Commercial offers' },
   ];
 
+  // Wrapper isolation — short-circuit to a bare render when
+  // `?wrapper=minimal`. Mounts the tab section with no WorkspaceShell,
+  // no ModuleSwitcher, no SummaryStrip, no commercial subnav. Pure
+  // diagnostic — confirms whether the freeze sits in those wrappers.
+  if (wrapperMode === 'minimal') {
+    return (
+      <main className="page" data-testid="hotels-wrapper-minimal">
+        <WrapperIsolationLadder currentMode={wrapperMode} />
+        <HotelsDirectoryErrorBoundary tabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}>
+          {loadRequested
+            ? await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)
+            : (
+                <HotelsSafeShell
+                  activeTab={activeTab}
+                  activeTabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}
+                  searchParams={resolvedSearchParams}
+                />
+              )}
+        </HotelsDirectoryErrorBoundary>
+        <HotelsPerfDebugPanel enabled={debugPerfEnabled} />
+      </main>
+    );
+  }
+
   return (
-    <main className="page">
+    <main className="page" data-wrapper-mode={wrapperMode}>
       <section className="panel workspace-panel workspace-panel-wide">
+        <WrapperIsolationLadder currentMode={wrapperMode} />
         <WorkspaceShell
           eyebrow="Products & Pricing"
           title="Hotels"
           description="Manage hotel master data, supplier contracts, and rate setup from a single workspace."
-          switcher={
+          switcher={includeModuleSwitcher ? (
             <ModuleSwitcher
               ariaLabel="Hotel modules"
               activeId={activeTab}
@@ -392,8 +443,8 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                             : 'Commercial offers',
               }))}
             />
-          }
-          summary={
+          ) : null}
+          summary={includeSummary ? (
             <SummaryStrip
               items={[
                 {
@@ -420,7 +471,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                 },
               ]}
             />
-          }
+          ) : null}
         >
           <section className="section-stack">
             <nav className="commercial-actions-row" aria-label="Hotel import actions">
@@ -577,5 +628,67 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
         </WorkspaceShell>
       </section>
     </main>
+  );
+}
+
+// Server-rendered ladder for stripping /hotels page wrappers one at
+// a time. Each chip preserves the current load/tab/cats params and
+// only flips `wrapper`. Plain anchors — no client hooks, no router
+// subscription, so the ladder itself can't be the freeze.
+function WrapperIsolationLadder({
+  currentMode,
+}: {
+  currentMode: 'full' | 'noSummary' | 'noModuleSwitcher' | 'shellOnly' | 'minimal';
+}) {
+  const modes: Array<{ id: typeof currentMode; label: string; helper: string }> = [
+    { id: 'minimal', label: 'No wrapper', helper: 'Tab body only — no WorkspaceShell, no nav, no summary' },
+    { id: 'shellOnly', label: 'Shell only', helper: 'WorkspaceShell with NO switcher, NO summary' },
+    { id: 'noModuleSwitcher', label: 'No switcher', helper: 'Shell + Summary, NO ModuleSwitcher (useSearchParams)' },
+    { id: 'noSummary', label: 'No summary', helper: 'Shell + Switcher, NO SummaryStrip' },
+    { id: 'full', label: 'Full', helper: 'Everything (default)' },
+  ];
+  return (
+    <nav
+      aria-label="Hotels wrapper isolation ladder"
+      data-testid="hotels-wrapper-isolation-ladder"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.4rem',
+        padding: '0.6rem',
+        background: '#fef3c7',
+        border: '1px dashed #f59e0b',
+        borderRadius: 8,
+        marginBottom: '0.75rem',
+      }}
+    >
+      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5e34', marginRight: '0.3rem' }}>
+        Wrapper isolation:
+      </span>
+      {modes.map((mode) => {
+        const isCurrent = mode.id === currentMode;
+        return (
+          <a
+            key={mode.id}
+            href={`/hotels?tab=room-categories&load=1&wrapper=${mode.id}`}
+            title={mode.helper}
+            data-testid={`hotels-wrapper-${mode.id}`}
+            aria-current={isCurrent ? 'page' : undefined}
+            style={{
+              padding: '0.25rem 0.6rem',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              borderRadius: 999,
+              textDecoration: 'none',
+              background: isCurrent ? '#f59e0b' : '#fff',
+              color: isCurrent ? '#fff' : '#8b5e34',
+              border: `1px solid ${isCurrent ? '#f59e0b' : '#fcd34d'}`,
+            }}
+          >
+            {mode.label}
+          </a>
+        );
+      })}
+    </nav>
   );
 }
