@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
-import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError, requireAdminSession } from '../lib/admin-server';
 import { HotelAllotmentsSection } from './HotelAllotmentsSection';
 import { HotelContractsSection } from './HotelContractsSection';
 import { HotelMealPlansSupplementsSection } from './HotelMealPlansSupplementsSection';
@@ -475,6 +475,15 @@ async function HotelsTabBodyAsync({
 }
 
 export default async function HotelsPage({ searchParams }: HotelsPageProps) {
+  // Top-of-page session gate. MUST run before any Suspense renders.
+  // Without this, an unauthenticated visit triggers redirect() from
+  // INSIDE a suspended async component — Next.js then emits both an
+  // HTTP 307 status AND a streaming body containing NEXT_REDIRECT
+  // error chunks, which Chrome (notably in incognito) silently fails
+  // to follow, leaving the user on a blank page. By redirecting at
+  // the top, the response is a clean HTTP 307 with no body conflict.
+  await requireAdminSession();
+
   // The page itself is mostly synchronous — only reads searchParams.
   // Data fetches happen inside <Suspense> boundaries so the shell
   // streams to the browser immediately and the data sections fill in
