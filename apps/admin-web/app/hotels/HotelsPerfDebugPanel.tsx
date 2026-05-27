@@ -126,6 +126,43 @@ export function __resetRouterCallCounterForTesting() {
   ROUTER_CALL_COUNTER.firstSeen = 0;
 }
 
+// Detail-fetch storm guard. Used by handleExpand to detect a runaway
+// "fetch → setDetails → callback recreation → refetch" cycle. Per
+// categoryId — so different rows expanding in quick succession don't
+// trip the guard, but the SAME row triggering 5+ fetches in 2 seconds
+// definitely does.
+const DETAIL_FETCH_COUNTERS = new Map<string, { count: number; firstSeen: number }>();
+const DETAIL_FETCH_LIMIT = 5;
+const DETAIL_FETCH_WINDOW_MS = 2_000;
+
+export function guardDetailFetch(categoryId: string) {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  const existing = DETAIL_FETCH_COUNTERS.get(categoryId);
+  if (!existing || now - existing.firstSeen > DETAIL_FETCH_WINDOW_MS) {
+    DETAIL_FETCH_COUNTERS.set(categoryId, { count: 1, firstSeen: now });
+    if (typeof console !== 'undefined') {
+      console.log(`[hotels-perf] detail fetch #1 for ${categoryId}`);
+    }
+    return;
+  }
+  existing.count += 1;
+  if (typeof console !== 'undefined') {
+    console.log(`[hotels-perf] detail fetch #${existing.count} for ${categoryId} within ${now - existing.firstSeen}ms`);
+  }
+  if (existing.count > DETAIL_FETCH_LIMIT) {
+    DETAIL_FETCH_COUNTERS.delete(categoryId);
+    throw new Error(
+      `Repeated detail hydration loop detected — ${existing.count} fetches for ${categoryId} in ${now - existing.firstSeen}ms`,
+    );
+  }
+}
+
+// Test-only — reset detail-fetch counters between scenarios.
+export function __resetDetailFetchCountersForTesting() {
+  DETAIL_FETCH_COUNTERS.clear();
+}
+
 // Wraps a router instance so every push/replace/refresh increments the
 // counter. Logs each call when console.log is available; throws when
 // the threshold is exceeded.
