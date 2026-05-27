@@ -1,6 +1,7 @@
 import { adminPageFetchJson } from '../lib/admin-server';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { RoomCategoriesManager, type RoomCategorySummary } from '../hotel-room-categories/RoomCategoriesManager';
+import type { RoomCategorySummary } from '../hotel-room-categories/RoomCategoriesManager';
+import { RoomCategoriesManagerLazyMount } from '../hotel-room-categories/RoomCategoriesManagerLazyMount';
 
 // Hotel Master Room Categories.
 //
@@ -81,7 +82,7 @@ export async function RoomCategoriesSection({ hotelId }: RoomCategoriesSectionPr
         </p>
       }
     >
-      <RoomCategoriesManager
+      <RoomCategoriesManagerLazyMount
         apiBaseUrl={API_BASE_URL}
         hotels={hotels}
         initialSummary={summary}
