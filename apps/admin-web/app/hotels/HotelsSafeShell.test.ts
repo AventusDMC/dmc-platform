@@ -2,28 +2,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-// Hotels emergency safe shell — source-grep tests locking in the
-// click-to-load isolation pattern. The freeze investigation needs
-// these invariants to remain true:
+// Hotels safe shell — source-grep tests locking in the click-to-load
+// isolation pattern. These invariants must remain true:
 //
 //   - Initial /hotels visit (no ?load=1) renders ONLY the shell
 //   - No server-side data fetch fires without ?load=1
 //   - Each fetch in page.tsx is gated on `loadRequested`
-//   - The perf debug panel mounts only when ?debugPerf=1
 //   - Tab content (HotelsSection / RoomCategoriesSection / etc.)
 //     mounts only when load is requested
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const shellSource = readFileSync(new URL('./HotelsSafeShell.tsx', import.meta.url), 'utf8');
-const perfSource = readFileSync(new URL('./HotelsPerfDebugPanel.tsx', import.meta.url), 'utf8');
 
 describe('Hotels safe shell — page wiring', () => {
   it('reads ?load=1 from searchParams', () => {
     assert.match(pageSource, /loadRequested\s*=\s*resolvedSearchParams\?\.load === '1'/);
-  });
-
-  it('reads ?debugPerf=1 from searchParams', () => {
-    assert.match(pageSource, /debugPerfEnabled\s*=\s*resolvedSearchParams\?\.debugPerf === '1'/);
   });
 
   it('gates getHotels() on loadRequested', () => {
@@ -50,8 +43,22 @@ describe('Hotels safe shell — page wiring', () => {
     );
   });
 
-  it('mounts HotelsPerfDebugPanel with debugPerfEnabled flag', () => {
-    assert.match(pageSource, /<HotelsPerfDebugPanel enabled=\{debugPerfEnabled\} \/>/);
+  it('does not mount the diagnostic perf overlay anymore', () => {
+    // Cleanup pass removed HotelsPerfDebugPanel entirely — the page
+    // must not import or render it.
+    assert.doesNotMatch(pageSource, /HotelsPerfDebugPanel/);
+    assert.doesNotMatch(pageSource, /debugPerf/);
+  });
+
+  it('no longer threads the temporary diagnostic isolation flags', () => {
+    // The cleanup pass dropped these query-string switches. Their
+    // presence would mean a stale ladder/wrapper-isolation revival.
+    assert.doesNotMatch(pageSource, /wrapperMode/);
+    assert.doesNotMatch(pageSource, /WrapperIsolationLadder/);
+    assert.doesNotMatch(pageSource, /catsMode:/);
+    assert.doesNotMatch(pageSource, /formSafeMode:/);
+    assert.doesNotMatch(pageSource, /expandSafeMode:/);
+    assert.doesNotMatch(pageSource, /disableInstrumentation:/);
   });
 });
 
@@ -82,32 +89,6 @@ describe('HotelsSafeShell component', () => {
   it('preserves existing searchParams when building the load href', () => {
     assert.match(shellSource, /new URLSearchParams\(\)/);
     assert.match(shellSource, /params\.set\(key, value\)/);
-  });
-});
-
-describe('HotelsPerfDebugPanel', () => {
-  it('exposes useRenderCounter for components to opt into render tracking', () => {
-    assert.match(perfSource, /export function useRenderCounter/);
-  });
-
-  it('warns when a component renders > 30 times in 5 seconds', () => {
-    assert.match(perfSource, /RENDER_LIMIT_PER_WINDOW = 30/);
-    assert.match(perfSource, /RENDER_LIMIT_WINDOW_MS = 5_000/);
-    assert.match(perfSource, /console\.warn/);
-  });
-
-  it('patches window.fetch only while mounted (and restores on unmount)', () => {
-    assert.match(perfSource, /originalFetchRef\.current = window\.fetch/);
-    assert.match(perfSource, /window\.fetch = originalFetchRef\.current/);
-  });
-
-  it('renders a fixed overlay with the panel data-testid', () => {
-    assert.match(perfSource, /data-testid="hotels-perf-debug-panel"/);
-    assert.match(perfSource, /position: 'fixed'/);
-  });
-
-  it('skips all side effects when disabled (no perf cost on production /hotels visits)', () => {
-    assert.match(perfSource, /if \(!enabled\) return null/);
   });
 });
 

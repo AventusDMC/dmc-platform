@@ -14,7 +14,6 @@ import { HotelTariffWorkbookSection } from './HotelTariffWorkbookSection';
 import { HotelsSection } from './HotelsSection';
 import { HotelsDirectoryErrorBoundary } from './HotelsDirectoryErrorBoundary';
 import { HotelsSafeShell } from './HotelsSafeShell';
-import { HotelsPerfDebugPanel } from './HotelsPerfDebugPanel';
 import { RoomCategoriesSection } from './RoomCategoriesSection';
 
 export const dynamic = 'force-dynamic';
@@ -43,43 +42,12 @@ type HotelsPageProps = {
     status?: string;
     validity?: string;
     activeState?: string;
-    // Emergency safe-shell flags — `load=1` opts in to the heavy
-    // tab body; `debugPerf=1` mounts the floating render-counter
-    // overlay. Both are absent by default so initial visits land
-    // on the lightweight shell.
+    // Safe-shell gate. Without `load=1` the page renders only the
+    // lightweight shell with a "Load …" button. Once the operator
+    // clicks Load the heavy tab body hydrates. Keeps cold visits
+    // snappy and protects against tab-content regressions cascading
+    // into the workspace header.
     load?: string;
-    debugPerf?: string;
-    // Room Categories binary-isolation mode. `minimal` (default) hides
-    // all client subcomponents and renders only the loaded count.
-    // Step up through table → form → expand → full to identify
-    // which layer trips the runaway render.
-    cats?: string;
-    // ROOM_CATEGORY_FORM_SAFE — render uncontrolled HTML inputs in
-    // the create form instead of the controlled-state variant. Used
-    // to split the freeze hunt between "form mounts" and "controlled
-    // input churn".
-    formSafe?: string;
-    // EXPAND_SAFE — render only category name in detail panel, no
-    // contracts list, no counts grid, no derived grouping. Used to
-    // bisect the `?cats=expand` freeze.
-    expandSafe?: string;
-    // noInstrument=1 — disables every diagnostic hook we added during
-    // the freeze hunt (useRenderCounter, useHardRenderGuard,
-    // withRouterCallGuard, guardDetailFetch). Lets us rule out the
-    // instrumentation itself as the loop source.
-    noInstrument?: string;
-    // wrapper=<mode> — Hotels page wrapper isolation ladder. After
-    // PR #130 confirmed the manager works fine in /hotels-room-
-    // categories-debug, the loop is in one of the wrappers around
-    // the tab body. This flag strips wrappers one at a time:
-    //   full              — default — every wrapper renders.
-    //   noSummary         — drop the SummaryStrip.
-    //   noModuleSwitcher  — drop the ModuleSwitcher (uses useSearchParams).
-    //   shellOnly         — render WorkspaceShell with NO switcher
-    //                       and NO summary slot.
-    //   minimal           — render the tab body completely bare, no
-    //                       WorkspaceShell, no header, no nothing.
-    wrapper?: string;
   }>;
 };
 
@@ -117,10 +85,10 @@ type HotelsPageHotel = {
   };
 };
 
-// Hotels Directory freeze fix — lightweight summary shape returned by
-// /hotels/directory-summary. Used to drive the page-level summary
-// strip + safe-mode banner threshold without pulling every hotel
-// through the heavy supplier-resolver findAll() pipeline.
+// Hotels Directory — lightweight summary shape returned by
+// /hotels/directory-summary. Drives the page-level summary strip +
+// safe-mode banner threshold without pulling every hotel through the
+// heavy supplier-resolver findAll() pipeline.
 type HotelDirectorySummary = {
   id: string;
   name: string;
@@ -170,11 +138,9 @@ async function getHotels(): Promise<HotelsPageHotel[]> {
   });
 }
 
-// Hotels Directory freeze fix — lightweight load for the page-level
-// summary strip. Replaces the eager getHotels() call when the operator
-// isn't on the directory tab. Avoids the N+1 supplier resolver path
-// that froze the page when switching to room-categories or any other
-// commercial tab.
+// Lightweight load for the page-level summary strip. Replaces the
+// eager getHotels() call when the operator isn't on the directory
+// tab — avoids the N+1 supplier resolver path on commercial tabs.
 async function getDirectorySummary(): Promise<HotelDirectorySummary[]> {
   return adminPageFetchJson<HotelDirectorySummary[]>(
     `${API_BASE_URL}/hotels/directory-summary`,
@@ -205,17 +171,7 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
     }
 
     if (activeTab === 'room-categories') {
-      // Room Categories binary-isolation hunt — propagate ?cats= and
-      // ?formSafe= into the section. The section walks operators
-      // through table → form → expand → full to identify which layer
-      // trips the runaway. formSafe toggles between controlled and
-      // uncontrolled form variants.
-      return await RoomCategoriesSection({
-        catsMode: params?.cats,
-        formSafeMode: params?.formSafe === '1',
-        expandSafeMode: params?.expandSafe === '1',
-        disableInstrumentation: params?.noInstrument === '1',
-      });
+      return await RoomCategoriesSection({ hotelId: params?.hotelId });
     }
     if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });
     if (activeTab === 'allotments') return await HotelAllotmentsSection({ contractId: params?.contractId });
@@ -280,34 +236,17 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
     activeTab === 'promotions';
-  // Emergency safe-shell mode — when the operator hasn't explicitly
-  // opted in to loading via `?load=1`, skip EVERY server-side fetch on
-  // this page. Even the lightweight directory-summary stays unfetched
-  // so we can isolate whether the freeze is a render/hydration cascade
-  // triggered by tab content or by the page itself. Once verified, the
-  // gating can be relaxed in follow-up work.
+  // Safe-shell gate — when the operator hasn't explicitly opted in to
+  // loading via `?load=1`, skip EVERY server-side fetch on this page.
+  // Even the lightweight directory-summary stays unfetched so the
+  // initial visit only paints the click-to-load shell.
   const loadRequested = resolvedSearchParams?.load === '1';
-  const debugPerfEnabled = resolvedSearchParams?.debugPerf === '1';
-  // Wrapper isolation ladder — see HotelsPageProps comment. After
-  // PR #130 confirmed the manager works in /hotels-room-categories-
-  // debug, the freeze must be in one of the wrappers around the tab
-  // body. wrapperMode lets us strip them one at a time.
-  const wrapperMode = (resolvedSearchParams?.wrapper as
-    | 'full'
-    | 'noSummary'
-    | 'noModuleSwitcher'
-    | 'shellOnly'
-    | 'minimal'
-    | undefined) || 'full';
-  const includeSummary = wrapperMode === 'full' || wrapperMode === 'noModuleSwitcher';
-  const includeModuleSwitcher = wrapperMode === 'full' || wrapperMode === 'noSummary';
-  const includeWorkspaceShell = wrapperMode !== 'minimal';
 
-  // Hotels Directory freeze fix — split the heavy hotel fetch from
-  // the lightweight summary used by the strip. Only load full hotels
-  // when the operator is on the directory tab (the only tab that
-  // actually renders the list). Every other tab uses the lightweight
-  // /hotels/directory-summary endpoint.
+  // Split the heavy hotel fetch from the lightweight summary used by
+  // the strip. Only load full hotels when the operator is on the
+  // directory tab (the only tab that actually renders the list).
+  // Every other tab uses the lightweight /hotels/directory-summary
+  // endpoint.
   const isDirectoryTab = activeTab === 'hotels';
   const [hotelsForDirectory, directorySummary, currentContract] = await Promise.all([
     loadRequested && isDirectoryTab
@@ -344,9 +283,6 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
   // returned by the summary endpoint.
   const hotelDirectoryCount = directorySummary.length;
   const roomCategoryCount = directorySummary.reduce((sum, h) => sum + h.roomCategoryCount, 0);
-  // "Active" count isn't surfaced in the summary (would require loading
-  // each category) — show the rollup total as the helper label instead.
-  const activeRoomCategoryCount = roomCategoryCount;
   const contractedHotelCount = directorySummary.filter((h) => h.contractCount > 0).length;
   // Safe-mode threshold — when the tenant has more hotels than this we
   // show the banner explaining the directory loads summary cards only.
@@ -383,39 +319,14 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     { id: 'promotions', label: 'Promotions', helper: 'Commercial offers' },
   ];
 
-  // Wrapper isolation — short-circuit to a bare render when
-  // `?wrapper=minimal`. Mounts the tab section with no WorkspaceShell,
-  // no ModuleSwitcher, no SummaryStrip, no commercial subnav. Pure
-  // diagnostic — confirms whether the freeze sits in those wrappers.
-  if (wrapperMode === 'minimal') {
-    return (
-      <main className="page" data-testid="hotels-wrapper-minimal">
-        <WrapperIsolationLadder currentMode={wrapperMode} />
-        <HotelsDirectoryErrorBoundary tabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}>
-          {loadRequested
-            ? await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)
-            : (
-                <HotelsSafeShell
-                  activeTab={activeTab}
-                  activeTabLabel={HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'}
-                  searchParams={resolvedSearchParams}
-                />
-              )}
-        </HotelsDirectoryErrorBoundary>
-        <HotelsPerfDebugPanel enabled={debugPerfEnabled} />
-      </main>
-    );
-  }
-
   return (
-    <main className="page" data-wrapper-mode={wrapperMode}>
+    <main className="page">
       <section className="panel workspace-panel workspace-panel-wide">
-        <WrapperIsolationLadder currentMode={wrapperMode} />
         <WorkspaceShell
           eyebrow="Products & Pricing"
           title="Hotels"
           description="Manage hotel master data, supplier contracts, and rate setup from a single workspace."
-          switcher={includeModuleSwitcher ? (
+          switcher={
             <ModuleSwitcher
               ariaLabel="Hotel modules"
               activeId={activeTab}
@@ -443,8 +354,8 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                             : 'Commercial offers',
               }))}
             />
-          ) : null}
-          summary={includeSummary ? (
+          }
+          summary={
             <SummaryStrip
               items={[
                 {
@@ -458,9 +369,9 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                   label: 'Room categories',
                   value: String(roomCategoryCount),
                   // The lightweight directory summary doesn't load each
-                  // category row (PR #120 + #122 freeze fixes), so we
-                  // can't split active vs inactive without a second
-                  // fetch. Show the rollup count + a neutral helper.
+                  // category row, so we can't split active vs inactive
+                  // without a second fetch. Show the rollup count + a
+                  // neutral helper.
                   helper: 'Across all hotels',
                 },
                 {
@@ -471,7 +382,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                 },
               ]}
             />
-          ) : null}
+          }
         >
           <section className="section-stack">
             <nav className="commercial-actions-row" aria-label="Hotel import actions">
@@ -623,72 +534,9 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                     />
                   )}
             </HotelsDirectoryErrorBoundary>
-            <HotelsPerfDebugPanel enabled={debugPerfEnabled} />
           </section>
         </WorkspaceShell>
       </section>
     </main>
-  );
-}
-
-// Server-rendered ladder for stripping /hotels page wrappers one at
-// a time. Each chip preserves the current load/tab/cats params and
-// only flips `wrapper`. Plain anchors — no client hooks, no router
-// subscription, so the ladder itself can't be the freeze.
-function WrapperIsolationLadder({
-  currentMode,
-}: {
-  currentMode: 'full' | 'noSummary' | 'noModuleSwitcher' | 'shellOnly' | 'minimal';
-}) {
-  const modes: Array<{ id: typeof currentMode; label: string; helper: string }> = [
-    { id: 'minimal', label: 'No wrapper', helper: 'Tab body only — no WorkspaceShell, no nav, no summary' },
-    { id: 'shellOnly', label: 'Shell only', helper: 'WorkspaceShell with NO switcher, NO summary' },
-    { id: 'noModuleSwitcher', label: 'No switcher', helper: 'Shell + Summary, NO ModuleSwitcher (useSearchParams)' },
-    { id: 'noSummary', label: 'No summary', helper: 'Shell + Switcher, NO SummaryStrip' },
-    { id: 'full', label: 'Full', helper: 'Everything (default)' },
-  ];
-  return (
-    <nav
-      aria-label="Hotels wrapper isolation ladder"
-      data-testid="hotels-wrapper-isolation-ladder"
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.4rem',
-        padding: '0.6rem',
-        background: '#fef3c7',
-        border: '1px dashed #f59e0b',
-        borderRadius: 8,
-        marginBottom: '0.75rem',
-      }}
-    >
-      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5e34', marginRight: '0.3rem' }}>
-        Wrapper isolation:
-      </span>
-      {modes.map((mode) => {
-        const isCurrent = mode.id === currentMode;
-        return (
-          <a
-            key={mode.id}
-            href={`/hotels?tab=room-categories&load=1&wrapper=${mode.id}`}
-            title={mode.helper}
-            data-testid={`hotels-wrapper-${mode.id}`}
-            aria-current={isCurrent ? 'page' : undefined}
-            style={{
-              padding: '0.25rem 0.6rem',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              borderRadius: 999,
-              textDecoration: 'none',
-              background: isCurrent ? '#f59e0b' : '#fff',
-              color: isCurrent ? '#fff' : '#8b5e34',
-              border: `1px solid ${isCurrent ? '#f59e0b' : '#fcd34d'}`,
-            }}
-          >
-            {mode.label}
-          </a>
-        );
-      })}
-    </nav>
   );
 }
