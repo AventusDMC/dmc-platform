@@ -233,12 +233,24 @@ function RoomCategoriesManagerInner({
     {},
   );
 
+  // Defensive sort — bad imported contracts can leave categories
+  // with null/empty hotelName or name fields. Without the `|| ''`
+  // guards, `localeCompare(null)` throws TypeError during client
+  // hydration and the entire page goes blank without any console
+  // error (React swallows the hydration crash). Coercing nullish
+  // values to '' lets the row still render, even if its label is
+  // missing — operators can then find and fix the bad record via
+  // the UI instead of staring at a white screen.
   const sortedRows = useMemo<RoomCategorySummary[]>(
     () =>
       [...initialSummary].sort((left, right) => {
-        const hotelComparison = left.hotelName.localeCompare(right.hotelName);
+        const leftHotel = left.hotelName || '';
+        const rightHotel = right.hotelName || '';
+        const hotelComparison = leftHotel.localeCompare(rightHotel);
         if (hotelComparison !== 0) return hotelComparison;
-        return left.name.localeCompare(right.name);
+        const leftName = left.name || '';
+        const rightName = right.name || '';
+        return leftName.localeCompare(rightName);
       }),
     [initialSummary],
   );
