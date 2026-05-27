@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import { FormEvent, Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
@@ -314,38 +314,55 @@ function RoomCategoriesManagerInner({
     [apiBaseUrl],
   );
 
-  async function handleDelete(category: RoomCategorySummary) {
-    if (!window.confirm(`Delete ${category.name}?`)) {
-      return;
-    }
+  // Stable id-based handler so memoized rows don't see a new identity
+  // every parent render. Reads `editingId` via a setter callback to
+  // avoid closing over the live value.
+  const handleEditToggle = useCallback((categoryId: string) => {
+    setEditingId((current) => (current === categoryId ? null : categoryId));
+  }, []);
 
-    setDeletingId(category.id);
-    setError('');
+  // Live refs let handleDelete read state without forcing the callback
+  // identity to churn on every editingId / expandedId update.
+  const editingIdRef = useRef<typeof editingId>(editingId);
+  editingIdRef.current = editingId;
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/hotels/${category.hotelId}/room-categories/${category.id}`, {
-        method: 'DELETE',
-        headers: buildAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not delete room category.'));
+  const handleDelete = useCallback(
+    async (category: RoomCategorySummary) => {
+      if (!window.confirm(`Delete ${category.name}?`)) {
+        return;
       }
 
-      if (editingId === category.id) {
-        setEditingId(null);
-      }
-      if (expandedId === category.id) {
-        setExpandedId(null);
-      }
+      setDeletingId(category.id);
+      setError('');
 
-      router.refresh();
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not delete room category.');
-    } finally {
-      setDeletingId(null);
-    }
-  }
+      try {
+        const response = await fetch(`${apiBaseUrl}/hotels/${category.hotelId}/room-categories/${category.id}`, {
+          method: 'DELETE',
+          headers: buildAuthHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not delete room category.'));
+        }
+
+        if (editingIdRef.current === category.id) {
+          setEditingId(null);
+        }
+        if (expandedIdRef.current === category.id) {
+          setExpandedId(null);
+        }
+
+        router.refresh();
+      } catch (caughtError) {
+        setError(caughtError instanceof Error ? caughtError.message : 'Could not delete room category.');
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    // Stable deps — refs read live state without re-creating the
+    // callback on every editingId/expandedId tick.
+    [apiBaseUrl, router],
+  );
 
   if (hotels.length === 0) {
     return <p className="empty-state">Create a hotel first to manage room categories.</p>;
@@ -385,94 +402,21 @@ function RoomCategoriesManagerInner({
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((category) => {
-                const isEditing = editingId === category.id;
-                const isExpanded = expandedId === category.id;
-                const detail = details[category.id];
-
-                return (
-                  <Fragment key={category.id}>
-                    <tr>
-                      <td>
-                        <strong>{category.hotelName}</strong>
-                        <div className="table-subcopy">{category.hotelCity}</div>
-                      </td>
-                      <td>
-                        <strong>{category.name}</strong>
-                      </td>
-                      <td>{category.code || 'No code'}</td>
-                      <td>{category.isActive ? 'Active' : 'Inactive'}</td>
-                      <td className="numeric-cell">{category.linkedRateCount}</td>
-                      <td className="numeric-cell">{category.linkedQuoteItemCount}</td>
-                      <td>
-                        <div className="table-action-row">
-                          <button
-                            type="button"
-                            className="compact-button"
-                            onClick={() => handleExpand(category.id)}
-                            aria-expanded={isExpanded}
-                            aria-controls={`room-category-detail-${category.id}`}
-                          >
-                            {isExpanded ? 'Hide detail' : 'Detail'}
-                          </button>
-                          <button
-                            type="button"
-                            className="compact-button"
-                            onClick={() => setEditingId((current) => (current === category.id ? null : category.id))}
-                          >
-                            {isEditing ? 'Close edit' : 'Edit'}
-                          </button>
-                          <button
-                            type="button"
-                            className="compact-button compact-button-danger"
-                            onClick={() => handleDelete(category)}
-                            disabled={deletingId === category.id}
-                          >
-                            {deletingId === category.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {isExpanded ? (
-                      <tr>
-                        <td colSpan={7} id={`room-category-detail-${category.id}`}>
-                          {!detail || detail.loading ? (
-                            <p className="empty-state">Loading category detail…</p>
-                          ) : detail.error ? (
-                            <p className="form-error">{detail.error}</p>
-                          ) : detail.data ? (
-                            <RoomCategoryDetailPanel detail={detail.data} />
-                          ) : null}
-                        </td>
-                      </tr>
-                    ) : null}
-
-                    {isEditing ? (
-                      <tr>
-                        <td colSpan={7}>
-                          <div className="inline-entity-editor">
-                            <RoomCategoryForm
-                              apiBaseUrl={apiBaseUrl}
-                              hotels={hotels}
-                              hotelId={category.hotelId}
-                              categoryId={category.id}
-                              submitLabel="Save category"
-                              initialValues={{
-                                hotelId: category.hotelId,
-                                name: category.name,
-                                code: category.code || '',
-                                description: '',
-                                isActive: category.isActive,
-                              }}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
+              {sortedRows.map((category) => (
+                <RoomCategoryRow
+                  key={category.id}
+                  category={category}
+                  apiBaseUrl={apiBaseUrl}
+                  hotels={hotels}
+                  isExpanded={expandedId === category.id}
+                  isEditing={editingId === category.id}
+                  isDeleting={deletingId === category.id}
+                  detail={details[category.id]}
+                  onExpand={handleExpand}
+                  onEditToggle={handleEditToggle}
+                  onDelete={handleDelete}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -480,6 +424,119 @@ function RoomCategoriesManagerInner({
     </div>
   );
 }
+
+// Memoized row. Re-renders only when one of its own props changes —
+// not when an unrelated row's expandedId / editingId / deletingId
+// flips. With 57 rows in scope, this cuts re-render fan-out from 57
+// to ~2 (the previously-active row + the newly-active row) per click.
+type RoomCategoryRowProps = {
+  category: RoomCategorySummary;
+  apiBaseUrl: string;
+  hotels: HotelOption[];
+  isExpanded: boolean;
+  isEditing: boolean;
+  isDeleting: boolean;
+  detail: { loading: boolean; data: CategoryDetail | null; error: string | null } | undefined;
+  onExpand: (categoryId: string) => void;
+  onEditToggle: (categoryId: string) => void;
+  onDelete: (category: RoomCategorySummary) => void;
+};
+
+const RoomCategoryRow = memo(function RoomCategoryRow({
+  category,
+  apiBaseUrl,
+  hotels,
+  isExpanded,
+  isEditing,
+  isDeleting,
+  detail,
+  onExpand,
+  onEditToggle,
+  onDelete,
+}: RoomCategoryRowProps) {
+  return (
+    <Fragment>
+      <tr>
+        <td>
+          <strong>{category.hotelName}</strong>
+          <div className="table-subcopy">{category.hotelCity}</div>
+        </td>
+        <td>
+          <strong>{category.name}</strong>
+        </td>
+        <td>{category.code || 'No code'}</td>
+        <td>{category.isActive ? 'Active' : 'Inactive'}</td>
+        <td className="numeric-cell">{category.linkedRateCount}</td>
+        <td className="numeric-cell">{category.linkedQuoteItemCount}</td>
+        <td>
+          <div className="table-action-row">
+            <button
+              type="button"
+              className="compact-button"
+              onClick={() => onExpand(category.id)}
+              aria-expanded={isExpanded}
+              aria-controls={`room-category-detail-${category.id}`}
+            >
+              {isExpanded ? 'Hide detail' : 'Detail'}
+            </button>
+            <button
+              type="button"
+              className="compact-button"
+              onClick={() => onEditToggle(category.id)}
+            >
+              {isEditing ? 'Close edit' : 'Edit'}
+            </button>
+            <button
+              type="button"
+              className="compact-button compact-button-danger"
+              onClick={() => onDelete(category)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
+        </td>
+      </tr>
+
+      {isExpanded ? (
+        <tr>
+          <td colSpan={7} id={`room-category-detail-${category.id}`}>
+            {!detail || detail.loading ? (
+              <p className="empty-state">Loading category detail…</p>
+            ) : detail.error ? (
+              <p className="form-error">{detail.error}</p>
+            ) : detail.data ? (
+              <RoomCategoryDetailPanel detail={detail.data} />
+            ) : null}
+          </td>
+        </tr>
+      ) : null}
+
+      {isEditing ? (
+        <tr>
+          <td colSpan={7}>
+            <div className="inline-entity-editor">
+              <RoomCategoryForm
+                apiBaseUrl={apiBaseUrl}
+                hotels={hotels}
+                hotelId={category.hotelId}
+                categoryId={category.id}
+                submitLabel="Save category"
+                initialValues={{
+                  hotelId: category.hotelId,
+                  name: category.name,
+                  code: category.code || '',
+                  description: '',
+                  isActive: category.isActive,
+                }}
+              />
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </Fragment>
+  );
+});
 
 function RoomCategoryDetailPanel({ detail }: { detail: CategoryDetail }) {
   return (
