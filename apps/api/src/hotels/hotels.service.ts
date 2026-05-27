@@ -212,7 +212,34 @@ export class HotelsService {
       },
     });
 
-    return (categories as any[]).map((category) => ({
+    // Phase 0 hardening — filter out invalid rows BEFORE returning to
+    // the UI. A bad contract import can leave categories with null
+    // hotel relation or null/empty name; those rows used to crash the
+    // client-side sort during hydration and blank the page. Log every
+    // skipped row so operators can identify them in Vercel logs and
+    // clean them via POST /hotels/admin/cleanup-invalid-room-categories.
+    const isCategoryValid = (category: any): boolean => {
+      if (!category?.id) return false;
+      if (!category?.name || typeof category.name !== 'string' || !category.name.trim()) return false;
+      if (!category?.hotel?.id) return false;
+      if (!category?.hotel?.name || !category.hotel.name.trim()) return false;
+      return true;
+    };
+    const invalidRows = (categories as any[]).filter((c) => !isCategoryValid(c));
+    if (invalidRows.length > 0) {
+      console.warn(
+        `[hotels.findRoomCategoriesSummary] dropping ${invalidRows.length} invalid row(s) — likely bad contract imports`,
+        invalidRows.map((row) => ({
+          id: row.id,
+          hotelId: row.hotelId,
+          name: row.name,
+          hotelName: row.hotel?.name,
+        })),
+      );
+    }
+    const validCategories = (categories as any[]).filter(isCategoryValid);
+
+    return validCategories.map((category) => ({
       id: category.id,
       hotelId: category.hotelId,
       name: category.name,
@@ -521,6 +548,103 @@ export class HotelsService {
     return this.prisma.hotelRoomCategory.delete({
       where: { id: categoryId },
     });
+  }
+
+  /**
+   * Hotel Engine Phase 0 — read-only health audit. Counts the records
+   * that look like bad imports OR orphans (parent missing) so an
+   * operator can see the damage before triggering a wipe. Safe to
+   * call from any UI / cron / smoke test — does not write to the DB.
+   */
+  async getEngineHealth() {
+    const [
+      hotels,
+      contracts,
+      rates,
+      allotments,
+      roomCategories,
+      roomCategoriesNullName,
+      roomCategoriesNoHotel,
+    ] = await Promise.all([
+      this.prisma.hotel.count(),
+      (this.prisma as any).hotelContract.count(),
+      (this.prisma as any).hotelRate.count(),
+      (this.prisma as any).hotelAllotment.count(),
+      (this.prisma as any).hotelRoomCategory.count(),
+      // Categories with empty/null name — break the UI sort comparator
+      (this.prisma as any).hotelRoomCategory.count({
+        where: { OR: [{ name: '' }, { name: null as any }] },
+      }),
+      // Categories whose hotel record is gone (cascade should prevent
+      // this; counts > 0 means historical raw deletes happened).
+      (this.prisma as any).hotelRoomCategory.count({
+        where: { hotel: null as any },
+      }).catch(() => 0),
+    ]);
+
+    return {
+      counts: {
+        hotels,
+        contracts,
+        rates,
+        allotments,
+        roomCategories,
+      },
+      problems: {
+        roomCategoriesWithEmptyName: roomCategoriesNullName,
+        roomCategoriesWithoutHotel: roomCategoriesNoHotel,
+      },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Hotel Engine Phase 0 — destructive cleanup. Wipes every hotel
+   * contract (cascading to rates, allotments, supplements, policies,
+   * promotions, audit logs via the schema's onDelete: Cascade rules).
+   * Hotels themselves and HotelRoomCategory rows survive.
+   *
+   * Used to drop test contract data before rebuilding the commercial
+   * layer. Requires `confirm: "wipe-all-contracts"` in the body to
+   * prevent accidental triggers.
+   */
+  async wipeAllContracts(confirmToken: string) {
+    if (confirmToken !== 'wipe-all-contracts') {
+      throw new BadRequestException(
+        'Confirmation token required. POST body must include { "confirm": "wipe-all-contracts" }',
+      );
+    }
+    const before = await (this.prisma as any).hotelContract.count();
+    const result = await (this.prisma as any).hotelContract.deleteMany({});
+    console.warn(`[hotels.wipeAllContracts] deleted ${result.count} hotel contracts (cascaded to rates/allotments/supplements)`, {
+      contractCountBefore: before,
+      deleted: result.count,
+    });
+    return {
+      deletedContracts: result.count,
+      contractCountBefore: before,
+      cascadedTo: ['hotel_rates', 'hotel_allotments', 'hotel_contract_supplements', 'hotel_contract_meal_plans', 'hotel_contract_occupancy_rules', 'hotel_contract_child_policies', 'hotel_contract_cancellation_policies', 'promotions'],
+    };
+  }
+
+  /**
+   * Hotel Engine Phase 0 — destructive cleanup of malformed room
+   * categories left by bad contract imports (null/empty name, or
+   * pointing at a hotel that no longer exists). Hotels are preserved.
+   */
+  async wipeInvalidRoomCategories(confirmToken: string) {
+    if (confirmToken !== 'wipe-invalid-room-categories') {
+      throw new BadRequestException(
+        'Confirmation token required. POST body must include { "confirm": "wipe-invalid-room-categories" }',
+      );
+    }
+    const result = await (this.prisma as any).hotelRoomCategory.deleteMany({
+      where: { OR: [{ name: '' }, { name: null as any }] },
+    });
+    console.warn(`[hotels.wipeInvalidRoomCategories] deleted ${result.count} room categories with empty/null name`);
+    return {
+      deletedRoomCategories: result.count,
+    };
   }
 
   private async resolveCity(data: { city?: string | null; cityId?: string | null }) {
