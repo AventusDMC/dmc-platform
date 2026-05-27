@@ -33,7 +33,7 @@ import { BareRoomCategoryForm } from '../hotel-room-categories/BareRoomCategoryF
 
 const API_BASE_URL = '/api';
 
-export type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full' | 'formSafeOnly';
+export type RoomCategoriesIsolationMode = 'minimal' | 'table' | 'form' | 'expand' | 'full' | 'formSafeOnly' | 'managerOnly';
 
 function resolveIsolationMode(value: string | undefined): RoomCategoriesIsolationMode {
   switch (value) {
@@ -43,6 +43,7 @@ function resolveIsolationMode(value: string | undefined): RoomCategoriesIsolatio
     case 'table':
     case 'minimal':
     case 'formSafeOnly':
+    case 'managerOnly':
       return value;
     default:
       // Default to minimal — see module header. The shell already
@@ -91,6 +92,10 @@ type RoomCategoriesSectionProps = {
   // contracts list, no counts grid, no derived grouping. Used to
   // bisect the `?cats=expand` freeze.
   expandSafeMode?: boolean;
+  // ?noInstrument=1 — disables every diagnostic hook (render counter,
+  // hard guard, router guard, fetch guard). Rules out instrumentation
+  // as the loop source.
+  disableInstrumentation?: boolean;
 };
 
 export async function RoomCategoriesSection({
@@ -98,11 +103,47 @@ export async function RoomCategoriesSection({
   catsMode,
   formSafeMode = false,
   expandSafeMode = false,
+  disableInstrumentation = false,
 }: RoomCategoriesSectionProps = {}) {
   const isolationMode = resolveIsolationMode(catsMode);
   const summary = await getRoomCategoriesSummary(hotelId);
   const hotels = collectHotelOptions(summary);
   const activeCount = summary.filter((row) => row.isActive).length;
+
+  // managerOnly — strips TableSectionShell + isolation ladder. Mounts
+  // ONLY <RoomCategoriesManager /> directly under a plain <section>.
+  // Cuts every server-side wrapper that minimal mode still kept.
+  //
+  // The manager itself receives `isolationMode="full"` so internally
+  // it renders the same way as full mode — the only difference from
+  // `?cats=full` is the absence of the ladder + shell wrappers.
+  //
+  // If managerOnly works but full fails → loop is in TableSectionShell
+  // or the IsolationLadder (FormSafeToggleLink suspect, since it was
+  // added in PR #127).
+  // If managerOnly ALSO fails → loop is in the manager itself (or in
+  // an instrumentation hook). Next step is to disable the hooks one
+  // by one via env var (already wired into the manager — see
+  // disableInstrumentation prop below).
+  if (isolationMode === 'managerOnly') {
+    return (
+      <section data-testid="room-categories-manager-only" style={{ padding: '1rem' }}>
+        <p style={{ fontSize: '0.78rem', color: '#475467', margin: '0 0 0.5rem' }}>
+          managerOnly — TableSectionShell + isolation ladder stripped. {summary.length} room
+          categories loaded.
+        </p>
+        <RoomCategoriesManager
+          apiBaseUrl={API_BASE_URL}
+          hotels={hotels}
+          initialSummary={summary}
+          isolationMode="full"
+          formSafeMode={formSafeMode}
+          expandSafeMode={expandSafeMode}
+          disableInstrumentation={disableInstrumentation}
+        />
+      </section>
+    );
+  }
 
   // formSafeOnly — the nuclear isolation level. Bypasses everything:
   // no TableSectionShell, no isolation ladder, no manager wrapper,
@@ -157,6 +198,7 @@ export async function RoomCategoriesSection({
         isolationMode={isolationMode}
         formSafeMode={formSafeMode}
         expandSafeMode={expandSafeMode}
+        disableInstrumentation={disableInstrumentation}
       />
     </TableSectionShell>
   );
@@ -176,6 +218,7 @@ function RoomCategoriesIsolationLadder({
 }) {
   const modes: Array<{ id: RoomCategoriesIsolationMode; label: string; helper: string }> = [
     { id: 'formSafeOnly', label: 'Form-only', helper: 'Bare form mount — no shell, no router, no React state' },
+    { id: 'managerOnly', label: 'Manager-only', helper: 'Manager mounted directly — no shell, no ladder' },
     { id: 'minimal', label: 'Minimal', helper: 'Static count only — zero client mounts' },
     { id: 'table', label: 'Table', helper: 'Adds read-only summary table' },
     { id: 'form', label: 'Form', helper: 'Adds inline create form' },
