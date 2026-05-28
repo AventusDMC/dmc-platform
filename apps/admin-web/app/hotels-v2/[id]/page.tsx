@@ -114,8 +114,8 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
           <ActionLink href={`/hotels-v2/${hotel.id}/rooms`}>
             Manage room types
           </ActionLink>
-          <ActionLink href={`/hotels-v2/${hotel.id}/contracts/new`} disabled>
-            New contract
+          <ActionLink href={`/hotels-v2/${hotel.id}/contracts`}>
+            Contracts ({hotel._count.contracts})
           </ActionLink>
           <ActionLink href={`/hotels-v2/${hotel.id}/allotments`} disabled>
             Allotments
@@ -207,13 +207,17 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
           </h2>
           {hotel._count.contracts === 0 ? (
             <p className="table-subcopy">
-              No contracts yet. The contract wizard ships in the next set of PRs — use it to
-              define validity windows, seasons, rates, supplements, and cancellation policy.
+              No contracts yet for this hotel.{' '}
+              <Link href={`/hotels-v2/${hotel.id}/contracts`} prefetch={false}>
+                Create the first contract →
+              </Link>
             </p>
           ) : (
             <p className="table-subcopy">
-              {hotel._count.contracts} contract{hotel._count.contracts === 1 ? '' : 's'} on file.
-              Contract list view ships in PR #146.
+              {hotel._count.contracts} contract{hotel._count.contracts === 1 ? '' : 's'} on file.{' '}
+              <Link href={`/hotels-v2/${hotel.id}/contracts`} prefetch={false}>
+                Open contracts →
+              </Link>
             </p>
           )}
         </section>
