@@ -193,10 +193,24 @@ export default async function ContractDetailPage({ params }: Props) {
             {contract.hotel.name} · {formatDate(contract.validFrom)} →{' '}
             {formatDate(contract.validTo)} · {contract.currency}
           </p>
-          <p className="table-subcopy" style={{ marginTop: '0.5rem' }}>
+          <p className="table-subcopy" style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
             <Link href={`/hotels/${hotelId}/contracts`} prefetch={false}>
               ← Back to contracts
             </Link>
+            <span style={{ color: '#cbd5e1' }}>·</span>
+            {/* Excel round-trip: download the whole contract as a
+                multi-sheet workbook, edit offline, re-import. Renders as
+                a plain anchor with the `download` attribute so the
+                browser triggers the file save dialog instead of opening
+                an Excel preview pane inside Next.js. */}
+            <a
+              href={`/api/hotel-contracts/${contractId}/export.xlsx`}
+              download
+              className="compact-button"
+              style={{ textDecoration: 'none' }}
+            >
+              Download Excel
+            </a>
             {' · '}
             <Link href={`/hotels/${hotelId}`} prefetch={false}>
               {contract.hotel.name}
