@@ -258,7 +258,11 @@ export default async function ContractDetailPage({ params }: Props) {
             href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates`}
           />
           <CountCard label="Meal plans" value={totalMealPlans} />
-          <CountCard label="Supplements" value={totalSupplements} />
+          <CountCard
+            label="Supplements"
+            value={totalSupplements}
+            href={`/hotels-v2/${hotelId}/contracts/${contractId}/supplements`}
+          />
           <CountCard label="Allotment ranges" value={totalAllotments} />
           <CountCard label="Linked quote items" value={totalQuoteItems} />
         </section>
@@ -331,9 +335,9 @@ export default async function ContractDetailPage({ params }: Props) {
             Editing rates / supplements / policies
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            Multi-step v2 editors (seasons → rates → supplements → cancellation → child policy)
-            ship in PRs A2-A5. While they're being built, use the legacy workspace to add /
-            edit the per-room rate matrix and policies:{' '}
+            v2 has rate cells (create / edit / delete) and supplements (create / delete).
+            Cancellation policy + child policy + meal plans still live in the legacy
+            workspace until PR-A6+:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
