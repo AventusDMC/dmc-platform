@@ -79,6 +79,10 @@ export default async function HotelsV2ListPage() {
             new architecture.
           </p>
           <p className="table-subcopy" style={{ marginTop: '0.5rem' }}>
+            <Link href="/hotels-v2/import" prefetch={false}>
+              Import from RateHawk
+            </Link>
+            {' · '}
             <Link href="/admin/hotel-engine-health">Engine health &amp; cleanup</Link>
             {' · '}
             <Link href="/hotels">Legacy /hotels page</Link>

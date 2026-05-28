@@ -1,0 +1,276 @@
+[
+  {
+    "id": "amman_rotana",
+    "hid": 7001001,
+    "name": "Amman Rotana",
+    "address": "Zahran Street, Jabal Amman, Amman",
+    "postal_code": "11181",
+    "email": "res.amman@rotana.com",
+    "phone": "+962 6 460 7000",
+    "star_rating": 5,
+    "kind": "Hotel",
+    "chain": "Rotana",
+    "latitude": 31.9539,
+    "longitude": 35.9106,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 1100, "name": "Amman", "country_code": "JO", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": [
+          "Located in the heart of Amman, Amman Rotana offers panoramic city views from its 188-meter tower, a rooftop pool, a luxury spa, and direct access to Abdali Boulevard."
+        ]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "spa", "fitness-center", "free-wifi", "valet-parking", "wheelchair-accessible"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "bar"] }
+    ],
+    "images": [
+      "https://cdn.worldota.net/sample/amman-rotana-1.jpg",
+      "https://cdn.worldota.net/sample/amman-rotana-2.jpg",
+      "https://cdn.worldota.net/sample/amman-rotana-3.jpg"
+    ]
+  },
+  {
+    "id": "kempinski_aqaba",
+    "hid": 7001002,
+    "name": "Kempinski Hotel Aqaba Red Sea",
+    "address": "King Hussein Street, Aqaba",
+    "postal_code": "77110",
+    "email": "reservations.aqaba@kempinski.com",
+    "phone": "+962 3 209 0888",
+    "star_rating": 5,
+    "kind": "Resort",
+    "chain": "Kempinski",
+    "latitude": 29.5181,
+    "longitude": 35.0007,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 1102, "name": "Aqaba", "country_code": "JO", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": [
+          "Beachfront luxury on the Red Sea with private beach access, two outdoor pools, a full-service spa, and multiple restaurants and bars."
+        ]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "outdoor-pool", "spa-and-wellness", "gym", "free-wifi", "free-parking", "private-beach"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "bar", "lounge"] }
+    ],
+    "images": [
+      "https://cdn.worldota.net/sample/kempinski-aqaba-1.jpg",
+      "https://cdn.worldota.net/sample/kempinski-aqaba-2.jpg"
+    ]
+  },
+  {
+    "id": "movenpick_petra",
+    "hid": 7001003,
+    "name": "Mövenpick Resort Petra",
+    "address": "Tourism Street, Wadi Musa, Petra",
+    "email": "hotel.petra@movenpick.com",
+    "phone": "+962 3 215 7111",
+    "star_rating": 5,
+    "kind": "Resort",
+    "chain": "Mövenpick",
+    "latitude": 30.3245,
+    "longitude": 35.4730,
+    "check_in_time": "14:00",
+    "check_out_time": "12:00",
+    "region": { "id": 1103, "name": "Petra", "country_code": "JO", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": [
+          "Steps from the entrance to the Lost City of Petra, with a heated outdoor pool, spa centre, and traditional Jordanian architecture."
+        ]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "spa", "fitness-centre", "free-wifi", "free-parking"] },
+      { "group_name": "food", "amenities": ["restaurant", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/movenpick-petra-1.jpg"]
+  },
+  {
+    "id": "marriott_petra",
+    "hid": 7001004,
+    "name": "Petra Marriott Hotel",
+    "address": "Queen Rania Al Abdullah Street, Wadi Musa",
+    "phone": "+962 3 215 6407",
+    "star_rating": 4,
+    "kind": "Hotel",
+    "chain": "Marriott",
+    "latitude": 30.3220,
+    "longitude": 35.4815,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 1103, "name": "Petra", "country_code": "JO", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": ["Cliff-top property with sweeping mountain views, an outdoor pool and a Mediterranean restaurant."]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "outdoor-pool", "free-wifi", "free-parking"] },
+      { "group_name": "food", "amenities": ["restaurant", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/marriott-petra-1.jpg"]
+  },
+  {
+    "id": "sun_city_wadi_rum",
+    "hid": 7001005,
+    "name": "Sun City Camp Wadi Rum",
+    "address": "Wadi Rum Protected Area",
+    "phone": "+962 7 9555 1414",
+    "star_rating": 3,
+    "kind": "Apartments",
+    "latitude": 29.5325,
+    "longitude": 35.4181,
+    "check_in_time": "14:00",
+    "check_out_time": "11:00",
+    "region": { "id": 1104, "name": "Wadi Rum", "country_code": "JO", "type": "village" },
+    "description_struct": [
+      { "title": "About", "paragraphs": ["Bedouin-style tented camp with stargazing pods and traditional dinners."] }
+    ],
+    "amenity_groups": [{ "group_name": "general", "amenities": ["free-wifi", "free-parking", "restaurant"] }],
+    "images": []
+  },
+  {
+    "id": "burj_al_arab",
+    "hid": 7002001,
+    "name": "Burj Al Arab Jumeirah",
+    "address": "Jumeirah Beach Road, Dubai",
+    "email": "BAAreservations@jumeirah.com",
+    "phone": "+971 4 301 7777",
+    "star_rating": 5,
+    "kind": "Hotel",
+    "chain": "Jumeirah",
+    "latitude": 25.1412,
+    "longitude": 55.1853,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 2200, "name": "Dubai", "country_code": "AE", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": [
+          "Iconic sail-shaped luxury hotel on its own island. Private beach, nine restaurants, full-service spa, and one of the world's largest royal suites."
+        ]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "outdoor-pool", "spa-centre", "gym", "free-wifi", "valet-parking", "private-beach", "pet-friendly", "wheelchair-accessible"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "restaurant", "bar", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/burj-al-arab-1.jpg", "https://cdn.worldota.net/sample/burj-al-arab-2.jpg"]
+  },
+  {
+    "id": "atlantis_palm",
+    "hid": 7002002,
+    "name": "Atlantis The Palm",
+    "address": "Crescent Road, The Palm, Dubai",
+    "phone": "+971 4 426 2000",
+    "star_rating": 5,
+    "kind": "Resort",
+    "chain": "Atlantis",
+    "latitude": 25.1308,
+    "longitude": 55.1170,
+    "check_in_time": "15:00",
+    "check_out_time": "11:00",
+    "region": { "id": 2200, "name": "Dubai", "country_code": "AE", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": ["Ocean-themed resort with private beach, Aquaventure Waterpark, and a 65,000-marine-animal aquarium."]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "outdoor-pool", "spa", "gym", "free-wifi", "free-parking", "private-beach", "wheelchair-accessible"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "restaurant", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/atlantis-1.jpg"]
+  },
+  {
+    "id": "address_downtown",
+    "hid": 7002003,
+    "name": "Address Downtown",
+    "address": "Sheikh Mohammed bin Rashid Boulevard, Downtown Dubai",
+    "phone": "+971 4 436 8888",
+    "star_rating": 5,
+    "kind": "Hotel",
+    "chain": "Address",
+    "latitude": 25.1929,
+    "longitude": 55.2762,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 2200, "name": "Dubai", "country_code": "AE", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": ["Adjacent to Burj Khalifa with sweeping fountain views, infinity pool, spa, and 6 restaurants."]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "spa", "gym", "free-wifi", "valet-parking", "wheelchair-accessible"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/address-downtown-1.jpg"]
+  },
+  {
+    "id": "emirates_palace",
+    "hid": 7002004,
+    "name": "Emirates Palace Mandarin Oriental",
+    "address": "West Corniche Road, Abu Dhabi",
+    "phone": "+971 2 690 9000",
+    "star_rating": 5,
+    "kind": "Hotel",
+    "chain": "Mandarin Oriental",
+    "latitude": 24.4612,
+    "longitude": 54.3173,
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "region": { "id": 2201, "name": "Abu Dhabi", "country_code": "AE", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": ["Palatial property on a private 1.3-km beach with spa, gym, and ten dining venues."]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "spa-and-wellness", "fitness-center", "free-wifi", "free-parking", "private-beach", "wheelchair-accessible"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "restaurant", "bar", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/emirates-palace-1.jpg"]
+  },
+  {
+    "id": "rixos_jbr",
+    "hid": 7002005,
+    "name": "Rixos Premium Dubai JBR",
+    "address": "The Walk, Jumeirah Beach Residence, Dubai",
+    "phone": "+971 4 520 0000",
+    "star_rating": 5,
+    "kind": "Resort",
+    "chain": "Rixos",
+    "latitude": 25.0792,
+    "longitude": 55.1376,
+    "check_in_time": "14:00",
+    "check_out_time": "12:00",
+    "region": { "id": 2200, "name": "Dubai", "country_code": "AE", "type": "city" },
+    "description_struct": [
+      {
+        "title": "About",
+        "paragraphs": ["All-inclusive on JBR beach with infinity pool, spa, and direct beach access."]
+      }
+    ],
+    "amenity_groups": [
+      { "group_name": "general", "amenities": ["pool", "outdoor-pool", "spa", "gym", "free-wifi", "paid-parking", "public-beach"] },
+      { "group_name": "food", "amenities": ["restaurant", "restaurant", "bar"] }
+    ],
+    "images": ["https://cdn.worldota.net/sample/rixos-jbr-1.jpg"]
+  }
+]
