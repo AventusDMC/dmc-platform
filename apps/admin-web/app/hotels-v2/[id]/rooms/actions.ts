@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { adminPageFetch } from '../../../lib/admin-server';
+import { adminPageFetch, adminPageFetchJson } from '../../../lib/admin-server';
+import { suggestRoomCode } from '../../lib/room-code-suggester';
 
 // Hotels Engine v2 — Server Actions for room type CRUD.
 //
@@ -20,6 +21,21 @@ function trimOrUndefined(value: FormDataEntryValue | null): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+// Fetch the existing room types for a hotel — used to feed the
+// dedupe set for suggestRoomCode().
+async function fetchExistingRooms(hotelId: string): Promise<Array<{ id: string; name: string; code: string | null }>> {
+  try {
+    return await adminPageFetchJson<Array<{ id: string; name: string; code: string | null }>>(
+      `${API_BASE_URL}/hotels/${encodeURIComponent(hotelId)}/room-categories-summary`,
+      'Hotel v2 room codes lookup',
+      { cache: 'no-store' },
+    );
+  } catch (caughtError) {
+    console.warn('[hotels-v2/rooms/actions] could not load existing rooms for dedupe', caughtError);
+    return [];
+  }
+}
+
 export async function createRoomType(hotelId: string, formData: FormData) {
   const name = trimOrUndefined(formData.get('name'));
   if (!name) {
@@ -27,9 +43,17 @@ export async function createRoomType(hotelId: string, formData: FormData) {
     // belt-and-braces here.
     throw new Error('Room type name is required.');
   }
-  const code = trimOrUndefined(formData.get('code'));
+  let code = trimOrUndefined(formData.get('code'));
   const description = trimOrUndefined(formData.get('description'));
   const isActive = formData.get('isActive') !== 'inactive';
+
+  // Auto-suggest a standardized code if the operator left the field
+  // blank. Looks up existing codes so the new one is unique within
+  // the hotel.
+  if (!code) {
+    const existing = await fetchExistingRooms(hotelId);
+    code = suggestRoomCode(name, existing.map((r) => r.code));
+  }
 
   const response = await adminPageFetch(
     `${API_BASE_URL}/hotels/${encodeURIComponent(hotelId)}/room-categories`,
@@ -43,6 +67,55 @@ export async function createRoomType(hotelId: string, formData: FormData) {
   if (!response.ok) {
     const errBody = await response.text();
     throw new Error(`Could not create room type: HTTP ${response.status} ${errBody.slice(0, 200)}`);
+  }
+
+  revalidatePath(`/hotels-v2/${hotelId}/rooms`);
+  revalidatePath(`/hotels-v2/${hotelId}`);
+}
+
+/**
+ * Bulk-fill action — walks the hotel's room types, finds every row
+ * with an empty / null code, and assigns a standardized one via the
+ * suggester. Each suggestion is deduped against previously-assigned
+ * codes inside the same run, so two rooms can't end up with the
+ * same code.
+ */
+export async function autoFillEmptyRoomCodes(hotelId: string) {
+  const rooms = await fetchExistingRooms(hotelId);
+  // Start with all NON-empty codes as taken; we'll add each new
+  // suggestion as we go so subsequent rows don't collide with it.
+  const taken = new Set<string>();
+  for (const r of rooms) {
+    if (r.code && r.code.trim().length > 0) {
+      taken.add(r.code.trim().toUpperCase());
+    }
+  }
+
+  const targets = rooms.filter((r) => !r.code || r.code.trim().length === 0);
+  if (targets.length === 0) {
+    revalidatePath(`/hotels-v2/${hotelId}/rooms`);
+    return;
+  }
+
+  for (const room of targets) {
+    const suggested = suggestRoomCode(room.name, taken);
+    taken.add(suggested.toUpperCase());
+
+    const response = await adminPageFetch(
+      `${API_BASE_URL}/hotels/${encodeURIComponent(hotelId)}/room-categories/${encodeURIComponent(room.id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: suggested }),
+      },
+    );
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(
+        `[hotels-v2/rooms/autoFillEmptyRoomCodes] failed to patch room ${room.id}: HTTP ${response.status} ${errBody.slice(0, 200)}`,
+      );
+      // Continue with remaining rooms — don't abort the bulk operation.
+    }
   }
 
   revalidatePath(`/hotels-v2/${hotelId}/rooms`);
