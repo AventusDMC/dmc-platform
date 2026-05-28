@@ -27,6 +27,9 @@ const SHEETS = {
   CANCELLATION: 'Cancellation',
   CHILD_POLICY: 'ChildPolicy',
   MEAL_PLANS: 'MealPlans',
+  // Hidden sheet — drives the Room Category dropdown via a range
+  // reference. See buildReferenceSheet for why it can't be inline.
+  REFERENCE: '_Reference',
 } as const;
 
 type ContractExportResult = {
@@ -122,6 +125,14 @@ export class HotelContractExportService {
     this.buildCancellationSheet(workbook, cancellationPolicy);
     this.buildChildPolicySheet(workbook, childPolicy);
     this.buildMealPlansSheet(workbook, mealPlans);
+
+    // Reference sheet drives the Room Category dropdowns (names can
+    // contain commas which would break an inline list) — built last so
+    // it sits at the end of the workbook, then hidden so the contract
+    // manager doesn't see it. Sheet order: README → Master → entity
+    // sheets → (hidden) Reference.
+    this.buildReferenceSheet(workbook, contract.hotel.roomCategories);
+    this.applyAllDropdowns(workbook);
 
     const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
     const safeName = String(contract.name || 'contract').replace(/[^a-z0-9-_]+/gi, '_');
@@ -446,7 +457,152 @@ export class HotelContractExportService {
       });
     });
   }
+
+  // -------- Reference sheet + dropdown wiring --------
+
+  /**
+   * Hidden Reference sheet at the back of the workbook. Holds the list
+   * of Room Category names for this contract's hotel so the Rates and
+   * Supplements dropdowns can reference a range (room names may contain
+   * commas, which would break an inline list formula). All other enum
+   * dropdowns use inline lists since their values are short and stable.
+   */
+  private buildReferenceSheet(workbook: any, roomCategories: Array<{ name: string; isActive: boolean }>) {
+    const sheet = workbook.addWorksheet(SHEETS.REFERENCE);
+    sheet.columns = [
+      { header: 'Room Category', key: 'roomCategory', width: 36 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    for (const room of roomCategories) {
+      sheet.addRow({ roomCategory: room.name });
+    }
+    // Hide the sheet so the contract manager only sees the seven
+    // operator-facing tabs. exceljs honors 'veryHidden' which can't be
+    // un-hidden from the Excel UI (only via VBA / dev tools), keeping
+    // the workbook visually clean.
+    sheet.state = 'veryHidden';
+  }
+
+  /**
+   * Apply every enum dropdown across the workbook in one place. Keeps
+   * the validation contract centralized so adding a new enum is a
+   * one-line change rather than digging through five buildXxxSheet
+   * methods. Dropdowns are applied to rows 2-1000 so the contract
+   * manager can add new rows below the exported data and still get the
+   * dropdown picker.
+   */
+  private applyAllDropdowns(workbook: any) {
+    const rates = workbook.getWorksheet(SHEETS.RATES);
+    if (rates) {
+      this.applyRangeDropdown(rates, 'roomCategory', { type: 'range', range: `'${SHEETS.REFERENCE}'!$A$2:$A$1000` });
+      this.applyEnumDropdown(rates, 'occupancyType', ['SGL', 'DBL', 'TPL']);
+      this.applyEnumDropdown(rates, 'mealPlan', ['RO', 'BB', 'HB', 'FB', 'AI']);
+      this.applyEnumDropdown(rates, 'pricingBasis', ['PER_ROOM', 'PER_PERSON']);
+      this.applyEnumDropdown(rates, 'currency', CURRENCY_CODES);
+    }
+    const supplements = workbook.getWorksheet(SHEETS.SUPPLEMENTS);
+    if (supplements) {
+      this.applyRangeDropdown(supplements, 'roomCategory', {
+        type: 'range',
+        range: `'${SHEETS.REFERENCE}'!$A$2:$A$1000`,
+        allowBlank: true,
+      });
+      this.applyEnumDropdown(supplements, 'type', [
+        'EXTRA_BREAKFAST',
+        'EXTRA_LUNCH',
+        'EXTRA_DINNER',
+        'GALA_DINNER',
+        'EXTRA_BED',
+      ]);
+      this.applyEnumDropdown(supplements, 'chargeBasis', ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT']);
+      this.applyEnumDropdown(supplements, 'currency', CURRENCY_CODES);
+      this.applyEnumDropdown(supplements, 'isMandatory', ['Yes', 'No']);
+      this.applyEnumDropdown(supplements, 'isActive', ['Yes', 'No']);
+    }
+    const cancellation = workbook.getWorksheet(SHEETS.CANCELLATION);
+    if (cancellation) {
+      this.applyEnumDropdown(cancellation, 'rowType', ['POLICY', 'RULE']);
+      this.applyEnumDropdown(cancellation, 'noShowPenaltyType', ['PERCENT', 'NIGHTS', 'FULL_STAY', 'FIXED'], { allowBlank: true });
+      this.applyEnumDropdown(cancellation, 'deadlineUnit', ['DAYS', 'HOURS'], { allowBlank: true });
+      this.applyEnumDropdown(cancellation, 'penaltyType', ['PERCENT', 'NIGHTS', 'FULL_STAY', 'FIXED'], { allowBlank: true });
+      this.applyEnumDropdown(cancellation, 'isActive', ['Yes', 'No'], { allowBlank: true });
+    }
+    const childPolicy = workbook.getWorksheet(SHEETS.CHILD_POLICY);
+    if (childPolicy) {
+      this.applyEnumDropdown(childPolicy, 'rowType', ['POLICY', 'BAND']);
+      this.applyEnumDropdown(childPolicy, 'chargeBasis', ['FREE', 'PERCENT_OF_ADULT', 'FIXED_AMOUNT'], { allowBlank: true });
+      this.applyEnumDropdown(childPolicy, 'isActive', ['Yes', 'No'], { allowBlank: true });
+    }
+    const mealPlans = workbook.getWorksheet(SHEETS.MEAL_PLANS);
+    if (mealPlans) {
+      this.applyEnumDropdown(mealPlans, 'code', ['RO', 'BB', 'HB', 'FB', 'AI']);
+      this.applyEnumDropdown(mealPlans, 'isDefault', ['Yes', 'No']);
+      this.applyEnumDropdown(mealPlans, 'isActive', ['Yes', 'No']);
+    }
+  }
+
+  /**
+   * Inline dropdown — values become a comma-separated list embedded
+   * directly in the worksheet. Excel caps this at 255 characters; all
+   * the enum lists we use are well under (5 currencies, 5 meal plans,
+   * 4 penalty types, etc.). Use applyRangeDropdown if the list could
+   * grow long or contain commas (e.g. room category names).
+   */
+  private applyEnumDropdown(
+    sheet: any,
+    columnKey: string,
+    values: string[],
+    opts?: { allowBlank?: boolean },
+  ) {
+    const range = this.columnRange(sheet, columnKey);
+    if (!range) return;
+    sheet.dataValidations.add(range, {
+      type: 'list',
+      allowBlank: opts?.allowBlank !== false,
+      formulae: [`"${values.join(',')}"`],
+      showErrorMessage: true,
+      errorStyle: 'stop',
+      errorTitle: 'Invalid value',
+      error: `Pick one of: ${values.join(', ')}`,
+    });
+  }
+
+  private applyRangeDropdown(
+    sheet: any,
+    columnKey: string,
+    config: { type: 'range'; range: string; allowBlank?: boolean },
+  ) {
+    const range = this.columnRange(sheet, columnKey);
+    if (!range) return;
+    sheet.dataValidations.add(range, {
+      type: 'list',
+      allowBlank: config.allowBlank !== false,
+      formulae: [config.range],
+      showErrorMessage: true,
+      errorStyle: 'stop',
+      errorTitle: 'Invalid value',
+      error: 'Pick a value from the dropdown (or leave blank where allowed).',
+    });
+  }
+
+  /**
+   * Resolve a column key (e.g. 'occupancyType') to its A1-style range
+   * spanning rows 2 to 1000 (e.g. 'D2:D1000'). The wide row range lets
+   * new rows added below the exported data still inherit the dropdown
+   * without the contract manager having to copy-paste validation.
+   */
+  private columnRange(sheet: any, columnKey: string): string | null {
+    const column = sheet.getColumn(columnKey);
+    if (!column || !column.letter) return null;
+    return `${column.letter}2:${column.letter}1000`;
+  }
 }
+
+// Centralized so the same list drives the create form on the v2 pages,
+// the Excel dropdown, and (next PR) the import validator. Plain string[]
+// (not `as const`) so the dropdown helpers can pass it without TS
+// readonly-array friction.
+const CURRENCY_CODES: string[] = ['USD', 'JOD', 'AED', 'EUR', 'GBP'];
 
 function formatDate(value: Date | string | null | undefined): string {
   if (!value) return '';
