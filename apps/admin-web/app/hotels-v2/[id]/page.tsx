@@ -108,7 +108,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
             marginBottom: '1.5rem',
           }}
         >
-          <ActionLink href={`/hotels-v2/${hotel.id}/edit`} disabled>
+          <ActionLink href={`/hotels-v2/${hotel.id}/edit`}>
             Edit hotel
           </ActionLink>
           <ActionLink href={`/hotels-v2/${hotel.id}/rooms`}>
