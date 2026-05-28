@@ -118,11 +118,10 @@ describe('Open Correction Workspace deep links', () => {
     assert.ok(matches.length >= 2, 'expected at least two Open Correction Workspace deep-links');
   });
 
-  it('Hotel contract workspace hero offers the deep link too', () => {
-    const heroSource = readFileSync(
-      new URL('../../../hotels/contracts/[contractId]/HotelContractWorkspace.tsx', import.meta.url),
-      'utf8',
-    );
-    assert.match(heroSource, /\/hotel-contracts\/\$\{contract\.id\}\/correction/);
-  });
+  // Legacy hero-deep-link assertion removed: the
+  // /hotels/contracts/[contractId]/HotelContractWorkspace.tsx file was
+  // deleted during the v1 → v2 cutover. The correction-queue deep link
+  // is still surfaced from the Contract Health dashboard (see the two
+  // "Open Correction Workspace" link occurrences asserted above), which
+  // is the operator entry point for triaging contracts.
 });
