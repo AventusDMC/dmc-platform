@@ -111,7 +111,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
           <ActionLink href={`/hotels-v2/${hotel.id}/edit`} disabled>
             Edit hotel
           </ActionLink>
-          <ActionLink href={`/hotels-v2/${hotel.id}/rooms`} disabled>
+          <ActionLink href={`/hotels-v2/${hotel.id}/rooms`}>
             Manage room types
           </ActionLink>
           <ActionLink href={`/hotels-v2/${hotel.id}/contracts/new`} disabled>
