@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../../lib/admin-server';
-import { createRoomType, deleteRoomType } from './actions';
+import { autoFillEmptyRoomCodes, createRoomType, deleteRoomType } from './actions';
 
 // Hotels Engine v2 — PR #146.
 //
@@ -82,6 +82,8 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
   // Server Actions can't be passed dynamic args via the form action prop
   // in App Router — bind them at the call site.
   const createAction = createRoomType.bind(null, hotelId);
+  const autoFillAction = autoFillEmptyRoomCodes.bind(null, hotelId);
+  const roomsMissingCode = rooms.filter((r) => !r.code || r.code.trim().length === 0).length;
 
   return (
     <main className="page">
@@ -126,8 +128,8 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
                 />
               </label>
               <label>
-                Code
-                <input type="text" name="code" placeholder="STD" maxLength={32} />
+                Code <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-suggested if blank)</span>
+                <input type="text" name="code" placeholder="STD — leave blank to auto-generate" maxLength={32} />
               </label>
               <label>
                 Description
@@ -149,9 +151,32 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
 
         {/* Existing rooms */}
         <section data-testid="hotel-v2-room-list">
-          <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
-            Existing room types ({rooms.length})
-          </h2>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+              marginBottom: '0.6rem',
+            }}
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', margin: 0 }}>
+              Existing room types ({rooms.length})
+            </h2>
+            {roomsMissingCode > 0 ? (
+              <form action={autoFillAction} style={{ margin: 0 }}>
+                <button
+                  type="submit"
+                  className="compact-button"
+                  title={`Generate standardized codes for ${roomsMissingCode} room${roomsMissingCode === 1 ? '' : 's'} that have a blank code`}
+                  data-testid="auto-fill-codes-button"
+                >
+                  Auto-fill codes ({roomsMissingCode})
+                </button>
+              </form>
+            ) : null}
+          </div>
 
           {rooms.length === 0 ? (
             <p className="table-subcopy">No room types yet — add your first above.</p>
