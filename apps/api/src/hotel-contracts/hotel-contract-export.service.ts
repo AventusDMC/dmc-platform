@@ -126,12 +126,12 @@ export class HotelContractExportService {
     this.buildChildPolicySheet(workbook, childPolicy);
     this.buildMealPlansSheet(workbook, mealPlans);
 
-    // Reference sheet drives the Room Category dropdowns (names can
-    // contain commas which would break an inline list) — built last so
-    // it sits at the end of the workbook, then hidden so the contract
-    // manager doesn't see it. Sheet order: README → Master → entity
-    // sheets → (hidden) Reference.
-    this.buildReferenceSheet(workbook, contract.hotel.roomCategories);
+    // Reference sheet drives the Room Category dropdowns AND carries
+    // hidden metadata (contract ID, hotel ID, schema version, export
+    // timestamp) that the import path validates against. The contract
+    // manager never sees this sheet — it's veryHidden. Sheet order:
+    // README → Master → entity sheets → (hidden) _Reference.
+    this.buildReferenceSheet(workbook, contract);
     this.applyAllDropdowns(workbook);
 
     const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
@@ -158,10 +158,10 @@ export class HotelContractExportService {
       '',
       '— Editing rules —',
       '• Each sheet (Rates, Supplements, Cancellation, ChildPolicy, MealPlans) is a separate entity.',
-      '• Column A on every entity sheet is the hidden system ID (_id). DO NOT edit or reorder column A.',
-      '• Rows with an existing _id will be updated on re-import.',
-      '• Rows with a blank _id will be created on re-import.',
-      '• Rows you delete here will be deleted from the contract on re-import.',
+      '• Edit the green cells. Grey cells are read-only context.',
+      '• To add a new row: just type in the blank row below the existing data. The dropdowns extend automatically.',
+      '• To delete a row: select the row and delete it. The corresponding entity is deleted on re-import.',
+      '• To update a row: edit the green cells and save. The system matches your row to the existing entity by an invisible ID column — do NOT try to expose or edit it.',
       '• Master sheet is read-only context — changes there are ignored on import.',
       '• Re-import on the same contract: open the contract in the admin app and use "Upload Excel".',
       '',
@@ -197,18 +197,18 @@ export class HotelContractExportService {
     ];
     this.styleHeaderRow(sheet, 1);
 
+    // Operator-readable context only. The technical identifiers
+    // (Contract ID, Hotel ID, schema version, export timestamp) live in
+    // the hidden _Reference sheet so the import path can validate the
+    // file without exposing UUIDs to the contract manager.
     const rows: Array<[string, string]> = [
-      ['Contract ID', contract.id],
-      ['Contract name', contract.name],
-      ['Hotel ID', contract.hotelId],
-      ['Hotel name', contract.hotel.name],
-      ['Hotel city', contract.hotel.city || ''],
-      ['Valid from', formatDate(contract.validFrom)],
-      ['Valid to', formatDate(contract.validTo)],
+      ['Hotel', contract.hotel.name + (contract.hotel.city ? ` (${contract.hotel.city})` : '')],
+      ['Contract', contract.name],
+      ['Validity', `${formatDate(contract.validFrom)} → ${formatDate(contract.validTo)}`],
       ['Currency', contract.currency],
-      ['Confidence', contract.confidence ?? ''],
-      ['Verified by', contract.verifiedBy ?? ''],
-      ['Last verified', contract.lastVerifiedAt ? formatDate(contract.lastVerifiedAt) : ''],
+      ['Status', contract.confidence ?? ''],
+      ['Verified by', contract.verifiedBy ?? '—'],
+      ['Last verified', contract.lastVerifiedAt ? formatDate(contract.lastVerifiedAt) : '—'],
       ['Verification notes', contract.verificationNotes ?? ''],
     ];
     for (const [field, value] of rows) {
@@ -229,7 +229,10 @@ export class HotelContractExportService {
       views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }],
     });
     sheet.columns = [
-      { header: '_id', key: 'id', width: 38 },
+      // Hidden from the contract manager but kept in the file so the
+      // import path can match existing rows on re-upload. Blank cell on
+      // a new row → import creates a new entity; populated cell → update.
+      { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Room Category', key: 'roomCategory', width: 28 },
       { header: 'Room Code', key: 'roomCode', width: 12 },
       { header: 'Occupancy', key: 'occupancyType', width: 11 },
@@ -268,7 +271,10 @@ export class HotelContractExportService {
       views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }],
     });
     sheet.columns = [
-      { header: '_id', key: 'id', width: 38 },
+      // Hidden from the contract manager but kept in the file so the
+      // import path can match existing rows on re-upload. Blank cell on
+      // a new row → import creates a new entity; populated cell → update.
+      { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Room Category (blank = all rooms)', key: 'roomCategory', width: 32 },
       { header: 'Type', key: 'type', width: 18 },
       { header: 'Charge Basis', key: 'chargeBasis', width: 14 },
@@ -301,7 +307,10 @@ export class HotelContractExportService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
     sheet.columns = [
-      { header: '_id', key: 'id', width: 38 },
+      // Hidden from the contract manager but kept in the file so the
+      // import path can match existing rows on re-upload. Blank cell on
+      // a new row → import creates a new entity; populated cell → update.
+      { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Row Type', key: 'rowType', width: 12 },
       { header: 'Summary / Rule Notes', key: 'summary', width: 40 },
       { header: 'No-show Penalty Type', key: 'noShowPenaltyType', width: 20 },
@@ -358,7 +367,10 @@ export class HotelContractExportService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
     sheet.columns = [
-      { header: '_id', key: 'id', width: 38 },
+      // Hidden from the contract manager but kept in the file so the
+      // import path can match existing rows on re-upload. Blank cell on
+      // a new row → import creates a new entity; populated cell → update.
+      { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Row Type', key: 'rowType', width: 12 },
       { header: 'Infant Max Age', key: 'infantMaxAge', width: 14 },
       { header: 'Child Max Age', key: 'childMaxAge', width: 14 },
@@ -410,7 +422,10 @@ export class HotelContractExportService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
     sheet.columns = [
-      { header: '_id', key: 'id', width: 38 },
+      // Hidden from the contract manager but kept in the file so the
+      // import path can match existing rows on re-upload. Blank cell on
+      // a new row → import creates a new entity; populated cell → update.
+      { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Code', key: 'code', width: 8 },
       { header: 'Default', key: 'isDefault', width: 9 },
       { header: 'Active', key: 'isActive', width: 9 },
@@ -461,25 +476,57 @@ export class HotelContractExportService {
   // -------- Reference sheet + dropdown wiring --------
 
   /**
-   * Hidden Reference sheet at the back of the workbook. Holds the list
-   * of Room Category names for this contract's hotel so the Rates and
-   * Supplements dropdowns can reference a range (room names may contain
-   * commas, which would break an inline list formula). All other enum
-   * dropdowns use inline lists since their values are short and stable.
+   * Hidden Reference sheet at the back of the workbook. Two jobs:
+   *
+   *   1. Hold the list of Room Category names for this contract's hotel
+   *      so the Rates and Supplements dropdowns can reference a range
+   *      (room names may contain commas, which would break an inline
+   *      list formula). Names live in column D, starting at D2.
+   *
+   *   2. Carry the workbook's machine-readable metadata (Contract ID,
+   *      Hotel ID, schema version, export timestamp) so the import
+   *      path can validate "this file is for this contract." Lives in
+   *      columns A+B as a small key/value block. Never shown to the
+   *      operator — see [[professional-erp-id-handling]].
+   *
+   * The sheet uses state: 'veryHidden' so it's invisible in the Excel
+   * tab strip AND not un-hideable through the right-click menu (only
+   * VBA / dev tools can expose it). All other enum dropdowns use
+   * inline lists since their values are short and stable.
    */
-  private buildReferenceSheet(workbook: any, roomCategories: Array<{ name: string; isActive: boolean }>) {
+  private buildReferenceSheet(workbook: any, contract: any) {
     const sheet = workbook.addWorksheet(SHEETS.REFERENCE);
     sheet.columns = [
+      { header: 'Metadata Field', key: 'metaField', width: 22 },
+      { header: 'Metadata Value', key: 'metaValue', width: 42 },
+      { header: '', key: 'spacer', width: 2 },
       { header: 'Room Category', key: 'roomCategory', width: 36 },
     ];
     sheet.getRow(1).font = { bold: true };
-    for (const room of roomCategories) {
-      sheet.addRow({ roomCategory: room.name });
+
+    // Metadata block (read by the import path on upload). Order matters
+    // because the import will look these up by label; keep adding new
+    // keys at the end rather than re-ordering existing ones.
+    const metadataRows: Array<[string, string]> = [
+      ['Schema Version', String(WORKBOOK_SCHEMA_VERSION)],
+      ['Contract ID', contract.id],
+      ['Hotel ID', contract.hotelId],
+      ['Hotel Name', contract.hotel.name],
+      ['Contract Name', contract.name],
+      ['Currency', contract.currency],
+      ['Exported At (UTC)', new Date().toISOString()],
+    ];
+    const roomNames = (contract.hotel.roomCategories || []).map((r: any) => r.name);
+    const maxRows = Math.max(metadataRows.length, roomNames.length);
+    for (let i = 0; i < maxRows; i++) {
+      const [field, value] = metadataRows[i] ?? ['', ''];
+      sheet.addRow({
+        metaField: field,
+        metaValue: value,
+        spacer: '',
+        roomCategory: roomNames[i] ?? '',
+      });
     }
-    // Hide the sheet so the contract manager only sees the seven
-    // operator-facing tabs. exceljs honors 'veryHidden' which can't be
-    // un-hidden from the Excel UI (only via VBA / dev tools), keeping
-    // the workbook visually clean.
     sheet.state = 'veryHidden';
   }
 
@@ -494,7 +541,7 @@ export class HotelContractExportService {
   private applyAllDropdowns(workbook: any) {
     const rates = workbook.getWorksheet(SHEETS.RATES);
     if (rates) {
-      this.applyRangeDropdown(rates, 'roomCategory', { type: 'range', range: `'${SHEETS.REFERENCE}'!$A$2:$A$1000` });
+      this.applyRangeDropdown(rates, 'roomCategory', { type: 'range', range: `'${SHEETS.REFERENCE}'!$D$2:$D$1000` });
       this.applyEnumDropdown(rates, 'occupancyType', ['SGL', 'DBL', 'TPL']);
       this.applyEnumDropdown(rates, 'mealPlan', ['RO', 'BB', 'HB', 'FB', 'AI']);
       this.applyEnumDropdown(rates, 'pricingBasis', ['PER_ROOM', 'PER_PERSON']);
@@ -504,7 +551,7 @@ export class HotelContractExportService {
     if (supplements) {
       this.applyRangeDropdown(supplements, 'roomCategory', {
         type: 'range',
-        range: `'${SHEETS.REFERENCE}'!$A$2:$A$1000`,
+        range: `'${SHEETS.REFERENCE}'!$D$2:$D$1000`,
         allowBlank: true,
       });
       this.applyEnumDropdown(supplements, 'type', [
@@ -603,6 +650,13 @@ export class HotelContractExportService {
 // (not `as const`) so the dropdown helpers can pass it without TS
 // readonly-array friction.
 const CURRENCY_CODES: string[] = ['USD', 'JOD', 'AED', 'EUR', 'GBP'];
+
+// Workbook schema version. Bump when the sheet layout changes in a way
+// the import path can't tolerate (renamed columns, removed sheets,
+// reshaped metadata). Older files will be rejected on import with a
+// clear "your workbook is on schema vN, current is vN+1; re-download
+// the latest" message, rather than silently producing weird data.
+const WORKBOOK_SCHEMA_VERSION = 1;
 
 function formatDate(value: Date | string | null | undefined): string {
   if (!value) return '';
