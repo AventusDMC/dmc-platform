@@ -312,19 +312,28 @@ export default async function ContractSupplementsPage({ params }: Props) {
                               <td>{r.isMandatory ? 'Yes' : 'No'}</td>
                               <td style={{ maxWidth: '20rem' }}>{r.notes || '—'}</td>
                               <td>
-                                <form action={deleteAction}>
-                                  <button
-                                    type="submit"
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                  <Link
+                                    href={`/hotels-v2/${hotelId}/contracts/${contractId}/supplements/${r.id}/edit`}
+                                    prefetch={false}
                                     className="compact-button"
-                                    style={{
-                                      background: '#dc2626',
-                                      color: '#fff',
-                                      borderColor: '#dc2626',
-                                    }}
                                   >
-                                    Delete
-                                  </button>
-                                </form>
+                                    Edit
+                                  </Link>
+                                  <form action={deleteAction}>
+                                    <button
+                                      type="submit"
+                                      className="compact-button"
+                                      style={{
+                                        background: '#dc2626',
+                                        color: '#fff',
+                                        borderColor: '#dc2626',
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </form>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -338,7 +347,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
           )}
         </section>
 
-        {/* Stop-gap pointer to legacy for inline edit until PR-A6 */}
+        {/* Stop-gap pointer to legacy for bulk import / audit trail */}
         <section
           data-testid="hotel-v2-supplement-legacy-bridge"
           className="detail-card"
@@ -350,12 +359,11 @@ export default async function ContractSupplementsPage({ params }: Props) {
           }}
         >
           <h2 className="section-title" style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>
-            Editing existing supplements
+            Bulk import and audit history
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            Create + delete work inline here. Single-row edit (change amount, mark
-            mandatory, etc.) ships in PR-A6 — for now use the legacy workspace to amend
-            an existing supplement without recreating it:{' '}
+            Create / edit / delete now all work inline here. The legacy workspace still
+            owns bulk import from a contract PDF and the full per-supplement audit log:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
@@ -371,7 +379,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
           style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
         >
           /hotels-v2/{hotelId}/contracts/{contractId}/supplements — server-rendered. Create
-          + delete via Server Actions. Edit ships in PR-A6.
+          / edit / delete via Server Actions.
         </p>
       </section>
     </main>
