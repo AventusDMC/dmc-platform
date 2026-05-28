@@ -203,7 +203,11 @@ export default async function ContractDetailPage({ params }: Props) {
           }}
         >
           <CountCard label="Room types" value={totalRoomTypes} />
-          <CountCard label="Rate cells" value={totalRates} />
+          <CountCard
+            label="Rate cells"
+            value={totalRates}
+            href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates`}
+          />
           <CountCard label="Meal plans" value={totalMealPlans} />
           <CountCard label="Supplements" value={totalSupplements} />
           <CountCard label="Allotment ranges" value={totalAllotments} />
@@ -217,8 +221,16 @@ export default async function ContractDetailPage({ params }: Props) {
           </h2>
           {roomAggregates.length === 0 ? (
             <p className="table-subcopy">
-              No room types have rates on this contract yet. Use the legacy workspace below
-              to add seasons + rates until the v2 editors ship (PR-A3 / A4).
+              No room types have rates on this contract yet. Use the{' '}
+              <Link
+                href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates`}
+                prefetch={false}
+                style={{ fontWeight: 600 }}
+              >
+                rate cells editor
+              </Link>
+              {' '}to add your first rate, or jump to the legacy workspace below for the full
+              matrix UI.
             </p>
           ) : (
             <div className="table-wrap">
@@ -304,16 +316,36 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CountCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div
-      className="detail-card"
-      style={{ padding: '0.6rem 0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}
-    >
+function CountCard({ label, value, href }: { label: string; value: number; href?: string }) {
+  const inner = (
+    <>
       <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
         {label}
       </div>
       <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{value.toLocaleString()}</div>
+    </>
+  );
+  const baseStyle: React.CSSProperties = {
+    padding: '0.6rem 0.8rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.2rem',
+  };
+  if (href) {
+    return (
+      <Link
+        href={href}
+        prefetch={false}
+        className="detail-card"
+        style={{ ...baseStyle, textDecoration: 'none', color: 'inherit' }}
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div className="detail-card" style={baseStyle}>
+      {inner}
     </div>
   );
 }
