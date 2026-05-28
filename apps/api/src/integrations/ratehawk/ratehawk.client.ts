@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
+import { JORDAN_UAE_SAMPLE } from './fixtures/jordan-uae-sample';
 import type { RateHawkHotelRaw } from './ratehawk.types';
 
 // RateHawk B2B v3 client.
@@ -41,11 +40,12 @@ export class RateHawkClient {
       this.logger.warn(
         `[RateHawk] No credentials in env — using bundled fixture (countries: ${[...wanted].join(', ')})`,
       );
-      const all = await this.loadFixtures();
-      return all.filter((h) => {
+      const filtered = JORDAN_UAE_SAMPLE.filter((h) => {
         const cc = h.region?.country_code?.toUpperCase();
         return cc != null && wanted.has(cc);
       });
+      this.logger.log(`[RateHawk] fixture filtered to ${filtered.length} hotel(s)`);
+      return filtered;
     }
 
     // Live mode. RateHawk content endpoints accept HTTP Basic auth.
@@ -62,11 +62,5 @@ export class RateHawkClient {
       `[RateHawk] Live mode requested (countries: ${[...wanted].join(', ')}) — streaming dump fetch not yet implemented; returning empty set. Once Phase 2 lands, this call hits ${this.baseUrl}/hotel/info/dump/ with HTTP Basic auth.`,
     );
     return [];
-  }
-
-  private async loadFixtures(): Promise<RateHawkHotelRaw[]> {
-    const path = join(__dirname, 'fixtures', 'jordan-uae-sample.json');
-    const buf = await readFile(path, 'utf-8');
-    return JSON.parse(buf) as RateHawkHotelRaw[];
   }
 }

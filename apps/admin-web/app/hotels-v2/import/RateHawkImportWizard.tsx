@@ -280,11 +280,37 @@ export function RateHawkImportWizard() {
           </button>
         </div>
         {lastSync ? (
-          <p className="table-subcopy" style={{ marginTop: '0.6rem', color: '#15803d' }}>
-            Last sync — fetched {lastSync.fetched}, inserted {lastSync.inserted}, updated{' '}
-            {lastSync.updated}, skipped {lastSync.skipped}
-            {lastSync.errors.length > 0 ? `, errors ${lastSync.errors.length}` : ''}.
-          </p>
+          <div style={{ marginTop: '0.6rem' }}>
+            <p
+              className="table-subcopy"
+              style={{ color: lastSync.errors.length > 0 ? '#b45309' : '#15803d', margin: 0 }}
+            >
+              Last sync — fetched {lastSync.fetched}, inserted {lastSync.inserted}, updated{' '}
+              {lastSync.updated}, skipped {lastSync.skipped}
+              {lastSync.errors.length > 0 ? `, errors ${lastSync.errors.length}` : ''}.
+            </p>
+            {lastSync.errors.length > 0 ? (
+              <details
+                style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#b45309' }}
+                data-testid="ratehawk-sync-errors"
+              >
+                <summary style={{ cursor: 'pointer' }}>
+                  Show {lastSync.errors.length} error{lastSync.errors.length === 1 ? '' : 's'}
+                </summary>
+                <ul style={{ margin: '0.4rem 0 0 1.2rem', padding: 0 }}>
+                  {lastSync.errors.slice(0, 20).map((e, i) => (
+                    <li key={i}>
+                      {e.rateHawkId ? <strong>{e.rateHawkId}: </strong> : null}
+                      {e.message}
+                    </li>
+                  ))}
+                  {lastSync.errors.length > 20 ? (
+                    <li>…and {lastSync.errors.length - 20} more</li>
+                  ) : null}
+                </ul>
+              </details>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
