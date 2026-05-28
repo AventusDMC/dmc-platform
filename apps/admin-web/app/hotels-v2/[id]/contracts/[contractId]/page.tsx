@@ -335,7 +335,7 @@ export default async function ContractDetailPage({ params }: Props) {
             Editing rates / supplements / policies
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            v2 has rate cells, supplements,{' '}
+            v2 now covers every contract entity: rate cells, supplements,{' '}
             <Link
               href={`/hotels-v2/${hotelId}/contracts/${contractId}/cancellation`}
               prefetch={false}
@@ -343,7 +343,7 @@ export default async function ContractDetailPage({ params }: Props) {
             >
               cancellation policy →
             </Link>
-            , and{' '}
+            ,{' '}
             <Link
               href={`/hotels-v2/${hotelId}/contracts/${contractId}/child-policy`}
               prefetch={false}
@@ -351,7 +351,16 @@ export default async function ContractDetailPage({ params }: Props) {
             >
               child policy →
             </Link>
-            . Meal plans still live in the legacy workspace until PR-A9:{' '}
+            , and{' '}
+            <Link
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/meal-plans`}
+              prefetch={false}
+              style={{ fontWeight: 600 }}
+            >
+              meal plans →
+            </Link>
+            . The legacy workspace stays available for bulk PDF import, the per-entity
+            audit log, and the "mark as default" meal plan toggle:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
