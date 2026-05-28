@@ -6,7 +6,7 @@ import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { HotelRatesForm } from './HotelRatesForm';
 import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
-import { formatPricingBasis } from '../hotels/hotel-contract-display';
+import { formatPricingBasis } from '../lib/hotel-contract-display';
 
 type HotelRoomCategory = {
   id: string;

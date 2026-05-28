@@ -74,7 +74,6 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       '/restaurants',
       '/service-types',
       '/hotels',
-      '/hotels-v2',
       '/hotel-categories',
       '/hotel-contracts',
       '/hotel-contract-health',
@@ -95,12 +94,6 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     helper: 'Hotels, activities, transport, guides, restaurants, transfer routes, services, and suppliers',
     children: [
       { label: 'Hotels', href: '/hotels' },
-      // /hotels-v2 wraps the new contracts wizard (rate cells,
-      // supplements, cancellation, child policy, meal plans) on top of
-      // the existing backend. Coexists with the legacy /hotels workspace
-      // until every residual flow (bulk PDF import, audit history,
-      // isDefault meal plan, per-rate seasons) is moved into v2.
-      { label: 'Hotels v2 (beta)', href: '/hotels-v2' },
       { label: 'Contract Health', href: '/hotel-contract-health' },
       { label: 'Packages', href: '/packages' },
       { label: 'Import Contract', href: '/contracts/import' },

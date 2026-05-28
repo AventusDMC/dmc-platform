@@ -14,29 +14,13 @@ import { describe, it } from 'node:test';
 //   - The component is wrapped in an error boundary.
 //   - Large hotel setups display the safe-mode banner copy.
 
-describe('RoomCategoriesSection — server-side loader', () => {
-  const sectionSource = readFileSync(
-    new URL('../hotels/RoomCategoriesSection.tsx', import.meta.url),
-    'utf8',
-  );
-
-  it('uses the lightweight room-categories-summary endpoint', () => {
-    assert.match(sectionSource, /\/hotels\/room-categories-summary/);
-  });
-
-  it('does NOT fetch /api/hotels on the room-categories tab (the heavy duplicate fetch)', () => {
-    // The old version had `const url = ${API_BASE_URL}/hotels` here.
-    // Any GET to /api/hotels from this file resurrects the freeze.
-    assert.doesNotMatch(sectionSource, /\$\{API_BASE_URL\}\/hotels['`,\s]/);
-    assert.doesNotMatch(sectionSource, /['"`]\/api\/hotels['"`]/);
-  });
-
-  it('passes the hotel options collected from the summary (no second fetch needed)', () => {
-    assert.match(sectionSource, /collectHotelOptions/);
-    assert.match(sectionSource, /hotels=\{hotels\}/);
-    assert.match(sectionSource, /initialSummary=\{summary\}/);
-  });
-});
+// RoomCategoriesSection source-grep tests removed during the v1 → v2
+// cutover: the legacy /hotels/RoomCategoriesSection.tsx server loader
+// was deleted along with the tab-based hotels page. Room categories now
+// load on /hotels/[id]/rooms (the v2 rooms page) where the server
+// component fetches directly with no shared loader to assert against.
+// The original guard (don't double-fetch /api/hotels) is enforced by
+// the v2 page's structure: it only fetches one endpoint per page.
 
 describe('RoomCategoriesManager — client-side panel', () => {
   const managerSource = readFileSync(new URL('./RoomCategoriesManager.tsx', import.meta.url), 'utf8');
@@ -75,15 +59,13 @@ describe('RoomCategoriesManager — client-side panel', () => {
     assert.match(managerSource, /Large hotel setup — showing room category summary first\./);
   });
 
-  it('preserves PR #118 RoomTypesPanel behaviour by NOT touching contract workspace files', () => {
-    // Read the PR #118 file and confirm it still exists + still wires
-    // the summary endpoint — proves we haven't broken the previous fix.
-    const roomTypesPanelSource = readFileSync(
-      new URL('../hotels/contracts/[contractId]/RoomTypesPanel.tsx', import.meta.url),
-      'utf8',
-    );
-    assert.match(roomTypesPanelSource, /\/room-types-summary/);
-  });
+  // PR #118 RoomTypesPanel assertion removed: the legacy
+  // /hotels/contracts/[contractId]/RoomTypesPanel.tsx file was deleted
+  // during the v1 → v2 cutover. The room-types-summary endpoint is now
+  // consumed by /hotels/[id]/contracts/[contractId]/page.tsx directly
+  // (the v2 contract detail page), and the underlying invariant —
+  // RoomCategoriesManager not hitting the contract workspace — is still
+  // protected by the manager's own contract not to import contract code.
 });
 
 describe('RoomCategoriesErrorBoundary — friendly fallback', () => {
