@@ -27,6 +27,35 @@ type RoomCategoryAggregate = {
   costRange: { min: number | null; max: number | null; currency: string | null } | null;
 };
 
+// Shape the backend actually returns from
+// GET /hotel-contracts/:id/room-types-summary — wraps the per-room
+// aggregate inside a `rooms` array on a contract envelope object.
+// PR-A1 typed this as a flat array and called .length / .map() directly,
+// which crashed the page server-side on any contract.
+type RoomTypesSummaryResponse = {
+  contractId: string;
+  hotelId: string;
+  hotelName: string;
+  currency: string;
+  totalRoomCategories: number;
+  totalRates: number;
+  rooms: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+    description: string | null;
+    isActive: boolean;
+    rateCount: number;
+    minCost: number | null;
+    maxCost: number | null;
+    currency: string | null;
+    occupancyTypes: string[];
+    mealPlans: string[];
+    seasonNames: string[];
+    supplementCount: number;
+  }>;
+};
+
 type ContractSummary = {
   id: string;
   hotelId: string;
@@ -71,11 +100,31 @@ async function getContractSummary(contractId: string): Promise<ContractSummary |
 
 async function getRoomTypesAggregate(contractId: string): Promise<RoomCategoryAggregate[]> {
   try {
-    return await adminPageFetchJson<RoomCategoryAggregate[]>(
+    const response = await adminPageFetchJson<RoomTypesSummaryResponse | null>(
       `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}/room-types-summary`,
       'Hotel v2 contract room types',
-      { cache: 'no-store' },
+      { cache: 'no-store', allow404: true },
     );
+    const rooms = response?.rooms;
+    if (!Array.isArray(rooms)) return [];
+    // Reshape backend fields to the display shape this page uses:
+    // - seasonCount  ← seasonNames.length
+    // - mealPlanCount ← mealPlans.length
+    // - costRange    ← { min: minCost, max: maxCost, currency }
+    return rooms.map((r) => ({
+      id: r.id,
+      name: r.name,
+      code: r.code,
+      rateCount: r.rateCount,
+      seasonCount: Array.isArray(r.seasonNames) ? r.seasonNames.length : 0,
+      mealPlanCount: Array.isArray(r.mealPlans) ? r.mealPlans.length : 0,
+      supplementCount: r.supplementCount ?? 0,
+      occupancyTypes: Array.isArray(r.occupancyTypes) ? r.occupancyTypes : [],
+      costRange:
+        r.minCost != null || r.maxCost != null
+          ? { min: r.minCost, max: r.maxCost, currency: r.currency }
+          : null,
+    }));
   } catch (error) {
     if (isNextRedirectError(error)) throw error;
     console.error('[hotels-v2/contract] room types unavailable', error);

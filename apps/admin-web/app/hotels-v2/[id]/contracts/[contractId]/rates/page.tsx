@@ -311,6 +311,7 @@ export default async function ContractRatesPage({ params }: Props) {
                           <th>Basis</th>
                           <th className="numeric-cell">Cost</th>
                           <th>Currency</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -337,6 +338,15 @@ export default async function ContractRatesPage({ params }: Props) {
                               </td>
                               <td className="numeric-cell">{r.cost.toFixed(2)}</td>
                               <td>{r.currency}</td>
+                              <td>
+                                <Link
+                                  href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates/${r.id}/edit`}
+                                  prefetch={false}
+                                  className="compact-button"
+                                >
+                                  Edit
+                                </Link>
+                              </td>
                             </tr>
                           );
                         })}
@@ -349,7 +359,7 @@ export default async function ContractRatesPage({ params }: Props) {
           )}
         </section>
 
-        {/* Stop-gap pointer to legacy editors for edit/delete */}
+        {/* Stop-gap pointer to legacy editors for matrix bulk-edit */}
         <section
           data-testid="hotel-v2-rate-legacy-bridge"
           className="detail-card"
@@ -361,11 +371,12 @@ export default async function ContractRatesPage({ params }: Props) {
           }}
         >
           <h2 className="section-title" style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>
-            Editing or deleting rate cells
+            Bulk matrix edit
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            Inline edit / delete + the full matrix editor (room × season × occupancy grid) ship
-            in PR-A4. For now, use the legacy workspace to amend existing rates:{' '}
+            Single-row edit / delete now works inline (use the Edit button on any rate row
+            above). The bulk matrix editor (room × season × occupancy grid) still lives in the
+            legacy workspace until PR-A5+:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
@@ -380,8 +391,8 @@ export default async function ContractRatesPage({ params }: Props) {
           className="table-subcopy"
           style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
         >
-          /hotels-v2/{hotelId}/contracts/{contractId}/rates — server-rendered. Create via
-          Server Action; edit / delete still routed to the legacy workspace until PR-A4.
+          /hotels-v2/{hotelId}/contracts/{contractId}/rates — server-rendered. Create / edit /
+          delete via Server Actions. Bulk matrix editor still routed to legacy until PR-A5+.
         </p>
       </section>
     </main>
