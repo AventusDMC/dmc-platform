@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
+import { JORDAN_UAE_SAMPLE } from './fixtures/jordan-uae-sample';
 import {
   extractCandidateFields,
   extractImageGallery,
@@ -15,13 +14,7 @@ import {
 } from './ratehawk.mapper';
 import type { RateHawkHotelRaw } from './ratehawk.types';
 
-function loadFixture(): RateHawkHotelRaw[] {
-  const path = join(__dirname, 'fixtures', 'jordan-uae-sample.json');
-  const raw = readFileSync(path, 'utf-8');
-  return JSON.parse(raw) as RateHawkHotelRaw[];
-}
-
-const fixtures = loadFixture();
+const fixtures = JORDAN_UAE_SAMPLE;
 function find(id: string): RateHawkHotelRaw {
   const found = fixtures.find((h) => h.id === id);
   if (!found) throw new Error(`fixture not found: ${id}`);
