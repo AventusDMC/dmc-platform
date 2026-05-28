@@ -972,6 +972,35 @@ model HotelFactSheet {
   @@map("hotel_fact_sheets")
 }
 
+// Hotels Engine v2 — RateHawk import staging.
+// Stores raw RateHawk Hotel Content API records so operators can
+// review + multi-select + bulk-promote into the live `hotels` catalog
+// without re-fetching from RateHawk on every page render.
+model RateHawkHotelCandidate {
+  id              String   @id @default(uuid()) @db.Uuid
+  rateHawkId      String   @unique @map("ratehawk_id")
+  name            String
+  countryCode     String   @map("country_code")
+  cityName        String?  @map("city_name")
+  addressLine     String?  @map("address_line")
+  starRating      Int?     @map("star_rating")
+  latitude        Float?
+  longitude       Float?
+  chainName       String?  @map("chain_name")
+  kind            String?
+  photoCount      Int      @default(0) @map("photo_count")
+  rawJson         Json     @map("raw_json")
+  importedHotelId String?  @map("imported_hotel_id") @db.Uuid
+  syncedAt        DateTime @default(now()) @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([countryCode, cityName])
+  @@index([importedHotelId])
+  @@index([starRating])
+  @@map("ratehawk_hotel_candidates")
+}
+
 model Itinerary {
   id          String           @id @default(uuid()) @db.Uuid
   quoteId     String           @db.Uuid

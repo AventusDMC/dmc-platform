@@ -81,6 +81,9 @@ import { HotelsController } from './hotels/hotels.controller';
 import { HotelsService } from './hotels/hotels.service';
 import { ImportItineraryController } from './import-itinerary/import-itinerary.controller';
 import { ImportItineraryService } from './import-itinerary/import-itinerary.service';
+import { RateHawkClient } from './integrations/ratehawk/ratehawk.client';
+import { RateHawkController } from './integrations/ratehawk/ratehawk.controller';
+import { RateHawkService } from './integrations/ratehawk/ratehawk.service';
 import { InvoicesController } from './invoices/invoices.controller';
 import { InvoicePortalController } from './invoices/invoice-portal.controller';
 import { InvoicesService } from './invoices/invoices.service';
@@ -197,6 +200,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     HotelContractHealthController,
     HotelRatesController,
     ImportItineraryController,
+    RateHawkController,
     InvoicesController,
     InvoicePortalController,
     ExportsController,
@@ -280,6 +284,8 @@ import { UserInvitationsService } from './users/user-invitations.service';
     HotelContractHealthService,
     HotelRatesService,
     ImportItineraryService,
+    RateHawkClient,
+    RateHawkService,
     InvoicesService,
     ExportsService,
     ExcursionTemplatesService,
