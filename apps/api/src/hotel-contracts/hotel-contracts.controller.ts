@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
+import { EXCEL_MIME, HotelContractExportService } from './hotel-contract-export.service';
 import { HotelContractsService } from './hotel-contracts.service';
 
 type CreateHotelContractBody = {
@@ -26,7 +27,10 @@ type UpdateHotelAllotmentBody = Partial<CreateHotelAllotmentBody>;
 
 @Controller('hotel-contracts')
 export class HotelContractsController {
-  constructor(private readonly hotelContractsService: HotelContractsService) {}
+  constructor(
+    private readonly hotelContractsService: HotelContractsService,
+    private readonly hotelContractExportService: HotelContractExportService,
+  ) {}
 
   @Get()
   findAll() {
@@ -80,6 +84,20 @@ export class HotelContractsController {
   @Get(':id/room-types-summary')
   findRoomTypesSummary(@Param('id') id: string) {
     return this.hotelContractsService.findRoomTypesSummary(id);
+  }
+
+  // Excel export — full round-trip workbook with every editable entity
+  // on the contract (rates / supplements / cancellation / child policy
+  // / meal plans). Same static-vs-:id ordering rule as above: this
+  // route must stay declared BEFORE @Get(':id'). The import endpoint
+  // that consumes this same shape will land in a follow-up PR.
+  @Get(':id/export.xlsx')
+  async exportContract(@Param('id') id: string): Promise<StreamableFile> {
+    const { buffer, fileName } = await this.hotelContractExportService.exportContract(id);
+    return new StreamableFile(buffer, {
+      type: EXCEL_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   @Get(':id')
