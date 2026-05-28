@@ -628,67 +628,68 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   />
                 </label>
               </div>
-              <fieldset
+              {/* Amenities — checkboxes. Rendered OUTSIDE the .entity-form
+                  compact-form context (which forces label flex-direction:
+                  column and stretches inputs to 100% width). Plain CSS-grid
+                  of inline checkbox+label pairs keeps them on one row each. */}
+            </div>
+            <fieldset
+              style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                padding: '0.6rem 0.8rem',
+                marginTop: '0.4rem',
+              }}
+            >
+              <legend style={{ fontSize: '0.78rem', color: '#475467', padding: '0 0.4rem' }}>
+                Amenities
+              </legend>
+              <div
                 style={{
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 6,
-                  padding: '0.6rem 0.8rem',
-                  marginTop: '0.4rem',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '0.5rem 1rem',
                 }}
               >
-                <legend style={{ fontSize: '0.78rem', color: '#475467', padding: '0 0.4rem' }}>
-                  Amenities
-                </legend>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                    gap: '0.4rem 1rem',
-                  }}
-                >
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                {[
+                  { name: 'pool', label: 'Pool', checked: hotel.factSheet?.amenitiesJson?.pool === true },
+                  { name: 'spa', label: 'Spa', checked: hotel.factSheet?.amenitiesJson?.spa === true },
+                  { name: 'gym', label: 'Gym', checked: hotel.factSheet?.amenitiesJson?.gym === true },
+                  {
+                    name: 'petFriendly',
+                    label: 'Pet friendly',
+                    checked: hotel.factSheet?.amenitiesJson?.petFriendly === true,
+                  },
+                  {
+                    name: 'wheelchair',
+                    label: 'Wheelchair accessible',
+                    checked: hotel.factSheet?.amenitiesJson?.wheelchair === true,
+                  },
+                ].map((item) => (
+                  <label
+                    key={item.name}
+                    style={{
+                      display: 'inline-flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontWeight: 400,
+                      fontSize: '0.9rem',
+                      whiteSpace: 'nowrap',
+                      cursor: 'pointer',
+                    }}
+                  >
                     <input
                       type="checkbox"
-                      name="pool"
-                      defaultChecked={hotel.factSheet?.amenitiesJson?.pool === true}
+                      name={item.name}
+                      defaultChecked={item.checked}
+                      style={{ width: 'auto', margin: 0, flex: '0 0 auto' }}
                     />
-                    Pool
+                    <span>{item.label}</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
-                    <input
-                      type="checkbox"
-                      name="spa"
-                      defaultChecked={hotel.factSheet?.amenitiesJson?.spa === true}
-                    />
-                    Spa
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
-                    <input
-                      type="checkbox"
-                      name="gym"
-                      defaultChecked={hotel.factSheet?.amenitiesJson?.gym === true}
-                    />
-                    Gym
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
-                    <input
-                      type="checkbox"
-                      name="petFriendly"
-                      defaultChecked={hotel.factSheet?.amenitiesJson?.petFriendly === true}
-                    />
-                    Pet friendly
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
-                    <input
-                      type="checkbox"
-                      name="wheelchair"
-                      defaultChecked={hotel.factSheet?.amenitiesJson?.wheelchair === true}
-                    />
-                    Wheelchair accessible
-                  </label>
-                </div>
-              </fieldset>
-            </div>
+                ))}
+              </div>
+            </fieldset>
           </section>
 
           {/* Fact sheet — operational */}
