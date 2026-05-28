@@ -257,7 +257,11 @@ export default async function ContractDetailPage({ params }: Props) {
             value={totalRates}
             href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates`}
           />
-          <CountCard label="Meal plans" value={totalMealPlans} />
+          <CountCard
+            label="Meal plans"
+            value={totalMealPlans}
+            href={`/hotels-v2/${hotelId}/contracts/${contractId}/meal-plans`}
+          />
           <CountCard
             label="Supplements"
             value={totalSupplements}
@@ -265,6 +269,52 @@ export default async function ContractDetailPage({ params }: Props) {
           />
           <CountCard label="Allotment ranges" value={totalAllotments} />
           <CountCard label="Linked quote items" value={totalQuoteItems} />
+        </section>
+
+        {/* Editor shortcuts — every commercial entity addressable in v2,
+            surfaced as visible action cards instead of buried in body
+            text. The counts row above is at-a-glance only; this block
+            is what an operator clicks when they're ready to edit. */}
+        <section
+          data-testid="hotel-v2-contract-editors"
+          style={{ marginBottom: '1.5rem' }}
+        >
+          <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+            Edit contract
+          </h2>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '0.6rem',
+            }}
+          >
+            <EditorCard
+              label="Rate cells"
+              description="Per room × season × occupancy × meal plan rates"
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/rates`}
+            />
+            <EditorCard
+              label="Supplements"
+              description="Extra breakfast, gala dinner, extra bed, etc."
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/supplements`}
+            />
+            <EditorCard
+              label="Cancellation policy"
+              description="No-show penalty + cancel-window rules"
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/cancellation`}
+            />
+            <EditorCard
+              label="Child policy"
+              description="Age cut-offs + per-age-band charge rules"
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/child-policy`}
+            />
+            <EditorCard
+              label="Meal plans"
+              description="Which board bases this contract offers"
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/meal-plans`}
+            />
+          </div>
         </section>
 
         {/* Per-room aggregate */}
@@ -325,42 +375,20 @@ export default async function ContractDetailPage({ params }: Props) {
           )}
         </section>
 
-        {/* Stop-gap pointer to legacy editors */}
+        {/* Residual flows still in legacy. The five editor cards above
+            cover day-to-day operator work in v2 — this bridge is only
+            for the few flows v2 doesn't yet own. */}
         <section
           data-testid="hotel-v2-contract-legacy-bridge"
           className="detail-card"
           style={{ marginBottom: '1rem', background: '#fffbeb', border: '1px solid #fde68a' }}
         >
           <h2 className="section-title" style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>
-            Editing rates / supplements / policies
+            Still in the legacy workspace
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            v2 now covers every contract entity: rate cells, supplements,{' '}
-            <Link
-              href={`/hotels-v2/${hotelId}/contracts/${contractId}/cancellation`}
-              prefetch={false}
-              style={{ fontWeight: 600 }}
-            >
-              cancellation policy →
-            </Link>
-            ,{' '}
-            <Link
-              href={`/hotels-v2/${hotelId}/contracts/${contractId}/child-policy`}
-              prefetch={false}
-              style={{ fontWeight: 600 }}
-            >
-              child policy →
-            </Link>
-            , and{' '}
-            <Link
-              href={`/hotels-v2/${hotelId}/contracts/${contractId}/meal-plans`}
-              prefetch={false}
-              style={{ fontWeight: 600 }}
-            >
-              meal plans →
-            </Link>
-            . The legacy workspace stays available for bulk PDF import, the per-entity
-            audit log, and the "mark as default" meal plan toggle:{' '}
+            Bulk PDF import of contract terms, the full per-entity audit log, the "mark as
+            default" meal plan toggle, and per-rate seasons editor still live in legacy:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
@@ -389,6 +417,38 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dt style={{ color: '#475467', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{label}</dt>
       <dd style={{ margin: 0, fontWeight: 500 }}>{children}</dd>
     </>
+  );
+}
+
+function EditorCard({
+  label,
+  description,
+  href,
+}: {
+  label: string;
+  description: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      className="detail-card"
+      style={{
+        padding: '0.75rem 0.9rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.25rem',
+        textDecoration: 'none',
+        color: 'inherit',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <strong style={{ fontSize: '0.95rem' }}>{label}</strong>
+        <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>→</span>
+      </div>
+      <div style={{ color: '#475467', fontSize: '0.8rem' }}>{description}</div>
+    </Link>
   );
 }
 
