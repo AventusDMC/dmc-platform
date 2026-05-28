@@ -187,7 +187,16 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   />
                 </label>
                 <label>
-                  City
+                  City{' '}
+                  <Link
+                    href="/cities"
+                    target="_blank"
+                    rel="noreferrer"
+                    prefetch={false}
+                    style={{ fontSize: '0.75rem', fontWeight: 400 }}
+                  >
+                    + add new
+                  </Link>
                   <select name="cityId" defaultValue={hotel.cityId || ''} required>
                     <option value="" disabled>
                       Select city…
@@ -200,7 +209,16 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   </select>
                 </label>
                 <label>
-                  Category
+                  Category{' '}
+                  <Link
+                    href="/hotel-categories"
+                    target="_blank"
+                    rel="noreferrer"
+                    prefetch={false}
+                    style={{ fontSize: '0.75rem', fontWeight: 400 }}
+                  >
+                    + add new
+                  </Link>
                   <select
                     name="hotelCategoryId"
                     defaultValue={hotel.hotelCategoryId || ''}
@@ -217,7 +235,16 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   </select>
                 </label>
                 <label>
-                  Supplier
+                  Supplier{' '}
+                  <Link
+                    href="/suppliers"
+                    target="_blank"
+                    rel="noreferrer"
+                    prefetch={false}
+                    style={{ fontSize: '0.75rem', fontWeight: 400 }}
+                  >
+                    + add new
+                  </Link>
                   <select name="supplierId" defaultValue={hotel.supplierId || ''} required>
                     <option value="" disabled>
                       Select supplier…
