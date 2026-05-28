@@ -15,6 +15,43 @@ export const dynamic = 'force-dynamic';
 
 const API_BASE_URL = '/api';
 
+type FactSheetIdentity = {
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  coordinates?: { lat?: number | null; lng?: number | null } | null;
+  distanceToAirport?: string | null;
+  distanceToCityCenter?: string | null;
+};
+
+type FactSheetStays = {
+  totalRooms?: number | null;
+  yearBuilt?: number | null;
+  yearRenovated?: number | null;
+  chain?: string | null;
+};
+
+type FactSheetOperational = {
+  groupCapacity?: number | null;
+  earlyCheckIn?: string | null;
+  lateCheckOut?: string | null;
+  notes?: string | null;
+};
+
+type FactSheetFacilities = {
+  pool?: boolean;
+  spa?: boolean;
+  gym?: boolean;
+  wifi?: string | null;
+  parking?: string | null;
+  beachAccess?: string | null;
+  petFriendly?: boolean;
+  wheelchair?: boolean;
+  restaurants?: number | null;
+  bars?: number | null;
+};
+
 type HotelDetail = {
   id: string;
   name: string;
@@ -30,6 +67,12 @@ type HotelDetail = {
     shortDescription: string | null;
     checkInTime: string | null;
     checkOutTime: string | null;
+    highlightsJson: {
+      identity?: FactSheetIdentity | null;
+      stays?: FactSheetStays | null;
+      operational?: FactSheetOperational | null;
+    } | null;
+    amenitiesJson: FactSheetFacilities | null;
   } | null;
 };
 
@@ -301,14 +344,14 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
             </div>
           </section>
 
-          {/* Fact sheet */}
+          {/* Fact sheet — overview */}
           <section
             className="detail-card"
             style={{ marginBottom: '1.5rem' }}
             data-testid="hotel-v2-edit-factsheet"
           >
             <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
-              Fact sheet
+              Fact sheet · Overview
             </h2>
             <div className="entity-form compact-form">
               <div className="form-row form-row-1">
@@ -349,6 +392,367 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                 Leave a field blank to clear it. Times are free-text — use 24-hour or 12-hour
                 format consistent with how your operations team writes them.
               </p>
+            </div>
+          </section>
+
+          {/* Fact sheet — identity & location */}
+          <section
+            className="detail-card"
+            style={{ marginBottom: '1.5rem' }}
+            data-testid="hotel-v2-edit-identity"
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+              Fact sheet · Identity &amp; location
+            </h2>
+            <div className="entity-form compact-form">
+              <div className="form-row form-row-1">
+                <label>
+                  Street address
+                  <input
+                    type="text"
+                    name="address"
+                    defaultValue={hotel.factSheet?.highlightsJson?.identity?.address || ''}
+                    placeholder="Zahran Street, Jabal Amman"
+                    maxLength={240}
+                  />
+                </label>
+              </div>
+              <div className="form-row form-row-3">
+                <label>
+                  Phone
+                  <input
+                    type="text"
+                    name="phone"
+                    defaultValue={hotel.factSheet?.highlightsJson?.identity?.phone || ''}
+                    placeholder="+962 6 460 7000"
+                    maxLength={64}
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    name="email"
+                    defaultValue={hotel.factSheet?.highlightsJson?.identity?.email || ''}
+                    placeholder="reservations@hotel.com"
+                    maxLength={120}
+                  />
+                </label>
+                <label>
+                  Website
+                  <input
+                    type="url"
+                    name="website"
+                    defaultValue={hotel.factSheet?.highlightsJson?.identity?.website || ''}
+                    placeholder="https://…"
+                    maxLength={240}
+                  />
+                </label>
+              </div>
+              <div className="form-row form-row-4">
+                <label>
+                  Latitude
+                  <input
+                    type="number"
+                    step="any"
+                    name="lat"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.identity?.coordinates?.lat ?? ''
+                    }
+                    placeholder="31.9539"
+                  />
+                </label>
+                <label>
+                  Longitude
+                  <input
+                    type="number"
+                    step="any"
+                    name="lng"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.identity?.coordinates?.lng ?? ''
+                    }
+                    placeholder="35.9106"
+                  />
+                </label>
+                <label>
+                  Distance to airport
+                  <input
+                    type="text"
+                    name="distanceToAirport"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.identity?.distanceToAirport || ''
+                    }
+                    placeholder="35 km / 45 min"
+                    maxLength={64}
+                  />
+                </label>
+                <label>
+                  Distance to city center
+                  <input
+                    type="text"
+                    name="distanceToCityCenter"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.identity?.distanceToCityCenter || ''
+                    }
+                    placeholder="2 km"
+                    maxLength={64}
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          {/* Fact sheet — stays */}
+          <section
+            className="detail-card"
+            style={{ marginBottom: '1.5rem' }}
+            data-testid="hotel-v2-edit-stays"
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+              Fact sheet · Stays
+            </h2>
+            <div className="entity-form compact-form">
+              <div className="form-row form-row-4">
+                <label>
+                  Total rooms
+                  <input
+                    type="number"
+                    name="totalRooms"
+                    min={0}
+                    defaultValue={hotel.factSheet?.highlightsJson?.stays?.totalRooms ?? ''}
+                    placeholder="412"
+                  />
+                </label>
+                <label>
+                  Year built
+                  <input
+                    type="number"
+                    name="yearBuilt"
+                    min={1800}
+                    max={2100}
+                    defaultValue={hotel.factSheet?.highlightsJson?.stays?.yearBuilt ?? ''}
+                    placeholder="1985"
+                  />
+                </label>
+                <label>
+                  Year renovated
+                  <input
+                    type="number"
+                    name="yearRenovated"
+                    min={1800}
+                    max={2100}
+                    defaultValue={hotel.factSheet?.highlightsJson?.stays?.yearRenovated ?? ''}
+                    placeholder="2019"
+                  />
+                </label>
+                <label>
+                  Chain / brand
+                  <input
+                    type="text"
+                    name="chain"
+                    defaultValue={hotel.factSheet?.highlightsJson?.stays?.chain || ''}
+                    placeholder="Marriott / Rotana / Independent"
+                    maxLength={120}
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          {/* Fact sheet — facilities */}
+          <section
+            className="detail-card"
+            style={{ marginBottom: '1.5rem' }}
+            data-testid="hotel-v2-edit-facilities"
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+              Fact sheet · Facilities
+            </h2>
+            <div className="entity-form compact-form">
+              <div className="form-row form-row-3">
+                <label>
+                  Wi-Fi
+                  <select name="wifi" defaultValue={hotel.factSheet?.amenitiesJson?.wifi || 'unknown'}>
+                    <option value="unknown">—</option>
+                    <option value="free">Free</option>
+                    <option value="paid">Paid</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+                <label>
+                  Parking
+                  <select
+                    name="parking"
+                    defaultValue={hotel.factSheet?.amenitiesJson?.parking || 'unknown'}
+                  >
+                    <option value="unknown">—</option>
+                    <option value="free">Free</option>
+                    <option value="paid">Paid</option>
+                    <option value="valet">Valet</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+                <label>
+                  Beach access
+                  <select
+                    name="beachAccess"
+                    defaultValue={hotel.factSheet?.amenitiesJson?.beachAccess || 'unknown'}
+                  >
+                    <option value="unknown">—</option>
+                    <option value="private">Private</option>
+                    <option value="public">Public</option>
+                    <option value="nearby">Nearby</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-row form-row-2">
+                <label>
+                  Restaurants on site
+                  <input
+                    type="number"
+                    name="restaurants"
+                    min={0}
+                    defaultValue={hotel.factSheet?.amenitiesJson?.restaurants ?? ''}
+                    placeholder="3"
+                  />
+                </label>
+                <label>
+                  Bars on site
+                  <input
+                    type="number"
+                    name="bars"
+                    min={0}
+                    defaultValue={hotel.factSheet?.amenitiesJson?.bars ?? ''}
+                    placeholder="2"
+                  />
+                </label>
+              </div>
+              <fieldset
+                style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 6,
+                  padding: '0.6rem 0.8rem',
+                  marginTop: '0.4rem',
+                }}
+              >
+                <legend style={{ fontSize: '0.78rem', color: '#475467', padding: '0 0.4rem' }}>
+                  Amenities
+                </legend>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '0.4rem 1rem',
+                  }}
+                >
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      name="pool"
+                      defaultChecked={hotel.factSheet?.amenitiesJson?.pool === true}
+                    />
+                    Pool
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      name="spa"
+                      defaultChecked={hotel.factSheet?.amenitiesJson?.spa === true}
+                    />
+                    Spa
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      name="gym"
+                      defaultChecked={hotel.factSheet?.amenitiesJson?.gym === true}
+                    />
+                    Gym
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      name="petFriendly"
+                      defaultChecked={hotel.factSheet?.amenitiesJson?.petFriendly === true}
+                    />
+                    Pet friendly
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      name="wheelchair"
+                      defaultChecked={hotel.factSheet?.amenitiesJson?.wheelchair === true}
+                    />
+                    Wheelchair accessible
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+          </section>
+
+          {/* Fact sheet — operational */}
+          <section
+            className="detail-card"
+            style={{ marginBottom: '1.5rem' }}
+            data-testid="hotel-v2-edit-operational"
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+              Fact sheet · Operational profile
+            </h2>
+            <div className="entity-form compact-form">
+              <div className="form-row form-row-3">
+                <label>
+                  Group capacity (rooms)
+                  <input
+                    type="number"
+                    name="groupCapacity"
+                    min={0}
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.operational?.groupCapacity ?? ''
+                    }
+                    placeholder="80"
+                  />
+                </label>
+                <label>
+                  Early check-in policy
+                  <input
+                    type="text"
+                    name="earlyCheckIn"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.operational?.earlyCheckIn || ''
+                    }
+                    placeholder="On request, subject to availability"
+                    maxLength={200}
+                  />
+                </label>
+                <label>
+                  Late check-out policy
+                  <input
+                    type="text"
+                    name="lateCheckOut"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.operational?.lateCheckOut || ''
+                    }
+                    placeholder="Until 18:00 — 50% room rate"
+                    maxLength={200}
+                  />
+                </label>
+              </div>
+              <div className="form-row form-row-1">
+                <label>
+                  Operational notes
+                  <textarea
+                    name="operationalNotes"
+                    defaultValue={
+                      hotel.factSheet?.highlightsJson?.operational?.notes || ''
+                    }
+                    placeholder="Group meals, halal kitchen, conference setup, dietary handling, etc."
+                    rows={3}
+                    maxLength={1200}
+                  />
+                </label>
+              </div>
             </div>
           </section>
 
