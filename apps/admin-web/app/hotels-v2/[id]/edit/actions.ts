@@ -31,15 +31,26 @@ export async function updateHotel(hotelId: string, formData: FormData) {
     throw new Error('Hotel name is required.');
   }
 
-  // Master data PATCH.
+  // Catalog references — these come from the v2 edit form's <select>
+  // dropdowns. The backend resolves cityId → city.name and
+  // hotelCategoryId → hotelCategory.name and writes both the relation
+  // and the denormalized fallback string. Supplier is required.
+  const cityId = trimOrUndefined(formData.get('cityId'));
+  const hotelCategoryId = trimOrUndefined(formData.get('hotelCategoryId'));
+  const supplierId = trimOrUndefined(formData.get('supplierId'));
+  if (!supplierId) {
+    throw new Error('Supplier is required.');
+  }
+
   const masterBody: Record<string, unknown> = {
     name,
-    city: trimOrUndefined(formData.get('city')),
-    category: trimOrUndefined(formData.get('category')),
+    supplierId,
   };
-  const supplierId = trimOrUndefined(formData.get('supplierId'));
-  if (supplierId) {
-    masterBody.supplierId = supplierId;
+  if (cityId) {
+    masterBody.cityId = cityId;
+  }
+  if (hotelCategoryId) {
+    masterBody.hotelCategoryId = hotelCategoryId;
   }
 
   const masterResponse = await adminPageFetch(
