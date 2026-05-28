@@ -40,6 +40,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   return forwardProxyJsonResponse(response);
 }
 
+export async function PUT(request: NextRequest, context: { params: Promise<{ id: string; path: string[] }> }) {
+  const { id, path } = await context.params;
+  const body = await request.json();
+  const response = await fetch(buildUpstreamUrl(id, path, ''), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify(body),
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}
+
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string; path: string[] }> }) {
   const { id, path } = await context.params;
   const body = await request.json();

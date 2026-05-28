@@ -335,9 +335,15 @@ export default async function ContractDetailPage({ params }: Props) {
             Editing rates / supplements / policies
           </h2>
           <p className="table-subcopy" style={{ margin: 0 }}>
-            v2 has rate cells (create / edit / delete) and supplements (create / delete).
-            Cancellation policy + child policy + meal plans still live in the legacy
-            workspace until PR-A6+:{' '}
+            v2 has rate cells, supplements, and{' '}
+            <Link
+              href={`/hotels-v2/${hotelId}/contracts/${contractId}/cancellation`}
+              prefetch={false}
+              style={{ fontWeight: 600 }}
+            >
+              cancellation policy →
+            </Link>
+            . Child policy + meal plans still live in the legacy workspace until PR-A8:{' '}
             <Link
               href={`/hotels/contracts/${contractId}`}
               prefetch={false}
