@@ -355,6 +355,11 @@ export default async function ContractDetailPage({ params }: Props) {
               description="Committed room blocks, release days, stop-sale"
               href={`/hotels/${hotelId}/contracts/${contractId}/allotments`}
             />
+            <EditorCard
+              label="Promotions"
+              description="Discounts, stay-pay, free-night, early-bird offers"
+              href={`/hotels/${hotelId}/contracts/${contractId}/promotions`}
+            />
           </div>
         </section>
 

@@ -76,10 +76,14 @@ _Size: M. Dependency: none (backend ready). Highest operational value._
 _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
 
 ### Phase 4 — Selling features
-10. **Promotions UI**: drive the existing engine (offer types, rules, combinability).
+10. ~~**Promotions UI**: drive the existing engine (offer types, rules, combinability)~~
+    ✅ done 2026-05-29. Promotion CRUD + a single optional applicability rule
+    (room/board/travel-window/booking-window/min-stay) at
+    `…/contracts/[contractId]/promotions`. Multi-rule editing on one promotion is the
+    remaining slice (the rare case; preserved untouched on edit today). _Mostly done._
 11. **Quote / pricing simulator**: pick dates + pax + room + board, see the computed
     price breakdown. Most valuable *after* promotions + supplements exist, so it
-    validates the whole stack.
+    validates the whole stack. _Open — strong next pick._
 
 _Size: M each. Dependency: Phase 1–3 for the simulator to be meaningful._
 
