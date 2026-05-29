@@ -19,10 +19,11 @@ type PreviewResult = {
   contractIdInFile: string | null;
   contractMatch: boolean;
   errors: string[];
-  entities: { supplements: EntityDiff };
+  entities: { supplements: EntityDiff; rates: EntityDiff };
 };
 
-type ApplyResult = { supplements: { created: number; updated: number; skippedDeletes: number } };
+type ApplyCounts = { created: number; updated: number; skippedDeletes: number };
+type ApplyResult = { supplements: ApplyCounts; rates: ApplyCounts };
 
 export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; contractId: string }) {
   const [file, setFile] = useState<File | null>(null);
@@ -85,8 +86,15 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
     }
   }
 
-  const sup = result?.entities.supplements;
-  const canApply = Boolean(result && result.errors.length === 0 && sup && sup.rowErrors.length === 0);
+  const sheets: Array<{ label: string; diff: EntityDiff }> = result
+    ? [
+        { label: 'Rates', diff: result.entities.rates },
+        { label: 'Supplements', diff: result.entities.supplements },
+      ]
+    : [];
+  const allRowErrors = sheets.flatMap((s) => s.diff.rowErrors.map((e) => ({ ...e, sheet: s.label })));
+  const totalDeletes = sheets.reduce((sum, s) => sum + s.diff.toDelete, 0);
+  const canApply = Boolean(result && result.errors.length === 0 && allRowErrors.length === 0);
 
   return (
     <div>
@@ -125,49 +133,49 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
               File is valid for this contract (schema v{result.schemaVersion}). Here's what an
               import would do — <strong>nothing has been changed.</strong>
             </p>
-            {sup ? (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Sheet</th>
-                      <th className="numeric-cell">Rows in file</th>
-                      <th className="numeric-cell">Create</th>
-                      <th className="numeric-cell">Update</th>
-                      <th className="numeric-cell">Delete</th>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Sheet</th>
+                    <th className="numeric-cell">Rows in file</th>
+                    <th className="numeric-cell">Create</th>
+                    <th className="numeric-cell">Update</th>
+                    <th className="numeric-cell">Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheets.map((s) => (
+                    <tr key={s.label}>
+                      <td>{s.label}</td>
+                      <td className="numeric-cell">{s.diff.fileRows}</td>
+                      <td className="numeric-cell" style={{ color: s.diff.toCreate ? '#16a34a' : undefined }}>{s.diff.toCreate}</td>
+                      <td className="numeric-cell">{s.diff.toUpdate}</td>
+                      <td className="numeric-cell" style={{ color: s.diff.toDelete ? '#b91c1c' : undefined }}>{s.diff.toDelete}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Supplements</td>
-                      <td className="numeric-cell">{sup.fileRows}</td>
-                      <td className="numeric-cell" style={{ color: sup.toCreate ? '#16a34a' : undefined }}>{sup.toCreate}</td>
-                      <td className="numeric-cell">{sup.toUpdate}</td>
-                      <td className="numeric-cell" style={{ color: sup.toDelete ? '#b91c1c' : undefined }}>{sup.toDelete}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-            {sup && sup.rowErrors.length > 0 ? (
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {allRowErrors.length > 0 ? (
               <div style={{ marginTop: '0.75rem' }}>
                 <strong style={{ color: '#b45309' }}>Validation warnings (fix before importing):</strong>
                 <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
-                  {sup.rowErrors.map((re, i) => (
+                  {allRowErrors.map((re, i) => (
                     <li key={i} style={{ color: '#b45309', fontSize: '0.85rem' }}>
-                      {re.row ? `Row ${re.row}: ` : ''}
-                      {re.message}
+                      {re.sheet}
+                      {re.row ? ` row ${re.row}` : ''}: {re.message}
                     </li>
                   ))}
                 </ul>
               </div>
             ) : null}
-            {sup && sup.toDelete > 0 ? (
+            {totalDeletes > 0 ? (
               <p className="table-subcopy" style={{ marginTop: '0.6rem', color: '#b45309', fontSize: '0.8rem' }}>
-                {sup.toDelete} row{sup.toDelete === 1 ? '' : 's'} in the system{' '}
-                {sup.toDelete === 1 ? 'is' : 'are'} missing from your file. For safety, apply only
-                creates &amp; updates — it will <strong>not</strong> delete them. Remove those from
-                the Supplements page manually if intended.
+                {totalDeletes} row{totalDeletes === 1 ? '' : 's'} in the system{' '}
+                {totalDeletes === 1 ? 'is' : 'are'} missing from your file. For safety, apply only
+                creates &amp; updates — it will <strong>not</strong> delete them. Remove those
+                manually if intended.
               </p>
             ) : null}
             <div style={{ marginTop: '0.9rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -187,18 +195,19 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
         <div className="detail-card" style={{ borderColor: '#86efac' }}>
           <strong style={{ color: '#16a34a' }}>Import applied.</strong>
           <p style={{ margin: '0.4rem 0 0' }}>
-            Supplements: {applied.supplements.created} created, {applied.supplements.updated} updated.
-            {applied.supplements.skippedDeletes > 0
-              ? ` ${applied.supplements.skippedDeletes} absent row(s) left untouched (delete manually if intended).`
+            Rates: {applied.rates.created} created, {applied.rates.updated} updated. Supplements:{' '}
+            {applied.supplements.created} created, {applied.supplements.updated} updated.
+            {applied.rates.skippedDeletes + applied.supplements.skippedDeletes > 0
+              ? ` ${applied.rates.skippedDeletes + applied.supplements.skippedDeletes} absent row(s) left untouched (delete manually if intended).`
               : ''}
           </p>
           <p className="table-subcopy" style={{ marginTop: '0.5rem' }}>
             Open the{' '}
             <a
-              href={`/hotels/${hotelId}/contracts/${contractId}/supplements`}
+              href={`/hotels/${hotelId}/contracts/${contractId}`}
               style={{ textDecoration: 'underline' }}
             >
-              supplements page
+              contract
             </a>{' '}
             to see the changes, or upload another file to preview again.
           </p>
