@@ -11,7 +11,7 @@ const { BookingsService } = require('./bookings.service');
 // drives the supplier-facing voucher detail page.
 
 function createService(prisma: any) {
-  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
+  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any, { checkBookingHotelAllotmentAvailability: async () => ({ blockers: [], warnings: [] }) } as any);
 }
 
 function buildTransportBookingService(overrides: any = {}) {
