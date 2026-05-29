@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../../../../lib/admin-server';
 import { createPromotion, deletePromotion, updatePromotion } from './actions';
+import { PromotionRulesEditor } from './PromotionRulesEditor';
 
 // Hotels Engine — promotions editor (roadmap Phase 4).
 //
@@ -337,8 +338,6 @@ export default async function ContractPromotionsPage({ params }: Props) {
                   {promotions.map((p) => {
                     const updateAction = updatePromotion.bind(null, hotelId, contractId, p.id);
                     const deleteAction = deletePromotion.bind(null, hotelId, contractId, p.id);
-                    const singleRuleEditable = p.rules.length <= 1;
-                    const rule = p.rules[0] ?? null;
                     return (
                       <tr key={p.id} style={p.isActive ? undefined : { color: '#94a3b8' }}>
                         <td>
@@ -367,7 +366,10 @@ export default async function ContractPromotionsPage({ params }: Props) {
                               className="entity-form compact-form"
                               style={{ marginTop: '0.6rem', minWidth: '28rem' }}
                             >
-                              <input type="hidden" name="manageRule" value={singleRuleEditable ? '1' : '0'} />
+                              {/* Core form never touches rules — the
+                                  client rules editor below owns them (the
+                                  backend preserves rules when omitted). */}
+                              <input type="hidden" name="manageRule" value="0" />
                               <div className="form-row form-row-4">
                                 <label>
                                   Name
@@ -399,19 +401,6 @@ export default async function ContractPromotionsPage({ params }: Props) {
                                 </label>
                               </div>
                               {typeValueFields(p)}
-                              {singleRuleEditable ? (
-                                <>
-                                  <p className="table-subcopy" style={{ margin: '0.2rem 0 0.4rem', fontWeight: 650 }}>
-                                    Applicability rule (optional)
-                                  </p>
-                                  {ruleFields(rule)}
-                                </>
-                              ) : (
-                                <p className="table-subcopy" style={{ color: '#b45309', margin: '0.3rem 0' }}>
-                                  This promotion has {p.rules.length} rules — they're preserved on save. Multi-rule
-                                  editing is a follow-up; delete &amp; recreate to change them here.
-                                </p>
-                              )}
                               <label style={{ display: 'block', marginTop: '0.4rem' }}>
                                 Notes (optional)
                                 <input type="text" name="notes" maxLength={240} defaultValue={p.notes ?? ''} />
@@ -425,6 +414,13 @@ export default async function ContractPromotionsPage({ params }: Props) {
                                 </button>
                               </div>
                             </form>
+                            {/* Rules are edited separately (any number) and
+                                saved independently of the core fields above. */}
+                            <PromotionRulesEditor
+                              promotionId={p.id}
+                              rooms={rooms}
+                              initialRules={p.rules}
+                            />
                           </details>
                           <form action={deleteAction} style={{ marginTop: '0.5rem' }}>
                             <button

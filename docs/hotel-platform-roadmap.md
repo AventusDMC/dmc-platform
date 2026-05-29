@@ -100,7 +100,9 @@ _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
     ✅ done 2026-05-29. Promotion CRUD + a single optional applicability rule
     (room/board/travel-window/booking-window/min-stay) at
     `…/contracts/[contractId]/promotions`. Multi-rule editing on one promotion is the
-    remaining slice (the rare case; preserved untouched on edit today). _Mostly done._
+    ✅ 2026-05-29: multi-rule editing now supported — a client `PromotionRulesEditor` manages
+    any number of applicability rules and saves them via a rules-only PATCH (the backend
+    preserves the core fields). **Done.**
 11. ~~**Quote / pricing simulator**: pick dates + pax + room + board, see the computed
     price breakdown~~ ✅ done 2026-05-29. Read-only GET-form page at
     `…/contracts/[contractId]/simulator`: per-night cost (rate + supplements + child
