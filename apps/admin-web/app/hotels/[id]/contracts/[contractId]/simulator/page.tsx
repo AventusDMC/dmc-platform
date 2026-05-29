@@ -61,6 +61,9 @@ type CostResult = {
   childrenCost: number;
   supplementsCost: number;
   totalCost: number;
+  serviceCharge: number;
+  salesTax: number;
+  grossTotal: number;
   nights: number;
   breakdown: CostNight[];
 };
@@ -397,12 +400,28 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
                       <td className="numeric-cell">{n.cost.toFixed(2)}</td>
                     </tr>
                   ))}
-                  <tr style={{ fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>
-                    <td>Total</td>
+                  <tr style={{ fontWeight: 600, borderTop: '2px solid #cbd5e1' }}>
+                    <td>Subtotal (net)</td>
                     <td className="numeric-cell">{cost.adultsCost.toFixed(2)}</td>
                     <td className="numeric-cell">{cost.childrenCost.toFixed(2)}</td>
                     <td className="numeric-cell">{cost.supplementsCost.toFixed(2)}</td>
-                    <td className="numeric-cell">{money(cost.totalCost, currency)}</td>
+                    <td className="numeric-cell">{cost.totalCost.toFixed(2)}</td>
+                  </tr>
+                  {cost.serviceCharge > 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'right', color: '#64748b' }}>+ Service charge</td>
+                      <td className="numeric-cell">{cost.serviceCharge.toFixed(2)}</td>
+                    </tr>
+                  ) : null}
+                  {cost.salesTax > 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'right', color: '#64748b' }}>+ Sales tax</td>
+                      <td className="numeric-cell">{cost.salesTax.toFixed(2)}</td>
+                    </tr>
+                  ) : null}
+                  <tr style={{ fontWeight: 700, borderTop: '1px solid #cbd5e1' }}>
+                    <td colSpan={4} style={{ textAlign: 'right' }}>Total (incl. tax &amp; service)</td>
+                    <td className="numeric-cell">{money(cost.grossTotal, currency)}</td>
                   </tr>
                 </tbody>
               </table>
