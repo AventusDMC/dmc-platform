@@ -57,9 +57,13 @@ Small, no-migration, removes daily friction. Each is independently shippable.
 _Size: S each. Dependency: none. Risk: low (UI + existing endpoints)._
 
 ### Phase 2 — Inventory (core DMC capability)
-6. **Allotments UI**: per-room date-range blocks, counts, release days, stop-sale toggle.
-   Backend + API exist; this is wiring + a calendar/table view.
-7. **Stop-sale / availability** surfacing in the allotment view and on quote lookups.
+6. ~~**Allotments UI**: per-room date-range blocks, counts, release days, stop-sale toggle~~
+   ✅ done 2026-05-29. Create / inline-edit / delete at
+   `…/contracts/[contractId]/allotments`; linked from the contract detail page.
+   Dates bounded to contract validity; stop-sale rows highlighted.
+7. **Stop-sale / availability** surfacing on quote lookups — the allotment view now shows
+   stop-sale + release days; surfacing availability *at quote time* (the evaluate endpoint
+   already exists) is the remaining slice. _Open._
 
 _Size: M. Dependency: none (backend ready). Highest operational value._
 
