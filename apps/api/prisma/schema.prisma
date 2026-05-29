@@ -760,6 +760,15 @@ model HotelContractSupplement {
   hotelContractId String                            @db.Uuid
   roomCategoryId  String?                           @db.Uuid
   type            HotelContractSupplementType
+  // Optional meal-plan tag. When set, the quote engine treats this
+  // supplement as the canonical add-on that converts a base BB rate
+  // into the requested meal plan: mealPlanCode=HB → applied when the
+  // booking selects HB, mealPlanCode=FB → applied for FB, etc.
+  // null = legacy semantics — the resolver falls back to inferring from
+  // the `type` enum (EXTRA_DINNER counts as HB for backwards-compat).
+  // Lets contracts cleanly carry both "HB = 18 JOD pp/n" and
+  // "FB = 36 JOD pp/n" without the resolver double-counting.
+  mealPlanCode    HotelMealPlan?
   chargeBasis     HotelContractChargeBasis
   amount          Float
   currency        String
@@ -776,6 +785,7 @@ model HotelContractSupplement {
   @@index([hotelContractId, roomCategoryId])
   @@index([hotelContractId, roomCategoryId, type, isActive])
   @@index([roomCategoryId, type])
+  @@index([hotelContractId, mealPlanCode, isActive])
   @@map("hotel_contract_supplements")
 }
 

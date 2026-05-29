@@ -68,6 +68,7 @@ type SupplementRow = {
   hotelContractId: string;
   roomCategoryId: string | null;
   type: string;
+  mealPlanCode: string | null;
   chargeBasis: string;
   amount: number;
   currency: string;
@@ -219,6 +220,21 @@ export default async function ContractSupplementsPage({ params }: Props) {
             </div>
             <div className="form-row form-row-4">
               <label>
+                Meal plan tag (optional)
+                <select name="mealPlanCode" defaultValue="">
+                  <option value="">— Not meal-plan specific —</option>
+                  <option value="HB">HB — Half Board upgrade</option>
+                  <option value="FB">FB — Full Board upgrade</option>
+                  <option value="AI">AI — All Inclusive upgrade</option>
+                </select>
+                <span
+                  style={{ color: '#94a3b8', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}
+                >
+                  Tag HB / FB / AI when this supplement upgrades a base BB rate. The quote engine
+                  auto-applies it only when the guest picks that meal plan.
+                </span>
+              </label>
+              <label>
                 Amount
                 <input
                   type="number"
@@ -235,7 +251,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                   Mandatory (cannot be opted out by guest)
                 </span>
               </label>
-              <label style={{ gridColumn: 'span 2' }}>
+              <label>
                 Notes (optional)
                 <input
                   type="text"
@@ -279,6 +295,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                       <thead>
                         <tr>
                           <th>Room type</th>
+                          <th>Meal plan</th>
                           <th>Charge basis</th>
                           <th className="numeric-cell">Amount</th>
                           <th>Currency</th>
@@ -304,6 +321,25 @@ export default async function ContractSupplementsPage({ params }: Props) {
                                   </>
                                 ) : (
                                   <em style={{ color: '#64748b' }}>All room types</em>
+                                )}
+                              </td>
+                              <td>
+                                {r.mealPlanCode ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-block',
+                                      padding: '0.1rem 0.4rem',
+                                      borderRadius: '4px',
+                                      background: '#e0e7ff',
+                                      color: '#3730a3',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {r.mealPlanCode}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>
                                 )}
                               </td>
                               <td>{CHARGE_BASIS_LABELS[r.chargeBasis] || r.chargeBasis}</td>

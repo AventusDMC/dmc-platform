@@ -20,6 +20,7 @@ const SUPPLEMENT_TYPES = new Set([
   'EXTRA_BED',
 ]);
 const CHARGE_BASES = new Set(['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT']);
+const MEAL_PLAN_CODES = new Set(['RO', 'BB', 'HB', 'FB', 'AI']);
 
 function trimOrThrow(value: FormDataEntryValue | null, label: string): string {
   if (typeof value !== 'string') throw new Error(`${label} is required.`);
@@ -59,6 +60,14 @@ export async function updateSupplement(
 ) {
   const roomCategoryRaw = optionalString(formData.get('roomCategoryId'));
   const type = parseEnum(formData.get('type'), 'Supplement type', SUPPLEMENT_TYPES);
+  const mealPlanRaw = optionalString(formData.get('mealPlanCode'));
+  let mealPlanCode: string | null = null;
+  if (mealPlanRaw) {
+    mealPlanCode = mealPlanRaw.toUpperCase();
+    if (!MEAL_PLAN_CODES.has(mealPlanCode)) {
+      throw new Error(`Meal plan code must be one of ${[...MEAL_PLAN_CODES].join(', ')}.`);
+    }
+  }
   const chargeBasis = parseEnum(formData.get('chargeBasis'), 'Charge basis', CHARGE_BASES);
   const amount = parsePositiveNumber(formData.get('amount'), 'Amount');
   const currency = trimOrThrow(formData.get('currency'), 'Currency').toUpperCase();
@@ -77,6 +86,7 @@ export async function updateSupplement(
       body: JSON.stringify({
         roomCategoryId: roomCategoryRaw,
         type,
+        mealPlanCode,
         chargeBasis,
         amount,
         currency,

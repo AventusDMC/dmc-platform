@@ -46,6 +46,7 @@ type SupplementRow = {
   hotelContractId: string;
   roomCategoryId: string | null;
   type: string;
+  mealPlanCode: string | null;
   chargeBasis: string;
   amount: number;
   currency: string;
@@ -197,6 +198,15 @@ export default async function SupplementEditPage({ params }: Props) {
             </div>
             <div className="form-row form-row-4">
               <label>
+                Meal plan tag (optional)
+                <select name="mealPlanCode" defaultValue={supplement.mealPlanCode ?? ''}>
+                  <option value="">— Not meal-plan specific —</option>
+                  <option value="HB">HB — Half Board upgrade</option>
+                  <option value="FB">FB — Full Board upgrade</option>
+                  <option value="AI">AI — All Inclusive upgrade</option>
+                </select>
+              </label>
+              <label>
                 Amount
                 <input
                   type="number"
@@ -217,7 +227,7 @@ export default async function SupplementEditPage({ params }: Props) {
                   Mandatory (cannot be opted out by guest)
                 </span>
               </label>
-              <label style={{ gridColumn: 'span 2' }}>
+              <label>
                 Notes (optional)
                 <input
                   type="text"

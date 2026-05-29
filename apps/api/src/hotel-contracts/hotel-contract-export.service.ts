@@ -277,6 +277,11 @@ export class HotelContractExportService {
       { header: '_id', key: 'id', width: 38, hidden: true },
       { header: 'Room Category (blank = all rooms)', key: 'roomCategory', width: 32 },
       { header: 'Type', key: 'type', width: 18 },
+      // Meal Plan tag — when set, the quote engine treats this
+      // supplement as the HB / FB / AI upgrade and auto-applies it
+      // only when the guest picks that meal plan. Blank = no tag
+      // (legacy / non-meal-plan supplements like Gala Dinner).
+      { header: 'Meal Plan', key: 'mealPlanCode', width: 12 },
       { header: 'Charge Basis', key: 'chargeBasis', width: 14 },
       { header: 'Amount', key: 'amount', width: 12 },
       { header: 'Currency', key: 'currency', width: 10 },
@@ -291,6 +296,7 @@ export class HotelContractExportService {
         id: supplement.id,
         roomCategory: supplement.roomCategory?.name ?? '',
         type: supplement.type,
+        mealPlanCode: supplement.mealPlanCode ?? '',
         chargeBasis: supplement.chargeBasis,
         amount: supplement.amount,
         currency: supplement.currency,
@@ -561,6 +567,11 @@ export class HotelContractExportService {
         'GALA_DINNER',
         'EXTRA_BED',
       ]);
+      // mealPlanCode is optional — allowBlank so the operator can leave
+      // non-meal-plan supplements (e.g. GALA_DINNER, EXTRA_BED) untagged.
+      this.applyEnumDropdown(supplements, 'mealPlanCode', ['RO', 'BB', 'HB', 'FB', 'AI'], {
+        allowBlank: true,
+      });
       this.applyEnumDropdown(supplements, 'chargeBasis', ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT']);
       this.applyEnumDropdown(supplements, 'currency', CURRENCY_CODES);
       this.applyEnumDropdown(supplements, 'isMandatory', ['Yes', 'No']);

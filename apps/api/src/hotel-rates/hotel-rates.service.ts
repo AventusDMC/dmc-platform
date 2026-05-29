@@ -822,6 +822,9 @@ export class HotelRatesService {
         id: supplement.id ?? null,
         label: supplement.notes ?? supplement.type ?? null,
         type: supplement.type ?? null,
+        // mealPlanCode is the new canonical tag — feed it through so
+        // the pricing resolver can prefer it over type-string inference.
+        mealPlanCode: (supplement as any).mealPlanCode ?? null,
         amount: Number(supplement.amount || 0),
         basis: supplement.chargeBasis ?? (supplement as any).basis ?? (supplement as any).pricingBasis ?? null,
         chargeBasis: supplement.chargeBasis ?? null,
@@ -859,17 +862,32 @@ export class HotelRatesService {
       return false;
     }
 
-    const normalizedType = String(supplement.type || '').trim().toUpperCase();
     const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+    if (!appliesToRoom) return false;
+    if (!this.supplementAppliesToSeason(supplement, seasonName)) return false;
+
+    // PREFERRED PATH: explicit mealPlanCode tag persisted on the row.
+    // When set, this supplement is auto-included iff its code matches
+    // the requested meal plan — no inference needed, no type-string
+    // games. Lets one contract carry distinct HB / FB supplements
+    // without one bleeding into the other.
+    const explicitMealPlan = String((supplement as any).mealPlanCode || '').trim().toUpperCase();
+    if (explicitMealPlan) {
+      return explicitMealPlan === String(requestedMealPlan).toUpperCase();
+    }
+
+    // LEGACY FALLBACK: original BB→HB inference for un-tagged
+    // supplements created before the mealPlanCode column existed.
+    // Treats type=EXTRA_DINNER as the HB add-on. Preserved verbatim
+    // so existing rate calculations don't drift on this PR.
+    const normalizedType = String(supplement.type || '').trim().toUpperCase();
     const supplementMealPlan = this.supplementMealPlan(supplement);
     const mealPlanMatches = !supplementMealPlan || supplementMealPlan === requestedMealPlan;
     return (
       requestedMealPlan === HotelMealPlan.HB &&
       baseMealPlan === HotelMealPlan.BB &&
       normalizedType === 'EXTRA_DINNER' &&
-      appliesToRoom &&
-      mealPlanMatches &&
-      this.supplementAppliesToSeason(supplement, seasonName)
+      mealPlanMatches
     );
   }
 
