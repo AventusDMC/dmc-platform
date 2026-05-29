@@ -65,9 +65,9 @@ _Size: S each. Dependency: none. Risk: low (UI + existing endpoints)._
    ✅ done 2026-05-29. Create / inline-edit / delete at
    `…/contracts/[contractId]/allotments`; linked from the contract detail page.
    Dates bounded to contract validity; stop-sale rows highlighted.
-7. **Stop-sale / availability** surfacing on quote lookups — the allotment view now shows
-   stop-sale + release days; surfacing availability *at quote time* (the evaluate endpoint
-   already exists) is the remaining slice. _Open._
+7. ~~**Stop-sale / availability** surfacing on quote lookups~~ ✅ done 2026-05-29. The quote
+   simulator now evaluates each night and shows the worst inventory status across the stay
+   (available / release-window / sold-out / stop-sale / on-request). **Phase 2 complete.**
 
 _Size: M. Dependency: none (backend ready). Highest operational value._
 
