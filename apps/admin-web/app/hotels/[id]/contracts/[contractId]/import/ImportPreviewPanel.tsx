@@ -19,11 +19,11 @@ type PreviewResult = {
   contractIdInFile: string | null;
   contractMatch: boolean;
   errors: string[];
-  entities: { supplements: EntityDiff; rates: EntityDiff };
+  entities: { supplements: EntityDiff; rates: EntityDiff; mealPlans: EntityDiff };
 };
 
 type ApplyCounts = { created: number; updated: number; skippedDeletes: number };
-type ApplyResult = { supplements: ApplyCounts; rates: ApplyCounts };
+type ApplyResult = { supplements: ApplyCounts; rates: ApplyCounts; mealPlans: ApplyCounts };
 
 export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; contractId: string }) {
   const [file, setFile] = useState<File | null>(null);
@@ -90,6 +90,7 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
     ? [
         { label: 'Rates', diff: result.entities.rates },
         { label: 'Supplements', diff: result.entities.supplements },
+        { label: 'Meal Plans', diff: result.entities.mealPlans },
       ]
     : [];
   const allRowErrors = sheets.flatMap((s) => s.diff.rowErrors.map((e) => ({ ...e, sheet: s.label })));
@@ -196,9 +197,10 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
           <strong style={{ color: '#16a34a' }}>Import applied.</strong>
           <p style={{ margin: '0.4rem 0 0' }}>
             Rates: {applied.rates.created} created, {applied.rates.updated} updated. Supplements:{' '}
-            {applied.supplements.created} created, {applied.supplements.updated} updated.
-            {applied.rates.skippedDeletes + applied.supplements.skippedDeletes > 0
-              ? ` ${applied.rates.skippedDeletes + applied.supplements.skippedDeletes} absent row(s) left untouched (delete manually if intended).`
+            {applied.supplements.created} created, {applied.supplements.updated} updated. Meal plans:{' '}
+            {applied.mealPlans.created} created, {applied.mealPlans.updated} updated.
+            {applied.rates.skippedDeletes + applied.supplements.skippedDeletes + applied.mealPlans.skippedDeletes > 0
+              ? ` ${applied.rates.skippedDeletes + applied.supplements.skippedDeletes + applied.mealPlans.skippedDeletes} absent row(s) left untouched (delete manually if intended).`
               : ''}
           </p>
           <p className="table-subcopy" style={{ marginTop: '0.5rem' }}>

@@ -7,6 +7,8 @@ import {
   CreateContractSupplementDto,
 } from '../contract-supplements/contract-supplements.dto';
 import { ContractSupplementsService } from '../contract-supplements/contract-supplements.service';
+import { CreateContractMealPlanDto, MealPlanCodeValue } from '../contract-meal-plans/contract-meal-plans.dto';
+import { ContractMealPlansService } from '../contract-meal-plans/contract-meal-plans.service';
 import { HotelRatesService } from '../hotel-rates/hotel-rates.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -29,6 +31,7 @@ const WORKBOOK_SCHEMA_VERSION = 1;
 const SHEET_REFERENCE = '_Reference';
 const SHEET_SUPPLEMENTS = 'Supplements';
 const SHEET_RATES = 'Rates';
+const SHEET_MEAL_PLANS = 'MealPlans';
 
 const SUPPLEMENT_TYPES = new Set<ContractSupplementTypeValue>([
   'EXTRA_BREAKFAST',
@@ -71,11 +74,11 @@ export type ImportPreviewResult = {
   contractIdInFile: string | null;
   contractMatch: boolean;
   errors: string[];
-  entities: { supplements: EntityDiff; rates: EntityDiff };
+  entities: { supplements: EntityDiff; rates: EntityDiff; mealPlans: EntityDiff };
 };
 
 type ApplyCounts = { created: number; updated: number; skippedDeletes: number };
-export type ImportApplyResult = { supplements: ApplyCounts; rates: ApplyCounts };
+export type ImportApplyResult = { supplements: ApplyCounts; rates: ApplyCounts; mealPlans: ApplyCounts };
 
 function diffFromPlan(plan: EntityPlan<unknown>): EntityDiff {
   return {
@@ -97,6 +100,7 @@ export class HotelContractImportService {
     private readonly prisma: PrismaService,
     private readonly supplements: ContractSupplementsService,
     private readonly rates: HotelRatesService,
+    private readonly mealPlans: ContractMealPlansService,
   ) {}
 
   async preview(contractId: string, buffer: Buffer): Promise<ImportPreviewResult> {
@@ -106,6 +110,7 @@ export class HotelContractImportService {
     const identityOk = errors.length === 0;
     const supplementPlan = identityOk ? await this.buildSupplementPlan(contractId, workbook) : EMPTY_PLAN;
     const ratePlan = identityOk ? await this.buildRatePlan(contractId, workbook) : EMPTY_PLAN;
+    const mealPlanPlan = identityOk ? await this.buildMealPlanPlan(contractId, workbook) : EMPTY_PLAN;
 
     return {
       schemaVersion,
@@ -113,7 +118,11 @@ export class HotelContractImportService {
       contractIdInFile,
       contractMatch,
       errors,
-      entities: { supplements: diffFromPlan(supplementPlan), rates: diffFromPlan(ratePlan) },
+      entities: {
+        supplements: diffFromPlan(supplementPlan),
+        rates: diffFromPlan(ratePlan),
+        mealPlans: diffFromPlan(mealPlanPlan),
+      },
     };
   }
 
@@ -125,7 +134,8 @@ export class HotelContractImportService {
 
     const supplementPlan = await this.buildSupplementPlan(contractId, workbook);
     const ratePlan = await this.buildRatePlan(contractId, workbook);
-    const allRowErrors = [...supplementPlan.rowErrors, ...ratePlan.rowErrors];
+    const mealPlanPlan = await this.buildMealPlanPlan(contractId, workbook);
+    const allRowErrors = [...supplementPlan.rowErrors, ...ratePlan.rowErrors, ...mealPlanPlan.rowErrors];
     if (allRowErrors.length > 0) {
       throw new BadRequestException(
         `Fix these before importing: ${allRowErrors.map((e) => (e.row ? `row ${e.row}: ${e.message}` : e.message)).join('; ')}`,
@@ -159,7 +169,19 @@ export class HotelContractImportService {
     }
     rates.skippedDeletes = [...ratePlan.existingIds].filter((id) => !ratePlan.fileIds.has(id)).length;
 
-    return { supplements, rates };
+    const mealPlans: ApplyCounts = { created: 0, updated: 0, skippedDeletes: 0 };
+    for (const row of mealPlanPlan.rows) {
+      if (row.id) {
+        await this.mealPlans.update(contractId, row.id, row.dto as CreateContractMealPlanDto, actor);
+        mealPlans.updated += 1;
+      } else {
+        await this.mealPlans.create(contractId, row.dto as CreateContractMealPlanDto, actor);
+        mealPlans.created += 1;
+      }
+    }
+    mealPlans.skippedDeletes = [...mealPlanPlan.existingIds].filter((id) => !mealPlanPlan.fileIds.has(id)).length;
+
+    return { supplements, rates, mealPlans };
   }
 
   // -------- shared parsing / validation --------
@@ -410,6 +432,62 @@ export class HotelContractImportService {
             tourismFeeAmount: tourismFee ? this.parseOptionalNumber(tourismFee) : null,
             tourismFeeCurrency: text(row, 'Tourism Fee Ccy').toUpperCase() || null,
             tourismFeeMode: tourismModeRaw || null,
+          },
+        });
+      }
+    });
+
+    return { rows, existingIds, fileIds, rowErrors };
+  }
+
+  private async buildMealPlanPlan(contractId: string, workbook: ExcelJS.Workbook): Promise<EntityPlan<any>> {
+    const rowErrors: Array<{ row: number; message: string }> = [];
+    const rows: Array<ParsedRow<any>> = [];
+    const fileIds = new Set<string>();
+
+    const existing: Array<{ id: string }> = await (this.prisma as any).hotelContractMealPlan.findMany({
+      where: { hotelContractId: contractId },
+      select: { id: true },
+    });
+    const existingIds = new Set((existing || []).map((m) => m.id));
+
+    const sheet = workbook.getWorksheet(SHEET_MEAL_PLANS);
+    if (!sheet) {
+      return { rows, existingIds, fileIds, rowErrors };
+    }
+
+    const col: Record<string, number> = {};
+    sheet.getRow(1).eachCell((cell, c) => {
+      col[String(cell.value ?? '').trim()] = c;
+    });
+    const text = (row: ExcelJS.Row, header: string) =>
+      col[header] ? String(row.getCell(col[header]).value ?? '').trim() : '';
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const id = String(row.getCell(col['_id'] || 1).value ?? '').trim();
+      const code = text(row, 'Code').toUpperCase();
+      if (!id && !code) return;
+
+      const errorsBefore = rowErrors.length;
+      if (!MEAL_PLAN_CODES.has(code as ContractSupplementMealPlanValue)) {
+        rowErrors.push({ row: rowNumber, message: `Code "${text(row, 'Code')}" must be RO / BB / HB / FB / AI` });
+      }
+      if (id && !existingIds.has(id)) {
+        rowErrors.push({ row: rowNumber, message: `references an unknown _id (${id.slice(0, 8)}…) — re-download the Excel` });
+      }
+      if (id) fileIds.add(id);
+
+      if (rowErrors.length === errorsBefore) {
+        // isDefault is intentionally not imported (matches the UI, which
+        // doesn't let you set it here); Code / Active / Notes round-trip.
+        rows.push({
+          rowNumber,
+          id: id || null,
+          dto: {
+            code: code as MealPlanCodeValue,
+            isActive: this.parseYesNo(text(row, 'Active'), true),
+            notes: text(row, 'Notes') || null,
           },
         });
       }

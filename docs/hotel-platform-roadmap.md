@@ -83,11 +83,14 @@ _Size: M. Dependency: none (backend ready). Highest operational value._
      `ContractSupplementsService`, gated behind the confirmed preview. Deletes are previewed
      but NOT auto-applied (flagged for manual removal — the dangerous edge stays manual).
      Verified end-to-end against a throwaway contract.
-   - ✅ 2026-05-29: preview + apply extended to the **Rates** sheet (reuses `HotelRatesService`;
-     resolves room by name, validates occupancy/meal-plan/basis/dates/taxes). Verified against
-     a throwaway contract.
-   - _Next:_ extend to Cancellation / Child Policy / Meal Plans; decide whether to enable
-     delete-by-absence behind an extra confirm.
+   - ✅ 2026-05-29: preview + apply extended to **Rates** and **Meal Plans** (reuse
+     `HotelRatesService` / `ContractMealPlansService`; full validation; verified against
+     throwaway contracts). Import now covers all three **list-style** sheets
+     (Rates, Supplements, Meal Plans) — the ones worth bulk-editing in Excel.
+   - _Deferred (low value):_ **Cancellation** + **Child Policy** are header+children entities
+     (one policy, a few rules/bands) set up once in the UI — rarely bulk-edited, so import for
+     them is intentionally not built. Revisit only on demand.
+   - _Next:_ decide whether to enable delete-by-absence behind an extra confirm.
 9. **Bulk rate matrix editor** (or rely on import for bulk; decide after #8 lands).
 
 _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
