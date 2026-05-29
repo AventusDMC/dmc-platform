@@ -68,9 +68,9 @@ export default async function ContractImportPage({ params }: Props) {
             exactly what would change — <strong>before</strong> anything is written. Review the
             diff, then click <strong>Apply</strong> to write the creates &amp; updates (audited).
             Edit the same file you downloaded (it carries a hidden id that matches your rows back
-            to the contract). Covers the <strong>Rates</strong> and <strong>Supplements</strong>{' '}
-            sheets; rows you delete from the file are flagged but, for safety, not auto-deleted.
-            The remaining sheets follow next.
+            to the contract). Covers the <strong>Rates</strong>, <strong>Supplements</strong> and{' '}
+            <strong>Meal Plans</strong> sheets; rows you delete from the file are flagged but, for
+            safety, not auto-deleted. Cancellation &amp; child-policy import follow next.
           </p>
           <ImportPreviewPanel hotelId={hotelId} contractId={contractId} />
         </section>
