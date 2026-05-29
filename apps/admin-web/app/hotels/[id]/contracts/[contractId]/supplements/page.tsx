@@ -72,6 +72,8 @@ type SupplementRow = {
   chargeBasis: string;
   amount: number;
   currency: string;
+  appliesFrom: string | null;
+  appliesTo: string | null;
   isMandatory: boolean;
   isActive: boolean;
   notes: string | null;
@@ -261,6 +263,20 @@ export default async function ContractSupplementsPage({ params }: Props) {
                 />
               </label>
             </div>
+            <div className="form-row form-row-4">
+              <label>
+                Applies from (optional)
+                <input type="date" name="appliesFrom" />
+              </label>
+              <label>
+                Applies to (optional)
+                <input type="date" name="appliesTo" />
+              </label>
+              <span style={{ gridColumn: 'span 2', color: '#94a3b8', fontSize: '0.72rem', alignSelf: 'end' }}>
+                Pin a date-specific charge (e.g. a 31 Dec gala dinner): set both to that date.
+                Leave blank to charge across the whole stay.
+              </span>
+            </div>
             <button type="submit" className="primary-button">
               Add supplement
             </button>
@@ -300,6 +316,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                           <th className="numeric-cell">Amount</th>
                           <th>Currency</th>
                           <th>Mandatory</th>
+                          <th>Applies</th>
                           <th>Notes</th>
                           <th>Actions</th>
                         </tr>
@@ -307,6 +324,9 @@ export default async function ContractSupplementsPage({ params }: Props) {
                       <tbody>
                         {g.rows.map((r) => {
                           const deleteAction = deleteSupplement.bind(null, hotelId, contractId, r.id);
+                          const from = r.appliesFrom ? r.appliesFrom.slice(0, 10) : null;
+                          const to = r.appliesTo ? r.appliesTo.slice(0, 10) : null;
+                          const appliesLabel = !from && !to ? null : from === to ? from : `${from ?? '…'} → ${to ?? '…'}`;
                           return (
                             <tr key={r.id}>
                               <td>
@@ -346,6 +366,13 @@ export default async function ContractSupplementsPage({ params }: Props) {
                               <td className="numeric-cell">{r.amount.toFixed(2)}</td>
                               <td>{r.currency}</td>
                               <td>{r.isMandatory ? 'Yes' : 'No'}</td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                {appliesLabel ? (
+                                  appliesLabel
+                                ) : (
+                                  <span style={{ color: '#94a3b8' }}>Whole stay</span>
+                                )}
+                              </td>
                               <td style={{ maxWidth: '20rem' }}>{r.notes || '—'}</td>
                               <td>
                                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>

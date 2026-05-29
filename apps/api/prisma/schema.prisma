@@ -772,6 +772,14 @@ model HotelContractSupplement {
   chargeBasis     HotelContractChargeBasis
   amount          Float
   currency        String
+  // Optional date window the supplement is charged on. When set, the
+  // quote engine only applies it on nights the stay covers within
+  // [appliesFrom, appliesTo] — e.g. a Gala Dinner pinned to 31 Dec
+  // (appliesFrom = appliesTo = that date) is billed once per person and
+  // only when the stay includes that night. Both null = legacy
+  // behaviour (charged across the whole stay per the charge basis).
+  appliesFrom     DateTime?
+  appliesTo       DateTime?
   isMandatory     Boolean                           @default(false)
   isActive        Boolean                           @default(true)
   notes           String?

@@ -17,6 +17,9 @@ type CreateContractSupplementBody = {
   chargeBasis: ContractChargeBasisValue;
   amount: number | string;
   currency: string;
+  // Optional date window (ISO date strings) — see DTO comment.
+  appliesFrom?: string | null;
+  appliesTo?: string | null;
   isMandatory?: boolean;
   isActive?: boolean;
   notes?: string | null;
@@ -81,6 +84,8 @@ export class ContractSupplementsController {
       chargeBasis: body.chargeBasis,
       amount: Number(body.amount),
       currency: body.currency,
+      appliesFrom: body.appliesFrom,
+      appliesTo: body.appliesTo,
       isMandatory: body.isMandatory,
       isActive: body.isActive,
       notes: body.notes,
@@ -95,6 +100,8 @@ export class ContractSupplementsController {
       chargeBasis: body.chargeBasis,
       amount: body.amount === undefined ? undefined : Number(body.amount),
       currency: body.currency,
+      appliesFrom: body.appliesFrom,
+      appliesTo: body.appliesTo,
       isMandatory: body.isMandatory,
       isActive: body.isActive,
       notes: body.notes,

@@ -457,6 +457,15 @@ export class HotelRatesService {
         roomCategoryId: data.roomCategoryId || null,
         pax,
       });
+      // Gate dated supplements to the night they cover. A supplement with
+      // an appliesFrom/appliesTo window (e.g. a 31 Dec gala dinner) is
+      // only offered on nights inside that window; undated supplements
+      // pass through unchanged. Build a per-night view of the contract
+      // supplements and feed it to both pricing paths.
+      const nightSupplements = this.supplementsApplicableOn(rate.contract?.supplements, current);
+      const rateForNight = rate.contract
+        ? { ...rate, contract: { ...rate.contract, supplements: nightSupplements } }
+        : rate;
       const canUseMasterResolver = childrenAges.length === 0 && !Array.isArray(rate.contract?.ratePolicies);
       if (canUseMasterResolver) {
         const pricedNight = this.hotelPricingResolver.resolve({
@@ -481,7 +490,7 @@ export class HotelRatesService {
             },
           ],
           supplements: this.toHotelPricingSupplements(
-            rate.contract?.supplements,
+            nightSupplements,
             data.selectedSupplementIds,
             mealPlan,
             this.normalizeMealPlan(rate.mealPlan),
@@ -505,7 +514,7 @@ export class HotelRatesService {
           adults,
           childrenAges,
           roomCount,
-          this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId, rate.seasonName),
+          this.getRatePolicies(rateForNight, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId, rate.seasonName),
           occupancy,
           mealPlan,
           nightIndex === 0,
@@ -1101,6 +1110,33 @@ export class HotelRatesService {
     const month = String(value.getMonth() + 1).padStart(2, '0');
     const day = String(value.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  // Filter a contract's supplements to those that cover a given night.
+  // Supplements with no appliesFrom/appliesTo window pass through (legacy
+  // behaviour); dated ones (e.g. a 31 Dec gala) only survive on nights
+  // inside their window. Date-only comparison so a one-day window matches.
+  private supplementsApplicableOn(supplements: unknown, night: Date): unknown {
+    if (!Array.isArray(supplements)) {
+      return supplements;
+    }
+    const nightKey = this.formatDateOnly(night);
+    return supplements.filter((supplement: any) => {
+      const fromRaw = supplement?.appliesFrom;
+      const toRaw = supplement?.appliesTo;
+      if (!fromRaw && !toRaw) {
+        return true;
+      }
+      const from = fromRaw ? this.formatDateOnly(new Date(fromRaw)) : null;
+      const to = toRaw ? this.formatDateOnly(new Date(toRaw)) : null;
+      if (from && nightKey < from) {
+        return false;
+      }
+      if (to && nightKey > to) {
+        return false;
+      }
+      return true;
+    });
   }
 
   private lookupDateInSeason(lookupDate: Date, seasonFrom: Date, seasonTo: Date) {

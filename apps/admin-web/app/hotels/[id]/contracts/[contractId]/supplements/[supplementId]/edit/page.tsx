@@ -50,6 +50,8 @@ type SupplementRow = {
   chargeBasis: string;
   amount: number;
   currency: string;
+  appliesFrom: string | null;
+  appliesTo: string | null;
   isMandatory: boolean;
   isActive: boolean;
   notes: string | null;
@@ -236,6 +238,20 @@ export default async function SupplementEditPage({ params }: Props) {
                   maxLength={240}
                 />
               </label>
+            </div>
+            <div className="form-row form-row-4">
+              <label>
+                Applies from (optional)
+                <input type="date" name="appliesFrom" defaultValue={supplement.appliesFrom ? supplement.appliesFrom.slice(0, 10) : ''} />
+              </label>
+              <label>
+                Applies to (optional)
+                <input type="date" name="appliesTo" defaultValue={supplement.appliesTo ? supplement.appliesTo.slice(0, 10) : ''} />
+              </label>
+              <span style={{ gridColumn: 'span 2', color: '#94a3b8', fontSize: '0.72rem', alignSelf: 'end' }}>
+                Date-specific charge (e.g. a 31 Dec gala): set both to that date. Blank = charged across
+                the whole stay.
+              </span>
             </div>
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
               <button type="submit" className="primary-button">

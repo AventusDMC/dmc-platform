@@ -22,6 +22,12 @@ export type CreateContractSupplementDto = {
   chargeBasis: ContractChargeBasisValue;
   amount: number;
   currency: string;
+  // Optional date window the supplement is charged on (ISO date strings
+  // or Date). When set, the engine applies it only on nights the stay
+  // covers within [appliesFrom, appliesTo] — e.g. a dated Gala Dinner.
+  // Both null = charged across the whole stay (legacy behaviour).
+  appliesFrom?: string | Date | null;
+  appliesTo?: string | Date | null;
   isMandatory?: boolean;
   isActive?: boolean;
   notes?: string | null;
