@@ -107,21 +107,34 @@ function formatDate(iso: string): string {
 
 function groupBySeason(
   rates: RateRow[],
-): Array<{ key: string; name: string; from: string; to: string; rows: RateRow[] }> {
-  const buckets = new Map<string, { name: string; from: string; to: string; rows: RateRow[] }>();
+): Array<{ key: string; name: string; ranges: Array<{ from: string; to: string }>; rows: RateRow[] }> {
+  // Group by season NAME so a season with several date ranges (e.g. A Low
+  // = Jan + Jun + Oct–Dec) shows as ONE section, with its ranges listed in
+  // the header — instead of repeating the season name once per range. Rows
+  // are kept individual (each carries its own dates) so editing still
+  // targets the exact rate.
+  const buckets = new Map<string, { name: string; ranges: Map<string, { from: string; to: string }>; rows: RateRow[] }>();
   for (const r of rates) {
-    // Bucket key fuses name + dates so two distinct seasons that happen to
-    // share a name (e.g. "Summer 2026" vs "Summer 2027") don't merge.
-    const key = `${r.seasonName}::${r.seasonFrom}::${r.seasonTo}`;
-    const existing = buckets.get(key);
-    if (existing) {
-      existing.rows.push(r);
-    } else {
-      buckets.set(key, { name: r.seasonName, from: r.seasonFrom, to: r.seasonTo, rows: [r] });
-    }
+    const b =
+      buckets.get(r.seasonName) ??
+      { name: r.seasonName, ranges: new Map<string, { from: string; to: string }>(), rows: [] as RateRow[] };
+    b.ranges.set(`${r.seasonFrom}::${r.seasonTo}`, { from: r.seasonFrom, to: r.seasonTo });
+    b.rows.push(r);
+    buckets.set(r.seasonName, b);
   }
-  const out = Array.from(buckets.entries()).map(([key, v]) => ({ key, ...v }));
-  out.sort((a, b) => a.from.localeCompare(b.from) || a.name.localeCompare(b.name));
+  const out = Array.from(buckets.values()).map((b) => ({
+    key: b.name,
+    name: b.name,
+    ranges: Array.from(b.ranges.values()).sort((a, c) => a.from.localeCompare(c.from)),
+    rows: b.rows.sort(
+      (a, c) =>
+        a.roomCategoryId.localeCompare(c.roomCategoryId) ||
+        a.seasonFrom.localeCompare(c.seasonFrom) ||
+        a.occupancyType.localeCompare(c.occupancyType) ||
+        a.mealPlan.localeCompare(c.mealPlan),
+    ),
+  }));
+  out.sort((a, b) => (a.ranges[0]?.from ?? '').localeCompare(b.ranges[0]?.from ?? '') || a.name.localeCompare(b.name));
   return out;
 }
 
@@ -343,8 +356,8 @@ export default async function ContractRatesPage({ params }: Props) {
                   >
                     {g.name}{' '}
                     <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '0.82rem' }}>
-                      ({formatDate(g.from)} → {formatDate(g.to)} · {g.rows.length} cell
-                      {g.rows.length === 1 ? '' : 's'})
+                      ({g.ranges.map((rg) => `${formatDate(rg.from)}→${formatDate(rg.to)}`).join(', ')} ·{' '}
+                      {g.rows.length} cell{g.rows.length === 1 ? '' : 's'})
                     </span>
                   </h3>
                   <div className="table-wrap">
@@ -352,6 +365,7 @@ export default async function ContractRatesPage({ params }: Props) {
                       <thead>
                         <tr>
                           <th>Room type</th>
+                          <th>Dates</th>
                           <th>Occupancy</th>
                           <th>Meal plan</th>
                           <th>Basis</th>
@@ -374,6 +388,9 @@ export default async function ContractRatesPage({ params }: Props) {
                                     ({room.code})
                                   </span>
                                 ) : null}
+                              </td>
+                              <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                                {formatDate(r.seasonFrom)} → {formatDate(r.seasonTo)}
                               </td>
                               <td>{OCCUPANCY_LABELS[r.occupancyType] || r.occupancyType}</td>
                               <td>{MEAL_PLAN_LABELS[r.mealPlan] || r.mealPlan}</td>
