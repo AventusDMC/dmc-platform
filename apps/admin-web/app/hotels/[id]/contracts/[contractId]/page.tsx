@@ -213,6 +213,15 @@ export default async function ContractDetailPage({ params }: Props) {
             </a>
             {' · '}
             <Link
+              href={`/hotels/${hotelId}/contracts/${contractId}/import`}
+              prefetch={false}
+              className="compact-button"
+              style={{ textDecoration: 'none' }}
+            >
+              Import Excel
+            </Link>
+            {' · '}
+            <Link
               href={`/hotels/${hotelId}/contracts/${contractId}/simulator`}
               prefetch={false}
               className="compact-button"
