@@ -166,6 +166,89 @@ export class HotelContractsService {
   }
 
   /**
+   * Unified audit trail for a contract. Each edited entity writes to its
+   * own audit table (supplements / cancellation / child policy / meal
+   * plans / occupancy); this merges them into one reverse-chronological
+   * timeline so the workspace can show "who changed what, when" without
+   * the operator hopping between five places.
+   *
+   * Pagination: we fetch up to (offset+limit) rows from each table — the
+   * top N of the merged set can't draw more than that from any single
+   * table — then merge, sort, and slice. Cheap: contracts carry tens to
+   * low-hundreds of audit rows, not millions.
+   */
+  async getAuditLog(contractId: string, options: { limit?: number | null; offset?: number | null } = {}) {
+    const contract = await this.prisma.hotelContract.findUnique({
+      where: { id: contractId },
+      select: { id: true },
+    });
+    throwIfNotFound(contract, 'Hotel contract');
+
+    const limit = this.normalizeAuditLimit(options.limit);
+    const offset = this.normalizeAuditOffset(options.offset);
+    const cap = limit + offset;
+    const p = this.prisma as any;
+
+    const sources: Array<{ entity: string; model: any }> = [
+      { entity: 'supplement', model: p.hotelContractSupplementAuditLog },
+      { entity: 'cancellation', model: p.hotelContractCancellationAuditLog },
+      { entity: 'childPolicy', model: p.hotelContractChildPolicyAuditLog },
+      { entity: 'mealPlan', model: p.hotelContractMealPlanAuditLog },
+      { entity: 'occupancy', model: p.hotelContractOccupancyAuditLog },
+    ];
+
+    const batches = await Promise.all(
+      sources.map(({ entity, model }) =>
+        model
+          .findMany({
+            where: { hotelContractId: contractId },
+            orderBy: { createdAt: 'desc' },
+            take: cap,
+          })
+          .then((rows: any[]) =>
+            rows.map((row) => ({
+              entity,
+              action: row.action as string,
+              oldValue: (row.oldValue ?? null) as string | null,
+              newValue: (row.newValue ?? null) as string | null,
+              note: (row.note ?? null) as string | null,
+              actor: (row.actor ?? null) as string | null,
+              actorUserId: (row.actorUserId ?? null) as string | null,
+              createdAt: row.createdAt as Date,
+            })),
+          ),
+      ),
+    );
+
+    const merged = batches
+      .flat()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return {
+      total: merged.length,
+      limit,
+      offset,
+      entries: merged.slice(offset, offset + limit),
+    };
+  }
+
+  private normalizeAuditLimit(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 100;
+    }
+    return Math.min(500, Math.floor(parsed));
+  }
+
+  private normalizeAuditOffset(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+    return Math.floor(parsed);
+  }
+
+  /**
    * Room Types lightweight summary for the contract workspace.
    *
    * Returns one row per `HotelRoomCategory` belonging to this contract's

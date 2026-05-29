@@ -100,6 +100,17 @@ export class HotelContractsController {
     });
   }
 
+  // Unified audit trail across the contract's edited entities
+  // (supplements / cancellation / child policy / meal plans / occupancy).
+  // Same static-before-:id ordering rule as the routes above.
+  @Get(':id/audit-log')
+  findAuditLog(@Param('id') id: string, @Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.hotelContractsService.getAuditLog(id, {
+      limit: limit === undefined ? null : Number(limit),
+      offset: offset === undefined ? null : Number(offset),
+    });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Query('summary') summary?: string) {
     return summary === '1' || summary === 'true'

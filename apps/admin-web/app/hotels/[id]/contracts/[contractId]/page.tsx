@@ -221,6 +221,15 @@ export default async function ContractDetailPage({ params }: Props) {
               Quote simulator
             </Link>
             {' · '}
+            <Link
+              href={`/hotels/${hotelId}/contracts/${contractId}/audit-log`}
+              prefetch={false}
+              className="compact-button"
+              style={{ textDecoration: 'none' }}
+            >
+              History
+            </Link>
+            {' · '}
             <Link href={`/hotels/${hotelId}`} prefetch={false}>
               {contract.hotel.name}
             </Link>
