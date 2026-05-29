@@ -65,12 +65,14 @@ export default async function ContractImportPage({ params }: Props) {
           </h2>
           <p className="table-subcopy" style={{ marginTop: 0, marginBottom: '0.8rem' }}>
             Download the contract Excel (above), edit it offline, then upload it here to see
-            exactly what an import would create, update or delete — <strong>before</strong>{' '}
-            anything is written. Edit the same file you downloaded (it carries a hidden id that
-            matches your rows back to the contract). Today this previews the{' '}
-            <strong>Supplements</strong> sheet; the other sheets and the apply step follow next.
+            exactly what would change — <strong>before</strong> anything is written. Review the
+            diff, then click <strong>Apply</strong> to write the creates &amp; updates (audited).
+            Edit the same file you downloaded (it carries a hidden id that matches your rows back
+            to the contract). Today this covers the <strong>Supplements</strong> sheet; rows you
+            delete from the file are flagged but, for safety, not auto-deleted. Other sheets
+            follow next.
           </p>
-          <ImportPreviewPanel contractId={contractId} />
+          <ImportPreviewPanel hotelId={hotelId} contractId={contractId} />
         </section>
 
         <p

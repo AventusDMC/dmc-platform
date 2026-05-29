@@ -22,11 +22,15 @@ type PreviewResult = {
   entities: { supplements: EntityDiff };
 };
 
-export function ImportPreviewPanel({ contractId }: { contractId: string }) {
+type ApplyResult = { supplements: { created: number; updated: number; skippedDeletes: number } };
+
+export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; contractId: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PreviewResult | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState<ApplyResult | null>(null);
 
   async function onPreview(e: React.FormEvent) {
     e.preventDefault();
@@ -37,6 +41,7 @@ export function ImportPreviewPanel({ contractId }: { contractId: string }) {
     setLoading(true);
     setError(null);
     setResult(null);
+    setApplied(null);
     try {
       const body = new FormData();
       body.append('file', file);
@@ -56,7 +61,32 @@ export function ImportPreviewPanel({ contractId }: { contractId: string }) {
     }
   }
 
+  async function onApply() {
+    if (!file) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(`/api/hotel-contracts/${encodeURIComponent(contractId)}/import-apply`, {
+        method: 'POST',
+        body,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Apply failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      }
+      setApplied((await res.json()) as ApplyResult);
+      setResult(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Apply failed.');
+    } finally {
+      setApplying(false);
+    }
+  }
+
   const sup = result?.entities.supplements;
+  const canApply = Boolean(result && result.errors.length === 0 && sup && sup.rowErrors.length === 0);
 
   return (
     <div>
@@ -132,12 +162,47 @@ export function ImportPreviewPanel({ contractId }: { contractId: string }) {
                 </ul>
               </div>
             ) : null}
-            <p className="table-subcopy" style={{ marginTop: '0.75rem', color: '#94a3b8', fontSize: '0.75rem' }}>
-              Applying these changes is a separate, confirmed step that ships next. For now this
-              is preview-only.
-            </p>
+            {sup && sup.toDelete > 0 ? (
+              <p className="table-subcopy" style={{ marginTop: '0.6rem', color: '#b45309', fontSize: '0.8rem' }}>
+                {sup.toDelete} row{sup.toDelete === 1 ? '' : 's'} in the system{' '}
+                {sup.toDelete === 1 ? 'is' : 'are'} missing from your file. For safety, apply only
+                creates &amp; updates — it will <strong>not</strong> delete them. Remove those from
+                the Supplements page manually if intended.
+              </p>
+            ) : null}
+            <div style={{ marginTop: '0.9rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <button type="button" className="primary-button" onClick={onApply} disabled={!canApply || applying}>
+                {applying ? 'Applying…' : 'Apply changes'}
+              </button>
+              <span className="table-subcopy" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                Applies the creates &amp; updates above (audited). Re-reads the file server-side
+                before writing.
+              </span>
+            </div>
           </div>
         )
+      ) : null}
+
+      {applied ? (
+        <div className="detail-card" style={{ borderColor: '#86efac' }}>
+          <strong style={{ color: '#16a34a' }}>Import applied.</strong>
+          <p style={{ margin: '0.4rem 0 0' }}>
+            Supplements: {applied.supplements.created} created, {applied.supplements.updated} updated.
+            {applied.supplements.skippedDeletes > 0
+              ? ` ${applied.supplements.skippedDeletes} absent row(s) left untouched (delete manually if intended).`
+              : ''}
+          </p>
+          <p className="table-subcopy" style={{ marginTop: '0.5rem' }}>
+            Open the{' '}
+            <a
+              href={`/hotels/${hotelId}/contracts/${contractId}/supplements`}
+              style={{ textDecoration: 'underline' }}
+            >
+              supplements page
+            </a>{' '}
+            to see the changes, or upload another file to preview again.
+          </p>
+        </div>
       ) : null}
     </div>
   );

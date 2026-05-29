@@ -78,9 +78,13 @@ _Size: M. Dependency: none (backend ready). Highest operational value._
      (create/update/delete by hidden `_id`) with row-level validation, **writing nothing**.
      `POST /hotel-contracts/:id/import-preview` + `…/contracts/[contractId]/import` UI.
      Covers the **Supplements** sheet as the proven vertical slice.
-   - _Next:_ extend the preview to the other sheets (rates / cancellation / child policy /
-     meal plans), then the **apply** phase (transactional create/update/delete + audit),
-     gated behind an explicit confirm of the diff.
+   - ✅ 2026-05-29: **apply (upsert)** shipped for Supplements — `POST /hotel-contracts/:id/import-apply`
+     re-parses + re-validates server-side, then creates/updates through the audited
+     `ContractSupplementsService`, gated behind the confirmed preview. Deletes are previewed
+     but NOT auto-applied (flagged for manual removal — the dangerous edge stays manual).
+     Verified end-to-end against a throwaway contract.
+   - _Next:_ extend preview + apply to the other sheets (rates / cancellation / child policy /
+     meal plans); decide whether to enable delete-by-absence behind an extra confirm.
 9. **Bulk rate matrix editor** (or rely on import for bulk; decide after #8 lands).
 
 _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
