@@ -378,6 +378,22 @@ export class HotelContractsService {
       }
     }
 
+    // Max occupancy per room from its (active) occupancy rules — the room's
+    // highest-capacity rule across occupancy types (e.g. DBL: 2 adults + 1
+    // child). Null when the contract has no occupancy rules for that room.
+    const occupancyRules = await (this.prisma as any).hotelContractOccupancyRule.findMany({
+      where: { hotelContractId: id, isActive: true },
+      select: { roomCategoryId: true, maxAdults: true, maxChildren: true, maxOccupants: true },
+    });
+    const maxOccByRoom = new Map<string, { maxAdults: number; maxChildren: number; maxOccupants: number }>();
+    for (const rule of occupancyRules as Array<{ roomCategoryId: string | null; maxAdults: number; maxChildren: number; maxOccupants: number }>) {
+      if (!rule.roomCategoryId) continue;
+      const cur = maxOccByRoom.get(rule.roomCategoryId);
+      if (!cur || rule.maxOccupants > cur.maxOccupants) {
+        maxOccByRoom.set(rule.roomCategoryId, { maxAdults: rule.maxAdults, maxChildren: rule.maxChildren, maxOccupants: rule.maxOccupants });
+      }
+    }
+
     const rooms = roomCategories.map((room) => {
       const rateInfo = rateByRoom.get(room.id) || { count: 0, minCost: null, maxCost: null };
       return {
@@ -394,6 +410,9 @@ export class HotelContractsService {
         mealPlans: Array.from(mealPlanByRoom.get(room.id) || []).sort(),
         seasonNames: Array.from(seasonByRoom.get(room.id) || []).sort(),
         supplementCount: supplementByRoom.get(room.id) || 0,
+        maxAdults: maxOccByRoom.get(room.id)?.maxAdults ?? null,
+        maxChildren: maxOccByRoom.get(room.id)?.maxChildren ?? null,
+        maxOccupants: maxOccByRoom.get(room.id)?.maxOccupants ?? null,
       };
     });
 
