@@ -270,6 +270,52 @@ export default async function ContractRatesPage({ params }: Props) {
                   />
                 </label>
               </div>
+              <p className="table-subcopy" style={{ margin: '0.2rem 0 0.4rem', fontWeight: 650 }}>
+                Taxes &amp; charges (optional) — "included" means the Cost above already covers it
+              </p>
+              <div className="form-row form-row-4">
+                <label>
+                  Sales tax %
+                  <input type="number" name="salesTaxPercent" min={0} step="0.01" defaultValue={0} />
+                </label>
+                <label>
+                  Sales tax
+                  <select name="salesTaxIncluded" defaultValue="false">
+                    <option value="false">No — added on top</option>
+                    <option value="true">Yes — in the cost</option>
+                  </select>
+                </label>
+                <label>
+                  Service charge %
+                  <input type="number" name="serviceChargePercent" min={0} step="0.01" defaultValue={0} />
+                </label>
+                <label>
+                  Service charge
+                  <select name="serviceChargeIncluded" defaultValue="false">
+                    <option value="false">No — added on top</option>
+                    <option value="true">Yes — in the cost</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-row form-row-4">
+                <label>
+                  Tourism fee (optional)
+                  <input type="number" name="tourismFeeAmount" min={0} step="0.01" placeholder="2.00" />
+                </label>
+                <label>
+                  Tourism fee currency
+                  <input type="text" name="tourismFeeCurrency" maxLength={3} placeholder={contract.currency} />
+                </label>
+                <label>
+                  Tourism fee charged
+                  <select name="tourismFeeMode" defaultValue="">
+                    <option value="">— No fee —</option>
+                    <option value="PER_NIGHT_PER_PERSON">Per night, per person</option>
+                    <option value="PER_NIGHT_PER_ROOM">Per night, per room</option>
+                  </select>
+                </label>
+                <span />
+              </div>
               <button type="submit" className="primary-button">
                 Add rate
               </button>

@@ -15,6 +15,51 @@ const API_BASE_URL = '/api';
 const OCCUPANCY_TYPES = new Set(['SGL', 'DBL', 'TPL']);
 const MEAL_PLANS = new Set(['RO', 'BB', 'HB', 'FB', 'AI']);
 const PRICING_BASES = new Set(['PER_ROOM', 'PER_PERSON']);
+const TOURISM_FEE_MODES = new Set(['PER_NIGHT_PER_PERSON', 'PER_NIGHT_PER_ROOM']);
+
+function optionalNonNegativeNumber(value: FormDataEntryValue | null, label: string): number | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const n = Number(value.trim());
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a non-negative number.`);
+  return n;
+}
+
+function optionalEnum(value: FormDataEntryValue | null, label: string, allowed: Set<string>): string | null {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim().toUpperCase();
+  if (!raw) return null;
+  if (!allowed.has(raw)) throw new Error(`${label} must be one of ${[...allowed].join(', ')}.`);
+  return raw;
+}
+
+// Tax / service-charge / tourism-fee inputs — see the create action for
+// the rationale (per-rate, applied by the pricing engine; net vs gross).
+function readRateTaxFields(formData: FormData) {
+  const salesTaxPercent = optionalNonNegativeNumber(formData.get('salesTaxPercent'), 'Sales tax %') ?? 0;
+  const salesTaxIncluded = formData.get('salesTaxIncluded') === 'on' || formData.get('salesTaxIncluded') === 'true';
+  const serviceChargePercent = optionalNonNegativeNumber(formData.get('serviceChargePercent'), 'Service charge %') ?? 0;
+  const serviceChargeIncluded =
+    formData.get('serviceChargeIncluded') === 'on' || formData.get('serviceChargeIncluded') === 'true';
+  const tourismFeeAmount = optionalNonNegativeNumber(formData.get('tourismFeeAmount'), 'Tourism fee');
+  const tourismFeeCurrencyRaw = formData.get('tourismFeeCurrency');
+  const tourismFeeCurrency =
+    typeof tourismFeeCurrencyRaw === 'string' && tourismFeeCurrencyRaw.trim()
+      ? tourismFeeCurrencyRaw.trim().toUpperCase()
+      : null;
+  const tourismFeeMode = optionalEnum(formData.get('tourismFeeMode'), 'Tourism fee mode', TOURISM_FEE_MODES);
+  if (tourismFeeCurrency && !/^[A-Z]{3}$/.test(tourismFeeCurrency)) {
+    throw new Error('Tourism fee currency must be a 3-letter ISO code.');
+  }
+  return {
+    salesTaxPercent,
+    salesTaxIncluded,
+    serviceChargePercent,
+    serviceChargeIncluded,
+    tourismFeeAmount,
+    tourismFeeCurrency,
+    tourismFeeMode,
+  };
+}
 
 function trimOrThrow(value: FormDataEntryValue | null, label: string): string {
   if (typeof value !== 'string') {
@@ -75,6 +120,7 @@ export async function updateRate(
   const pricingBasis = parseEnum(formData.get('pricingBasis'), 'Pricing basis', PRICING_BASES);
   const currency = trimOrThrow(formData.get('currency'), 'Currency').toUpperCase();
   const cost = parsePositiveNumber(formData.get('cost'), 'Cost');
+  const tax = readRateTaxFields(formData);
 
   if (new Date(seasonTo) < new Date(seasonFrom)) {
     throw new Error('"Season to" must be on or after "Season from".');
@@ -96,6 +142,7 @@ export async function updateRate(
       pricingBasis,
       currency,
       cost,
+      ...tax,
     }),
   });
 

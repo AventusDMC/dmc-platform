@@ -48,6 +48,13 @@ type RateRow = {
   pricingMode: string | null;
   currency: string;
   cost: number;
+  salesTaxPercent: number | null;
+  salesTaxIncluded: boolean | null;
+  serviceChargePercent: number | null;
+  serviceChargeIncluded: boolean | null;
+  tourismFeeAmount: number | null;
+  tourismFeeCurrency: string | null;
+  tourismFeeMode: string | null;
 };
 
 async function getContract(contractId: string): Promise<ContractSummary | null> {
@@ -237,6 +244,52 @@ export default async function RateEditPage({ params }: Props) {
                   defaultValue={rate.cost}
                 />
               </label>
+            </div>
+            <p className="table-subcopy" style={{ margin: '0.2rem 0 0.4rem', fontWeight: 650 }}>
+              Taxes &amp; charges — "included" means the Cost above already covers it
+            </p>
+            <div className="form-row form-row-4">
+              <label>
+                Sales tax %
+                <input type="number" name="salesTaxPercent" min={0} step="0.01" defaultValue={rate.salesTaxPercent ?? 0} />
+              </label>
+              <label>
+                Sales tax
+                <select name="salesTaxIncluded" defaultValue={rate.salesTaxIncluded ? 'true' : 'false'}>
+                  <option value="false">No — added on top</option>
+                  <option value="true">Yes — in the cost</option>
+                </select>
+              </label>
+              <label>
+                Service charge %
+                <input type="number" name="serviceChargePercent" min={0} step="0.01" defaultValue={rate.serviceChargePercent ?? 0} />
+              </label>
+              <label>
+                Service charge
+                <select name="serviceChargeIncluded" defaultValue={rate.serviceChargeIncluded ? 'true' : 'false'}>
+                  <option value="false">No — added on top</option>
+                  <option value="true">Yes — in the cost</option>
+                </select>
+              </label>
+            </div>
+            <div className="form-row form-row-4">
+              <label>
+                Tourism fee (optional)
+                <input type="number" name="tourismFeeAmount" min={0} step="0.01" defaultValue={rate.tourismFeeAmount ?? ''} />
+              </label>
+              <label>
+                Tourism fee currency
+                <input type="text" name="tourismFeeCurrency" maxLength={3} defaultValue={rate.tourismFeeCurrency ?? ''} />
+              </label>
+              <label>
+                Tourism fee charged
+                <select name="tourismFeeMode" defaultValue={rate.tourismFeeMode ?? ''}>
+                  <option value="">— No fee —</option>
+                  <option value="PER_NIGHT_PER_PERSON">Per night, per person</option>
+                  <option value="PER_NIGHT_PER_ROOM">Per night, per room</option>
+                </select>
+              </label>
+              <span />
             </div>
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
               <button type="submit" className="primary-button">
