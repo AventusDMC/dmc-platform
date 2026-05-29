@@ -16,7 +16,8 @@ finish. A smaller set is genuinely net-new.
 ### Built and exposed (working end-to-end)
 - Contracts: create, list, detail, **edit master data** _(done 2026-05-29)_, delete.
 - Rates: per-row create / edit / delete (season, occupancy, meal plan, pricing basis,
-  cost, **taxes / service charge / tourism fee** incl. net-vs-gross flags).
+  cost, **taxes / service charge / tourism fee** incl. net-vs-gross flags — editable in the
+  v2 rate form as of 2026-05-29, previously only via the legacy editor / import / Excel).
 - Supplements: create / edit / delete, with explicit `mealPlanCode` (HB/FB/AI) tagging and
   an optional `appliesFrom`/`appliesTo` **date window** (e.g. a 31 Dec gala dinner charged
   only on nights the stay covers) — engine-gated, surfaced in the editor + Excel export.
