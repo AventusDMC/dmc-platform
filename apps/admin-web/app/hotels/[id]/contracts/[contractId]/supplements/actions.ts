@@ -20,6 +20,11 @@ const SUPPLEMENT_TYPES = new Set([
   'EXTRA_BED',
 ]);
 const CHARGE_BASES = new Set(['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT']);
+// Optional meal-plan tag. Only HB / FB are useful in practice (the
+// pricing resolver only auto-applies for HB→BB and FB→BB derivations)
+// but all five enums are accepted so a future BB-from-RO supplement
+// would work without another schema change.
+const MEAL_PLAN_CODES = new Set(['RO', 'BB', 'HB', 'FB', 'AI']);
 
 function trimOrThrow(value: FormDataEntryValue | null, label: string): string {
   if (typeof value !== 'string') throw new Error(`${label} is required.`);
@@ -66,6 +71,16 @@ export async function createSupplement(
   // categories on this contract" (the backend stores null for that case).
   const roomCategoryRaw = optionalString(formData.get('roomCategoryId'));
   const type = parseEnum(formData.get('type'), 'Supplement type', SUPPLEMENT_TYPES);
+  // mealPlanCode is optional — blank means "no meal-plan tag" (the
+  // pricing resolver falls back to type-string inference for these).
+  const mealPlanRaw = optionalString(formData.get('mealPlanCode'));
+  let mealPlanCode: string | null = null;
+  if (mealPlanRaw) {
+    mealPlanCode = mealPlanRaw.toUpperCase();
+    if (!MEAL_PLAN_CODES.has(mealPlanCode)) {
+      throw new Error(`Meal plan code must be one of ${[...MEAL_PLAN_CODES].join(', ')}.`);
+    }
+  }
   const chargeBasis = parseEnum(formData.get('chargeBasis'), 'Charge basis', CHARGE_BASES);
   const amount = parsePositiveNumber(formData.get('amount'), 'Amount');
   const currency = trimOrThrow(formData.get('currency'), 'Currency').toUpperCase();
@@ -84,6 +99,7 @@ export async function createSupplement(
       body: JSON.stringify({
         roomCategoryId: roomCategoryRaw,
         type,
+        mealPlanCode,
         chargeBasis,
         amount,
         currency,

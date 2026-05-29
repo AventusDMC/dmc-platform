@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@
 import { AuthenticatedActor } from '../auth/auth.types';
 import {
   ContractChargeBasisValue,
+  ContractSupplementMealPlanValue,
   ContractSupplementTypeValue,
   CreateContractSupplementDto,
   UpdateContractSupplementDto,
@@ -11,6 +12,8 @@ import { ContractSupplementsService } from './contract-supplements.service';
 type CreateContractSupplementBody = {
   roomCategoryId?: string | null;
   type: ContractSupplementTypeValue;
+  // Optional meal-plan tag (HB / FB / etc) — see DTO comment.
+  mealPlanCode?: ContractSupplementMealPlanValue | null;
   chargeBasis: ContractChargeBasisValue;
   amount: number | string;
   currency: string;
@@ -74,6 +77,7 @@ export class ContractSupplementsController {
     return {
       roomCategoryId: body.roomCategoryId,
       type: body.type,
+      mealPlanCode: body.mealPlanCode,
       chargeBasis: body.chargeBasis,
       amount: Number(body.amount),
       currency: body.currency,
@@ -87,6 +91,7 @@ export class ContractSupplementsController {
     return {
       roomCategoryId: body.roomCategoryId,
       type: body.type,
+      mealPlanCode: body.mealPlanCode,
       chargeBasis: body.chargeBasis,
       amount: body.amount === undefined ? undefined : Number(body.amount),
       currency: body.currency,

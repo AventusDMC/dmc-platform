@@ -37,6 +37,12 @@ export type HotelPricingSupplement = {
   id?: string | null;
   label?: string | null;
   type?: string | null;
+  // Explicit meal-plan tag persisted on hotel_contract_supplements.
+  // When set, the resolver matches against this directly and does NOT
+  // fall back to inferring from `type` — this is how the contract
+  // distinguishes HB-18-JOD vs FB-36-JOD without double-counting.
+  // null = legacy semantics (type-string inference still applies).
+  mealPlanCode?: string | null;
   amount: number;
   basis?: HotelSupplementBasis | null;
   chargeBasis?: HotelSupplementBasis | null;
@@ -323,14 +329,30 @@ export class HotelPricingResolver {
       return true;
     }
 
-    const type = String(supplement.type || supplement.label || '').trim().toUpperCase();
     const requestedMealPlan = String(input.selectedMealPlan || '').trim().toUpperCase();
     const baseMealPlan = String(input.baseMealPlan || '').trim().toUpperCase();
-    const isHbSupplement = ['MEAL_SUPPLEMENT', 'EXTRA_DINNER', 'HB', 'HALF_BOARD'].includes(type);
-    const isFbSupplement = ['FB', 'FULL_BOARD'].includes(type);
     if (requestedMealPlan === baseMealPlan) {
       return false;
     }
+
+    // PREFERRED PATH: explicit mealPlanCode tag on the supplement.
+    // When set, this is the canonical "this supplement converts the
+    // base meal plan into <code>" rule — no ambiguity, no double-count
+    // risk. A contract that has separate HB and FB supplements stays
+    // clean: each one only fires for its own selected meal plan.
+    const explicitMealPlan = String(supplement.mealPlanCode || '').trim().toUpperCase();
+    if (explicitMealPlan) {
+      return explicitMealPlan === requestedMealPlan;
+    }
+
+    // LEGACY FALLBACK: infer the meal-plan target from the type string
+    // for supplements created before the mealPlanCode column existed.
+    // Once operators tag legacy rows in the UI / via Excel import, this
+    // branch stops being reached for those rows. Preserved verbatim so
+    // existing pricing behavior is unchanged for un-tagged supplements.
+    const type = String(supplement.type || supplement.label || '').trim().toUpperCase();
+    const isHbSupplement = ['MEAL_SUPPLEMENT', 'EXTRA_DINNER', 'HB', 'HALF_BOARD'].includes(type);
+    const isFbSupplement = ['FB', 'FULL_BOARD'].includes(type);
     return (requestedMealPlan === 'HB' && baseMealPlan === 'BB' && isHbSupplement) || (requestedMealPlan === 'FB' && baseMealPlan !== 'FB' && (isFbSupplement || isHbSupplement));
   }
 

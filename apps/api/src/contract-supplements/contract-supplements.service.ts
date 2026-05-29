@@ -18,6 +18,7 @@ type SupplementRecord = {
   hotelContractId: string;
   roomCategoryId: string | null;
   type: ContractSupplementTypeValue;
+  mealPlanCode: string | null;
   chargeBasis: ContractChargeBasisValue;
   amount: number;
   currency: string;
@@ -121,6 +122,8 @@ export class ContractSupplementsService {
     const normalized = await this.normalizePayload(contract.id, contract.hotelId, contract.currency, {
       roomCategoryId: data.roomCategoryId === undefined ? existing.roomCategoryId : data.roomCategoryId,
       type: data.type ?? existing.type,
+      mealPlanCode:
+        data.mealPlanCode === undefined ? (existing.mealPlanCode as any) ?? null : data.mealPlanCode,
       chargeBasis: data.chargeBasis ?? existing.chargeBasis,
       amount: data.amount ?? existing.amount,
       currency: data.currency ?? existing.currency,
@@ -258,6 +261,10 @@ export class ContractSupplementsService {
       hotelContractId: contractId,
       roomCategoryId,
       type: data.type,
+      // mealPlanCode is optional; null = no meal-plan tag (legacy
+      // semantics — the pricing resolver falls back to type-string
+      // matching).
+      mealPlanCode: data.mealPlanCode ?? null,
       chargeBasis: data.chargeBasis,
       amount: data.amount,
       currency,
@@ -272,6 +279,7 @@ export class ContractSupplementsService {
     data: {
       roomCategoryId: string | null;
       type: ContractSupplementTypeValue;
+      mealPlanCode: string | null;
       isMandatory: boolean;
       isActive: boolean;
     },
@@ -288,7 +296,20 @@ export class ContractSupplementsService {
       },
     });
 
-    const conflictingSupplement = existingSupplements.find((supplement) => supplement.isActive && data.isActive);
+    // Two same-type supplements in the same room scope conflict UNLESS
+    // they carry distinct meal-plan tags — a contract may legitimately
+    // hold a separate HB (18 JOD) and FB (36 JOD) version of the same
+    // dish (see mealPlanCode in schema.prisma). An untagged (null)
+    // supplement still conflicts with any tagged one of the same type:
+    // the pricing resolver's legacy fallback fires the untagged row for
+    // the same meal plans a tag would target, so allowing both would
+    // double-count. null-vs-null keeps the original conflict semantics.
+    const sharesMealPlanSlot = (supplement: SupplementRecord) =>
+      !data.mealPlanCode || !supplement.mealPlanCode || data.mealPlanCode === supplement.mealPlanCode;
+
+    const conflictingSupplement = existingSupplements.find(
+      (supplement) => supplement.isActive && data.isActive && sharesMealPlanSlot(supplement),
+    );
 
     if (conflictingSupplement) {
       throw new BadRequestException('Supplement conflicts with an existing active supplement for this contract scope');
@@ -296,7 +317,7 @@ export class ContractSupplementsService {
 
     if (data.isMandatory) {
       const conflictingMandatorySupplement = existingSupplements.find(
-        (supplement) => supplement.isActive && supplement.isMandatory,
+        (supplement) => supplement.isActive && supplement.isMandatory && sharesMealPlanSlot(supplement),
       );
 
       if (conflictingMandatorySupplement) {
