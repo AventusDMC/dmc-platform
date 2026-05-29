@@ -54,7 +54,9 @@ Small, no-migration, removes daily friction. Each is independently shippable.
 4. ~~Edit **meal-plan** details (code / active / notes)~~ ✅ done 2026-05-29 (inline edit).
    `isDefault` still not settable — the meal-plans endpoint doesn't accept it; tracked
    as the separate "mark as default" backlog item.
-5. **Audit-log viewer** per contract (read-only; backend already records it). _Open._
+5. ~~**Audit-log viewer** per contract~~ ✅ done 2026-05-29. Read-only timeline at
+   `…/contracts/[contractId]/audit-log` merging the 5 per-entity audit tables via a new
+   unified `GET /hotel-contracts/:id/audit-log` endpoint. **Phase 1 complete.**
 
 _Size: S each. Dependency: none. Risk: low (UI + existing endpoints)._
 
