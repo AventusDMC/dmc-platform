@@ -22,6 +22,8 @@ type SupplementRecord = {
   chargeBasis: ContractChargeBasisValue;
   amount: number;
   currency: string;
+  appliesFrom: Date | null;
+  appliesTo: Date | null;
   isMandatory: boolean;
   isActive: boolean;
   notes: string | null;
@@ -127,6 +129,8 @@ export class ContractSupplementsService {
       chargeBasis: data.chargeBasis ?? existing.chargeBasis,
       amount: data.amount ?? existing.amount,
       currency: data.currency ?? existing.currency,
+      appliesFrom: data.appliesFrom === undefined ? existing.appliesFrom : data.appliesFrom,
+      appliesTo: data.appliesTo === undefined ? existing.appliesTo : data.appliesTo,
       isMandatory: data.isMandatory ?? existing.isMandatory,
       isActive: data.isActive ?? existing.isActive,
       notes: data.notes === undefined ? existing.notes : data.notes,
@@ -242,6 +246,12 @@ export class ContractSupplementsService {
 
     this.assertChargeBasisAllowed(data.type, data.chargeBasis);
 
+    const appliesFrom = this.parseSupplementDate(data.appliesFrom, 'appliesFrom');
+    const appliesTo = this.parseSupplementDate(data.appliesTo, 'appliesTo');
+    if (appliesFrom && appliesTo && appliesFrom > appliesTo) {
+      throw new BadRequestException('Supplement appliesFrom cannot be after appliesTo');
+    }
+
     const roomCategoryId = data.roomCategoryId?.trim() || null;
 
     if (roomCategoryId) {
@@ -268,10 +278,27 @@ export class ContractSupplementsService {
       chargeBasis: data.chargeBasis,
       amount: data.amount,
       currency,
+      // Optional date window; null = charged across the whole stay.
+      appliesFrom,
+      appliesTo,
       isMandatory: data.isMandatory ?? false,
       isActive: data.isActive ?? true,
       notes: data.notes?.trim() || null,
     };
+  }
+
+  // Accept an ISO date string / Date / null / undefined and normalize to
+  // a Date (or null). Used for the optional appliesFrom / appliesTo
+  // window on a supplement.
+  private parseSupplementDate(value: string | Date | null | undefined, label: string): Date | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`Supplement ${label} is not a valid date`);
+    }
+    return date;
   }
 
   private async assertNoConflictingSupplement(

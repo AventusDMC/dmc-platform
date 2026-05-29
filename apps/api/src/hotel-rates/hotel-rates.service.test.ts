@@ -706,6 +706,67 @@ test('multi-room optional EXTRA_BED prices only when selected and follows extra-
   assert.equal(selectedResult.totalCost, 525);
 });
 
+test('dated supplement applies only on nights inside its window', async () => {
+  const datedGala = {
+    id: 'supp-gala',
+    type: 'GALA_DINNER',
+    amount: 50,
+    chargeBasis: 'PER_PERSON',
+    isMandatory: true,
+    isActive: true,
+    appliesFrom: new Date('2026-06-02T12:00:00.000Z'),
+    appliesTo: new Date('2026-06-02T12:00:00.000Z'),
+  };
+  const service = createHotelRatesServiceWithLookupRates([
+    createLookupRate({ pricingBasis: 'PER_PERSON', cost: 100, contract: { supplements: [datedGala] } }),
+  ]);
+  const base = {
+    hotelId: 'hotel-1',
+    occupancy: 'DBL' as any,
+    mealPlan: 'BB' as any,
+    pax: 2,
+    roomCount: 1,
+    adults: 2,
+    childrenAges: [] as number[],
+    roomCategoryId: 'room-1',
+  };
+  // Stay that covers 2026-06-02 → the gala is billed (50 × 2 adults).
+  const inside = await service.calculateHotelCost({ ...base, checkInDate: '2026-06-02', checkOutDate: '2026-06-03' });
+  // Stay that does not cover it → the gala is skipped entirely.
+  const outside = await service.calculateHotelCost({ ...base, checkInDate: '2026-06-10', checkOutDate: '2026-06-11' });
+
+  assert.equal(outside.supplementsCost, 0);
+  assert.equal(inside.supplementsCost, 100);
+});
+
+test('undated supplement still applies regardless of dates (control)', async () => {
+  const undatedGala = {
+    id: 'supp-gala-2',
+    type: 'GALA_DINNER',
+    amount: 50,
+    chargeBasis: 'PER_PERSON',
+    isMandatory: true,
+    isActive: true,
+  };
+  const service = createHotelRatesServiceWithLookupRates([
+    createLookupRate({ pricingBasis: 'PER_PERSON', cost: 100, contract: { supplements: [undatedGala] } }),
+  ]);
+  const result = await service.calculateHotelCost({
+    hotelId: 'hotel-1',
+    checkInDate: '2026-06-10',
+    checkOutDate: '2026-06-11',
+    occupancy: 'DBL' as any,
+    mealPlan: 'BB' as any,
+    pax: 2,
+    roomCount: 1,
+    adults: 2,
+    childrenAges: [] as number[],
+    roomCategoryId: 'room-1',
+  });
+
+  assert.equal(result.supplementsCost, 100);
+});
+
 test('multi-room adult and child extra-bed policies use room capacity before charging', async () => {
   const service = createHotelRatesServiceWithLookupRates([
     createLookupRate({

@@ -52,6 +52,15 @@ function parsePositiveNumber(value: FormDataEntryValue | null, label: string): n
   return n;
 }
 
+// Optional date → ISO at noon UTC, or null when blank. Sent explicitly
+// (including null) so clearing the field clears the stored date.
+function optionalDate(value: FormDataEntryValue | null, label: string): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(`${value.trim()}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} is not a valid date.`);
+  return date.toISOString();
+}
+
 export async function updateSupplement(
   hotelId: string,
   contractId: string,
@@ -71,11 +80,16 @@ export async function updateSupplement(
   const chargeBasis = parseEnum(formData.get('chargeBasis'), 'Charge basis', CHARGE_BASES);
   const amount = parsePositiveNumber(formData.get('amount'), 'Amount');
   const currency = trimOrThrow(formData.get('currency'), 'Currency').toUpperCase();
+  const appliesFrom = optionalDate(formData.get('appliesFrom'), 'Applies from');
+  const appliesTo = optionalDate(formData.get('appliesTo'), 'Applies to');
   const isMandatory = formData.get('isMandatory') === 'on';
   const notes = optionalString(formData.get('notes'));
 
   if (!/^[A-Z]{3}$/.test(currency)) {
     throw new Error('Currency must be a 3-letter ISO code (e.g. USD, JOD, AED, EUR).');
+  }
+  if (appliesFrom && appliesTo && new Date(appliesFrom) > new Date(appliesTo)) {
+    throw new Error('"Applies from" must be on or before "Applies to".');
   }
 
   const response = await adminPageFetch(
@@ -90,6 +104,8 @@ export async function updateSupplement(
         chargeBasis,
         amount,
         currency,
+        appliesFrom,
+        appliesTo,
         isMandatory,
         notes,
       }),

@@ -17,7 +17,9 @@ finish. A smaller set is genuinely net-new.
 - Contracts: create, list, detail, **edit master data** _(done 2026-05-29)_, delete.
 - Rates: per-row create / edit / delete (season, occupancy, meal plan, pricing basis,
   cost, **taxes / service charge / tourism fee** incl. net-vs-gross flags).
-- Supplements: create / edit / delete, with explicit `mealPlanCode` (HB/FB/AI) tagging.
+- Supplements: create / edit / delete, with explicit `mealPlanCode` (HB/FB/AI) tagging and
+  an optional `appliesFrom`/`appliesTo` **date window** (e.g. a 31 Dec gala dinner charged
+  only on nights the stay covers) — engine-gated, surfaced in the editor + Excel export.
 - Cancellation policy + rules (add/delete rules), child policy + age bands (add/delete),
   meal plans (add/delete/toggle).
 - Room categories CRUD; hotel master data + fact sheet editor.

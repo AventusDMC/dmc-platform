@@ -313,6 +313,12 @@ export class HotelContractExportService {
       { header: 'Charge Basis', key: 'chargeBasis', width: 14 },
       { header: 'Amount', key: 'amount', width: 12 },
       { header: 'Currency', key: 'currency', width: 10 },
+      // Optional date window the supplement is charged on. When set, the
+      // quote engine only applies it on nights the stay covers within
+      // [Applies From, Applies To] — e.g. a Gala Dinner pinned to 31 Dec
+      // (both = that date). Blank = charged across the whole stay.
+      { header: 'Applies From', key: 'appliesFrom', width: 14 },
+      { header: 'Applies To', key: 'appliesTo', width: 14 },
       { header: 'Mandatory', key: 'isMandatory', width: 11 },
       { header: 'Active', key: 'isActive', width: 9 },
       { header: 'Notes', key: 'notes', width: 36 },
@@ -328,6 +334,8 @@ export class HotelContractExportService {
         chargeBasis: supplement.chargeBasis,
         amount: supplement.amount,
         currency: supplement.currency,
+        appliesFrom: supplement.appliesFrom ? formatDate(supplement.appliesFrom) : '',
+        appliesTo: supplement.appliesTo ? formatDate(supplement.appliesTo) : '',
         isMandatory: supplement.isMandatory ? 'Yes' : 'No',
         isActive: supplement.isActive ? 'Yes' : 'No',
         notes: supplement.notes ?? '',
