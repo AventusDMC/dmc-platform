@@ -8,14 +8,18 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { EXCEL_MIME, HotelContractExportService } from './hotel-contract-export.service';
 import { HotelContractImportService } from './hotel-contract-import.service';
 import { HotelContractsService } from './hotel-contracts.service';
+
+type RequestWithActor = { authenticatedActor?: AuthenticatedActor };
 
 type CreateHotelContractBody = {
   hotelId: string;
@@ -126,6 +130,23 @@ export class HotelContractsController {
       throw new BadRequestException('An Excel (.xlsx) workbook file is required.');
     }
     return this.hotelContractImportService.preview(id, file.buffer);
+  }
+
+  // Excel import — APPLY. Re-parses + re-validates the upload server-side
+  // (never trusts a client-sent diff), then UPSERTS the Supplements sheet
+  // through the audited supplement service. Deletes are previewed but not
+  // applied here. Intended to be called only after the operator has seen
+  // and confirmed the preview diff.
+  @Post(':id/import-apply')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  importApply(@Param('id') id: string, @UploadedFile() file: any, @Req() request: RequestWithActor) {
+    if (!file?.buffer) {
+      throw new BadRequestException('An Excel (.xlsx) workbook file is required.');
+    }
+    const actor = request.authenticatedActor
+      ? { id: request.authenticatedActor.id, auditLabel: request.authenticatedActor.auditLabel }
+      : null;
+    return this.hotelContractImportService.apply(id, file.buffer, actor);
   }
 
   // Unified audit trail across the contract's edited entities
