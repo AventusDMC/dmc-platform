@@ -16,7 +16,7 @@ function createQuotesService(prisma: any = {}) {
 }
 
 function createBookingsService(prisma: any = {}) {
-  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
+  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any, { checkBookingHotelAllotmentAvailability: async () => ({ blockers: [], warnings: [] }) } as any);
 }
 
 function createBaseQuote(overrides: Record<string, unknown> = {}) {

@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DispatchEventsService } from '../dispatch-events/dispatch-events.service';
+import { HotelContractsService } from '../hotel-contracts/hotel-contracts.service';
 import { loadRouteStandardsForBookingServices } from '../route-standards/route-standard-lookup';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
@@ -201,6 +202,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly dispatchEvents: DispatchEventsService,
+    private readonly hotelContracts: HotelContractsService,
   ) {}
 
   onModuleInit() {
@@ -1517,6 +1519,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         select: {
           id: true,
           status: true,
+          snapshotJson: true,
           services: {
             select: {
               id: true,
@@ -1541,6 +1544,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       await this.assertLatestBookingAmendment(id, tx);
       this.assertAllowedBookingStatusTransition(booking.status, data.status);
       this.assertBookingStatusReadiness(booking, data.status);
+
+      const allotmentWarnings = await this.assertHotelAllotmentAvailableForConfirmation(booking, data.status);
 
       const updatedBooking = await tx.booking.update({
         where: { id },
@@ -1575,11 +1580,58 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           field: 'status',
           from: booking.status,
           to: data.status,
+          ...(allotmentWarnings.length > 0
+            ? { hotelAllotmentReleaseWarnings: allotmentWarnings }
+            : {}),
         },
       });
 
+      if (allotmentWarnings.length > 0) {
+        (updatedBooking as typeof updatedBooking & { hotelAllotmentWarnings?: typeof allotmentWarnings }).hotelAllotmentWarnings =
+          allotmentWarnings;
+      }
+
       return updatedBooking;
     });
+  }
+
+  /**
+   * Hard oversell guard applied when a booking is confirmed. Blocks the
+   * transition if any hotel night would exceed its committed allotment or hits a
+   * stop-sale; returns release-window warnings (which do not block). Only runs on
+   * the draft -> confirmed transition; other transitions pass through untouched.
+   */
+  private async assertHotelAllotmentAvailableForConfirmation(
+    booking: { id: string; snapshotJson: unknown },
+    nextStatus: BookingStatus,
+  ) {
+    if (nextStatus !== BookingStatus.confirmed) {
+      return [] as Awaited<
+        ReturnType<HotelContractsService['checkBookingHotelAllotmentAvailability']>
+      >['warnings'];
+    }
+
+    const { blockers, warnings } = await this.hotelContracts.checkBookingHotelAllotmentAvailability({
+      bookingId: booking.id,
+      snapshotJson: booking.snapshotJson,
+    });
+
+    if (blockers.length > 0) {
+      const detail = blockers
+        .slice(0, 5)
+        .map((blocker) =>
+          blocker.status === 'stop_sale'
+            ? `${blocker.hotelName} / ${blocker.roomName} on ${blocker.date} is on stop-sale`
+            : `${blocker.hotelName} / ${blocker.roomName} on ${blocker.date} (held ${blocker.configuredAllotment}, already taken ${blocker.consumedByOthers}, this booking needs ${blocker.requested})`,
+        )
+        .join('; ');
+      const more = blockers.length > 5 ? ` (+${blockers.length - 5} more)` : '';
+      throw new BadRequestException(
+        `Cannot confirm booking — it would exceed the committed hotel allotment: ${detail}${more}. Increase the allotment, clear the stop-sale, adjust the rooms, or remove the hotel line before confirming.`,
+      );
+    }
+
+    return warnings;
   }
 
   async cancelBooking(

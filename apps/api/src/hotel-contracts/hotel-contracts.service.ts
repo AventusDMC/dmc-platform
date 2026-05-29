@@ -639,6 +639,216 @@ export class HotelContractsService {
     });
   }
 
+  /**
+   * Oversell guard for booking confirmation.
+   *
+   * Given a booking's snapshot, checks every hotel night it requests against the
+   * configured allotments, counting consumption from every OTHER non-cancelled
+   * booking (the booking itself is excluded so it never blocks itself). Returns
+   * hard blockers (stop-sale or would-oversell the held block) and soft warnings
+   * (inside the release window). Rooms/dates with no configured allotment are not
+   * guarded — the operator chose not to manage inventory there.
+   */
+  async checkBookingHotelAllotmentAvailability(input: {
+    bookingId: string;
+    snapshotJson: unknown;
+    bookingDate?: Date;
+  }): Promise<{
+    blockers: Array<{
+      contractId: string;
+      roomCategoryId: string;
+      roomName: string;
+      hotelName: string;
+      date: string;
+      status: 'stop_sale' | 'sold_out';
+      configuredAllotment: number;
+      consumedByOthers: number;
+      requested: number;
+    }>;
+    warnings: Array<{
+      contractId: string;
+      roomCategoryId: string;
+      roomName: string;
+      hotelName: string;
+      date: string;
+      status: 'release_window';
+      releaseDays: number;
+    }>;
+  }> {
+    const bookingDate = input.bookingDate ?? new Date();
+    const requestedRecords = buildHotelAllotmentConsumptionRecords([
+      { bookingId: input.bookingId, status: 'confirmed', snapshotJson: input.snapshotJson, services: [] },
+    ]);
+
+    const blockers: Array<{
+      contractId: string;
+      roomCategoryId: string;
+      roomName: string;
+      hotelName: string;
+      date: string;
+      status: 'stop_sale' | 'sold_out';
+      configuredAllotment: number;
+      consumedByOthers: number;
+      requested: number;
+    }> = [];
+    const warnings: Array<{
+      contractId: string;
+      roomCategoryId: string;
+      roomName: string;
+      hotelName: string;
+      date: string;
+      status: 'release_window';
+      releaseDays: number;
+    }> = [];
+
+    if (requestedRecords.length === 0) {
+      return { blockers, warnings };
+    }
+
+    const contractIds = Array.from(new Set(requestedRecords.map((record) => record.contractId)));
+    const roomCategoryIds = Array.from(new Set(requestedRecords.map((record) => record.roomCategoryId)));
+
+    const [allotments, contracts, rooms, otherBookingSources] = await Promise.all([
+      this.prisma.hotelAllotment.findMany({ where: { hotelContractId: { in: contractIds } } }),
+      this.prisma.hotelContract.findMany({
+        where: { id: { in: contractIds } },
+        select: { id: true, hotel: { select: { name: true } } },
+      }),
+      this.prisma.hotelRoomCategory.findMany({
+        where: { id: { in: roomCategoryIds } },
+        select: { id: true, name: true },
+      }),
+      this.getHotelConsumptionBookingSources(),
+    ]);
+
+    const othersRecords = buildHotelAllotmentConsumptionRecords(
+      otherBookingSources.filter((booking) => booking.bookingId !== input.bookingId),
+    );
+
+    const allotmentsByContract = new Map<string, typeof allotments>();
+    for (const allotment of allotments) {
+      const list = allotmentsByContract.get(allotment.hotelContractId) ?? [];
+      list.push(allotment);
+      allotmentsByContract.set(allotment.hotelContractId, list);
+    }
+    const hotelNameByContract = new Map(contracts.map((contract) => [contract.id, contract.hotel?.name ?? 'Hotel']));
+    const roomNameById = new Map(rooms.map((room) => [room.id, room.name]));
+
+    // Aggregate this booking's requested rooms per (contract, room, night).
+    const requestedByKey = new Map<string, { contractId: string; roomCategoryId: string; date: Date; rooms: number }>();
+    for (const record of requestedRecords) {
+      for (
+        let cursor = this.startOfDay(record.stayDateFrom);
+        cursor <= this.startOfDay(record.stayDateTo);
+        cursor = this.addDays(cursor, 1)
+      ) {
+        const key = `${record.contractId}|${record.roomCategoryId}|${cursor.toISOString().slice(0, 10)}`;
+        const existing = requestedByKey.get(key);
+        if (existing) {
+          existing.rooms += record.roomCount;
+        } else {
+          requestedByKey.set(key, {
+            contractId: record.contractId,
+            roomCategoryId: record.roomCategoryId,
+            date: new Date(cursor),
+            rooms: record.roomCount,
+          });
+        }
+      }
+    }
+
+    for (const entry of requestedByKey.values()) {
+      const contractAllotments = (allotmentsByContract.get(entry.contractId) ?? []).map((allotment) => ({
+        id: allotment.id,
+        hotelContractId: allotment.hotelContractId,
+        roomCategoryId: allotment.roomCategoryId,
+        dateFrom: allotment.dateFrom,
+        dateTo: allotment.dateTo,
+        allotment: allotment.allotment,
+        releaseDays: allotment.releaseDays,
+        stopSale: allotment.stopSale,
+        notes: allotment.notes,
+        isActive: allotment.isActive,
+        createdAt: allotment.createdAt,
+        updatedAt: allotment.updatedAt,
+      }));
+
+      const evaluation = evaluateHotelAllotment({
+        allotments: contractAllotments,
+        roomCategoryId: entry.roomCategoryId,
+        stayDate: entry.date,
+        bookingDate,
+        consumption: null,
+      });
+
+      // No active allotment configured for this room/date → not guarded.
+      if (!evaluation.matchingAllotment || evaluation.status === 'inactive') {
+        continue;
+      }
+
+      const consumedByOthers = calculateHotelAllotmentConsumptionForDate(
+        {
+          hotelContractId: entry.contractId,
+          roomCategoryId: entry.roomCategoryId,
+          dateFrom: entry.date,
+          dateTo: entry.date,
+          allotment: 0,
+        },
+        othersRecords,
+        entry.date,
+      ).consumed;
+
+      const configuredAllotment = Math.max(evaluation.matchingAllotment.allotment, 0);
+      const roomName = roomNameById.get(entry.roomCategoryId) ?? 'Room';
+      const hotelName = hotelNameByContract.get(entry.contractId) ?? 'Hotel';
+      const dateLabel = entry.date.toISOString().slice(0, 10);
+
+      if (evaluation.status === 'stop_sale') {
+        blockers.push({
+          contractId: entry.contractId,
+          roomCategoryId: entry.roomCategoryId,
+          roomName,
+          hotelName,
+          date: dateLabel,
+          status: 'stop_sale',
+          configuredAllotment,
+          consumedByOthers,
+          requested: entry.rooms,
+        });
+        continue;
+      }
+
+      if (consumedByOthers + entry.rooms > configuredAllotment) {
+        blockers.push({
+          contractId: entry.contractId,
+          roomCategoryId: entry.roomCategoryId,
+          roomName,
+          hotelName,
+          date: dateLabel,
+          status: 'sold_out',
+          configuredAllotment,
+          consumedByOthers,
+          requested: entry.rooms,
+        });
+        continue;
+      }
+
+      if (evaluation.insideReleaseWindow) {
+        warnings.push({
+          contractId: entry.contractId,
+          roomCategoryId: entry.roomCategoryId,
+          roomName,
+          hotelName,
+          date: dateLabel,
+          status: 'release_window',
+          releaseDays: evaluation.matchingAllotment.releaseDays,
+        });
+      }
+    }
+
+    return { blockers, warnings };
+  }
+
   async getAllotmentDailySummary(contractId: string, allotmentId: string, bookingDate?: Date) {
     const [contract, bookingConsumptionSources] = await Promise.all([this.findOne(contractId), this.getHotelConsumptionBookingSources()]);
     const allotment = contract.allotments.find((entry) => entry.id === allotmentId);

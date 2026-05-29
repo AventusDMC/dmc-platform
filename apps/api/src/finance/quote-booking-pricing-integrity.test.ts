@@ -390,7 +390,7 @@ function createPricingHarness() {
 
   const activitiesService = new ActivitiesService(prisma);
   const quotesService = new QuotesService(prisma, { log: async () => null }, {}, {}, new QuotePricingService());
-  const bookingsService = new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
+  const bookingsService = new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any, { checkBookingHotelAllotmentAvailability: async () => ({ blockers: [], warnings: [] }) } as any);
   capturePdfText(bookingsService);
 
   (quotesService as any).recalculateQuoteTotals = async (quoteId: string) => {

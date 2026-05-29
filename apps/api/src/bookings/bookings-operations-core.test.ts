@@ -9,7 +9,7 @@ const { BookingsService } = require('./bookings.service');
 const { BookingsController } = require('./bookings.controller');
 
 function createService(prisma: any) {
-  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
+  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any, { checkBookingHotelAllotmentAvailability: async () => ({ blockers: [], warnings: [] }) } as any);
 }
 
 function capturePdfText(service: any) {
