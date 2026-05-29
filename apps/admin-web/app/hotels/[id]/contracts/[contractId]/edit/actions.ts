@@ -48,12 +48,36 @@ export async function updateContract(hotelId: string, contractId: string, formDa
     throw new Error('Currency must be a 3-letter ISO code (e.g. USD, JOD, AED, EUR).');
   }
 
+  // Group FOC policy. The backend normalizes (none → clears ratio/count/room;
+  // ratio needs a positive ratio; fixed needs a count), so we just forward.
+  const focRawType = String(formData.get('focType') ?? 'none').trim().toLowerCase();
+  const focType = focRawType === 'ratio' ? 'ratio' : focRawType === 'fixed' ? 'fixed' : 'none';
+  const focRatioRaw = String(formData.get('focRatio') ?? '').trim();
+  const focCountRaw = String(formData.get('focCount') ?? '').trim();
+  const focRoomType = String(formData.get('focRoomType') ?? 'double').trim().toLowerCase() === 'single' ? 'single' : 'double';
+
+  if (focType === 'ratio' && !(Number(focRatioRaw) > 0)) {
+    throw new Error('Enter a FOC ratio greater than zero (e.g. 15) when FOC type is Ratio.');
+  }
+  if (focType === 'fixed' && !(Number(focCountRaw) >= 0)) {
+    throw new Error('Enter a FOC free-room count of zero or more when FOC type is Fixed.');
+  }
+
   const response = await adminPageFetch(
     `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, validFrom, validTo, currency }),
+      body: JSON.stringify({
+        name,
+        validFrom,
+        validTo,
+        currency,
+        focType,
+        focRatio: focType === 'ratio' ? Number(focRatioRaw) : null,
+        focCount: focType === 'fixed' ? Number(focCountRaw || 0) : null,
+        focRoomType: focType === 'none' ? null : focRoomType,
+      }),
     },
   );
 

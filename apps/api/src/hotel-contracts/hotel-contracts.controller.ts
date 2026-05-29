@@ -27,6 +27,10 @@ type CreateHotelContractBody = {
   validFrom: string;
   validTo: string;
   currency: string;
+  focType?: string | null;
+  focRatio?: number | null;
+  focCount?: number | null;
+  focRoomType?: string | null;
 };
 
 type UpdateHotelContractBody = Partial<CreateHotelContractBody>;
@@ -175,6 +179,10 @@ export class HotelContractsController {
       validFrom: new Date(body.validFrom),
       validTo: new Date(body.validTo),
       currency: body.currency,
+      focType: body.focType,
+      focRatio: body.focRatio,
+      focCount: body.focCount,
+      focRoomType: body.focRoomType,
     });
   }
 
@@ -200,6 +208,10 @@ export class HotelContractsController {
       validFrom: body.validFrom === undefined ? undefined : new Date(body.validFrom),
       validTo: body.validTo === undefined ? undefined : new Date(body.validTo),
       currency: body.currency,
+      focType: body.focType,
+      focRatio: body.focRatio,
+      focCount: body.focCount,
+      focRoomType: body.focRoomType,
     });
   }
 

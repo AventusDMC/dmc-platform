@@ -3055,6 +3055,8 @@ export class QuotesService {
       include: values.include,
     } as any);
 
+    await this.maybeInheritContractFoc(quote.id, (item as { contractId?: string | null }).contractId ?? null);
+
     if (values.quoteItineraryDayId) {
       const lastDayItem = await this.prisma.quoteItineraryDayItem.findFirst({
         where: { dayId: values.quoteItineraryDayId },
@@ -10320,6 +10322,43 @@ export class QuotesService {
       focCount: Math.floor(focCount),
       focRoomType,
     };
+  }
+
+  /**
+   * When a hotel contract is added to a quote and the quote's own FOC is still
+   * unset ('none'), inherit the contract's group FOC policy so group quotes pick
+   * up "1 free per N paying" automatically. Operator-set FOC is never overwritten.
+   */
+  private async maybeInheritContractFoc(quoteId: string, contractId: string | null) {
+    if (!contractId) {
+      return;
+    }
+
+    const quote = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { focType: true } });
+    if (!quote || this.normalizeQuoteFocType(quote.focType) !== 'none') {
+      return;
+    }
+
+    const contract = await this.prisma.hotelContract.findUnique({
+      where: { id: contractId },
+      select: { focType: true, focRatio: true, focCount: true, focRoomType: true },
+    });
+    const contractFoc = contract as
+      | { focType?: string | null; focRatio?: number | null; focCount?: number | null; focRoomType?: string | null }
+      | null;
+    if (!contractFoc || this.normalizeQuoteFocType(contractFoc.focType) === 'none') {
+      return;
+    }
+
+    await this.prisma.quote.update({
+      where: { id: quoteId },
+      data: this.normalizeQuoteFocConfig({
+        focType: this.normalizeQuoteFocType(contractFoc.focType),
+        focRatio: contractFoc.focRatio ?? null,
+        focCount: contractFoc.focCount ?? null,
+        focRoomType: this.normalizeQuoteFocRoomType(contractFoc.focRoomType),
+      }),
+    });
   }
 
   private resolveQuoteFoc(values: {

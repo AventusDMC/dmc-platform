@@ -21,6 +21,10 @@ type ContractSummary = {
   validFrom: string;
   validTo: string;
   currency: string;
+  focType?: string | null;
+  focRatio?: number | null;
+  focCount?: number | null;
+  focRoomType?: string | null;
   hotel: { id: string; name: string };
 };
 
@@ -129,6 +133,54 @@ export default async function ContractEditPage({ params }: Props) {
                       {code}
                     </option>
                   ))}
+                </select>
+              </label>
+            </div>
+            <h3 className="section-title" style={{ fontSize: '0.95rem', margin: '1rem 0 0.3rem' }}>
+              Group free-of-charge (FOC)
+            </h3>
+            <p className="table-subcopy" style={{ marginTop: 0, marginBottom: '0.6rem' }}>
+              The complimentary policy for groups (e.g. &ldquo;1 free per 15 paying, in a
+              double/twin&rdquo;). Group quotes on this contract inherit it automatically when their
+              own FOC is still unset. Use <strong>Ratio</strong> with a value of 15 or 20 for the
+              common case; <strong>Fixed</strong> for a set number of free rooms.
+            </p>
+            <div className="form-row form-row-4">
+              <label>
+                FOC type
+                <select name="focType" defaultValue={contract.focType ?? 'none'}>
+                  <option value="none">None</option>
+                  <option value="ratio">Ratio (1 free per N paying)</option>
+                  <option value="fixed">Fixed (N free rooms)</option>
+                </select>
+              </label>
+              <label>
+                Ratio (paying per free)
+                <input
+                  type="number"
+                  name="focRatio"
+                  min="1"
+                  step="1"
+                  defaultValue={contract.focRatio ?? ''}
+                  placeholder="15"
+                />
+              </label>
+              <label>
+                Fixed free rooms
+                <input
+                  type="number"
+                  name="focCount"
+                  min="0"
+                  step="1"
+                  defaultValue={contract.focCount ?? ''}
+                  placeholder="0"
+                />
+              </label>
+              <label>
+                FOC room type
+                <select name="focRoomType" defaultValue={contract.focRoomType ?? 'double'}>
+                  <option value="double">Double / Twin</option>
+                  <option value="single">Single</option>
                 </select>
               </label>
             </div>
