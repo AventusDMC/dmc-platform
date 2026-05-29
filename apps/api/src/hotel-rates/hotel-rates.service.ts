@@ -446,6 +446,12 @@ export class HotelRatesService {
       warnings?: string[];
     }> = [];
 
+    // Accumulate service charge + sales tax across nights. Each night's
+    // rate carries its own % + included flags; a "not included" % is added
+    // on top of that night's cost (room + supplements), service first then
+    // sales (matching the quote engine's order).
+    let serviceChargeTotal = 0;
+    let salesTaxTotal = 0;
     let nightIndex = 0;
     for (let current = new Date(checkInDate); current < checkOutDate; current = this.addDays(current, 1)) {
       const rate = await this.lookup({
@@ -532,6 +538,16 @@ export class HotelRatesService {
           warnings: [],
         });
       }
+
+      // Tax this night's cost (room + supplements) using the night's rate.
+      const nightCost = breakdown[breakdown.length - 1].cost;
+      const svcPct = Number((rate as any).serviceChargePercent ?? 0);
+      const svcAmt = (rate as any).serviceChargeIncluded || svcPct <= 0 ? 0 : nightCost * (svcPct / 100);
+      const salesPct = Number((rate as any).salesTaxPercent ?? 0);
+      const salesAmt = (rate as any).salesTaxIncluded || salesPct <= 0 ? 0 : (nightCost + svcAmt) * (salesPct / 100);
+      serviceChargeTotal += svcAmt;
+      salesTaxTotal += salesAmt;
+
       nightIndex += 1;
     }
 
@@ -539,11 +555,18 @@ export class HotelRatesService {
     const childrenCost = Number(breakdown.reduce((sum, item) => sum + item.childrenCost, 0).toFixed(2));
     const supplementsCost = Number(breakdown.reduce((sum, item) => sum + item.supplementsCost, 0).toFixed(2));
 
+    const netSubtotal = Number((adultsCost + childrenCost + supplementsCost).toFixed(2));
+    const serviceCharge = Number(serviceChargeTotal.toFixed(2));
+    const salesTax = Number(salesTaxTotal.toFixed(2));
     return {
       adultsCost,
       childrenCost,
       supplementsCost,
-      totalCost: Number((adultsCost + childrenCost + supplementsCost).toFixed(2)),
+      totalCost: netSubtotal,
+      // Tax breakdown (added on top of net rates) + the gross guest total.
+      serviceCharge,
+      salesTax,
+      grossTotal: Number((netSubtotal + serviceCharge + salesTax).toFixed(2)),
       nights: breakdown.length,
       breakdown,
     };
