@@ -136,6 +136,7 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
   let cost: CostResult | null = null;
   let promos: PromoResult | null = null;
   let priceError: string | null = null;
+  let availability: { worst: string; worstDate: string | null; minRemaining: number | null } | null = null;
 
   if (shouldPrice) {
     const adultsNum = Number(inAdults) || 0;
@@ -194,6 +195,55 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
       } catch (error) {
         if (isNextRedirectError(error)) throw error;
         promos = null; // non-fatal — just omit the promotions panel
+      }
+
+      // Allotment availability: evaluate each night and report the worst
+      // status across the stay (the allotment evaluator is per stay-date).
+      const nights: string[] = [];
+      const cursor = new Date(`${inCheckIn}T00:00:00.000Z`);
+      const end = new Date(`${inCheckOut}T00:00:00.000Z`);
+      for (let guard = 0; cursor < end && guard < 60; guard += 1) {
+        nights.push(cursor.toISOString().slice(0, 10));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+      try {
+        type AllotEval = { status: string; remainingAvailability: number };
+        const evals = await Promise.all(
+          nights.map(async (night) => {
+            const q = new URLSearchParams({ roomCategoryId: inRoom, stayDate: night });
+            const e = await adminPageFetchJson<AllotEval>(
+              `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}/allotments/evaluate?${q.toString()}`,
+              'Quote simulator — availability',
+              { cache: 'no-store' },
+            );
+            return { night, status: e.status, remaining: e.remainingAvailability };
+          }),
+        );
+        const severity: Record<string, number> = {
+          stop_sale: 5,
+          sold_out: 4,
+          release_window: 3,
+          not_configured: 2,
+          inactive: 2,
+          available: 1,
+        };
+        let worst = evals[0];
+        for (const e of evals) {
+          if ((severity[e.status] ?? 0) > (severity[worst.status] ?? 0)) worst = e;
+        }
+        const remainings = evals
+          .filter((e) => e.status === 'available' || e.status === 'release_window')
+          .map((e) => e.remaining);
+        availability = worst
+          ? {
+              worst: worst.status,
+              worstDate: worst.night,
+              minRemaining: remainings.length ? Math.min(...remainings) : null,
+            }
+          : null;
+      } catch (error) {
+        if (isNextRedirectError(error)) throw error;
+        availability = null; // non-fatal — omit the availability panel
       }
     }
   }
@@ -383,6 +433,31 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
               <p className="table-subcopy" style={{ marginTop: '0.75rem' }}>
                 No promotions apply to these inputs.
               </p>
+            ) : null}
+
+            {/* Inventory availability across the stay (worst night). */}
+            {availability ? (
+              <div className="detail-card" style={{ marginTop: '1rem' }}>
+                <h3 className="section-title" style={{ fontSize: '0.95rem', marginBottom: '0.4rem' }}>
+                  Inventory
+                </h3>
+                {(() => {
+                  const a = availability;
+                  if (a.worst === 'stop_sale')
+                    return <p style={{ margin: 0, color: '#b91c1c', fontWeight: 600 }}>Stop-sale on {a.worstDate} — not bookable for these dates.</p>;
+                  if (a.worst === 'sold_out')
+                    return <p style={{ margin: 0, color: '#b91c1c', fontWeight: 600 }}>Sold out on {a.worstDate} — no rooms left in the allotment.</p>;
+                  if (a.worst === 'release_window')
+                    return <p style={{ margin: 0, color: '#b45309', fontWeight: 600 }}>Within the release window on {a.worstDate} — unsold rooms may have been returned to the hotel.</p>;
+                  if (a.worst === 'not_configured' || a.worst === 'inactive')
+                    return <p style={{ margin: 0, color: '#64748b' }}>On request — no committed allotment covers these dates.</p>;
+                  return (
+                    <p style={{ margin: 0, color: '#16a34a', fontWeight: 600 }}>
+                      Available{a.minRemaining != null ? ` — at least ${a.minRemaining} room${a.minRemaining === 1 ? '' : 's'} every night` : ''}.
+                    </p>
+                  );
+                })()}
+              </div>
             ) : null}
           </section>
         ) : null}
