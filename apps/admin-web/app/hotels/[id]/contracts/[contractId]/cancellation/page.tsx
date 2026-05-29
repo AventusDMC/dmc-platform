@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../../../../lib/admin-server';
-import { createRule, deleteRule, upsertPolicy } from './actions';
+import { createRule, deleteRule, updateRule, upsertPolicy } from './actions';
 
 // Hotels Engine — cancellation policy editor (PR-A7).
 //
@@ -150,7 +150,7 @@ export default async function ContractCancellationPage({ params }: Props) {
             (separate from the time-window rules below).
           </p>
           <form action={upsertAction} className="entity-form compact-form">
-            <div className="form-row form-row-2">
+            <div className="form-row">
               <label>
                 Summary (shown to operators)
                 <input
@@ -317,6 +317,7 @@ export default async function ContractCancellationPage({ params }: Props) {
                 <tbody>
                   {rules.map((r) => {
                     const deleteRuleAction = deleteRule.bind(null, hotelId, contractId, r.id);
+                    const updateRuleAction = updateRule.bind(null, hotelId, contractId, r.id);
                     const unit = DEADLINE_UNIT_LABELS[r.deadlineUnit] || r.deadlineUnit.toLowerCase();
                     return (
                       <tr key={r.id}>
@@ -328,7 +329,75 @@ export default async function ContractCancellationPage({ params }: Props) {
                         <td>{r.isActive ? 'Yes' : 'No'}</td>
                         <td style={{ maxWidth: '20rem' }}>{r.notes || '—'}</td>
                         <td>
-                          <form action={deleteRuleAction}>
+                          {/* Inline edit via native <details> disclosure — no
+                              client JS, same server-action style as the add
+                              form. Expands an editable copy of the row. */}
+                          <details>
+                            <summary className="compact-button" style={{ cursor: 'pointer', display: 'inline-block' }}>
+                              Edit
+                            </summary>
+                            <form
+                              action={updateRuleAction}
+                              className="entity-form compact-form"
+                              style={{ marginTop: '0.6rem', minWidth: '22rem' }}
+                            >
+                              <div className="form-row">
+                                <label>
+                                  Window start
+                                  <input type="number" name="windowFromValue" min={0} step="1" required defaultValue={r.windowFromValue} />
+                                </label>
+                                <label>
+                                  Window end
+                                  <input type="number" name="windowToValue" min={0} step="1" required defaultValue={r.windowToValue} />
+                                </label>
+                              </div>
+                              <div className="form-row">
+                                <label>
+                                  Unit
+                                  <select name="deadlineUnit" required defaultValue={r.deadlineUnit}>
+                                    <option value="DAYS">Days</option>
+                                    <option value="HOURS">Hours</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Penalty type
+                                  <select name="penaltyType" required defaultValue={r.penaltyType}>
+                                    <option value="PERCENT">Percent of stay</option>
+                                    <option value="NIGHTS">Nights forfeited</option>
+                                    <option value="FULL_STAY">Full stay</option>
+                                    <option value="FIXED">Fixed amount</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="form-row">
+                                <label>
+                                  Penalty value (blank for Full stay)
+                                  <input
+                                    type="number"
+                                    name="penaltyValue"
+                                    min={0}
+                                    step="0.01"
+                                    defaultValue={r.penaltyValue ?? ''}
+                                  />
+                                </label>
+                                <label>
+                                  Active
+                                  <select name="isActive" defaultValue={r.isActive ? 'true' : 'false'}>
+                                    <option value="true">Yes</option>
+                                    <option value="false">No</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <label>
+                                Notes (optional)
+                                <input type="text" name="notes" maxLength={240} defaultValue={r.notes ?? ''} />
+                              </label>
+                              <button type="submit" className="primary-button" style={{ marginTop: '0.4rem' }}>
+                                Save rule
+                              </button>
+                            </form>
+                          </details>
+                          <form action={deleteRuleAction} style={{ marginTop: '0.5rem' }}>
                             <button
                               type="submit"
                               className="compact-button"
@@ -356,8 +425,7 @@ export default async function ContractCancellationPage({ params }: Props) {
           style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/cancellation — server-rendered.
-          Policy upsert via PUT; rule create / delete via Server Actions. Rule edit ships
-          in a follow-up.
+          Policy upsert via PUT; rule create / edit / delete via Server Actions.
         </p>
       </section>
     </main>

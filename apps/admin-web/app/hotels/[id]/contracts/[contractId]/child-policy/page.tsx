@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../../../../lib/admin-server';
-import { createBand, deleteBand, upsertPolicy } from './actions';
+import { createBand, deleteBand, updateBand, upsertPolicy } from './actions';
 
 // Hotels Engine — child policy editor (PR-A8).
 //
@@ -284,6 +284,7 @@ export default async function ContractChildPolicyPage({ params }: Props) {
                 <tbody>
                   {bands.map((b) => {
                     const deleteBandAction = deleteBand.bind(null, hotelId, contractId, b.id);
+                    const updateBandAction = updateBand.bind(null, hotelId, contractId, b.id);
                     return (
                       <tr key={b.id}>
                         <td>
@@ -297,7 +298,64 @@ export default async function ContractChildPolicyPage({ params }: Props) {
                         <td>{b.isActive ? 'Yes' : 'No'}</td>
                         <td style={{ maxWidth: '20rem' }}>{b.notes || '—'}</td>
                         <td>
-                          <form action={deleteBandAction}>
+                          {/* Inline edit via native <details> disclosure —
+                              no client JS, mirrors the add-band form. */}
+                          <details>
+                            <summary className="compact-button" style={{ cursor: 'pointer', display: 'inline-block' }}>
+                              Edit
+                            </summary>
+                            <form
+                              action={updateBandAction}
+                              className="entity-form compact-form"
+                              style={{ marginTop: '0.6rem', minWidth: '22rem' }}
+                            >
+                              <label>
+                                Label
+                                <input type="text" name="label" required maxLength={80} defaultValue={b.label} />
+                              </label>
+                              <div className="form-row">
+                                <label>
+                                  Min age
+                                  <input type="number" name="minAge" min={0} step="1" required defaultValue={b.minAge} />
+                                </label>
+                                <label>
+                                  Max age
+                                  <input type="number" name="maxAge" min={0} step="1" required defaultValue={b.maxAge} />
+                                </label>
+                              </div>
+                              <div className="form-row">
+                                <label>
+                                  Charge basis
+                                  <select name="chargeBasis" required defaultValue={b.chargeBasis}>
+                                    <option value="FREE">Free</option>
+                                    <option value="PERCENT_OF_ADULT">Percent of adult</option>
+                                    <option value="FIXED_AMOUNT">Fixed amount</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Charge value (blank if Free)
+                                  <input type="number" name="chargeValue" min={0} step="0.01" defaultValue={b.chargeValue ?? ''} />
+                                </label>
+                              </div>
+                              <div className="form-row">
+                                <label>
+                                  Active
+                                  <select name="isActive" defaultValue={b.isActive ? 'true' : 'false'}>
+                                    <option value="true">Yes</option>
+                                    <option value="false">No</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Notes (optional)
+                                  <input type="text" name="notes" maxLength={240} defaultValue={b.notes ?? ''} />
+                                </label>
+                              </div>
+                              <button type="submit" className="primary-button" style={{ marginTop: '0.4rem' }}>
+                                Save band
+                              </button>
+                            </form>
+                          </details>
+                          <form action={deleteBandAction} style={{ marginTop: '0.5rem' }}>
                             <button
                               type="submit"
                               className="compact-button"
@@ -325,8 +383,7 @@ export default async function ContractChildPolicyPage({ params }: Props) {
           style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/child-policy — server-rendered.
-          Policy upsert via PUT; band create / delete via Server Actions. Band edit ships
-          in a follow-up.
+          Policy upsert via PUT; band create / edit / delete via Server Actions.
         </p>
       </section>
     </main>

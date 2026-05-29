@@ -106,6 +106,37 @@ export async function toggleMealPlanActive(
   revalidateMealPlanScope(hotelId, contractId);
 }
 
+export async function updateMealPlan(
+  hotelId: string,
+  contractId: string,
+  mealPlanId: string,
+  formData: FormData,
+) {
+  const code = parseEnum(formData.get('code'), 'Meal plan code', MEAL_PLAN_CODES);
+  const isActive = formData.get('isActive') === 'on' || formData.get('isActive') === 'true';
+  const notes = optionalString(formData.get('notes'));
+
+  const response = await adminPageFetch(
+    `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}/meal-plans/${encodeURIComponent(mealPlanId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, isActive, notes }),
+    },
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    // Likeliest failure: changing the code collides with the
+    // (contractId, code) unique constraint — surfaced verbatim.
+    throw new Error(
+      `Could not update meal plan: HTTP ${response.status} ${errBody.slice(0, 200)}`,
+    );
+  }
+
+  revalidateMealPlanScope(hotelId, contractId);
+}
+
 export async function deleteMealPlan(
   hotelId: string,
   contractId: string,

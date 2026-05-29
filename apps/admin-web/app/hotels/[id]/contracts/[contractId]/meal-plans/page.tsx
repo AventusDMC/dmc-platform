@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../../../../lib/admin-server';
-import { createMealPlan, deleteMealPlan, toggleMealPlanActive } from './actions';
+import { createMealPlan, deleteMealPlan, toggleMealPlanActive, updateMealPlan } from './actions';
 
 // Hotels Engine — contract meal plans (PR-A9 — final wizard slice).
 //
@@ -198,6 +198,7 @@ export default async function ContractMealPlansPage({ params }: Props) {
                   {mealPlans.map((m) => {
                     const toggleAction = toggleMealPlanActive.bind(null, hotelId, contractId, m.id, !m.isActive);
                     const deleteAction = deleteMealPlan.bind(null, hotelId, contractId, m.id);
+                    const updateAction = updateMealPlan.bind(null, hotelId, contractId, m.id);
                     return (
                       <tr key={m.id}>
                         <td>
@@ -208,7 +209,46 @@ export default async function ContractMealPlansPage({ params }: Props) {
                         <td>{m.isActive ? 'Yes' : 'No'}</td>
                         <td style={{ maxWidth: '20rem' }}>{m.notes || '—'}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {/* Inline edit via native <details> — change code
+                                / active / notes without a separate page. */}
+                            <details>
+                              <summary className="compact-button" style={{ cursor: 'pointer', display: 'inline-block' }}>
+                                Edit
+                              </summary>
+                              <form
+                                action={updateAction}
+                                className="entity-form compact-form"
+                                style={{ marginTop: '0.6rem', minWidth: '20rem' }}
+                              >
+                                <div className="form-row">
+                                  <label>
+                                    Code
+                                    <select name="code" required defaultValue={m.code}>
+                                      {ALL_CODES.map((c) => (
+                                        <option key={c} value={c}>
+                                          {c} — {MEAL_PLAN_LABELS[c]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Active
+                                    <select name="isActive" defaultValue={m.isActive ? 'true' : 'false'}>
+                                      <option value="true">Yes</option>
+                                      <option value="false">No</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <label>
+                                  Notes (optional)
+                                  <input type="text" name="notes" maxLength={240} defaultValue={m.notes ?? ''} />
+                                </label>
+                                <button type="submit" className="primary-button" style={{ marginTop: '0.4rem' }}>
+                                  Save meal plan
+                                </button>
+                              </form>
+                            </details>
                             <form action={toggleAction}>
                               <button type="submit" className="compact-button">
                                 {m.isActive ? 'Mark inactive' : 'Mark active'}
@@ -243,7 +283,7 @@ export default async function ContractMealPlansPage({ params }: Props) {
           style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/meal-plans — server-rendered. Create
-          / toggle active / delete via Server Actions.
+          / edit / toggle active / delete via Server Actions.
         </p>
       </section>
     </main>
