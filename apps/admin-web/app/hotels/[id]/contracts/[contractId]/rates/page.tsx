@@ -84,12 +84,22 @@ async function getContract(contractId: string): Promise<ContractSummary | null> 
 
 async function getRates(contractId: string): Promise<RateRow[]> {
   try {
-    const rows = await adminPageFetchJson<RateRow[]>(
-      `${API_BASE_URL}/hotel-rates?contractId=${encodeURIComponent(contractId)}`,
-      'Hotel contract rates — list',
-      { cache: 'no-store' },
-    );
-    return Array.isArray(rows) ? rows : [];
+    // The list endpoint is paginated (max 250/page). A full contract can
+    // carry hundreds of rate cells (room × season-range × occupancy × meal),
+    // so fetch every page — otherwise only the first seasons would show.
+    const pageSize = 250;
+    const all: RateRow[] = [];
+    for (let offset = 0; offset < 10000; offset += pageSize) {
+      const rows = await adminPageFetchJson<RateRow[]>(
+        `${API_BASE_URL}/hotel-rates?contractId=${encodeURIComponent(contractId)}&limit=${pageSize}&offset=${offset}`,
+        'Hotel contract rates — list',
+        { cache: 'no-store' },
+      );
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      all.push(...rows);
+      if (rows.length < pageSize) break;
+    }
+    return all;
   } catch (error) {
     if (isNextRedirectError(error)) throw error;
     console.error('[hotels/contract/rates] rates unavailable', error);
