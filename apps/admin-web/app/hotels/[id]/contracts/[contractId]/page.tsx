@@ -224,9 +224,27 @@ export default async function ContractDetailPage({ params }: Props) {
           className="detail-card"
           style={{ marginBottom: '1.5rem' }}
         >
-          <h2 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
-            Contract master data
-          </h2>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.6rem',
+              gap: '0.75rem',
+            }}
+          >
+            <h2 className="section-title" style={{ fontSize: '1.05rem', margin: 0 }}>
+              Contract master data
+            </h2>
+            <Link
+              href={`/hotels/${hotelId}/contracts/${contractId}/edit`}
+              prefetch={false}
+              className="compact-button"
+              style={{ textDecoration: 'none' }}
+            >
+              Edit details
+            </Link>
+          </div>
           <dl
             style={{
               display: 'grid',
