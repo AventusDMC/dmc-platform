@@ -287,6 +287,21 @@ export class HotelContractImportService {
       const basis = cellText(row, 'Charge Basis').toUpperCase() as ContractChargeBasisValue;
       if (!SUPPLEMENT_CHARGE_BASES.has(basis)) {
         rowErrors.push({ row: rowNumber, message: `Charge Basis "${cellText(row, 'Charge Basis')}" is not valid` });
+      } else if (
+        // Mirror the service's type↔basis rule so the preview catches what
+        // apply would reject: EXTRA_BED is room/stay/night; meal & gala
+        // types are per-person or per-room only.
+        typeUpper === 'EXTRA_BED'
+          ? !['PER_ROOM', 'PER_NIGHT', 'PER_STAY'].includes(basis)
+          : !['PER_PERSON', 'PER_ROOM'].includes(basis)
+      ) {
+        rowErrors.push({
+          row: rowNumber,
+          message:
+            typeUpper === 'EXTRA_BED'
+              ? `EXTRA_BED allows only PER_ROOM, PER_NIGHT or PER_STAY`
+              : `${typeUpper} allows only PER_PERSON or PER_ROOM`,
+        });
       }
       const amount = Number(amountRaw);
       if (!(Number.isFinite(amount) && amount >= 0)) {
