@@ -9,13 +9,23 @@ import {
 } from './hotel-allotment-consumption';
 import { evaluateHotelAllotment } from './hotel-allotment-evaluator';
 
+type ContractFocType = 'none' | 'ratio' | 'fixed';
+type ContractFocRoomType = 'single' | 'double';
+
+type ContractFocInput = {
+  focType?: ContractFocType | string | null;
+  focRatio?: number | null;
+  focCount?: number | null;
+  focRoomType?: ContractFocRoomType | string | null;
+};
+
 type CreateHotelContractInput = {
   hotelId: string;
   name: string;
   validFrom: Date;
   validTo: Date;
   currency: string;
-};
+} & ContractFocInput;
 
 type UpdateHotelContractInput = Partial<CreateHotelContractInput>;
 
@@ -456,11 +466,47 @@ export class HotelContractsService {
         validFrom: data.validFrom,
         validTo: data.validTo,
         currency: data.currency.trim().toUpperCase(),
+        ...this.normalizeContractFocConfig(data),
       },
       include: {
         ...hotelContractInclude,
       },
     });
+  }
+
+  /**
+   * Normalize the group FOC (free-of-charge) policy carried on the contract,
+   * mirroring the quote-level FOC rules: focType none|ratio|fixed, room type
+   * required when enabled, ratio > 0, count >= 0. Returns a fully-specified
+   * object suitable for both create and update.
+   */
+  private normalizeContractFocConfig(values: ContractFocInput) {
+    const rawType = String(values.focType ?? 'none').trim().toLowerCase();
+    const focType: ContractFocType = rawType === 'ratio' ? 'ratio' : rawType === 'fixed' ? 'fixed' : 'none';
+    const rawRoom = String(values.focRoomType ?? '').trim().toLowerCase();
+    const focRoomType: ContractFocRoomType | null = rawRoom === 'single' ? 'single' : rawRoom === 'double' || rawRoom === 'twin' ? 'double' : null;
+
+    if (focType === 'none') {
+      return { focType: 'none', focRatio: null, focCount: null, focRoomType: null };
+    }
+
+    if (!focRoomType) {
+      throw new BadRequestException('FOC room type is required when FOC is enabled');
+    }
+
+    if (focType === 'ratio') {
+      const focRatio = Number(values.focRatio);
+      if (!Number.isFinite(focRatio) || focRatio <= 0) {
+        throw new BadRequestException('FOC ratio must be greater than zero');
+      }
+      return { focType: 'ratio', focRatio: Number(focRatio.toFixed(2)), focCount: null, focRoomType };
+    }
+
+    const focCount = Number(values.focCount);
+    if (!Number.isFinite(focCount) || focCount < 0) {
+      throw new BadRequestException('FOC count must be zero or greater');
+    }
+    return { focType: 'fixed', focRatio: null, focCount: Math.floor(focCount), focRoomType };
   }
 
   async update(id: string, data: UpdateHotelContractInput) {
@@ -485,6 +531,17 @@ export class HotelContractsService {
       throw new BadRequestException('Cannot move hotel contract because linked quote items exist');
     }
 
+    const focProvided =
+      data.focType !== undefined || data.focRatio !== undefined || data.focCount !== undefined || data.focRoomType !== undefined;
+    const focData = focProvided
+      ? this.normalizeContractFocConfig({
+          focType: data.focType ?? (existing as any).focType,
+          focRatio: data.focRatio ?? (existing as any).focRatio,
+          focCount: data.focCount ?? (existing as any).focCount,
+          focRoomType: data.focRoomType ?? (existing as any).focRoomType,
+        })
+      : {};
+
     return this.prisma.hotelContract.update({
       where: { id },
       data: {
@@ -493,6 +550,7 @@ export class HotelContractsService {
         validFrom,
         validTo,
         currency: data.currency === undefined ? undefined : data.currency.trim().toUpperCase(),
+        ...focData,
       },
       include: {
         ...hotelContractInclude,

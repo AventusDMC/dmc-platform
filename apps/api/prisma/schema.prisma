@@ -506,6 +506,13 @@ model HotelContract {
   lastVerifiedAt              DateTime?
   verifiedBy                  String?
   verificationNotes           String?
+  // Group free-of-charge (complimentary) policy carried by the contract,
+  // mirroring the Quote FOC fields. Group quotes on this contract inherit
+  // these when the quote's own FOC is still unset. focType: none|ratio|fixed.
+  focType                     String                              @default("none")
+  focRatio                    Float?
+  focCount                    Int?
+  focRoomType                 String?
 
   @@index([hotelId])
   @@index([confidence])
