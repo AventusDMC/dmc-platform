@@ -174,6 +174,60 @@ export async function createRule(
   revalidateCancellationScope(hotelId, contractId);
 }
 
+export async function updateRule(
+  hotelId: string,
+  contractId: string,
+  ruleId: string,
+  formData: FormData,
+) {
+  const windowFromValue = parseNonNegativeInt(formData.get('windowFromValue'), 'Window start');
+  const windowToValue = parseNonNegativeInt(formData.get('windowToValue'), 'Window end');
+  const deadlineUnit = parseEnum(formData.get('deadlineUnit'), 'Deadline unit', DEADLINE_UNITS);
+  const penaltyType = parseEnum(formData.get('penaltyType'), 'Penalty type', PENALTY_TYPES);
+  const rawPenaltyValue = parseOptionalNumber(formData.get('penaltyValue'), 'Penalty value');
+  const penaltyValue = penaltyType === 'FULL_STAY' ? null : rawPenaltyValue;
+  const isActive = formData.get('isActive') === 'on' || formData.get('isActive') === 'true';
+  const notes = optionalString(formData.get('notes'));
+
+  if (windowFromValue < windowToValue) {
+    throw new Error(
+      'Window start must be greater than or equal to window end (rules count down toward arrival, e.g. "30 → 14 days before arrival").',
+    );
+  }
+  if (penaltyType !== 'FULL_STAY' && penaltyValue === null) {
+    throw new Error('This penalty type requires a numeric value.');
+  }
+  if (penaltyType === 'PERCENT' && penaltyValue !== null && penaltyValue > 100) {
+    throw new Error('Percent penalty cannot exceed 100.');
+  }
+
+  const response = await adminPageFetch(
+    `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}/cancellation-policy/rules/${encodeURIComponent(ruleId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        windowFromValue,
+        windowToValue,
+        deadlineUnit,
+        penaltyType,
+        penaltyValue,
+        isActive,
+        notes,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(
+      `Could not update cancellation rule: HTTP ${response.status} ${errBody.slice(0, 200)}`,
+    );
+  }
+
+  revalidateCancellationScope(hotelId, contractId);
+}
+
 export async function deleteRule(
   hotelId: string,
   contractId: string,

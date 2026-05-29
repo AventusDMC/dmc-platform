@@ -47,10 +47,12 @@ finish. A smaller set is genuinely net-new.
 ### Phase 1 — Finish the half-built CRUD (polish; makes it feel professional)
 Small, no-migration, removes daily friction. Each is independently shippable.
 1. ~~Contract master-data edit~~ ✅ done 2026-05-29.
-2. Edit existing **cancellation rules** (currently add/delete only).
-3. Edit existing **child-policy bands** (currently add/delete only).
-4. Edit **meal-plan** details (code / notes / `isDefault` toggle), not just active flag.
-5. **Audit-log viewer** per contract (read-only; backend already records it).
+2. ~~Edit existing **cancellation rules**~~ ✅ done 2026-05-29 (inline edit).
+3. ~~Edit existing **child-policy bands**~~ ✅ done 2026-05-29 (inline edit).
+4. ~~Edit **meal-plan** details (code / active / notes)~~ ✅ done 2026-05-29 (inline edit).
+   `isDefault` still not settable — the meal-plans endpoint doesn't accept it; tracked
+   as the separate "mark as default" backlog item.
+5. **Audit-log viewer** per contract (read-only; backend already records it). _Open._
 
 _Size: S each. Dependency: none. Risk: low (UI + existing endpoints)._
 

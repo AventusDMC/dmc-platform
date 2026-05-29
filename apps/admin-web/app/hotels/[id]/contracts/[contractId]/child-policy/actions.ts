@@ -157,6 +157,58 @@ export async function createBand(
   revalidateChildPolicyScope(hotelId, contractId);
 }
 
+export async function updateBand(
+  hotelId: string,
+  contractId: string,
+  bandId: string,
+  formData: FormData,
+) {
+  const label = trimOrThrow(formData.get('label'), 'Band label');
+  const minAge = parseNonNegativeInt(formData.get('minAge'), 'Min age');
+  const maxAge = parseNonNegativeInt(formData.get('maxAge'), 'Max age');
+  const chargeBasis = parseEnum(formData.get('chargeBasis'), 'Charge basis', CHARGE_BASES);
+  const rawChargeValue = parseOptionalNumber(formData.get('chargeValue'), 'Charge value');
+  const chargeValue = chargeBasis === 'FREE' ? null : rawChargeValue;
+  const isActive = formData.get('isActive') === 'on' || formData.get('isActive') === 'true';
+  const notes = optionalString(formData.get('notes'));
+
+  if (minAge > maxAge) {
+    throw new Error('Min age must be less than or equal to max age.');
+  }
+  if (chargeBasis !== 'FREE' && chargeValue === null) {
+    throw new Error('This charge basis requires a numeric value.');
+  }
+  if (chargeBasis === 'PERCENT_OF_ADULT' && chargeValue !== null && chargeValue > 100) {
+    throw new Error('Percent-of-adult charge cannot exceed 100.');
+  }
+
+  const response = await adminPageFetch(
+    `${API_BASE_URL}/hotel-contracts/${encodeURIComponent(contractId)}/child-policy/bands/${encodeURIComponent(bandId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label,
+        minAge,
+        maxAge,
+        chargeBasis,
+        chargeValue,
+        isActive,
+        notes,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(
+      `Could not update child policy band: HTTP ${response.status} ${errBody.slice(0, 200)}`,
+    );
+  }
+
+  revalidateChildPolicyScope(hotelId, contractId);
+}
+
 export async function deleteBand(
   hotelId: string,
   contractId: string,
