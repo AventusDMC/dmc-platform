@@ -299,7 +299,11 @@ export default async function ContractDetailPage({ params }: Props) {
             value={totalSupplements}
             href={`/hotels/${hotelId}/contracts/${contractId}/supplements`}
           />
-          <CountCard label="Allotment ranges" value={totalAllotments} />
+          <CountCard
+            label="Allotment ranges"
+            value={totalAllotments}
+            href={`/hotels/${hotelId}/contracts/${contractId}/allotments`}
+          />
           <CountCard label="Linked quote items" value={totalQuoteItems} />
         </section>
 
@@ -345,6 +349,11 @@ export default async function ContractDetailPage({ params }: Props) {
               label="Meal plans"
               description="Which board bases this contract offers"
               href={`/hotels/${hotelId}/contracts/${contractId}/meal-plans`}
+            />
+            <EditorCard
+              label="Allotments"
+              description="Committed room blocks, release days, stop-sale"
+              href={`/hotels/${hotelId}/contracts/${contractId}/allotments`}
             />
           </div>
         </section>
