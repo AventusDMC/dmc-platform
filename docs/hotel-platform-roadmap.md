@@ -90,7 +90,12 @@ _Size: M. Dependency: none (backend ready). Highest operational value._
    - _Deferred (low value):_ **Cancellation** + **Child Policy** are header+children entities
      (one policy, a few rules/bands) set up once in the UI — rarely bulk-edited, so import for
      them is intentionally not built. Revisit only on demand.
-   - _Next:_ decide whether to enable delete-by-absence behind an extra confirm.
+   - **Delete-by-absence:** recommended to keep OFF (upsert-only). Each entity's delete has
+     guards that make blanket bulk-delete fragile (supplements block active rows; meal plans
+     block when referenced by rates / when they'd break the active-plan invariant), and bulk
+     deletion from a file is the one genuinely destructive, hard-to-reverse op. Safer design:
+     keep flagging absent rows and delete them manually in the UI (which respects the guards).
+     Build a gated version only on explicit request.
 9. **Bulk rate matrix editor** (or rely on import for bulk; decide after #8 lands).
 
 _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
