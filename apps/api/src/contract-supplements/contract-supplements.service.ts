@@ -307,6 +307,8 @@ export class ContractSupplementsService {
       roomCategoryId: string | null;
       type: ContractSupplementTypeValue;
       mealPlanCode: string | null;
+      appliesFrom: Date | null;
+      appliesTo: Date | null;
       isMandatory: boolean;
       isActive: boolean;
     },
@@ -334,9 +336,28 @@ export class ContractSupplementsService {
     const sharesMealPlanSlot = (supplement: SupplementRecord) =>
       !data.mealPlanCode || !supplement.mealPlanCode || data.mealPlanCode === supplement.mealPlanCode;
 
-    const conflictingSupplement = existingSupplements.find(
-      (supplement) => supplement.isActive && data.isActive && sharesMealPlanSlot(supplement),
-    );
+    // Two same-type supplements only collide if their date windows
+    // actually overlap. A supplement with no window (null) applies to the
+    // whole stay, so it overlaps everything; two dated supplements on
+    // separate dates (e.g. an NYE gala and an Eid gala) do NOT conflict.
+    const time = (d: Date | null) => (d ? new Date(d).getTime() : null);
+    const sharesDateWindow = (supplement: SupplementRecord) => {
+      const aFrom = time(data.appliesFrom);
+      const aTo = time(data.appliesTo);
+      const bFrom = time(supplement.appliesFrom);
+      const bTo = time(supplement.appliesTo);
+      // Either side unbounded on a given end → treat as ±infinity.
+      const aStart = aFrom ?? -Infinity;
+      const aEnd = aTo ?? Infinity;
+      const bStart = bFrom ?? -Infinity;
+      const bEnd = bTo ?? Infinity;
+      return aStart <= bEnd && bStart <= aEnd;
+    };
+
+    const conflicts = (supplement: SupplementRecord) =>
+      supplement.isActive && data.isActive && sharesMealPlanSlot(supplement) && sharesDateWindow(supplement);
+
+    const conflictingSupplement = existingSupplements.find(conflicts);
 
     if (conflictingSupplement) {
       throw new BadRequestException('Supplement conflicts with an existing active supplement for this contract scope');
@@ -344,7 +365,7 @@ export class ContractSupplementsService {
 
     if (data.isMandatory) {
       const conflictingMandatorySupplement = existingSupplements.find(
-        (supplement) => supplement.isActive && supplement.isMandatory && sharesMealPlanSlot(supplement),
+        (supplement) => supplement.isMandatory && conflicts(supplement),
       );
 
       if (conflictingMandatorySupplement) {
