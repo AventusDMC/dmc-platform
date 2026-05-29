@@ -72,9 +72,15 @@ _Size: S each. Dependency: none. Risk: low (UI + existing endpoints)._
 _Size: M. Dependency: none (backend ready). Highest operational value._
 
 ### Phase 3 — Complete the Excel round-trip
-8. **Excel import**: upload → validate against schema version → preview diff → apply
-   (create/update/delete by hidden `_id`), with audit logging. Pairs naturally with
-   the bulk matrix need.
+8. **Excel import** — _in progress._
+   - ✅ 2026-05-29: **preview (dry-run)** shipped — upload an edited export workbook, validate
+     its identity (schema version + contract id) and see what would change
+     (create/update/delete by hidden `_id`) with row-level validation, **writing nothing**.
+     `POST /hotel-contracts/:id/import-preview` + `…/contracts/[contractId]/import` UI.
+     Covers the **Supplements** sheet as the proven vertical slice.
+   - _Next:_ extend the preview to the other sheets (rates / cancellation / child policy /
+     meal plans), then the **apply** phase (transactional create/update/delete + audit),
+     gated behind an explicit confirm of the diff.
 9. **Bulk rate matrix editor** (or rely on import for bulk; decide after #8 lands).
 
 _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._

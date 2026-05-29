@@ -74,6 +74,7 @@ import { HotelCategoriesService } from './hotel-categories/hotel-categories.serv
 import { HotelContractsController } from './hotel-contracts/hotel-contracts.controller';
 import { HotelContractsService } from './hotel-contracts/hotel-contracts.service';
 import { HotelContractExportService } from './hotel-contracts/hotel-contract-export.service';
+import { HotelContractImportService } from './hotel-contracts/hotel-contract-import.service';
 import { HotelContractHealthController } from './hotel-contract-health/hotel-contract-health.controller';
 import { HotelContractHealthService } from './hotel-contract-health/hotel-contract-health.service';
 import { HotelRatesController } from './hotel-rates/hotel-rates.controller';
@@ -283,6 +284,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     HotelsService,
     HotelContractsService,
     HotelContractExportService,
+    HotelContractImportService,
     HotelContractHealthService,
     HotelRatesService,
     ImportItineraryService,

@@ -1,5 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { EXCEL_MIME, HotelContractExportService } from './hotel-contract-export.service';
+import { HotelContractImportService } from './hotel-contract-import.service';
 import { HotelContractsService } from './hotel-contracts.service';
 
 type CreateHotelContractBody = {
@@ -30,6 +45,7 @@ export class HotelContractsController {
   constructor(
     private readonly hotelContractsService: HotelContractsService,
     private readonly hotelContractExportService: HotelContractExportService,
+    private readonly hotelContractImportService: HotelContractImportService,
   ) {}
 
   @Get()
@@ -98,6 +114,18 @@ export class HotelContractsController {
       type: EXCEL_MIME,
       disposition: `attachment; filename="${fileName}"`,
     });
+  }
+
+  // Excel import — PREVIEW (dry-run). Accepts an uploaded workbook
+  // produced by the export above and reports what an import would change,
+  // writing nothing. The apply phase lands in a follow-up.
+  @Post(':id/import-preview')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  importPreview(@Param('id') id: string, @UploadedFile() file: any) {
+    if (!file?.buffer) {
+      throw new BadRequestException('An Excel (.xlsx) workbook file is required.');
+    }
+    return this.hotelContractImportService.preview(id, file.buffer);
   }
 
   // Unified audit trail across the contract's edited entities
