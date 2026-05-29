@@ -81,9 +81,12 @@ _Size: L (#8), M (#9). Dependency: export schema (done). De-risks data entry._
     (room/board/travel-window/booking-window/min-stay) at
     `…/contracts/[contractId]/promotions`. Multi-rule editing on one promotion is the
     remaining slice (the rare case; preserved untouched on edit today). _Mostly done._
-11. **Quote / pricing simulator**: pick dates + pax + room + board, see the computed
-    price breakdown. Most valuable *after* promotions + supplements exist, so it
-    validates the whole stack. _Open — strong next pick._
+11. ~~**Quote / pricing simulator**: pick dates + pax + room + board, see the computed
+    price breakdown~~ ✅ done 2026-05-29. Read-only GET-form page at
+    `…/contracts/[contractId]/simulator`: per-night cost (rate + supplements + child
+    policy + taxes) via `/hotel-rates/calculate-hotel-cost`, plus applicable promotions
+    + post-discount total via `/promotions/evaluate` (new `/api/promotions/evaluate`
+    proxy added). Linked from the contract header.
 
 _Size: M each. Dependency: Phase 1–3 for the simulator to be meaningful._
 

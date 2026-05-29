@@ -212,6 +212,15 @@ export default async function ContractDetailPage({ params }: Props) {
               Download Excel
             </a>
             {' · '}
+            <Link
+              href={`/hotels/${hotelId}/contracts/${contractId}/simulator`}
+              prefetch={false}
+              className="compact-button"
+              style={{ textDecoration: 'none' }}
+            >
+              Quote simulator
+            </Link>
+            {' · '}
             <Link href={`/hotels/${hotelId}`} prefetch={false}>
               {contract.hotel.name}
             </Link>
