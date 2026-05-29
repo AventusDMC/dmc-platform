@@ -19,6 +19,10 @@ type RoomCategoryAggregate = {
   id: string;
   name: string;
   code: string | null;
+  description: string | null;
+  maxAdults: number | null;
+  maxChildren: number | null;
+  maxOccupants: number | null;
   rateCount: number;
   seasonCount: number;
   mealPlanCount: number;
@@ -53,6 +57,9 @@ type RoomTypesSummaryResponse = {
     mealPlans: string[];
     seasonNames: string[];
     supplementCount: number;
+    maxAdults: number | null;
+    maxChildren: number | null;
+    maxOccupants: number | null;
   }>;
 };
 
@@ -115,6 +122,10 @@ async function getRoomTypesAggregate(contractId: string): Promise<RoomCategoryAg
       id: r.id,
       name: r.name,
       code: r.code,
+      description: r.description ?? null,
+      maxAdults: r.maxAdults ?? null,
+      maxChildren: r.maxChildren ?? null,
+      maxOccupants: r.maxOccupants ?? null,
       rateCount: r.rateCount,
       seasonCount: Array.isArray(r.seasonNames) ? r.seasonNames.length : 0,
       mealPlanCount: Array.isArray(r.mealPlans) ? r.mealPlans.length : 0,
@@ -420,14 +431,20 @@ export default async function ContractDetailPage({ params }: Props) {
                     <th className="numeric-cell">Meal plans</th>
                     <th className="numeric-cell">Supplements</th>
                     <th>Occupancy</th>
+                    <th>Max occupancy</th>
                     <th>Cost range</th>
                   </tr>
                 </thead>
                 <tbody>
                   {roomAggregates.map((r) => (
                     <tr key={r.id}>
-                      <td>
+                      <td style={{ maxWidth: '24rem' }}>
                         <strong>{r.name}</strong>
+                        {r.description ? (
+                          <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: '0.15rem' }}>
+                            {r.description}
+                          </div>
+                        ) : null}
                       </td>
                       <td>{r.code || '—'}</td>
                       <td className="numeric-cell">{r.rateCount}</td>
@@ -435,6 +452,13 @@ export default async function ContractDetailPage({ params }: Props) {
                       <td className="numeric-cell">{r.mealPlanCount}</td>
                       <td className="numeric-cell">{r.supplementCount}</td>
                       <td>{r.occupancyTypes.length > 0 ? r.occupancyTypes.join(' · ') : '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {r.maxOccupants != null
+                          ? `${r.maxAdults ?? 0} adult${(r.maxAdults ?? 0) === 1 ? '' : 's'}${
+                              r.maxChildren ? ` + ${r.maxChildren} child${r.maxChildren === 1 ? '' : 'ren'}` : ''
+                            }`
+                          : '—'}
+                      </td>
                       <td>
                         {r.costRange && r.costRange.min != null && r.costRange.max != null
                           ? `${r.costRange.min.toFixed(2)} – ${r.costRange.max.toFixed(2)} ${r.costRange.currency || contract.currency}`
