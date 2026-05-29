@@ -132,18 +132,29 @@ function groupBySeason(
     b.rows.push(r);
     buckets.set(r.seasonName, b);
   }
-  const out = Array.from(buckets.values()).map((b) => ({
-    key: b.name,
-    name: b.name,
-    ranges: Array.from(b.ranges.values()).sort((a, c) => a.from.localeCompare(c.from)),
-    rows: b.rows.sort(
-      (a, c) =>
-        a.roomCategoryId.localeCompare(c.roomCategoryId) ||
-        a.seasonFrom.localeCompare(c.seasonFrom) ||
-        a.occupancyType.localeCompare(c.occupancyType) ||
-        a.mealPlan.localeCompare(c.mealPlan),
-    ),
-  }));
+  const out = Array.from(buckets.values()).map((b) => {
+    // Order rooms cheapest → most expensive within the season, keeping each
+    // room's rows (occupancy / meal / date ranges) together. A room's rank
+    // is its lowest rate in this season.
+    const minCostByRoom = new Map<string, number>();
+    for (const r of b.rows) {
+      const cur = minCostByRoom.get(r.roomCategoryId);
+      if (cur === undefined || r.cost < cur) minCostByRoom.set(r.roomCategoryId, r.cost);
+    }
+    return {
+      key: b.name,
+      name: b.name,
+      ranges: Array.from(b.ranges.values()).sort((a, c) => a.from.localeCompare(c.from)),
+      rows: b.rows.sort(
+        (a, c) =>
+          (minCostByRoom.get(a.roomCategoryId) ?? 0) - (minCostByRoom.get(c.roomCategoryId) ?? 0) ||
+          a.roomCategoryId.localeCompare(c.roomCategoryId) ||
+          a.seasonFrom.localeCompare(c.seasonFrom) ||
+          a.occupancyType.localeCompare(c.occupancyType) ||
+          a.mealPlan.localeCompare(c.mealPlan),
+      ),
+    };
+  });
   out.sort((a, b) => (a.ranges[0]?.from ?? '').localeCompare(b.ranges[0]?.from ?? '') || a.name.localeCompare(b.name));
   return out;
 }
