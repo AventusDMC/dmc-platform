@@ -175,7 +175,14 @@ export class HotelContractExportService {
       '• Child policy charge basis: FREE / PERCENT_OF_ADULT / FIXED_AMOUNT.',
       '• Supplement type: EXTRA_BREAKFAST / EXTRA_LUNCH / EXTRA_DINNER / GALA_DINNER / EXTRA_BED.',
       '• Supplement charge basis: PER_PERSON / PER_ROOM / PER_STAY / PER_NIGHT.',
+      '• Tourism Fee Mode: PER_NIGHT_PER_PERSON / PER_NIGHT_PER_ROOM (leave blank if no fee).',
       '• Yes/No columns accept Yes / No (case-insensitive).',
+      '',
+      '— Taxes & service charges (Rates sheet) —',
+      '• Sales Tax % and Service Charge % are per-rate. Set the % even when it is already in the price.',
+      '• "Incl" columns decide net vs gross: Yes = the Cost ALREADY includes that charge; No = it is added',
+      '  on top of Cost when a quote is priced. Set these correctly — they change the guest price.',
+      '• Tourism Fee is an optional flat amount per night (per person or per room, per the Mode column).',
       '',
       '— Round-trip safety —',
       '• The import flow validates first and shows a preview diff before writing anything.',
@@ -243,6 +250,20 @@ export class HotelContractExportService {
       { header: 'Pricing Basis', key: 'pricingBasis', width: 14 },
       { header: 'Currency', key: 'currency', width: 10 },
       { header: 'Cost', key: 'cost', width: 12 },
+      // Tax / service charge / tourism fee. The "Incl" columns are the
+      // critical bit: Yes = the Cost already includes that charge (gross
+      // rate), No = it's added on top of Cost at quote time (net rate).
+      // Without them the operator can't tell whether a Cost of 95 is
+      // net or gross, and the round-trip would silently flip net↔gross.
+      { header: 'Sales Tax %', key: 'salesTaxPercent', width: 12 },
+      { header: 'Sales Tax Incl', key: 'salesTaxIncluded', width: 14 },
+      { header: 'Service Charge %', key: 'serviceChargePercent', width: 16 },
+      { header: 'Service Charge Incl', key: 'serviceChargeIncluded', width: 18 },
+      // Flat tourism fee (optional). Mode says how it multiplies:
+      // per night per person, or per night per room.
+      { header: 'Tourism Fee', key: 'tourismFeeAmount', width: 12 },
+      { header: 'Tourism Fee Ccy', key: 'tourismFeeCurrency', width: 15 },
+      { header: 'Tourism Fee Mode', key: 'tourismFeeMode', width: 22 },
       { header: 'Notes', key: 'notes', width: 30 },
     ];
     this.styleHeaderRow(sheet, 1);
@@ -260,6 +281,13 @@ export class HotelContractExportService {
         pricingBasis: rate.pricingBasis || 'PER_ROOM',
         currency: rate.currency,
         cost: rate.cost,
+        salesTaxPercent: rate.salesTaxPercent ?? 0,
+        salesTaxIncluded: rate.salesTaxIncluded ? 'Yes' : 'No',
+        serviceChargePercent: rate.serviceChargePercent ?? 0,
+        serviceChargeIncluded: rate.serviceChargeIncluded ? 'Yes' : 'No',
+        tourismFeeAmount: rate.tourismFeeAmount ?? '',
+        tourismFeeCurrency: rate.tourismFeeCurrency ?? '',
+        tourismFeeMode: rate.tourismFeeMode ?? '',
         notes: '',
       });
     }
@@ -552,6 +580,12 @@ export class HotelContractExportService {
       this.applyEnumDropdown(rates, 'mealPlan', ['RO', 'BB', 'HB', 'FB', 'AI']);
       this.applyEnumDropdown(rates, 'pricingBasis', ['PER_ROOM', 'PER_PERSON']);
       this.applyEnumDropdown(rates, 'currency', CURRENCY_CODES);
+      this.applyEnumDropdown(rates, 'salesTaxIncluded', ['Yes', 'No']);
+      this.applyEnumDropdown(rates, 'serviceChargeIncluded', ['Yes', 'No']);
+      this.applyEnumDropdown(rates, 'tourismFeeCurrency', CURRENCY_CODES, { allowBlank: true });
+      this.applyEnumDropdown(rates, 'tourismFeeMode', ['PER_NIGHT_PER_PERSON', 'PER_NIGHT_PER_ROOM'], {
+        allowBlank: true,
+      });
     }
     const supplements = workbook.getWorksheet(SHEETS.SUPPLEMENTS);
     if (supplements) {
