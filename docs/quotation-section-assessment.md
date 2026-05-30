@@ -50,6 +50,13 @@ Everything else is polish.
 
 ### 1. Two parallel quote engines — decide and consolidate _(high value, low effort)_
 
+> **Status (2026-05-30): DONE except the DB table drop.** The DMC Quote Engine
+> has been archived on branch `quotation-section-cleanup`: removed from the nav,
+> backend module (`quote-engine.controller/service`) + frontend pages + API proxy
+> deleted, and unwired from `app.module.ts`. Verified — API `tsc` clean, nav
+> tests 21/21. The `DmcQuote*` **Prisma models + DB tables are intentionally
+> retained** (no destructive migration) pending an explicit decision to drop them.
+
 There are **two separate quote systems**:
 
 - **The main `Quote` stack** — the real, production system (14k-line service,
@@ -125,9 +132,12 @@ the root cause so these can be dropped.
 
 ## Suggested sequence
 
-1. **Now (minutes):** remove "DMC Quote Engine" from the nav.
-2. **Soon (a session):** confirm nothing depends on `DmcQuote`, then archive the
-   module and drop its tables — _or_ explicitly adopt it as a roadmap item.
+1. **Now (minutes):** remove "DMC Quote Engine" from the nav. ✅ _Done — and the
+   code is fully archived too (see Status above)._
+2. **Soon (a session):** module already archived. Remaining: a `down`-style
+   migration to **drop the now-orphaned `DmcQuote*` tables** once you confirm
+   you don't want the multi-country model — _or_ explicitly adopt it as a
+   roadmap item and rebuild against it.
 3. **Ongoing:** apply "split-on-touch" to `quotes.service.ts` and the largest UI
    components. No dedicated refactor sprint needed.
 4. **Later:** replace string-heuristics with structured catalog columns; resolve
