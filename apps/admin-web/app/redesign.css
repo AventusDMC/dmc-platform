@@ -1,0 +1,221 @@
+/* =========================================================================
+   AXIS — Minimal / Linear-style redesign layer (system-wide).
+   Imported LAST in layout.tsx so it is the authoritative visual layer and
+   cleanly overrides the legacy cascade without unpicking it.
+
+   Language: light, cool-neutral monochrome + a single accent, hairline
+   borders instead of heavy shadows, restrained type, tight radii, calm
+   whitespace. Built on the canonical tokens in design-tokens.css (--ds-*).
+   ========================================================================= */
+
+:root {
+  --rd-canvas: #E6E9EF;        /* app background — clearly tinted so cards lift */
+  --rd-surface: #FFFFFF;       /* cards / panels */
+  --rd-sidebar: #14171D;       /* dark sidebar anchor */
+  --rd-sidebar-ink: #E7E9ED;   /* sidebar primary text */
+  --rd-sidebar-muted: #99A0AC; /* sidebar secondary text */
+  --rd-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --rd-sidebar-active: rgba(255, 255, 255, 0.10);
+  --rd-hairline: #E1E4EA;      /* default border */
+  --rd-hairline-strong: #DCDFE5;
+  --rd-ink: #16181D;           /* primary text */
+  --rd-ink-muted: #5C6370;     /* secondary text */
+  --rd-ink-faint: #8A909B;     /* tertiary / labels */
+  --rd-accent: #1F9ACF;        /* single accent (AXIS blue) */
+  --rd-accent-weak: #ECF6FB;
+  --rd-hover: #F3F4F6;
+  --rd-active: #ECEEF1;
+  --rd-radius: 8px;
+  --rd-radius-sm: 6px;
+  --rd-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+/* ---------- App frame ---------- */
+body { background: var(--rd-canvas); color: var(--rd-ink); }
+.admin-shell { background: var(--rd-canvas); }
+.admin-main-shell,
+.admin-content-shell { background: var(--rd-canvas); }
+.admin-content-shell { padding: 1.6rem 1.75rem 3rem; }
+
+/* ---------- Sidebar (dark anchor) ---------- */
+.admin-sidebar {
+  background: var(--rd-sidebar) !important;
+  border-right: 1px solid var(--rd-sidebar) !important;
+  color: var(--rd-sidebar-ink);
+  box-shadow: none;
+  gap: 1rem;
+}
+.admin-sidebar-brand strong,
+.admin-sidebar-brand h1,
+.admin-sidebar-brand h2 { color: var(--rd-sidebar-ink) !important; }
+.admin-sidebar-brand p,
+.admin-sidebar-brand span { color: var(--rd-sidebar-muted) !important; }
+
+.admin-sidebar-nav { gap: 0.15rem; }
+.admin-top-nav-link {
+  color: var(--rd-sidebar-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--rd-radius-sm);
+  min-height: 0;
+  padding: 0.46rem 0.6rem;
+  box-shadow: none !important;
+}
+.admin-top-nav-link:hover { background: var(--rd-sidebar-hover) !important; color: var(--rd-sidebar-ink) !important; }
+.admin-top-nav-link strong { font-weight: 600; font-size: 0.86rem; color: inherit; }
+.admin-top-nav-link span,
+.admin-top-nav-link small { color: var(--rd-sidebar-muted) !important; font-size: 0.72rem; }
+.admin-top-nav-link-active,
+.admin-top-nav-link-active:hover {
+  background: var(--rd-sidebar-active) !important;
+  color: #fff !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.admin-top-nav-link-active strong { color: #fff !important; }
+
+.admin-sidebar-footer,
+.admin-sidebar-footer span { color: var(--rd-sidebar-muted) !important; }
+.admin-sidebar-footer strong { color: var(--rd-sidebar-ink) !important; }
+
+/* ---------- Header / topbar ---------- */
+.site-header,
+.admin-header {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.admin-topbar {
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-hairline) !important;
+  border-radius: var(--rd-radius) !important;
+  box-shadow: none !important;
+}
+.admin-subnav-link {
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-hairline) !important;
+  border-radius: var(--rd-radius-sm) !important;
+  color: var(--rd-ink-muted) !important;
+  box-shadow: none !important;
+}
+.admin-subnav-link-active {
+  border-color: var(--rd-accent) !important;
+  background: var(--rd-accent-weak) !important;
+  color: var(--rd-ink) !important;
+}
+/* Subnav chips inside the DARK sidebar must blend with it, not float as white pills */
+.admin-sidebar .admin-subnav-link,
+.admin-sidebar-subnav .admin-subnav-link {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--rd-sidebar-muted) !important;
+}
+.admin-sidebar .admin-subnav-link:hover,
+.admin-sidebar-subnav .admin-subnav-link:hover {
+  background: var(--rd-sidebar-hover) !important;
+  color: var(--rd-sidebar-ink) !important;
+}
+.admin-sidebar .admin-subnav-link-active,
+.admin-sidebar-subnav .admin-subnav-link-active {
+  background: var(--rd-sidebar-active) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+/* ---------- Typography (restrained) ---------- */
+.page h1,
+.admin-content-shell h1,
+.section-title,
+.workspace-shell-title {
+  font-size: 1.6rem !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.012em !important;
+  color: var(--rd-ink);
+}
+.admin-content-shell h2 { font-size: 1.12rem !important; letter-spacing: -0.008em; }
+.eyebrow {
+  font-size: 0.68rem !important;
+  letter-spacing: 0.05em !important;
+  color: var(--rd-ink-faint) !important;
+  font-weight: 600 !important;
+}
+
+/* ---------- Cards / surfaces (hairline, flat) ---------- */
+.app-card,
+.metric-card,
+.app-metric-card,
+.workspace-section,
+.workspace-summary-card,
+.lead-card,
+.entity-card,
+.service-card,
+.app-service-card,
+.app-surface {
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-hairline) !important;
+  border-radius: var(--rd-radius) !important;
+  box-shadow: var(--rd-shadow) !important;
+}
+
+/* ---------- Buttons (unified, minimal) ---------- */
+.primary-button,
+.app-button-primary,
+.invoice-portal-primary-button {
+  background: var(--rd-accent) !important;
+  border: 1px solid var(--rd-accent) !important;
+  border-radius: var(--rd-radius-sm) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  background-image: none !important;
+}
+.secondary-button,
+.app-button-secondary,
+.compact-button {
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-hairline-strong) !important;
+  border-radius: var(--rd-radius-sm) !important;
+  color: var(--rd-ink) !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+.secondary-button:hover,
+.compact-button:hover { background: var(--rd-hover) !important; }
+
+/* ---------- Tables ---------- */
+.data-table th {
+  background: var(--rd-canvas) !important;
+  color: var(--rd-ink-faint) !important;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--rd-hairline) !important;
+}
+.data-table td { border-bottom: 1px solid var(--rd-hairline) !important; }
+
+/* ---------- Brand logo: white PNG → near-black monochrome on light shell ---------- */
+.admin-sidebar .admin-brand-logo,
+.admin-sidebar-brand .admin-brand-logo {
+  filter: none !important;
+  opacity: 0.95 !important;
+}
+
+/* ---------- Dashboard launchpad: ghost row, not 8 filled accent pills ---------- */
+.admin-dashboard-launchpad-actions .primary-button,
+.admin-dashboard-launchpad-actions .app-button-primary {
+  background: var(--rd-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--rd-hairline-strong) !important;
+  color: var(--rd-ink-muted) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+.admin-dashboard-launchpad-actions .primary-button:hover,
+.admin-dashboard-launchpad-actions .app-button-primary:hover {
+  background: var(--rd-hover) !important;
+  color: var(--rd-ink) !important;
+}
+
+/* ---------- Metric values: near-black, accent reserved for deltas/links ---------- */
+.metric-card strong,
+.app-metric-card strong,
+.workspace-summary-card strong { color: var(--rd-ink) !important; }
