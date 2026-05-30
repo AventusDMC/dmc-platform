@@ -216,7 +216,6 @@ test('findDirectorySummary: select clause matches the Hotel schema (allow-list r
     'roomCategories',
     'quoteHotelOptions',
     'quoteItems',
-    'dmcQuoteHotelOptions',
     '_count',
   ]);
   const prisma = buildFakePrisma({ hotels: [baseHotel()] });
