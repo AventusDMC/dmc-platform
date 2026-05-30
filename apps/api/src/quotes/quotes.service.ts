@@ -479,6 +479,12 @@ const INVALID_TRIP_SUMMARY_PATTERNS = [
   /\b(?:tbd|tba|tbc|n\/a)\b/i,
   /^day\s+\d+/im,
   /\bimported itinerary\b/i,
+  // Guided Quote Builder auto-fills the description with internal planning
+  // taxonomy ("Built via Guided Quote Builder. ... Market: ... Style: ...").
+  // Reject it so the v2 fallback proposal uses the generated client-facing
+  // summary instead of echoing internal taxonomy (matches the v3 guard).
+  /\bbuilt via\b/i,
+  /\bguided quote builder\b/i,
 ];
 
 const MATCH_STOP_WORDS = new Set([
