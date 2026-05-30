@@ -2862,6 +2862,29 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   <h1>{quote.title}</h1>
                 </div>
                 <QuoteBuilderStatusBadge status={quote.status} expired={quoteExpired} />
+                {/* Command-bar money: keep sell/cost/margin in view at the top of the
+                    quote (stage 1 of the workspace redesign). Cost + margin are
+                    internal metrics, gated to admin/finance roles like elsewhere. */}
+                <div className="quote-command-money" style={{ marginLeft: 'auto', display: 'flex', gap: '1.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                    <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Sell</span>
+                    <strong style={{ fontSize: '1.05rem', fontWeight: 700 }}>{quote.quoteCurrency} {Math.round(quote.totalSell).toLocaleString()}</strong>
+                  </div>
+                  {(session?.role === 'admin' || session?.role === 'super_admin' || session?.role === 'finance' || session?.role === 'agent_admin') ? (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                        <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Cost</span>
+                        <strong style={{ fontSize: '1.05rem', fontWeight: 700 }}>{quote.quoteCurrency} {Math.round(quote.totalCost).toLocaleString()}</strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                        <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Margin</span>
+                        <strong style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ds-color-success, #067647)' }}>
+                          {quote.totalSell > 0 ? Math.round(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100) : 0}%
+                        </strong>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               </div>
               <div className="quote-dashboard-meta-grid">
                 <div><span>Client</span><strong>{quote.company.name}</strong></div>
