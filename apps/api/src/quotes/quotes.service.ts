@@ -5835,9 +5835,11 @@ export class QuotesService {
         throw new BadRequestException('External package endDate cannot be before startDate');
       }
 
-      baseCost = netCost;
+      const matrixCostBasis = this.resolveExternalPackageMatrixCostBasis(pricingMatrixJson, paxCount, pricingBasis);
+      const effectiveNetCost = matrixCostBasis ?? netCost;
+      baseCost = effectiveNetCost;
       currency = data.currency.trim().toUpperCase();
-      supplierCostBaseAmount = netCost;
+      supplierCostBaseAmount = effectiveNetCost;
       supplierCostCurrency = currency;
       pricingDescription = `${packageName} | ${country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`;
       externalPackageData = {
@@ -7824,6 +7826,48 @@ export class QuotesService {
         }
         return row;
       });
+  }
+
+  /**
+   * Selects the external-package cost basis from the per-pax pricing matrix.
+   *
+   * Matrix rows are authored as per-person cost bands (e.g. 2pax = $900pp,
+   * 4pax = $750pp). We pick the first row whose [paxFrom, paxTo] band contains
+   * the quote's pax count and express its cost in the basis the pricing engine
+   * expects downstream: a PER_PERSON unit cost is multiplied by pax later, so we
+   * return the per-person figure as-is; a PER_GROUP unit cost is charged once,
+   * so we pre-multiply by pax to yield the group total. Returns null when there
+   * is no matrix or no band matches, so the caller falls back to the flat net
+   * cost (`externalNetCost`) and preserves the legacy flat-cost behaviour.
+   */
+  private resolveExternalPackageMatrixCostBasis(
+    matrix: unknown,
+    paxCount: number,
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP' | string | null,
+  ): number | null {
+    if (!Array.isArray(matrix) || matrix.length === 0) {
+      return null;
+    }
+
+    const pax = Math.max(1, Number(paxCount) || 1);
+    const matchedRow = matrix.find((row: any) => {
+      const cost = Number(row?.costPerPerson);
+      if (!Number.isFinite(cost) || cost < 0) {
+        return false;
+      }
+      const from = row?.paxFrom === null || row?.paxFrom === undefined ? null : Number(row.paxFrom);
+      const to = row?.paxTo === null || row?.paxTo === undefined ? null : Number(row.paxTo);
+      const aboveLowerBound = from === null || !Number.isFinite(from) ? true : pax >= from;
+      const belowUpperBound = to === null || !Number.isFinite(to) ? true : pax <= to;
+      return aboveLowerBound && belowUpperBound;
+    });
+
+    if (!matchedRow) {
+      return null;
+    }
+
+    const costPerPerson = Number((matchedRow as any).costPerPerson);
+    return pricingBasis === 'PER_GROUP' ? Number((costPerPerson * pax).toFixed(2)) : costPerPerson;
   }
 
   private getFinalItemCost(baseCost: number, overrideCost: number | null, useOverride: boolean) {
