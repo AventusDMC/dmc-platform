@@ -1492,7 +1492,14 @@ export function QuoteItemsForm({
 
     return previewByHotel;
   }, [hotelContracts, hotelRates]);
-  const hotelCheckInDate = isHotelService ? resolvedOperationalDate || travelStartDate?.slice(0, 10) || '' : '';
+  const resolvedHotelStayDate = resolvedOperationalDate || travelStartDate?.slice(0, 10) || '';
+  // When the quote has no travel start date the operational stay date can't be
+  // derived, which previously left hotels unpriced (an empty date matches no
+  // seasonal rate, and the cost fetch bails). Fall back to today so year-round /
+  // current-season rates still resolve, and flag it so the drawer can warn that
+  // the real stay dates aren't locked in yet.
+  const usingFallbackHotelDate = isHotelService && !resolvedHotelStayDate;
+  const hotelCheckInDate = isHotelService ? resolvedHotelStayDate || new Date().toISOString().slice(0, 10) : '';
   const filteredHotelContracts = hotelContracts.filter(
     (contract) => contract.hotelId === hotelId && isDateWithinWindow(hotelCheckInDate, contract.validFrom, contract.validTo),
   );
@@ -4411,6 +4418,23 @@ export function QuoteItemsForm({
                 </div>
               </div>
 
+              {usingFallbackHotelDate ? (
+                <p
+                  role="alert"
+                  style={{
+                    margin: '0 0 0.7rem',
+                    padding: '0.55rem 0.75rem',
+                    background: 'var(--ds-color-warning-surface, #FFFAEB)',
+                    border: '1px solid var(--ds-color-warning-border, #FEDF89)',
+                    borderRadius: 'var(--ds-radius-sm, 8px)',
+                    color: 'var(--ds-color-warning, #B54708)',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠ This quote has no travel start date — pricing this hotel against today ({hotelCheckInDate}) as a placeholder. Set the travel start date on the Overview tab to lock the real stay dates and seasonal rates.
+                </p>
+              ) : null}
               <div className="quote-selected-transport-card quote-selected-transport-card-active">
                 <div className="quote-selected-transport-summary">
                   <div>
