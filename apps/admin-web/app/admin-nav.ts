@@ -32,7 +32,12 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     children: [
       { label: 'Quotes', href: '/quotes' },
       { label: 'Guided Builder', href: '/quotes/new/guided' },
-      { label: 'DMC Quote Engine', href: '/quote-engine' },
+      // 'DMC Quote Engine' (/quote-engine) intentionally hidden from nav:
+      // it's a stalled "phase 1" parallel quote stack (single commit, never
+      // iterated) that overlaps the main Quote system. Hidden to prevent
+      // staff building quotes in the wrong place. Route stays auth-protected
+      // + reachable by direct URL pending an archive decision.
+      // See docs/quotation-section-assessment.md.
       { label: 'Leads', href: '/leads' },
       { label: 'Contacts', href: '/contacts' },
       { label: 'Companies', href: '/companies' },
