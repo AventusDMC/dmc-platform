@@ -60,11 +60,17 @@ review) before merge, since token changes are global.
 
 - **Phase 0 — Freeze the brand token.** Pick ONE canonical accent (resolve `#1F9ACF` vs
   `#1FA3D6`) and a canonical neutral ramp. One decision, documented here.
-- **Phase 1 — Canonical token file.** Create `app/design-tokens.css` as the single source of
-  truth (color ramp, spacing scale, radius, shadow, typography, plus missing semantic tokens:
-  `--success/--warning/--danger` surfaces). Re-point the legacy names (`--saas-*`, `--axis-*`,
-  base) to canonical **using their currently-rendering values** so it's visually a no-op, then
-  delete the duplicate/dead `:root` blocks. Verify nothing shifts.
+- **Phase 1a — Canonical token file (DONE, additive).** `app/design-tokens.css` exists as the
+  single source of truth (`--ds-*`: accent ramp, neutrals, feedback success/warning/danger,
+  radius, shadow, spacing, type). Imported in `layout.tsx` **before** `globals.css`, and it only
+  defines new `--ds-*` names — so it cannot override anything currently rendering (guaranteed
+  visual no-op). New work should reference `--ds-*` (also valid in inline `style={{}}`). First
+  consumer migrated: the quote nights-mismatch banner (was inline `#fef3f2`/`#fecdca`/`#b42318`).
+- **Phase 1b — Consolidate legacy onto canonical (NOT done; needs visual verification).** Re-point
+  the legacy names (`--saas-*`, `--axis-*`, base) to `--ds-*` using their currently-rendering
+  values, then delete the duplicate/dead `:root` blocks (note: the two `--axis-*` blocks are NOT
+  identical — block 2 supersets block 1 with a different `--axis-blue-border`, so neither can be
+  blind-deleted). This changes the global cascade — do it with screenshots before/after.
 - **Phase 2 — Primitive coverage.** Fill gaps in `ui.tsx` (e.g. `AppAlert`/`Callout` for the
   status banners that are currently inline) so there's a component for every recurring pattern.
 - **Phase 3 — Burn down inline styles by area,** highest-traffic first (`quotes/[id]`), swapping
