@@ -379,6 +379,48 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   box-shadow:inset 3px 0 0 #1F9ACF, 0 4px 12px rgba(31,154,207,.14) !important;
 }
 
+/* Stage 3b — itinerary day CONTENT card + service rows: drop the legacy beige
+   surfaces / heavy drop-shadows for the same clean hairline-on-white, cyan-accent
+   language as the day rail (mock: the `.day` timeline + `.acts`/`.act` list). */
+.quote-itinerary-day-card{
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:14px !important;
+  box-shadow:0 1px 2px rgba(20,40,60,.04), 0 4px 14px rgba(20,40,60,.05) !important;
+  padding:18px !important;
+}
+/* day index → solid cyan node tile (was a pale wash pill) */
+.quote-itinerary-day-number{
+  background:linear-gradient(135deg,#1F9ACF,#22D3EE) !important;
+  color:#fff !important;
+  border-radius:11px !important;
+  padding:.4rem .8rem !important;
+  box-shadow:0 6px 14px rgba(31,154,207,.32) !important;
+}
+/* summary cells: beige → cool neutral, hairline */
+.quote-itinerary-day-summary div{
+  background:#F6F9FC !important;
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:11px !important;
+}
+/* services panel: beige fill → calm white-ish surface, hairline */
+.quote-itinerary-day-panel{
+  background:#FBFDFE !important;
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:12px !important;
+}
+/* individual service rows → clean bordered card w/ cyan hover (mock `.act`) */
+.quote-service-item-row{
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:11px !important;
+  background:#fff !important;
+  padding:13px 15px !important;
+}
+.quote-service-item-row:hover{
+  transform:none !important;
+  border-color:#1F9ACF !important;
+  box-shadow:0 4px 14px rgba(31,154,207,.12) !important;
+}
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
