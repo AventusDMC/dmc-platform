@@ -103,6 +103,24 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   background: var(--rd-accent-weak) !important;
   color: var(--rd-ink) !important;
 }
+/* Subnav chips inside the DARK sidebar must blend with it, not float as white pills */
+.admin-sidebar .admin-subnav-link,
+.admin-sidebar-subnav .admin-subnav-link {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--rd-sidebar-muted) !important;
+}
+.admin-sidebar .admin-subnav-link:hover,
+.admin-sidebar-subnav .admin-subnav-link:hover {
+  background: var(--rd-sidebar-hover) !important;
+  color: var(--rd-sidebar-ink) !important;
+}
+.admin-sidebar .admin-subnav-link-active,
+.admin-sidebar-subnav .admin-subnav-link-active {
+  background: var(--rd-sidebar-active) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
 
 /* ---------- Typography (restrained) ---------- */
 .page h1,
