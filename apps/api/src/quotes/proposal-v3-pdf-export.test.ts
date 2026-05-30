@@ -1591,6 +1591,64 @@ test('proposal storytelling filters placeholder and internal copy before using f
   assert.doesNotMatch(renderedText, /Internal supplier net cost|Supplier net cost USD|Service to be confirmed/i);
 });
 
+test('proposal does not leak Guided Quote Builder taxonomy into the journey overview', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Amman + Petra + Wadi Rum + Dead Sea (7 nights)',
+      description:
+        'Built via Guided Quote Builder. Cities: Amman → Petra → Wadi Rum → Dead Sea Pax: 2 adults Nights: 7 Market: Latin America Budget: Standard Style: Comfort',
+      nightCount: 7,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1: Amman', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2: Petra', description: null },
+      ],
+      quoteItems: [createHotelPdfItem({ itineraryId: 'day-1', hotel: { name: 'Amman Grand', city: 'Amman' } })],
+    }),
+  );
+  const renderedText = JSON.stringify(proposal);
+
+  assert.doesNotMatch(renderedText, /Built via Guided Quote Builder/i);
+  assert.doesNotMatch(renderedText, /Market:|Budget:|Style:/i);
+  assert.match(proposal.journeySummary, /journey through Amman/);
+});
+
+test('proposal strips internal style decoration from the hero title', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Amman + Petra + Wadi Rum + Dead Sea (7 nights) · Comfort',
+      description: null,
+    }),
+  );
+
+  assert.equal(proposal.documentTitle, 'Amman + Petra + Wadi Rum + Dead Sea (7 nights)');
+  assert.doesNotMatch(proposal.documentTitle, /Comfort/i);
+});
+
+test('proposal journey summary never echoes internal Guided Builder description taxonomy', () => {
+  // Reproduces the exact leaked copy seen on a real client proposal: the
+  // Guided Quote Builder used to write the quote description with internal
+  // planning lines, and the v3 proposal echoed it verbatim into the journey
+  // overview. isClientSafeCopy must now reject it and fall back to a generated
+  // human sentence.
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Amman + Petra + Wadi Rum + Dead Sea (7 nights) · Comfort 2',
+      description:
+        'Built via Guided Quote Builder. Cities: Amman → Petra → Wadi Rum → Dead Sea Pax: 2 adults Nights: 7 Market: Latin America Budget. Standard Style: Comfort',
+    }),
+  );
+
+  // Title decoration stripped.
+  assert.doesNotMatch(proposal.documentTitle, /Comfort/i);
+  // None of the internal taxonomy reaches the client-facing journey overview.
+  assert.doesNotMatch(proposal.journeySummary, /Built via/i);
+  assert.doesNotMatch(proposal.journeySummary, /Guided Quote Builder/i);
+  assert.doesNotMatch(proposal.journeySummary, /Market:/i);
+  assert.doesNotMatch(proposal.journeySummary, /Standard Style/i);
+  // And a real client sentence was generated instead of an empty string.
+  assert.ok(proposal.journeySummary.length > 0);
+});
+
 test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {
   const rendererSource = readFileSync(resolve(__dirname, 'proposal-v2.renderer.ts'), 'utf8');
 
