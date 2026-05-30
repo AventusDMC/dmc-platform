@@ -27,12 +27,15 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Sales',
     href: '/quotes',
-    match: ['/quotes', '/quote-engine', '/leads', '/contacts', '/companies', '/quote-blocks', '/import-itinerary'],
+    match: ['/quotes', '/leads', '/contacts', '/companies', '/quote-blocks', '/import-itinerary'],
     helper: 'Quotes, leads, contacts, and client companies',
     children: [
       { label: 'Quotes', href: '/quotes' },
       { label: 'Guided Builder', href: '/quotes/new/guided' },
-      { label: 'DMC Quote Engine', href: '/quote-engine' },
+      // 'DMC Quote Engine' (/quote-engine) removed: a stalled "phase 1"
+      // parallel quote stack that overlapped the main Quote system. Code
+      // archived; DmcQuote DB tables retained pending a drop decision.
+      // See docs/quotation-section-assessment.md.
       { label: 'Leads', href: '/leads' },
       { label: 'Contacts', href: '/contacts' },
       { label: 'Companies', href: '/companies' },
