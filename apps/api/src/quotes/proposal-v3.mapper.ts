@@ -68,7 +68,7 @@ function stripInternalTitleDecorations(value: string) {
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
 const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png';
-const AXIS_PRIMARY_COLOR = '#1FA3D6';
+const AXIS_PRIMARY_COLOR = '#1F9ACF';
 
 type ProposalBrandCompany = NonNullable<ProposalV3Quote['brandCompany']>;
 
