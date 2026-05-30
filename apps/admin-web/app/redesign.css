@@ -230,6 +230,53 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 .quote-builder-main-content > * { margin-top: 0 !important; }
 .quote-builder-main-content > * + * { margin-top: 0.7rem !important; }
 
+/* Stage 2: the 7-card section tab row → a compact clickable stepper (one nav).
+   Underlying ?tab= routing is unchanged; this is purely the visual treatment. */
+.quote-dashboard-tabs {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px 3px !important;
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-hairline) !important;
+  border-radius: var(--rd-radius) !important;
+  padding: 7px 10px !important;
+}
+.quote-dashboard-tab {
+  flex: 0 1 auto !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  min-height: 0 !important;
+}
+.quote-dashboard-tab:hover { background: var(--rd-hover) !important; }
+.quote-dashboard-tab small { display: none !important; }            /* drop helper copy → stepper */
+.quote-dashboard-tab-copy { display: flex !important; flex-direction: row !important; align-items: center; }
+.quote-dashboard-tab-copy strong { font-size: 0.84rem !important; font-weight: 600; }
+.quote-dashboard-tab-index {
+  width: 21px !important; height: 21px !important;
+  border-radius: 50% !important;
+  background: var(--rd-hairline-strong) !important;
+  color: #fff !important;
+  font-size: 0.7rem !important; font-weight: 700 !important;
+  display: flex !important; align-items: center; justify-content: center;
+  flex: none;
+}
+.quote-dashboard-tab-active { background: var(--rd-accent-weak) !important; box-shadow: inset 0 0 0 1px #bfe6f4 !important; }
+.quote-dashboard-tab-active .quote-dashboard-tab-index { background: var(--rd-accent) !important; }
+.quote-dashboard-tab-active strong { color: var(--rd-ink) !important; }
+.quote-dashboard-tab:not(:last-child)::after {
+  content: "›";
+  color: var(--rd-ink-faint);
+  font-size: 0.95rem;
+  margin-left: 5px;
+}
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
