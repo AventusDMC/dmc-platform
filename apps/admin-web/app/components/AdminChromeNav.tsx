@@ -11,6 +11,18 @@ type AdminChromeNavProps = {
   sessionRole?: SessionRole | null;
 };
 
+// Glyph per top-level nav group. Shown beside the label normally; on quote
+// routes the sidebar collapses to an icon-only "focus" rail (see redesign.css)
+// and these become the sole nav affordance, so every group needs one.
+const PRIMARY_NAV_ICONS: Record<string, string> = {
+  Dashboard: '▦',
+  Sales: '✦',
+  Operations: '◷',
+  'Product Catalog': '▤',
+  Finance: '$',
+  Administration: '⚙',
+};
+
 export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
   const pathname = usePathname() || '/';
   const navGroups = getVisibleNavGroups(sessionRole);
@@ -29,7 +41,9 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
               href={group.href}
               className={`admin-top-nav-link${active ? ' admin-top-nav-link-active' : ''}`}
               aria-current={active ? 'page' : undefined}
+              title={group.label}
             >
+              <span className="admin-top-nav-icon" aria-hidden="true">{PRIMARY_NAV_ICONS[group.label] ?? '•'}</span>
               <strong>{group.label}</strong>
               {group.helper ? <span>{group.helper}</span> : null}
             </Link>

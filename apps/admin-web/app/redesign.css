@@ -484,6 +484,50 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   color:#6EE7B7 !important;
 }
 
+/* Stage 5b — focus-mode rail: a glyph per top-level nav group, and on quote
+   routes the dark sidebar collapses to a 62px icon-only rail (mock `.rail`). */
+/* base: icon sits left of the label in the normal full-width sidebar */
+.admin-top-nav-link{
+  display:grid !important;
+  grid-template-columns:1.45rem 1fr;
+  column-gap:.55rem;
+  align-items:center;
+}
+.admin-top-nav-icon{
+  grid-row:1 / span 2;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:.95rem;
+  line-height:1;
+  color:var(--rd-sidebar-muted);
+}
+.admin-top-nav-link-active .admin-top-nav-icon{ color:#fff; }
+
+/* quote routes → icon-only focus rail */
+.admin-shell:has(.quote-builder-page){ grid-template-columns:62px minmax(0,1fr) !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar{ padding:1rem .5rem !important; gap:.5rem !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-brand{ justify-items:center; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-copy{ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-brand-logo{ width:34px !important; height:auto !important; }
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link{
+  grid-template-columns:1fr !important;
+  justify-items:center;
+  padding:.5rem 0 !important;
+}
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link strong,
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link span:not(.admin-top-nav-icon){ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-top-nav-icon{
+  grid-row:auto !important;
+  font-size:1.2rem !important;
+  width:38px; height:38px;
+  border-radius:11px;
+}
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link-active .admin-top-nav-icon{ color:#fff; }
+/* hide the secondary chips + account footer — focus on the icon column */
+.admin-shell:has(.quote-builder-page) .admin-sidebar-subnav{ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-footer{ display:none !important; }
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
