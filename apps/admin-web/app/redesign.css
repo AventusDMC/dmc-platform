@@ -201,6 +201,35 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 .secondary-button:hover,
 .compact-button:hover { background: var(--rd-hover) !important; }
 
+/* ---------- Quote detail: reduce scrolling (condense header chrome) ---------- */
+/* The 9-field header meta grid was a sparse 2-col x 5-row stack eating the whole
+   first screen. Flow it into a dense multi-column row (~2 rows). */
+.quote-dashboard-meta-grid {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important;
+  gap: 0.5rem 1.25rem !important;
+  margin-top: 0.6rem !important;
+}
+.quote-dashboard-meta-grid > div {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.quote-dashboard-meta-grid span {
+  font-size: 0.6rem !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rd-ink-faint) !important;
+}
+.quote-dashboard-meta-grid strong {
+  font-size: 0.85rem !important;
+  line-height: 1.25;
+  font-weight: 600;
+}
+/* Tighten the detail header card + the stacked context strips so content is reachable sooner */
+.quote-dashboard-header { padding-bottom: 0.4rem; }
+.quote-builder-main-content > * { margin-top: 0 !important; }
+.quote-builder-main-content > * + * { margin-top: 0.7rem !important; }
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
