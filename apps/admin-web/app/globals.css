@@ -21665,17 +21665,20 @@ textarea:focus {
   border-color: rgba(230, 244, 243, 0.18);
   box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
 }
-/* Correct Axis brand identity overrides */
+/* Correct Axis brand identity overrides — surface/accent now sourced from the
+   canonical design tokens (app/design-tokens.css). Values unchanged. The text/
+   border vars below are overridden later by the "Visual clarity pass" block, so
+   they stay literal here. */
 :root {
-  --background: #F9FAFB;
+  --background: var(--ds-color-surface-soft);
   --foreground: #111827;
   --text: #111827;
-  --surface: #FFFFFF;
+  --surface: var(--ds-color-surface);
   --surface-muted: #F4FAFD;
   --border: #E5E7EB;
   --muted-foreground: #6B7280;
-  --accent: #1F9ACF;
-  --accent-strong: #1C7FB8;
+  --accent: var(--ds-color-accent);
+  --accent-strong: var(--ds-color-accent-strong);
   --accent-soft: #E8F6FB;
   --success: #1F9ACF;
 }
