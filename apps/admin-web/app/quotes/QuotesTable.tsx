@@ -267,14 +267,6 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                     <td>
                       <strong>{quote.title}</strong>
                       <div className="table-subcopy">{quote.quoteNumber || 'Quote number pending'}</div>
-                      <div className="table-subcopy">
-                        {getValidatedTripSummary({
-                          quoteTitle: quote.title,
-                          quoteDescription: quote.description,
-                          totalPax: quote.adults + quote.children,
-                          nightCount: quote.nightCount,
-                        })}
-                      </div>
                     </td>
                     <td>
                       <strong>{quote.company.name}</strong>

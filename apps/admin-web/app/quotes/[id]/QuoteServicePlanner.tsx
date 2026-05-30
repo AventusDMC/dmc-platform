@@ -1877,6 +1877,7 @@ function AddServiceEditorPanel({
         submitLabel={label}
         onSaved={(item) => onSaved?.(item as QuoteItem)}
         onCancel={onCancel}
+        hideCancelAction
       />
     </>
   );
@@ -2090,6 +2091,7 @@ function EditServiceEditorPanel({
       refreshOnSaved={!isResolvingImportedDraft}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
       onCancel={onCancel}
+      hideCancelAction
     />
   );
 }

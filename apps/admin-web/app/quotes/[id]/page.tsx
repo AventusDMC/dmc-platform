@@ -2184,6 +2184,22 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
   const visibleQuoteItineraryDays = quoteItinerary.days.filter((day) => day.isActive && day.dayNumber <= expectedDayCount);
+  // Nights source-of-truth guard. The day cards rendered below are clamped to
+  // expectedDayCount (= nightCount + 1). If the scalar nightCount is set LOWER
+  // than the real itinerary length, the trailing day cards (e.g. Departure) are
+  // silently hidden — the data survives in the DB but vanishes from view. Flag
+  // that so the operator can reconcile rather than lose sight of the full trip.
+  const itineraryDayNumbers = [
+    ...quote.itineraries.map((day) => day.dayNumber),
+    ...quoteItinerary.days.filter((day) => day.isActive).map((day) => day.dayNumber),
+  ];
+  const maxItineraryDayNumber = itineraryDayNumbers.length > 0 ? Math.max(...itineraryDayNumbers) : 0;
+  const hiddenItineraryDayCount = Math.max(0, maxItineraryDayNumber - expectedDayCount);
+  const nightsToCoverItinerary = Math.max(0, maxItineraryDayNumber - 1);
+  const nightsDivergenceWarning =
+    hiddenItineraryDayCount > 0
+      ? `Nights mismatch: this quote is set to ${quote.nightCount} night${quote.nightCount === 1 ? '' : 's'}, but the itinerary runs to day ${maxItineraryDayNumber} — ${hiddenItineraryDayCount} day card${hiddenItineraryDayCount === 1 ? ' is' : 's are'} hidden below it. Raise Nights to ${nightsToCoverItinerary} or remove the extra day${hiddenItineraryDayCount === 1 ? '' : 's'} so the full trip stays visible.`
+      : null;
   const plannerDayIdByQuoteItemId = new Map<string, string>();
   for (const day of visibleQuoteItineraryDays) {
     for (const dayItem of day.dayItems || []) {
@@ -2723,6 +2739,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const nextStep = activeStepIndex >= 0 && activeStepIndex < QUOTE_WORKSPACE_STEPS.length - 1 ? QUOTE_WORKSPACE_STEPS[activeStepIndex + 1] : null;
   const nextStepBlockedReason = nextStep ? stepAdvanceGuard.get(nextStep.id) || null : null;
   const guidedReviewMode = activeStep === 'review' || activeStep === 'preview';
+  // The guided step-nav is a junior-staff wizard layered over the same tabs; the
+  // 7-card tab row below is the primary navigation. Keep the wizard available but
+  // collapsed by default so the two navs don't compete — expand it only when the
+  // operator has explicitly entered the flow via a ?step= link.
+  const guidedFlowDefaultOpen = QUOTE_WORKSPACE_STEPS.some((entry) => entry.id === resolvedSearchParams?.step);
   const showGuidedStepFooter =
     activeTab === 'overview' ||
     activeTab === 'itinerary' ||
@@ -2853,6 +2874,23 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 <div><span>Destination</span><strong>{destination}</strong></div>
                 <div><span>Revision</span><strong>Rev {quote.revisionNumber ?? 1}</strong></div>
               </div>
+              {nightsDivergenceWarning ? (
+                <p
+                  role="alert"
+                  style={{
+                    margin: '0.6rem 0 0',
+                    padding: '0.5rem 0.7rem',
+                    background: '#fef3f2',
+                    border: '1px solid #fecdca',
+                    borderRadius: 8,
+                    color: '#b42318',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠ {nightsDivergenceWarning}
+                </p>
+              ) : null}
             </div>
             <AdminHeaderActions className="quote-dashboard-actions">
               {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
@@ -2964,18 +3002,22 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             })}
           </section>
 
-          <section className="workspace-section quote-step-shell quote-builder-step-shell">
-            <div className="workspace-section-head">
-              <div>
-                <p className="eyebrow">Guided Flow</p>
-                <h2>Move quote setup forward step by step</h2>
-              </div>
+          <details className="workspace-section quote-step-shell quote-builder-step-shell" open={guidedFlowDefaultOpen}>
+            <summary
+              className="quote-step-shell-summary"
+              style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
+            >
+              <span className="eyebrow">Guided Flow</span>
+              <strong style={{ fontSize: '1rem' }}>Move quote setup forward step by step</strong>
               <span className={`quote-ui-badge ${reviewBlockingIssues.length > 0 ? 'quote-ui-badge-warning' : 'quote-ui-badge-success'}`}>
                 {reviewBlockingIssues.length > 0 ? 'Blocked steps' : 'Flow ready'}
               </span>
-            </div>
+              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>
+                Guided steps ▾
+              </span>
+            </summary>
 
-            <nav className="quote-step-nav" aria-label="Quote workspace steps">
+            <nav className="quote-step-nav" aria-label="Quote workspace steps" style={{ marginTop: '0.85rem' }}>
               {QUOTE_WORKSPACE_STEPS.map((step, index) => {
                 const isActive = step.id === activeStep;
                 const badge = stepBadges.get(step.id);
@@ -2996,7 +3038,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             </nav>
 
             <p className="form-helper">{nextStepHelperCopy}</p>
-          </section>
+          </details>
 
           <nav className="quote-dashboard-tabs" aria-label="Quote detail sections">
             {QUOTE_DASHBOARD_TABS.map((tab, index) => {
