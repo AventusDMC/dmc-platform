@@ -973,7 +973,6 @@ model Hotel {
   hotelCategory        HotelCategory?        @relation(fields: [hotelCategoryId], references: [id])
   quoteHotelOptions    QuoteHotelOption[]
   quoteItems           QuoteItem[]
-  dmcQuoteHotelOptions DmcQuoteHotelOption[]
 
   @@index([cityId])
   @@index([hotelCategoryId])
@@ -1553,178 +1552,6 @@ model Quote {
   @@map("quotes")
 }
 
-model DmcQuote {
-  id              String                  @id @default(uuid()) @db.Uuid
-  clientName      String
-  title           String
-  startDate       DateTime
-  endDate         DateTime
-  currency        String                  @default("USD")
-  status          String                  @default("DRAFT")
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  segments        DmcQuoteSegment[]
-  connections     DmcQuoteConnection[]
-  pricingMatrices DmcQuotePricingMatrix[]
-
-  @@index([startDate, endDate])
-  @@index([status])
-  @@map("dmc_quotes")
-}
-
-model DmcQuoteSegment {
-  id                      String                      @id @default(uuid()) @db.Uuid
-  quoteId                 String                      @db.Uuid
-  orderIndex              Int
-  type                    DmcQuoteSegmentType
-  country                 String
-  title                   String
-  durationDays            Int                         @default(1)
-  startDate               DateTime?
-  endDate                 DateTime?
-  notes                   String?
-  quote                   DmcQuote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  fromConnections         DmcQuoteConnection[]        @relation("DmcQuoteConnectionFrom")
-  toConnections           DmcQuoteConnection[]        @relation("DmcQuoteConnectionTo")
-  days                    DmcQuoteDay[]
-  hotelOptionSets         DmcQuoteHotelOptionSet[]
-  externalPackageRequests DmcExternalPackageRequest[]
-  pricingMatrices         DmcQuotePricingMatrix[]
-
-  @@index([quoteId, orderIndex])
-  @@map("dmc_quote_segments")
-}
-
-model DmcQuoteConnection {
-  id            String                 @id @default(uuid()) @db.Uuid
-  quoteId       String                 @db.Uuid
-  fromSegmentId String                 @db.Uuid
-  toSegmentId   String                 @db.Uuid
-  orderIndex    Int
-  type          DmcQuoteConnectionType @default(NONE)
-  description   String?
-  costAmount    Float?
-  costCurrency  String?
-  pricingBasis  DmcQuotePricingBasis?
-  quote         DmcQuote               @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  fromSegment   DmcQuoteSegment        @relation("DmcQuoteConnectionFrom", fields: [fromSegmentId], references: [id], onDelete: Cascade)
-  toSegment     DmcQuoteSegment        @relation("DmcQuoteConnectionTo", fields: [toSegmentId], references: [id], onDelete: Cascade)
-
-  @@index([quoteId, orderIndex])
-  @@index([fromSegmentId])
-  @@index([toSegmentId])
-  @@map("dmc_quote_connections")
-}
-
-model DmcQuoteDay {
-  id                String               @id @default(uuid()) @db.Uuid
-  segmentId         String               @db.Uuid
-  dayNumber         Int
-  title             String
-  description       String?
-  mealsIncludedText String?
-  segment           DmcQuoteSegment      @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  services          DmcQuoteDayService[]
-
-  @@unique([segmentId, dayNumber])
-  @@index([segmentId])
-  @@map("dmc_quote_days")
-}
-
-model DmcQuoteDayService {
-  id           String                 @id @default(uuid()) @db.Uuid
-  dayId        String                 @db.Uuid
-  type         DmcQuoteDayServiceType
-  title        String
-  description  String?
-  supplierId   String?                @db.Uuid
-  costAmount   Float?
-  costCurrency String?
-  pricingBasis DmcQuotePricingBasis?
-  day          DmcQuoteDay            @relation(fields: [dayId], references: [id], onDelete: Cascade)
-  supplier     Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-
-  @@index([dayId])
-  @@index([supplierId])
-  @@map("dmc_quote_day_services")
-}
-
-model DmcQuoteHotelOptionSet {
-  id        String                @id @default(uuid()) @db.Uuid
-  segmentId String                @db.Uuid
-  name      String
-  sortOrder Int                   @default(0)
-  segment   DmcQuoteSegment       @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  options   DmcQuoteHotelOption[]
-
-  @@index([segmentId, sortOrder])
-  @@map("dmc_quote_hotel_option_sets")
-}
-
-model DmcQuoteHotelOption {
-  id                String                 @id @default(uuid()) @db.Uuid
-  optionSetId       String                 @db.Uuid
-  city              String
-  hotelId           String?                @db.Uuid
-  hotelNameSnapshot String
-  nights            Int                    @default(1)
-  roomType          String
-  mealPlan          String
-  optionSet         DmcQuoteHotelOptionSet @relation(fields: [optionSetId], references: [id], onDelete: Cascade)
-  hotel             Hotel?                 @relation(fields: [hotelId], references: [id], onDelete: SetNull)
-
-  @@index([optionSetId])
-  @@index([hotelId])
-  @@map("dmc_quote_hotel_options")
-}
-
-model DmcExternalPackageRequest {
-  id             String                          @id @default(uuid()) @db.Uuid
-  segmentId      String                          @db.Uuid
-  supplierName   String
-  paxRange       String
-  hotelCategory  String?
-  boardBasis     String?
-  itineraryText  String?
-  notes          String?
-  status         DmcExternalPackageRequestStatus @default(DRAFT)
-  segment        DmcQuoteSegment                 @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  supplierQuotes DmcExternalPackageQuote[]
-
-  @@index([segmentId])
-  @@index([status])
-  @@map("dmc_external_package_requests")
-}
-
-model DmcExternalPackageQuote {
-  id                String                    @id @default(uuid()) @db.Uuid
-  requestId         String                    @db.Uuid
-  supplierName      String
-  pricingMatrixJson Json
-  singleSupplement  Float?
-  includesText      String?
-  excludesText      String?
-  notes             String?
-  request           DmcExternalPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@index([requestId])
-  @@map("dmc_external_package_quotes")
-}
-
-model DmcQuotePricingMatrix {
-  id        String                     @id @default(uuid()) @db.Uuid
-  quoteId   String                     @db.Uuid
-  scope     DmcQuotePricingMatrixScope
-  segmentId String?                    @db.Uuid
-  rowsJson  Json
-  quote     DmcQuote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  segment   DmcQuoteSegment?           @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-
-  @@index([quoteId, scope])
-  @@index([segmentId])
-  @@map("dmc_quote_pricing_matrices")
-}
-
 model Invoice {
   id          String            @id @default(uuid()) @db.Uuid
   quoteId     String            @unique @db.Uuid
@@ -2110,7 +1937,6 @@ model Supplier {
   touringRoutePricings  TouringRoutePricing[]
   vehicleRates          VehicleRate[]
   vouchers              Voucher[]
-  dmcQuoteDayServices   DmcQuoteDayService[]
 
   @@map("suppliers")
 }
@@ -3221,44 +3047,6 @@ enum InvoiceStatus {
   ISSUED
   PAID
   CANCELLED
-}
-
-enum DmcQuoteSegmentType {
-  INTERNAL_JORDAN
-  EXTERNAL_PACKAGE
-}
-
-enum DmcQuoteConnectionType {
-  FLIGHT
-  BORDER
-  TRANSFER
-  NONE
-}
-
-enum DmcQuotePricingBasis {
-  PER_PERSON
-  PER_GROUP
-}
-
-enum DmcQuoteDayServiceType {
-  TRANSPORT
-  HOTEL
-  MEAL
-  GUIDE
-  ENTRANCE
-  ACTIVITY
-  OTHER
-}
-
-enum DmcExternalPackageRequestStatus {
-  DRAFT
-  SENT
-  RECEIVED
-}
-
-enum DmcQuotePricingMatrixScope {
-  TOTAL_QUOTE
-  SEGMENT
 }
 
 enum TransportPricingMode {
