@@ -21951,17 +21951,20 @@ textarea:focus {
   box-shadow: none;
 }
 
-/* Visual clarity pass */
+/* Visual clarity pass — now sourced from the canonical design tokens
+   (app/design-tokens.css). Values are unchanged; this is the cascade tip
+   that defines the final core neutrals, so pointing it at --ds-* makes the
+   tokens load-bearing for the real rendered palette (Phase 1b). */
 :root {
-  --foreground: #0F172A;
-  --text: #0F172A;
-  --muted-foreground: #475569;
-  --axis-text: #0F172A;
-  --axis-text-soft: #475569;
-  --axis-border: #D5DCE6;
-  --border: #D5DCE6;
-  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 16px 36px rgba(15, 23, 42, 0.12);
+  --foreground: var(--ds-color-text);
+  --text: var(--ds-color-text);
+  --muted-foreground: var(--ds-color-text-muted);
+  --axis-text: var(--ds-color-text);
+  --axis-text-soft: var(--ds-color-text-muted);
+  --axis-border: var(--ds-color-border);
+  --border: var(--ds-color-border);
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
 }
 
 body,
