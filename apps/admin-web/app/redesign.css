@@ -362,6 +362,23 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 .quote-dashboard-tab-active .quote-dashboard-tab-index{ background:var(--sc) !important; }
 .quote-dashboard-tab-active strong{ color:var(--sc) !important; }
 
+/* Stage 3 — itinerary: calmer day list (clean cards, cyan-accented active day). */
+.app-day-navigation-list{ gap:8px !important; }
+.app-day-navigation-card{
+  border:1px solid var(--ds-color-border,#E5E9F0) !important;
+  border-radius:12px !important;
+  padding:11px 13px !important;
+  background:#fff !important;
+  box-shadow:0 1px 2px rgba(20,40,60,.04) !important;
+  transition:border-color .15s, box-shadow .15s !important;
+}
+.app-day-navigation-card:hover{ border-color:#1F9ACF !important; box-shadow:0 4px 12px rgba(31,154,207,.12) !important; }
+.app-day-navigation-card-active{
+  border-color:#1F9ACF !important;
+  background:#E9F7FD !important;
+  box-shadow:inset 3px 0 0 #1F9ACF, 0 4px 12px rgba(31,154,207,.14) !important;
+}
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
