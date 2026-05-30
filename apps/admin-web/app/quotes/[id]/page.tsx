@@ -2940,6 +2940,34 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               path through the workspace + same-thing-different-names
               vocabulary disambiguation. Designed for new operators and
               for anyone returning to a quote after a break. */}
+          {/* Option C: the four context panels (how-to / journey / readiness /
+              pricing) are merged into one collapsed "Quote insights" line so the
+              top chrome is a single row by default. Expand to see the panels. */}
+          <details
+            className="quote-insights-shell"
+            style={{
+              background: 'var(--rd-surface, #fff)',
+              border: '1px solid var(--rd-hairline, #E1E4EA)',
+              borderRadius: 10,
+              padding: '0.6rem 0.85rem',
+              marginBottom: '0.7rem',
+            }}
+          >
+            <summary
+              style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
+            >
+              <span className="eyebrow">Quote insights</span>
+              <span style={{ fontSize: '0.84rem', color: 'var(--rd-ink-muted, #5C6370)' }}>
+                {quote.quoteItems.length} service{quote.quoteItems.length === 1 ? '' : 's'} · {quote.quoteCurrency}{' '}
+                {Math.round(quote.totalSell).toLocaleString()} sell ·{' '}
+                {quote.totalSell > 0 ? Math.round(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100) : 0}% margin
+                {reviewBlockingIssues.length > 0 ? ` · ${reviewBlockingIssues.length} check${reviewBlockingIssues.length === 1 ? '' : 's'}` : ''}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.76rem', fontWeight: 600, color: 'var(--rd-ink-faint, #8A909B)' }}>
+                How-to · journey · readiness · pricing ▾
+              </span>
+            </summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem', marginTop: '0.7rem' }}>
           <QuoteWorkspaceGuide />
 
           {/* Journey flow visualization — horizontal city timeline rendered
@@ -2983,6 +3011,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             quoteTotalSell={quote.totalSell}
             quoteTotalCost={quote.totalCost}
           />
+            </div>
+          </details>
 
           <section className="quote-dashboard-workflow" aria-label="Quote workflow">
             {QUOTE_DASHBOARD_WORKFLOW.map((label) => {

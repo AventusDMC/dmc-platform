@@ -3532,13 +3532,14 @@ function ScopePlanner({
 
   return (
     <div className="section-stack">
-      <section className="workspace-section quote-service-workflow-summary app-card">
-        <div className="workspace-section-head">
+      <details className="quote-operational-collapsible quote-service-workflow-summary">
+        <summary>
           <div>
-            <p className="eyebrow">Workflow Summary</p>
-            <h3>Build the trip day by day</h3>
+            <span className="eyebrow">Workflow Summary</span>
+            <strong>Build the trip day by day</strong>
           </div>
-        </div>
+          <em>{daysCompleted}/{daySummaries.length} days · {missingCoverageWarnings} warning{missingCoverageWarnings === 1 ? '' : 's'}</em>
+        </summary>
         <div className="quote-preview-total-list">
           {/* "Pending" reads calmer than "Missing" on a Workflow Summary
               row that is by definition empty at quote-creation time —
@@ -3575,7 +3576,7 @@ function ScopePlanner({
             <strong>{unassignedItems.length}</strong>
           </div>
         </div>
-      </section>
+      </details>
 
       <details className="quote-operational-collapsible quote-operational-collapsible-cleanup" open={unresolvedItems.length > 0}>
         <summary>
