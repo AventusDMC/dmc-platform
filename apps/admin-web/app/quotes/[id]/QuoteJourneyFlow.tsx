@@ -143,20 +143,17 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
   }
 
   return (
-    <section
+    <details
       style={{
         background: '#f5f8f5',
         border: '1px solid #cdd7cd',
         borderRadius: 10,
         padding: '0.85rem 1rem',
         marginBottom: '1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.65rem',
       }}
       aria-label="Journey flow"
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
         <div>
           <span
             style={{
@@ -175,7 +172,8 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
           </strong>
         </div>
         <span style={{ color: '#6b7a6b', fontSize: '0.75rem' }}>v1 destination heuristic</span>
-      </div>
+      </summary>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.65rem' }}>
 
       {/* Journey rhythm strip — subtle pace tags (Arrival / Touring /
           Adventure / Relaxation / Departure) derived from the city
@@ -301,6 +299,7 @@ export function QuoteJourneyFlow({ itineraries }: { itineraries: ItineraryDay[] 
           </div>
         </li>
       </ol>
-    </section>
+      </div>
+    </details>
   );
 }
