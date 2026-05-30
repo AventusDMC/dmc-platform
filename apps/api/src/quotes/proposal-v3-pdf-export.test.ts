@@ -1206,7 +1206,7 @@ test('proposal PDF template supports dynamic branding without warm palette color
   assert.match(templateSource, /footerLine/);
   assert.match(serviceSource, /footerLine/);
   assert.match(mapperSource, /AXIS_LOGO_URL/);
-  assert.match(cssSource, /--proposal-accent:\s*#1FA3D6/);
+  assert.match(cssSource, /--proposal-accent:\s*#1F9ACF/);
   assert.match(cssSource, /\.proposal-hotel-options/);
   assert.match(cssSource, /\.proposal-footer/);
   assert.match(cssSource, /\.proposal-brand-logo-stage\s*\{[\s\S]*background:\s*#F3F4F6/);

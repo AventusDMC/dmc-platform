@@ -60,12 +60,12 @@
   --proposal-subtle: #6B6B6B;
   --proposal-muted: #6B6B6B;
   --proposal-border: #E5E7EB;
-  --proposal-border-strong: rgba(31, 163, 214, 0.28);
+  --proposal-border-strong: rgba(31, 154, 207, 0.28);
   --proposal-paper: #FFFFFF;
   --proposal-paper-soft: #F9FAFB;
   --proposal-paper-soft-2: #FFFFFF;
-  --proposal-accent: #1FA3D6;
-  --proposal-accent-soft: rgba(31, 163, 214, 0.1);
+  --proposal-accent: #1F9ACF;
+  --proposal-accent-soft: rgba(31, 154, 207, 0.1);
   --proposal-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
   --proposal-separator: #E5E7EB;
 }
@@ -654,7 +654,7 @@ body {
 .proposal-hotel-option-badge {
   display: inline-block;
   padding: 4px 7px;
-  border: 1px solid rgba(31, 163, 214, 0.24);
+  border: 1px solid rgba(31, 154, 207, 0.24);
   border-radius: 999px;
 }
 

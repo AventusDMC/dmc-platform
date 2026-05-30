@@ -7454,14 +7454,14 @@ th.money-cell {
   gap: 0.85rem;
   padding: 1rem;
   border: 1px solid rgba(31, 154, 207, 0.14);
-  border-left: 4px solid #1FA3D6;
+  border-left: 4px solid #1F9ACF;
   border-radius: 0.5rem;
   background: #FFFFFF;
   break-inside: avoid;
 }
 
 .quote-hotel-option-set-std {
-  border-left-color: #1FA3D6;
+  border-left-color: #1F9ACF;
 }
 
 .quote-hotel-option-set-dlx {
@@ -7588,7 +7588,7 @@ th.money-cell {
 }
 
 .quote-hotel-card-primary {
-  border-color: rgba(31, 163, 214, 0.38);
+  border-color: rgba(31, 154, 207, 0.38);
   background: #FFFFFF;
 }
 
@@ -7606,9 +7606,9 @@ th.money-cell {
 }
 
 .quote-hotel-badge-primary {
-  border-color: rgba(31, 163, 214, 0.42);
+  border-color: rgba(31, 154, 207, 0.42);
   color: #075985;
-  background: rgba(31, 163, 214, 0.08);
+  background: rgba(31, 154, 207, 0.08);
 }
 
 .quote-hotel-meta-grid {
