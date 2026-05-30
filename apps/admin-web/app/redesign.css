@@ -464,6 +464,26 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   box-shadow:0 4px 12px rgba(31,154,207,.14) !important;
 }
 
+/* Stage 5 — financial summary rail: brighten the legacy slate→cyan gradient to
+   the mock's full brand-cyan (`.summary`) and flip the margin/profit to green. */
+.app-financial-panel{
+  background:linear-gradient(160deg,#075985 0%,#1F9ACF 60%,#22D3EE 125%) !important;
+  border:0 !important;
+  box-shadow:0 12px 30px rgba(31,154,207,.26) !important;
+}
+/* row chips read a touch brighter on the lighter gradient */
+.app-financial-panel .quote-pricing-summary-row{
+  background:rgba(255,255,255,.14) !important;
+}
+/* force values white on the gradient (a legacy `.financial-value` rule wins the
+   cascade for Sell/Cost/Markup, leaving them dark + unreadable) */
+.app-financial-panel .financial-value{ color:#fff !important; }
+/* Profit (row 3) + Margin % (row 4) → mint green, like the mock's green total */
+.app-financial-panel .quote-pricing-summary-row:nth-child(3) .financial-value,
+.app-financial-panel .quote-pricing-summary-row:nth-child(4) .financial-value{
+  color:#6EE7B7 !important;
+}
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
