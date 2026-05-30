@@ -66,11 +66,20 @@ review) before merge, since token changes are global.
   defines new `--ds-*` names — so it cannot override anything currently rendering (guaranteed
   visual no-op). New work should reference `--ds-*` (also valid in inline `style={{}}`). First
   consumer migrated: the quote nights-mismatch banner (was inline `#fef3f2`/`#fecdca`/`#b42318`).
-- **Phase 1b — Consolidate legacy onto canonical (NOT done; needs visual verification).** Re-point
-  the legacy names (`--saas-*`, `--axis-*`, base) to `--ds-*` using their currently-rendering
-  values, then delete the duplicate/dead `:root` blocks (note: the two `--axis-*` blocks are NOT
-  identical — block 2 supersets block 1 with a different `--axis-blue-border`, so neither can be
-  blind-deleted). This changes the global cascade — do it with screenshots before/after.
+- **Phase 1b — Consolidate legacy onto canonical (IN PROGRESS, verified).** Re-point the legacy
+  names (`--saas-*`, `--axis-*`, base) to `--ds-*` using their currently-rendering values, then
+  delete the duplicate/dead `:root` blocks. Method that makes this safe without guessing: capture
+  the live computed `:root` values (via Claude-in-Chrome `getComputedStyle`), rewire, then re-capture
+  and assert byte-identical + screenshot-compare.
+  - **Done so far:** the cascade-tip "Visual clarity pass" `:root` block (globals.css ~21955 — the
+    final override for core neutrals) now sources `--text/--foreground/--muted-foreground/--border/
+    --axis-text/--axis-text-soft/--axis-border/--shadow-sm/--shadow-md` from `--ds-*`. `--ds-*`
+    neutral/shadow values were first corrected to the true shipping values (text `#0F172A`, border
+    `#D5DCE6`, muted `#475569`, shadows) — the AXIS-block values Phase 1a used were stale. Verified
+    no-op: 12/12 computed core tokens byte-identical, screenshot identical.
+  - **Still to do:** accent/surface/background origins, the 18 `:root` blocks' other vars, then
+    delete the now-redundant blocks (note: the two `--axis-*` blocks are NOT identical — block 2
+    supersets block 1 with a different `--axis-blue-border` — so neither can be blind-deleted).
 - **Phase 2 — Primitive coverage.** Fill gaps in `ui.tsx` (e.g. `AppAlert`/`Callout` for the
   status banners that are currently inline) so there's a component for every recurring pattern.
 - **Phase 3 — Burn down inline styles by area,** highest-traffic first (`quotes/[id]`), swapping
