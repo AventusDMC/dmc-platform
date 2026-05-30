@@ -1,3 +1,4 @@
+import './design-tokens.css';
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { ReactNode } from 'react';

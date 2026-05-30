@@ -2880,10 +2880,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   style={{
                     margin: '0.6rem 0 0',
                     padding: '0.5rem 0.7rem',
-                    background: '#fef3f2',
-                    border: '1px solid #fecdca',
-                    borderRadius: 8,
-                    color: '#b42318',
+                    background: 'var(--ds-color-danger-surface)',
+                    border: '1px solid var(--ds-color-danger-border)',
+                    borderRadius: 'var(--ds-radius-sm)',
+                    color: 'var(--ds-color-danger)',
                     fontSize: '0.82rem',
                     fontWeight: 600,
                   }}
