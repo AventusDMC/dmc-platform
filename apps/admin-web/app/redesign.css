@@ -277,6 +277,91 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   margin-left: 5px;
 }
 
+/* ===== Quote builder redesign v2 (brand-cyan) — approved 2026-05-30.
+   Reference: docs/quote-builder-redesign-mock.html. Restyle in place; logic untouched. ===== */
+/* Stage 1 — command bar: blue→cyan gradient, white text, glass money, compact meta. */
+.quote-dashboard-header{
+  background:linear-gradient(110deg,#075985 0%,#1F9ACF 53%,#22D3EE 100%) !important;
+  border:0 !important;
+  border-radius:16px !important;
+  box-shadow:0 10px 26px rgba(31,154,207,.20) !important;
+  padding:18px 22px !important;
+}
+.quote-dashboard-header-main .eyebrow{ color:rgba(255,255,255,.74) !important; }
+.quote-dashboard-header-main h1{ color:#fff !important; }
+.quote-dashboard-header-main .back-link,
+.quote-dashboard-header-main .back-link:hover{ color:rgba(255,255,255,.85) !important; }
+/* compact inline meta; drop redundant Title(2)/Currency(6)/Status(7) */
+.quote-dashboard-meta-grid{ display:flex !important; flex-wrap:wrap; gap:5px 18px !important; margin-top:9px !important; }
+.quote-dashboard-meta-grid > div{ display:flex !important; gap:6px; align-items:baseline; background:transparent !important; border:0 !important; padding:0 !important; box-shadow:none !important; }
+.quote-dashboard-meta-grid > div > span{ color:rgba(255,255,255,.66) !important; font-size:.72rem !important; text-transform:uppercase; letter-spacing:.04em; }
+.quote-dashboard-meta-grid > div > strong{ color:#fff !important; font-size:.82rem !important; }
+.quote-dashboard-meta-grid > div:nth-child(2),
+.quote-dashboard-meta-grid > div:nth-child(6),
+.quote-dashboard-meta-grid > div:nth-child(7){ display:none !important; }
+/* glass money cells */
+.quote-command-money{ gap:.6rem !important; }
+.quote-command-money > div{ background:rgba(255,255,255,.14) !important; border:1px solid rgba(255,255,255,.24) !important; border-radius:12px !important; padding:7px 15px !important; }
+.quote-command-money .eyebrow{ color:rgba(255,255,255,.74) !important; }
+.quote-command-money strong{ color:#fff !important; }
+.quote-command-money .quote-money-margin{ color:#6EE7B7 !important; }
+/* action buttons sit on the gradient → SOLID white w/ dark-cyan text (readable on any part of the gradient) */
+.quote-dashboard-actions .secondary-button,
+.quote-dashboard-actions .dashboard-toolbar-link,
+.quote-dashboard-actions .row-details-summary{
+  background:rgba(255,255,255,.95) !important;
+  border:1px solid rgba(255,255,255,.95) !important;
+  color:#075985 !important;
+}
+.quote-dashboard-actions .row-details-summary *{ color:#075985 !important; }
+/* make the Accept dropdown look like the other single-label buttons (e.g. Booking) */
+.quote-dashboard-actions .row-details-summary{
+  padding:11px 15px !important; border-radius:6px !important; gap:0 !important;
+  font-weight:750 !important; font-size:14px !important; line-height:1 !important;
+  list-style:none !important;
+}
+.quote-dashboard-actions .row-details-summary::-webkit-details-marker{ display:none !important; }
+.quote-dashboard-actions .row-details-summary .table-subcopy{ display:none !important; }
+.quote-dashboard-actions .secondary-button:hover,
+.quote-dashboard-actions .dashboard-toolbar-link:hover,
+.quote-dashboard-actions .row-details-summary:hover{ background:#fff !important; }
+/* …but the Accept dropdown's form opens on a light surface — keep it dark/readable */
+.quote-dashboard-actions .operations-row-details-body,
+.quote-dashboard-actions .operations-row-details-body *{ color:var(--ds-color-text,#0F172A) !important; }
+.quote-dashboard-actions .operations-row-details-body{ background:#fff !important; }
+.quote-dashboard-actions .operations-row-details-body .secondary-button{
+  background:#fff !important; border:1px solid var(--ds-color-border,#D5DCE6) !important;
+}
+/* status badge → readable frosted chip on the gradient */
+.quote-dashboard-header .quote-builder-status{
+  background:rgba(255,255,255,.18) !important;
+  border:1px solid rgba(255,255,255,.38) !important;
+  color:#fff !important;
+  font-weight:700 !important;
+}
+.quote-dashboard-header .quote-builder-status-success{
+  background:rgba(16,185,129,.3) !important; border-color:rgba(16,185,129,.55) !important; color:#D1FAE5 !important;
+}
+.quote-dashboard-header .quote-builder-status-danger{
+  background:rgba(244,63,94,.3) !important; border-color:rgba(244,63,94,.55) !important; color:#FFE4E6 !important;
+}
+.quote-dashboard-header .quote-builder-status-warning{
+  background:rgba(245,158,11,.32) !important; border-color:rgba(245,158,11,.55) !important; color:#FEF3C7 !important;
+}
+
+/* Stage 2 — color-code the stepper steps (extends the shipped Stage-2 stepper). */
+.quote-dashboard-tab:nth-of-type(1){ --sc:#10B981; --scw:#ECFDF5; }
+.quote-dashboard-tab:nth-of-type(2){ --sc:#1F9ACF; --scw:#E9F7FD; }
+.quote-dashboard-tab:nth-of-type(3){ --sc:#0EA5E9; --scw:#F0F9FF; }
+.quote-dashboard-tab:nth-of-type(4){ --sc:#F59E0B; --scw:#FFFBEB; }
+.quote-dashboard-tab:nth-of-type(5){ --sc:#F43F5E; --scw:#FFF1F3; }
+.quote-dashboard-tab:nth-of-type(6){ --sc:#14B8A6; --scw:#EFFCFA; }
+.quote-dashboard-tab:nth-of-type(7){ --sc:#2563EB; --scw:#EFF4FF; }
+.quote-dashboard-tab .quote-dashboard-tab-index{ background:var(--sc,#CBD0E4) !important; }
+.quote-dashboard-tab-active{ background:var(--scw) !important; box-shadow:inset 0 0 0 1.5px var(--sc) !important; }
+.quote-dashboard-tab-active .quote-dashboard-tab-index{ background:var(--sc) !important; }
+.quote-dashboard-tab-active strong{ color:var(--sc) !important; }
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;

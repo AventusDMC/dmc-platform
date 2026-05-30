@@ -2878,7 +2878,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Margin</span>
-                        <strong style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ds-color-success, #067647)' }}>
+                        <strong className="quote-money-margin" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ds-color-success, #067647)' }}>
                           {quote.totalSell > 0 ? Math.round(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100) : 0}%
                         </strong>
                       </div>
