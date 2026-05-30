@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { SessionRole } from '../lib/auth-session';
@@ -62,20 +63,28 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
     return null;
   }
 
+  let renderedSection: string | undefined;
+
   return (
     <nav aria-label={`${activeGroup.label} shortcuts`}>
       {activeGroup.children.map((child) => {
         const isActiveChild = isPathMatch(pathname, child.href);
+        const showSection = child.section && child.section !== renderedSection;
+        if (child.section) {
+          renderedSection = child.section;
+        }
 
         return (
-          <Link
-            key={`${child.href}-${child.label}`}
-            href={child.href}
-            aria-current={isActiveChild ? 'page' : undefined}
-            className={`admin-subnav-link${isActiveChild ? ' admin-subnav-link-active' : ''}`}
-          >
-            {child.label}
-          </Link>
+          <Fragment key={`${child.href}-${child.label}`}>
+            {showSection ? <span className="admin-subnav-section">{child.section}</span> : null}
+            <Link
+              href={child.href}
+              aria-current={isActiveChild ? 'page' : undefined}
+              className={`admin-subnav-link${isActiveChild ? ' admin-subnav-link-active' : ''}`}
+            >
+              {child.label}
+            </Link>
+          </Fragment>
         );
       })}
     </nav>

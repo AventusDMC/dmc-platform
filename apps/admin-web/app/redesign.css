@@ -85,6 +85,8 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   border: 0 !important;
   box-shadow: none !important;
 }
+/* Module nav lives in the sidebar; drop the redundant horizontal topbar subnav */
+.admin-subnav-shell { display: none !important; }
 .admin-topbar {
   background: var(--rd-surface) !important;
   border: 1px solid var(--rd-hairline) !important;
@@ -120,6 +122,23 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   background: var(--rd-sidebar-active) !important;
   border-color: transparent !important;
   color: #fff !important;
+}
+/* Section subheaders inside the subnav — force a row break, small uppercase label */
+.admin-subnav-section {
+  flex-basis: 100%;
+  width: 100%;
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rd-ink-faint);
+}
+.admin-subnav-section:first-child { margin-top: 0; }
+.admin-sidebar .admin-subnav-section,
+.admin-sidebar-subnav .admin-subnav-section {
+  color: var(--rd-sidebar-muted);
+  opacity: 0.65;
 }
 
 /* ---------- Typography (restrained) ---------- */
