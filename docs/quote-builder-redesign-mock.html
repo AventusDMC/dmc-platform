@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quote builder — bold &amp; colorful</title>
+<style>
+  :root{
+    --ink:#16182B; --ink2:#5A5F7A; --ink3:#9AA0BC;
+    --line:#E9E9F5; --line2:#F1F1FA;
+    --bg:#F4F4FD; --surface:#FFFFFF;
+    --brand:#1F9ACF; --brand-dk:#0B6E96; --teal:#06B6D4; --sky:#0EA5E9;
+    --emerald:#10B981; --amber:#F59E0B; --rose:#F43F5E;
+    --radius:16px; --radius-sm:11px;
+    --shadow:0 1px 2px rgba(20,40,60,.04), 0 4px 14px rgba(20,40,60,.06);
+    --shadow-lg:0 12px 30px rgba(31,154,207,.26);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  /* slim rail */
+  .rail{width:62px;background:#15172B;display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:6px;flex:none}
+  .rail .logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#1F9ACF,#06B6D4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;margin-bottom:14px;box-shadow:0 6px 16px rgba(31,154,207,.5)}
+  .rail .ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#8A8FB5;font-size:18px;cursor:pointer}
+  .rail .ico.active{background:linear-gradient(135deg,#1F9ACF,#06B6D4);color:#fff;box-shadow:0 6px 16px rgba(31,154,207,.45)}
+  .rail .ico:hover{color:#fff}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  /* gradient command bar */
+  .cmd{background:linear-gradient(110deg,#075985 0%,#1F9ACF 52%,#22D3EE 100%);color:#fff;padding:16px 26px;display:flex;align-items:center;gap:22px;flex:none}
+  .id-block{min-width:0}
+  .id-row{display:flex;align-items:center;gap:10px}
+  .qid{font-size:11px;font-weight:800;letter-spacing:.06em;color:rgba(255,255,255,.7);text-transform:uppercase}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:3px 11px;border-radius:999px;background:rgba(16,185,129,.25);color:#A7F3D0;border:1px solid rgba(16,185,129,.4)}
+  .chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:#34D399;box-shadow:0 0 0 3px rgba(52,211,153,.3)}
+  .title{font-size:20px;font-weight:800;letter-spacing:-.015em;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px}
+  .meta-row{display:flex;gap:18px;margin-top:4px;color:rgba(255,255,255,.78);font-size:12.5px}
+  .meta-row b{color:#fff;font-weight:700}
+
+  .money{margin-left:auto;display:flex;gap:10px}
+  .money .m{padding:9px 16px;border-radius:13px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:1px;min-width:104px}
+  .money .k{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.72)}
+  .money .v{font-size:17px;font-weight:800;letter-spacing:-.01em;color:#fff}
+  .money .m.win{background:rgba(52,211,153,.22);border-color:rgba(52,211,153,.5)}
+  .money .m.win .v{color:#6EE7B7}
+
+  .actions{display:flex;align-items:center;gap:9px}
+  .btn{height:38px;padding:0 16px;border-radius:11px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{background:rgba(255,255,255,.22)}
+  .btn.primary{background:#fff;border-color:#fff;color:#075985}
+  .btn.primary:hover{background:#E0F2FE}
+  .btn.ghost{width:38px;justify-content:center;padding:0;font-size:19px;border-color:transparent;background:transparent}
+
+  /* color-coded stepper */
+  .stepper{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 26px;display:flex;align-items:center;gap:2px;flex:none;overflow-x:auto}
+  .step{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:11px;cursor:pointer;white-space:nowrap;color:var(--ink2)}
+  .step:hover{background:var(--bg)}
+  .step .n{width:23px;height:23px;border-radius:50%;color:#fff;font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;background:var(--sc,#CBD0E4)}
+  .step .lbl{font-size:13px;font-weight:700}
+  .step .ct{font-size:11px;font-weight:800;color:#fff;background:var(--sc,#B7BEDA);border-radius:999px;padding:1px 8px}
+  .step.active{background:var(--scw)}
+  .step.active .lbl{color:var(--sc)}
+  .step.active{box-shadow:inset 0 0 0 1.5px var(--sc)}
+  .sep{color:var(--ink3);font-size:15px}
+
+  /* canvas */
+  .canvas{flex:1;min-height:0;overflow-y:auto;padding:22px 26px;display:grid;grid-template-columns:1fr 326px;gap:22px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .card.accent{border-top:none;position:relative}
+  .card.accent::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ac,#06B6D4)}
+  .card .hd{padding:17px 22px;display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+  .card .hd.bordered{border-bottom:1px solid var(--line2)}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ac,#0891B2);display:inline-flex;align-items:center;gap:7px}
+  .eyebrow .pip{width:8px;height:8px;border-radius:50%;background:var(--ac,#06B6D4)}
+  .card h3{font-size:16px;font-weight:800;letter-spacing:-.01em;margin-top:5px}
+  .card .sub{color:var(--ink2);font-size:13px;margin-top:3px;max-width:560px}
+  .card .bd{padding:8px 22px 20px;display:flex;flex-direction:column;gap:13px}
+
+  .btn-sc{height:38px;padding:0 16px;border-radius:11px;border:0;font-weight:700;font-size:13px;cursor:pointer;color:#fff;background:var(--ac,#06B6D4);box-shadow:0 6px 16px rgba(6,182,212,.32)}
+
+  .opt-tabs{display:flex;gap:8px}
+  .opt{padding:8px 15px;border-radius:999px;border:1.5px solid var(--line);font-size:13px;font-weight:700;color:var(--ink2);cursor:pointer;background:#fff}
+  .opt.on{background:var(--ac,#06B6D4);color:#fff;border-color:var(--ac,#06B6D4);box-shadow:0 6px 14px rgba(6,182,212,.3)}
+
+  .room{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;display:flex;align-items:center;gap:15px;transition:.15s}
+  .room:hover{border-color:var(--ac);box-shadow:0 4px 14px rgba(6,182,212,.12)}
+  .room .thumb{width:50px;height:50px;border-radius:11px;flex:none}
+  .room .info{flex:1;min-width:0}
+  .room .info b{font-size:14px;font-weight:700}
+  .room .info small{display:flex;align-items:center;gap:8px;color:var(--ink2);font-size:12.5px;margin-top:2px}
+  .room .price{text-align:right}
+  .room .price b{font-size:16px;font-weight:800}
+  .room .price small{display:block;color:var(--ink3);font-size:11.5px}
+  .tag{font-size:11px;font-weight:800;padding:2px 9px;border-radius:7px}
+  .tag.amber{background:#FEF3C7;color:#B45309}
+  .tag.teal{background:#CFFAFE;color:#0E7490}
+  .t1{background:linear-gradient(135deg,#A5F3FC,#22D3EE)}
+  .t2{background:linear-gradient(135deg,#FDE68A,#FBBF24)}
+  .t3{background:linear-gradient(135deg,#BAE6FD,#38BDF8)}
+
+  /* itinerary timeline */
+  .timeline{display:flex;flex-direction:column;gap:0}
+  .day{display:grid;grid-template-columns:64px 1fr;gap:0}
+  .day .tl{display:flex;flex-direction:column;align-items:center}
+  .day .node{width:40px;height:40px;border-radius:13px;background:var(--brand);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;line-height:1;box-shadow:0 6px 14px rgba(31,154,207,.35);flex:none}
+  .day .node small{font-size:8px;font-weight:800;letter-spacing:.08em;opacity:.85;margin-bottom:1px}
+  .day .node span{font-size:15px}
+  .day .line{flex:1;width:2px;background:linear-gradient(var(--brand),#D7E3EC);margin:6px 0}
+  .day:last-child .line{background:transparent}
+  .day .body{padding:0 0 18px 12px;min-width:0}
+  .day .dh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+  .day .date{font-size:12px;font-weight:700;color:var(--ink2)}
+  .day .route{font-size:11.5px;font-weight:700;color:var(--brand-dk);background:var(--accent-weak,#E9F7FD);padding:2px 9px;border-radius:7px}
+  .day .dt{font-size:15px;font-weight:800;letter-spacing:-.01em;width:100%;margin-top:1px}
+  .acts{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--shadow);overflow:hidden}
+  .act{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line2)}
+  .act:last-child{border-bottom:0}
+  .act:hover{background:#FAFCFE}
+  .act .ai{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+  .ai.stay{background:#E0F2FE;color:#0369A1}
+  .ai.tour{background:#CFFAFE;color:#0E7490}
+  .ai.move{background:#FEF3C7;color:#B45309}
+  .ai.meal{background:#FFE4E6;color:#BE123C}
+  .act .an{flex:1;min-width:0}
+  .act .an b{font-size:13.5px;font-weight:700}
+  .act .an small{display:block;color:var(--ink2);font-size:12px}
+  .act .atime{font-size:12px;font-weight:700;color:var(--ink3);white-space:nowrap}
+  .addrow{display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;color:var(--brand-dk);font-weight:700;font-size:12.5px;cursor:pointer;background:var(--accent-weak,#F2FBFE)}
+
+  /* vibrant summary rail */
+  .summary{border-radius:var(--radius);box-shadow:var(--shadow-lg);position:sticky;top:0;overflow:hidden;background:linear-gradient(160deg,#075985 0%,#1F9ACF 60%,#22D3EE 125%);color:#fff}
+  .summary .sh{padding:18px 20px 12px}
+  .summary .eyebrow{color:rgba(255,255,255,.7)}
+  .summary .eyebrow .pip{background:#fff}
+  .summary h3{color:#fff;font-size:17px;margin-top:5px}
+  .summary .rows{padding:4px 20px 14px;display:flex;flex-direction:column}
+  .srow{display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.14)}
+  .srow:last-child{border-bottom:0}
+  .srow .k{color:rgba(255,255,255,.8);font-size:12.5px;font-weight:600}
+  .srow .v{font-weight:800;font-size:15px}
+  .srow.total .k{color:#fff}
+  .srow.total .v{font-size:22px;color:#6EE7B7}
+  .pill{margin:0 20px 18px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:11px;padding:10px 12px;font-size:12.5px;font-weight:700;text-align:center}
+
+  /* add-service slide-over */
+  .scrim{position:fixed;inset:0;background:rgba(12,20,38,.45);display:flex;justify-content:flex-end;z-index:50}
+  .drawer{width:466px;max-width:94vw;height:100%;background:var(--bg);box-shadow:-18px 0 50px rgba(12,20,38,.3);display:flex;flex-direction:column;animation:slide .22s ease}
+  @keyframes slide{from{transform:translateX(34px);opacity:.5}to{transform:none;opacity:1}}
+  .dh2{padding:18px 22px;background:linear-gradient(110deg,#075985,#1F9ACF);color:#fff;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .dh2 .eyebrow{color:rgba(255,255,255,.78)}
+  .dh2 .eyebrow .pip{background:#fff}
+  .dh2 h3{color:#fff;font-size:18px;margin-top:5px}
+  .dh2 .x{width:33px;height:33px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;border:0;font-size:14px;cursor:pointer;flex:none}
+  .dbody{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:15px}
+  .types{display:flex;flex-wrap:wrap;gap:8px}
+  .type{display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-size:12.5px;font-weight:700;color:var(--ink2);cursor:pointer}
+  .type.on{border-color:var(--brand);color:var(--brand-dk);background:#E9F7FD;box-shadow:0 4px 12px rgba(31,154,207,.14)}
+  .type .e{font-size:14px}
+  .searchbox{display:flex;align-items:center;gap:9px;padding:11px 14px;background:#fff;border:1.5px solid var(--line);border-radius:11px;color:var(--ink3);font-size:14px}
+  .searchbox input{border:0;outline:0;font-size:13.5px;flex:1;color:var(--ink);background:transparent}
+  .reslabel{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin-top:2px}
+  .result{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+  .result:hover{border-color:var(--brand);box-shadow:0 4px 14px rgba(31,154,207,.14)}
+  .result.sel{border-color:var(--brand);box-shadow:inset 0 0 0 1.5px var(--brand),0 6px 16px rgba(31,154,207,.18)}
+  .result .rn{flex:1;min-width:0}
+  .result .rn b{font-size:13.5px;font-weight:700}
+  .result .rn small{display:block;color:var(--ink2);font-size:12px}
+  .result .rp{text-align:right;white-space:nowrap}
+  .result .rp b{font-size:14px;color:var(--brand-dk)}
+  .result .rp small{display:block;color:var(--ink3);font-size:11px}
+  .result .check{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none}
+  .cfg{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:10.5px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}
+  .field .inp{padding:9px 11px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;background:#FBFCFE;font-weight:600}
+  .dfoot{padding:14px 22px;border-top:1px solid var(--line);background:#fff;display:flex;gap:10px;align-items:center}
+  .dfoot .tot{margin-right:auto;font-size:12px;color:var(--ink2)}
+  .dfoot .tot b{display:block;font-size:16px;color:var(--ink);font-weight:800}
+  .dfoot .cancel{height:42px;padding:0 18px;border-radius:11px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink2)}
+  .dfoot .save{height:42px;padding:0 20px;border-radius:11px;border:0;background:var(--brand);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 8px 18px rgba(31,154,207,.34)}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="logo">A</div>
+    <div class="ico">▦</div>
+    <div class="ico active">✦</div>
+    <div class="ico">◷</div>
+    <div class="ico">▤</div>
+    <div class="ico">$</div>
+    <div class="ico">⚙</div>
+  </nav>
+
+  <div class="main">
+    <!-- gradient command bar -->
+    <header class="cmd">
+      <div class="id-block">
+        <div class="id-row">
+          <span class="qid">Q-2026-0005</span>
+          <span class="chip dot">Confirmed</span>
+        </div>
+        <div class="title">Exodus &amp; Holy Land Biblical Journey</div>
+        <div class="meta-row">
+          <span>Client <b>Atm Operadora</b></span>
+          <span>Contact <b>Miriam Fava</b></span>
+          <span><b>21</b> pax</span>
+          <span>Arrival · Rev 1</span>
+        </div>
+      </div>
+      <div class="money">
+        <div class="m"><span class="k">Sell</span><span class="v">USD 102,037</span></div>
+        <div class="m"><span class="k">Cost</span><span class="v">USD 85,232</span></div>
+        <div class="m win"><span class="k">Margin</span><span class="v">16%</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn">Export PDF</button>
+        <button class="btn primary">Save version</button>
+        <button class="btn ghost">⋯</button>
+      </div>
+    </header>
+
+    <!-- color-coded stepper -->
+    <nav class="stepper">
+      <div class="step" style="--sc:#10B981;--scw:#ECFDF5"><span class="n">✓</span><span class="lbl">Setup</span></div>
+      <span class="sep">›</span>
+      <div class="step active" style="--sc:#1F9ACF;--scw:#E9F7FD"><span class="n">2</span><span class="lbl">Itinerary</span><span class="ct">29</span></div>
+      <span class="sep">›</span>
+      <div class="step" style="--sc:#0EA5E9;--scw:#F0F9FF"><span class="n">3</span><span class="lbl">Hotels</span><span class="ct">29</span></div>
+      <span class="sep">›</span>
+      <div class="step" style="--sc:#F59E0B;--scw:#FFFBEB"><span class="n">4</span><span class="lbl">Transport</span><span class="ct">29</span></div>
+      <span class="sep">›</span>
+      <div class="step" style="--sc:#F43F5E;--scw:#FFF1F3"><span class="n">5</span><span class="lbl">Meals &amp; Services</span><span class="ct">29</span></div>
+      <span class="sep">›</span>
+      <div class="step" style="--sc:#14B8A6;--scw:#EFFCFA"><span class="n">6</span><span class="lbl">Pricing</span></div>
+      <span class="sep">›</span>
+      <div class="step" style="--sc:#2563EB;--scw:#EFF4FF"><span class="n">7</span><span class="lbl">Proposal</span><span class="ct">29</span></div>
+    </nav>
+
+    <!-- canvas -->
+    <div class="canvas">
+      <div class="col">
+        <div class="card accent" style="--ac:#1F9ACF">
+          <div class="hd">
+            <div>
+              <div class="eyebrow"><span class="pip"></span>Itinerary</div>
+              <h3>Day-by-day program</h3>
+              <div class="sub">7 days · 6 nights · Tel Aviv → Jerusalem → Galilee. Drag to reorder days; each day rolls up into pricing automatically.</div>
+            </div>
+            <button class="btn-sc" style="--ac:#1F9ACF">+ Add day</button>
+          </div>
+        </div>
+
+        <div class="timeline">
+          <div class="day">
+            <div class="tl"><div class="node"><small>DAY</small><span>1</span></div><div class="line"></div></div>
+            <div class="body">
+              <div class="dh"><span class="date">Mon · 12 Oct</span><span class="route">Tel Aviv → Jerusalem</span><span class="dt">Arrival &amp; welcome</span></div>
+              <div class="acts">
+                <div class="act"><div class="ai move">✈</div><div class="an"><b>Airport transfer — Ben Gurion → Jerusalem</b><small>Private coach · 21 pax · meet &amp; greet</small></div><div class="atime">14:00</div></div>
+                <div class="act"><div class="ai stay">🏨</div><div class="an"><b>Check-in · Grand Court Hotel</b><small>3 nights · BB · 11 rooms</small></div><div class="atime">16:30</div></div>
+                <div class="act"><div class="ai meal">🍽</div><div class="an"><b>Welcome dinner</b><small>Hotel restaurant · included</small></div><div class="atime">19:30</div></div>
+                <div class="addrow">+ Add service</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="day">
+            <div class="tl"><div class="node"><small>DAY</small><span>2</span></div><div class="line"></div></div>
+            <div class="body">
+              <div class="dh"><span class="date">Tue · 13 Oct</span><span class="route">Jerusalem · Old City</span><span class="dt">Footsteps in the Old City</span></div>
+              <div class="acts">
+                <div class="act"><div class="ai tour">📸</div><div class="an"><b>Western Wall &amp; Jewish Quarter</b><small>Licensed guide · half day</small></div><div class="atime">09:00</div></div>
+                <div class="act"><div class="ai tour">📸</div><div class="an"><b>Via Dolorosa &amp; Church of the Holy Sepulchre</b><small>Walking tour</small></div><div class="atime">11:30</div></div>
+                <div class="act"><div class="ai meal">🍽</div><div class="an"><b>Lunch in the Old City</b><small>Local restaurant · included</small></div><div class="atime">13:30</div></div>
+                <div class="addrow">+ Add service</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="day">
+            <div class="tl"><div class="node"><small>DAY</small><span>3</span></div><div class="line"></div></div>
+            <div class="body">
+              <div class="dh"><span class="date">Wed · 14 Oct</span><span class="route">Jerusalem → Bethlehem</span><span class="dt">Mount of Olives &amp; Nativity</span></div>
+              <div class="acts">
+                <div class="act"><div class="ai tour">📸</div><div class="an"><b>Mount of Olives &amp; Garden of Gethsemane</b><small>Guide · panoramic stop</small></div><div class="atime">08:30</div></div>
+                <div class="act"><div class="ai move">🚌</div><div class="an"><b>Transfer to Bethlehem</b><small>Private coach · checkpoint assistance</small></div><div class="atime">11:00</div></div>
+                <div class="act"><div class="ai tour">📸</div><div class="an"><b>Church of the Nativity</b><small>Guided visit</small></div><div class="atime">12:00</div></div>
+                <div class="addrow">+ Add service</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="summary">
+        <div class="sh">
+          <div class="eyebrow"><span class="pip"></span>Internal</div>
+          <h3>Financial summary</h3>
+        </div>
+        <div class="rows">
+          <div class="srow"><span class="k">Total sell</span><span class="v">USD 102,037</span></div>
+          <div class="srow"><span class="k">Total cost</span><span class="v">USD 85,232</span></div>
+          <div class="srow total"><span class="k">Margin</span><span class="v">USD 16,805</span></div>
+        </div>
+        <div class="pill">16% margin · 14 services priced</div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ADD SERVICE slide-over -->
+<div class="scrim">
+  <aside class="drawer">
+    <div class="dh2">
+      <div>
+        <div class="eyebrow"><span class="pip"></span>Day 2 · Tue 13 Oct · Jerusalem Old City</div>
+        <h3>Add a service</h3>
+      </div>
+      <button class="x">✕</button>
+    </div>
+    <div class="dbody">
+      <div class="types">
+        <div class="type on"><span class="e">📸</span>Touring</div>
+        <div class="type"><span class="e">✈</span>Transfer</div>
+        <div class="type"><span class="e">🍽</span>Meal</div>
+        <div class="type"><span class="e">🧑‍🏫</span>Guide</div>
+        <div class="type"><span class="e">🎟</span>Entrance</div>
+        <div class="type"><span class="e">🏨</span>Stay</div>
+      </div>
+
+      <div class="searchbox">🔍<input value="yad" placeholder="Search activities &amp; suppliers in Jerusalem…"></div>
+
+      <div class="reslabel">Catalog · Jerusalem · 4 matches</div>
+      <div class="result sel">
+        <div class="ai tour">📸</div>
+        <div class="rn"><b>Yad Vashem — Holocaust Memorial</b><small>Holy Land Tours Ltd · licensed guide · 2.5 hrs</small></div>
+        <div class="rp"><b>USD 28</b><small>/ pax</small></div>
+        <div class="check">✓</div>
+      </div>
+      <div class="result">
+        <div class="ai tour">📸</div>
+        <div class="rn"><b>Israel Museum &amp; Shrine of the Book</b><small>Holy Land Tours Ltd · entrance + guide</small></div>
+        <div class="rp"><b>USD 22</b><small>/ pax</small></div>
+      </div>
+      <div class="result">
+        <div class="ai tour">📸</div>
+        <div class="rn"><b>City of David &amp; Hezekiah's Tunnel</b><small>Jerusalem Heritage · 3 hrs · moderate walking</small></div>
+        <div class="rp"><b>USD 30</b><small>/ pax</small></div>
+      </div>
+      <div class="result">
+        <div class="ai tour">📸</div>
+        <div class="rn"><b>Tower of David — Night Spectacular</b><small>Old City · evening show</small></div>
+        <div class="rp"><b>USD 35</b><small>/ pax</small></div>
+      </div>
+
+      <div class="reslabel">Details · Yad Vashem</div>
+      <div class="cfg">
+        <div class="field"><label>Start time</label><div class="inp">14:30</div></div>
+        <div class="field"><label>Pax</label><div class="inp">21</div></div>
+        <div class="field"><label>Cost / pax</label><div class="inp">USD 28</div></div>
+        <div class="field"><label>Sell / pax</label><div class="inp">USD 34</div></div>
+        <div class="field full"><label>Supplier</label><div class="inp">Holy Land Tours Ltd</div></div>
+      </div>
+    </div>
+    <div class="dfoot">
+      <div class="tot">Adds to quote<b>USD 714 sell · 18% margin</b></div>
+      <button class="cancel">Cancel</button>
+      <button class="save">Add to Day 2</button>
+    </div>
+  </aside>
+</div>
+</body>
+</html>
