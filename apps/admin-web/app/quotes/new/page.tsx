@@ -101,18 +101,26 @@ function buildGuidedHandoff(
 
   const cityList = journey.map((stop) => stop.name);
   const titleCore = cityList.length ? cityList.join(' + ') : params.arrivalCity || 'Jordan trip';
-  const styleLabel = params.style ? ` · ${params.style}` : '';
-  const guidedTitle = `${titleCore} (${resolvedNights} nights)${styleLabel}`.slice(0, 96);
+  // Keep the title client-safe: cities + duration only. The travel style /
+  // market / budget are internal planning taxonomy and must not surface on the
+  // shared proposal hero, so they are deliberately omitted here.
+  const guidedTitle = `${titleCore} (${resolvedNights} nights)`.slice(0, 96);
 
-  const descriptionLines = [
-    `Built via Guided Quote Builder.`,
-    cityList.length ? `Cities: ${cityList.join(' → ')}` : null,
-    `Pax: ${resolvedAdults} adults${childrenParsed ? ` + ${childrenParsed} children` : ''}`,
-    `Nights: ${resolvedNights}`,
-    params.market ? `Market: ${params.market}` : null,
-    params.budget ? `Budget: ${params.budget}` : null,
-    params.style ? `Style: ${params.style}` : null,
-  ].filter(Boolean);
+  // The quote description doubles as the proposal's journey overview, so it must
+  // read as plain client copy — never the internal "Built via... / Market: /
+  // Style:" taxonomy that used to leak onto the shared document.
+  const cityPhrase =
+    cityList.length === 0
+      ? ''
+      : cityList.length === 1
+        ? cityList[0]
+        : `${cityList.slice(0, -1).join(', ')} and ${cityList[cityList.length - 1]}`;
+  const paxPhrase = `${resolvedAdults} adult${resolvedAdults === 1 ? '' : 's'}${
+    childrenParsed ? ` and ${childrenParsed} child${childrenParsed === 1 ? '' : 'ren'}` : ''
+  }`;
+  const guidedDescription = cityPhrase
+    ? `A ${resolvedNights}-night journey through ${cityPhrase} for ${paxPhrase}.`
+    : `A ${resolvedNights}-night journey for ${paxPhrase}.`;
 
   // Carry the city list onto /quotes/{id} so the Auto Itinerary Builder can
   // pre-fill its routeText with "Amman -> Petra -> Wadi Rum" AND, critically,
@@ -144,7 +152,7 @@ function buildGuidedHandoff(
       jordanPassType: 'NONE',
       bookingType: 'FIT',
       title: guidedTitle,
-      description: descriptionLines.join('\n'),
+      description: guidedDescription,
       quoteCurrency: 'USD',
       pricingMode: 'FIXED',
       pricingSlabs: [],

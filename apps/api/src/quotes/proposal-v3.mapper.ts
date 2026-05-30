@@ -46,7 +46,24 @@ const INTERNAL_COPY_PATTERNS = [
   /\bsell\s*price\b/i,
   /\bprofit\b/i,
   /\bcommission\b/i,
+  // Guided Quote Builder auto-fills the quote description with internal
+  // planning taxonomy ("Built via Guided Quote Builder. Cities: ... Pax: ...
+  // Market: ... Budget: ... Style: ..."). The lead phrase is always present,
+  // so rejecting it makes the proposal fall back to a generated human journey
+  // sentence instead of echoing the raw internal description.
+  /\bbuilt via\b/i,
+  /\bguided quote builder\b/i,
 ];
+
+// Internal style/tier decoration the Guided Quote Builder appends to the quote
+// title (e.g. "Amman + Petra (7 nights) · Comfort"). The cities + duration are
+// fine on the client document; the trailing " · <style>" is internal taxonomy.
+const INTERNAL_TITLE_STYLE_DECORATION =
+  /\s*[·•|]\s*(?:comfort|premium|luxury|budget(?:[-\s]?conscious)?|standard|economy)\b[^·•|]*$/i;
+
+function stripInternalTitleDecorations(value: string) {
+  return value.replace(INTERNAL_TITLE_STYLE_DECORATION, '').trim();
+}
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
@@ -965,7 +982,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 }
 
 export function buildProposalDocumentTitle(quote: ProposalV3Quote, destinationLine: string) {
-  const cleanedTitle = cleanText(quote.title);
+  const cleanedTitle = stripInternalTitleDecorations(cleanText(quote.title));
   if (cleanedTitle && !isWeakText(cleanedTitle) && !isPlaceholderText(cleanedTitle)) {
     return cleanedTitle;
   }
@@ -1419,7 +1436,8 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const dayCount = Math.max(days.length, (quote.nightCount || 0) + 1, 1);
   const hotelOptionSets = buildHotelOptionSets(quote);
   const routeIntelligence = buildRouteIntelligence(quote, hotelOptionSets, sortedDays);
-  const destinationLine = routeIntelligence.destinationLine || cleanText(quote.title).replace(/\s+Journey$/i, '');
+  const destinationLine =
+    routeIntelligence.destinationLine || stripInternalTitleDecorations(cleanText(quote.title)).replace(/\s+Journey$/i, '');
   const coverSubtitle = routeIntelligence.coverSubtitle || destinationLine || 'Travel';
   const currency = getProposalCurrency(quote);
   const documentTitle = buildProposalDocumentTitle(quote, destinationLine);
