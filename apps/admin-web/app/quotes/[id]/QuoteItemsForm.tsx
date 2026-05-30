@@ -461,6 +461,10 @@ type QuoteItemsFormProps = {
   initialValues?: QuoteItemInitialValues;
   onSaved?: (item: any) => void;
   onCancel?: () => void;
+  // When the form is mounted inside the service-editor drawer, the drawer
+  // header already supplies a single "Cancel". Set this to suppress the form's
+  // own inline Cancel affordances so the drawer doesn't stack three of them.
+  hideCancelAction?: boolean;
 };
 
 function inferSupplierServiceTransportPricingMode(service: SupplierService): TransportPricingMode | null {
@@ -1087,6 +1091,7 @@ export function QuoteItemsForm({
   initialValues,
   onSaved,
   onCancel,
+  hideCancelAction = false,
 }: QuoteItemsFormProps) {
   const router = useRouter();
   const isEditing = Boolean(itemId);
@@ -3022,7 +3027,7 @@ export function QuoteItemsForm({
               <strong>{isEditing && activeServiceType === 'transport' ? 'Edit Transport' : SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
               <p>{submitLabel}</p>
             </div>
-            {!isEditing && !isExternalPackageService ? (
+            {!isEditing && !isExternalPackageService && !hideCancelAction ? (
               <button type="button" className="secondary-button" onClick={() => setActiveServiceType(null)}>
                 Cancel
               </button>
@@ -5072,9 +5077,11 @@ export function QuoteItemsForm({
                 </div>
               ) : null}
               <div className="quote-external-package-footer-actions">
-                <button type="button" className="secondary-button" onClick={handleExternalPackageCancel}>
-                  Cancel
-                </button>
+                {!hideCancelAction ? (
+                  <button type="button" className="secondary-button" onClick={handleExternalPackageCancel}>
+                    Cancel
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   form={serviceEntryFormId}
