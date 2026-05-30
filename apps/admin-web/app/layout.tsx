@@ -1,5 +1,6 @@
 import './design-tokens.css';
 import './globals.css';
+import './redesign.css';
 import type { Metadata, Viewport } from 'next';
 import { ReactNode } from 'react';
 
