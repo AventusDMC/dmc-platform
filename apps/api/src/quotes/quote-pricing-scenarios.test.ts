@@ -118,6 +118,7 @@ async function resolveExternalPackage(values: Record<string, any>) {
     endDate: valueOrDefault('endDate', new Date('2026-10-04T00:00:00.000Z')),
     pricingBasis: values.pricingBasis,
     netCost: values.netCost,
+    pricingMatrixJson: values.pricingMatrixJson,
     currency: valueOrDefault('currency', 'USD'),
     includes: valueOrDefault('includes', 'Cairo guide and transfers'),
     excludes: valueOrDefault('excludes', 'International flights'),
@@ -658,6 +659,69 @@ test('EXTERNAL_PACKAGE PER_GROUP charges net cost once', async () => {
 
   assert.equal(values.data.totalCost, 900);
   assert.equal(values.data.totalSell, 990);
+});
+
+const PARTNER_PRICING_MATRIX = [
+  { label: '2-3 pax', paxFrom: 2, paxTo: 3, costPerPerson: 900, sellPerPerson: 1100 },
+  { label: '4-6 pax', paxFrom: 4, paxTo: 6, costPerPerson: 750, sellPerPerson: 950 },
+];
+
+test('EXTERNAL_PACKAGE PER_PERSON uses the matrix band matching the pax count', async () => {
+  // Flat netCost (1000pp) differs from every band so the matrix is provably driving the price.
+  const values = await resolveExternalPackage({
+    pricingBasis: 'PER_PERSON',
+    netCost: 1000,
+    pricingMatrixJson: PARTNER_PRICING_MATRIX,
+    paxCount: 4,
+    markupPercent: 0,
+  });
+
+  // 4 pax -> 4-6 band ($750pp) -> 750 * 4, NOT the flat 1000 * 4.
+  assert.equal(values.data.externalNetCost, 1000);
+  assert.equal(values.data.totalCost, 3000);
+  assert.equal(values.data.totalSell, 3000);
+});
+
+test('EXTERNAL_PACKAGE PER_PERSON re-prices when the pax band changes', async () => {
+  const small = await resolveExternalPackage({
+    pricingBasis: 'PER_PERSON',
+    netCost: 1000,
+    pricingMatrixJson: PARTNER_PRICING_MATRIX,
+    paxCount: 2,
+    markupPercent: 0,
+  });
+
+  // 2 pax -> 2-3 band ($900pp) -> 900 * 2.
+  assert.equal(small.data.totalCost, 1800);
+});
+
+test('EXTERNAL_PACKAGE PER_GROUP uses the matrix band and scales by pax', async () => {
+  const values = await resolveExternalPackage({
+    pricingBasis: 'PER_GROUP',
+    netCost: 900,
+    pricingMatrixJson: PARTNER_PRICING_MATRIX,
+    paxCount: 4,
+    markupPercent: 0,
+  });
+
+  // 4 pax -> 4-6 band ($750pp) -> 750 * 4 charged once as a group total,
+  // NOT the flat group netCost of 900.
+  assert.equal(values.data.totalCost, 3000);
+  assert.equal(values.data.totalSell, 3000);
+});
+
+test('EXTERNAL_PACKAGE falls back to flat net cost when no matrix band matches the pax count', async () => {
+  const values = await resolveExternalPackage({
+    pricingBasis: 'PER_PERSON',
+    netCost: 1000,
+    pricingMatrixJson: PARTNER_PRICING_MATRIX,
+    paxCount: 10,
+    markupPercent: 0,
+  });
+
+  // 10 pax is outside every band, so pricing falls back to the flat 1000pp.
+  assert.equal(values.data.totalCost, 10000);
+  assert.equal(values.data.totalSell, 10000);
 });
 
 test('one-off EXTERNAL_PACKAGE update does not require a SupplierService', async () => {
