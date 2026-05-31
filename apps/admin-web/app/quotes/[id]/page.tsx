@@ -59,6 +59,16 @@ const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
 const DATA_API_BASE_URL = '/api';
 
+// Global, role-invariant catalog data (routes, vehicles, hotels, rates,
+// seasons, service types…) is identical for every admin user and changes
+// rarely. Opting these fetches into the Next.js Data Cache (vs the default
+// per-request `no-store`) means repeat quote opens don't re-pull the whole
+// catalog over the wire each time — the single biggest source of quote-page
+// lag. 5-minute window keeps catalog edits visibly fresh. Quote/user-scoped
+// data (the quote itself, versions, itinerary, rooming, companies, contacts,
+// agents) deliberately stays `no-store`.
+const CATALOG_FETCH = { next: { revalidate: 300 } } satisfies RequestInit;
+
 type QuoteStatus = 'DRAFT' | 'READY' | 'SENT' | 'ACCEPTED' | 'CONFIRMED' | 'REVISION_REQUESTED' | 'EXPIRED' | 'CANCELLED';
 
 type Company = {
@@ -919,27 +929,19 @@ async function getQuote(id: string): Promise<QuoteFetchResult> {
 }
 
 async function getServices(): Promise<SupplierService[]> {
-  return adminPageFetchJson<SupplierService[]>(`${DATA_API_BASE_URL}/services`, 'Quote detail services', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<SupplierService[]>(`${DATA_API_BASE_URL}/services`, 'Quote detail services', CATALOG_FETCH);
 }
 
 async function getActivities(): Promise<ActivityCatalogItem[]> {
-  return adminPageFetchJson<ActivityCatalogItem[]>(`${DATA_API_BASE_URL}/activities`, 'Quote detail activities', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<ActivityCatalogItem[]>(`${DATA_API_BASE_URL}/activities`, 'Quote detail activities', CATALOG_FETCH);
 }
 
 async function getExcursionTemplates(): Promise<ExcursionTemplate[]> {
-  return adminPageFetchJson<ExcursionTemplate[]>(`${DATA_API_BASE_URL}/excursion-templates`, 'Quote detail excursion templates', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<ExcursionTemplate[]>(`${DATA_API_BASE_URL}/excursion-templates`, 'Quote detail excursion templates', CATALOG_FETCH);
 }
 
 async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
-  return adminPageFetchJson<TransportServiceType[]>(`${DATA_API_BASE_URL}/transport-service-types`, 'Quote detail transport service types', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<TransportServiceType[]>(`${DATA_API_BASE_URL}/transport-service-types`, 'Quote detail transport service types', CATALOG_FETCH);
 }
 
 // Route Standards (Phase 2A) — canonical distance/duration/timing for each
@@ -948,19 +950,13 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 // Soft failure: empty array means "no standards seeded yet" and downstream
 // rendering falls back to existing Route distance/duration.
 async function getRouteStandards(): Promise<RouteStandardSummary[]> {
-  return adminPageFetchJson<RouteStandardSummary[]>(`${API_BASE_URL}/route-standards`, 'Quote detail route standards', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<RouteStandardSummary[]>(`${API_BASE_URL}/route-standards`, 'Quote detail route standards', CATALOG_FETCH);
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
   const [transferRoutes, touringRoutes] = await Promise.all([
-    adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`, 'Quote detail transfer routes', {
-      cache: 'no-store',
-    }),
-    adminPageFetchJson<TouringRouteForQuoteTransport[]>(`${API_BASE_URL}/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500`, 'Quote detail touring routes', {
-      cache: 'no-store',
-    }),
+    adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`, 'Quote detail transfer routes', CATALOG_FETCH),
+    adminPageFetchJson<TouringRouteForQuoteTransport[]>(`${API_BASE_URL}/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500`, 'Quote detail touring routes', CATALOG_FETCH),
   ]);
 
   return [
@@ -1011,65 +1007,66 @@ function mapTouringRouteToQuoteTransportRouteOption(route: TouringRouteForQuoteT
 }
 
 async function getVehicles(): Promise<TransportVehicle[]> {
-  return adminPageFetchJson<TransportVehicle[]>(`${DATA_API_BASE_URL}/vehicles`, 'Quote detail vehicles', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<TransportVehicle[]>(`${DATA_API_BASE_URL}/vehicles`, 'Quote detail vehicles', CATALOG_FETCH);
 }
 
 async function getSupplierRateCards(): Promise<TransportSupplierRateCard[]> {
-  const payload = await adminPageFetchJson<unknown>(`${API_BASE_URL}/vehicle-rates`, 'Quote detail supplier rate cards', {
-    cache: 'no-store',
-  });
+  // Kept fresh (no-store), not cached: transport vehicle rates drive pricing
+  // and are edited often, so a stale picker could surface a wrong rate.
+  const payload = await adminPageFetchJson<unknown>(`${API_BASE_URL}/vehicle-rates`, 'Quote detail supplier rate cards', { cache: 'no-store' });
   return normalizeTransportSupplierRateRows(payload);
 }
 
 async function getHotels(): Promise<Hotel[]> {
-  return adminPageFetchJson<Hotel[]>(`${DATA_API_BASE_URL}/hotels`, 'Quote detail hotels', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<Hotel[]>(`${DATA_API_BASE_URL}/hotels`, 'Quote detail hotels', CATALOG_FETCH);
 }
 
 async function getHotelCategories(): Promise<HotelCategoryOption[]> {
-  return adminPageFetchJson<HotelCategoryOption[]>(`${DATA_API_BASE_URL}/hotel-categories?active=true`, 'Quote detail hotel categories', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<HotelCategoryOption[]>(`${DATA_API_BASE_URL}/hotel-categories?active=true`, 'Quote detail hotel categories', CATALOG_FETCH);
 }
 
 async function getHotelContracts(): Promise<HotelContract[]> {
-  return adminPageFetchJson<HotelContract[]>(`${DATA_API_BASE_URL}/hotel-contracts`, 'Quote detail hotel contracts', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<HotelContract[]>(`${DATA_API_BASE_URL}/hotel-contracts`, 'Quote detail hotel contracts', CATALOG_FETCH);
 }
 
 async function getHotelRates(): Promise<HotelRate[]> {
   // The /hotel-rates endpoint defaults to 50 rows and caps each page at 250,
-  // but a quote can use any hotel in the catalog (900+ rates total). Fetching a
-  // single unpaginated page silently dropped every rate past the first 50, so
-  // most hotels priced as 0.00 in the rate picker. Page through (250 at a time)
-  // until a short page signals the end.
+  // but a quote can use any hotel in the catalog (900+ rates total). This is
+  // the heaviest single loader on the page (~640 KB). We keep it FRESH
+  // (no-store) rather than cached — rates drive pricing and are edited often,
+  // so a stale picker could surface a wrong price — but we page in PARALLEL
+  // instead of serially: the old `await` loop did N sequential round-trips
+  // (4–5 today); fanning out collapses that to ~one round-trip.
   const PAGE_SIZE = 250;
-  const all: HotelRate[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const page = await adminPageFetchJson<HotelRate[]>(
+  const MAX_PAGES = 8; // ~2000 rates of headroom before silent truncation
+  const fetchPage = (offset: number) =>
+    adminPageFetchJson<HotelRate[]>(
       `${DATA_API_BASE_URL}/hotel-rates?limit=${PAGE_SIZE}&offset=${offset}`,
       'Quote detail hotel rates',
       { cache: 'no-store' },
-    );
+    ).catch(() => [] as HotelRate[]);
+
+  // Probe page 0 first so the common small-catalog case stays a single request;
+  // only fan out the remainder when there's clearly more.
+  const first = await fetchPage(0);
+  if (!Array.isArray(first) || first.length < PAGE_SIZE) {
+    return Array.isArray(first) ? first : [];
+  }
+  const rest = await Promise.all(
+    Array.from({ length: MAX_PAGES - 1 }, (_, index) => fetchPage((index + 1) * PAGE_SIZE)),
+  );
+  const all = [...first];
+  for (const page of rest) {
     if (!Array.isArray(page) || page.length === 0) {
-      break;
+      break; // offsets are contiguous — the first empty page marks the end
     }
     all.push(...page);
-    if (page.length < PAGE_SIZE) {
-      break;
-    }
   }
   return all;
 }
 
 async function getSeasons(): Promise<Season[]> {
-  return adminPageFetchJson<Season[]>(`${DATA_API_BASE_URL}/seasons`, 'Quote detail seasons', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<Season[]>(`${DATA_API_BASE_URL}/seasons`, 'Quote detail seasons', CATALOG_FETCH);
 }
 
 async function getCompanies(): Promise<Company[]> {
@@ -1115,15 +1112,11 @@ async function getAgents(): Promise<User[]> {
 }
 
 async function getSupportTextTemplates(): Promise<SupportTextTemplate[]> {
-  return adminPageFetchJson<SupportTextTemplate[]>(`${DATA_API_BASE_URL}/support-text-templates`, 'Quote detail support text templates', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<SupportTextTemplate[]>(`${DATA_API_BASE_URL}/support-text-templates`, 'Quote detail support text templates', CATALOG_FETCH);
 }
 
 async function getQuoteBlocks(): Promise<QuoteBlock[]> {
-  return adminPageFetchJson<QuoteBlock[]>(`${DATA_API_BASE_URL}/quote-blocks`, 'Quote detail quote blocks', {
-    cache: 'no-store',
-  });
+  return adminPageFetchJson<QuoteBlock[]>(`${DATA_API_BASE_URL}/quote-blocks`, 'Quote detail quote blocks', CATALOG_FETCH);
 }
 
 async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult> {
