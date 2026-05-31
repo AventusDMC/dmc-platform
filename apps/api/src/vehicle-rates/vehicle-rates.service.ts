@@ -85,6 +85,10 @@ type TransportServiceClassification =
 type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
+  // Force every row to a single supplier regardless of the workbook's Supplier
+  // Name column — useful when a generic template ("FIT Supplier Name") is filled
+  // for a known supplier.
+  supplierNameOverride?: string;
   allowCreateSuppliers?: boolean;
   rowActions?: Record<number, TransportImportRowAction>;
 };
@@ -2455,6 +2459,9 @@ export class VehicleRatesService {
       }
 
       const normalized = this.normalizeTransportContractImportRow(parsed.row, vehicleTypeCatalog);
+      if (options.supplierNameOverride && options.supplierNameOverride.trim()) {
+        normalized.supplierName = options.supplierNameOverride.trim();
+      }
       const supplier = await this.findTransportImportSupplierMatch(normalized.supplierName);
       if (!supplier && !options.allowCreateSuppliers) {
         summary.errors.push({ row: parsed.rowNumber, message: 'Supplier not found' });
@@ -2605,7 +2612,10 @@ export class VehicleRatesService {
         continue;
       }
 
-      if (!existingRoute && !serviceBasedTransport) {
+      // ADD_ON rates (Stationary / Waiting, Driver Overnight, Extra KM/Hour) are
+      // routeless by nature — they attach to other transport items, not to a
+      // transfer route — so they must NOT be rejected for "Route not found".
+      if (!existingRoute && !serviceBasedTransport && classification !== 'ADD_ON') {
         summary.errors.push({ row: rowNumber, message: touringRoute ? 'Touring route rows must be reviewed as TouringRoute inventory before rate-card import' : 'Route not found' });
         summary.skippedRows += 1;
         continue;
