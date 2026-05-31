@@ -366,6 +366,12 @@ function findTouringRoutesForCity(routes: RouteOption[], city: string): RouteOpt
       route.transportPickerMode === 'TOURING_ROUTE' ||
       (route.routeType || '').toUpperCase() === 'TOURING_ROUTE';
     if (!isTouring) return false;
+    // Only surface touring routes that have an active pricing row. The backend
+    // rejects a quote item for a variant with no active pricing ("Selected
+    // touring route variant has no active pricing row"), and that rejection
+    // would abort the whole generation — so don't auto-add un-priceable tours.
+    const hasActivePricing = (route.touringRoutePricings || []).some((pricing) => pricing.active !== false);
+    if (!hasActivePricing) return false;
     const startCity = normalizeText(route.startCity || '');
     const fromCity = normalizeText(route.fromPlace?.city || '');
     const fromName = normalizeText(route.fromPlace?.name || '');
@@ -1735,6 +1741,7 @@ export function QuoteAutoItineraryBuilder({
 
     let createdItems = 0;
     let skippedUnpricedTransfers = 0;
+    let skippedUnpricedTours = 0;
 
     if (transportService && transportServiceType) {
       for (const item of draft.transports) {
@@ -1860,25 +1867,39 @@ export function QuoteAutoItineraryBuilder({
       // from the route's touringRoutePricings configuration.
       if (item.touringRoute) {
         if (!transportService) continue;
-        await postJson(
-          `${apiBaseUrl}/quotes/${quote.id}/items`,
-          {
-            serviceId: transportService.id,
-            itineraryId: day.id,
-            serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
-            startTime: '09:00',
-            meetingPoint: item.city,
-            participantCount: numericPax,
-            quantity: 1,
-            paxCount: numericPax,
-            dayCount: 1,
-            markupPercent: 20,
-            touringRouteId: item.touringRoute.id,
-            normalizedKey: item.touringRoute.normalizedKey,
-          },
-          `Could not add touring route ${item.touringRoute.name} for ${item.city}.`,
-        );
-        createdItems += 1;
+        // Safety net: findTouringRoutesForCity already filters out tours with no
+        // active pricing, but if a variant's pricing is inactive/missing in a
+        // way the client list didn't catch, the backend rejects the item
+        // ("…has no active pricing row"). Skip that one tour instead of letting
+        // it abort the whole generation, and report the count.
+        try {
+          await postJson(
+            `${apiBaseUrl}/quotes/${quote.id}/items`,
+            {
+              serviceId: transportService.id,
+              itineraryId: day.id,
+              serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
+              startTime: '09:00',
+              meetingPoint: item.city,
+              participantCount: numericPax,
+              quantity: 1,
+              paxCount: numericPax,
+              dayCount: 1,
+              markupPercent: 20,
+              touringRouteId: item.touringRoute.id,
+              normalizedKey: item.touringRoute.normalizedKey,
+            },
+            `Could not add touring route ${item.touringRoute.name} for ${item.city}.`,
+          );
+          createdItems += 1;
+        } catch (tourError) {
+          const tourMessage = tourError instanceof Error ? tourError.message : '';
+          if (/no active pricing row|touring route variant not found/i.test(tourMessage)) {
+            skippedUnpricedTours += 1;
+          } else {
+            throw tourError;
+          }
+        }
         continue;
       }
 
@@ -1908,9 +1929,17 @@ export function QuoteAutoItineraryBuilder({
 
     window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
     const applyMessage = buildItineraryApplyMessage(expectedDays.length, createdDayCount);
-    setMessage(
+    const skipNotes = [
       skippedUnpricedTransfers > 0
-        ? `${applyMessage} Skipped ${skippedUnpricedTransfers} transfer${skippedUnpricedTransfers === 1 ? '' : 's'} with no vehicle rate yet — add pricing in Transfer Routes, then add them to the day cards.`
+        ? `${skippedUnpricedTransfers} transfer${skippedUnpricedTransfers === 1 ? '' : 's'} with no vehicle rate yet`
+        : null,
+      skippedUnpricedTours > 0
+        ? `${skippedUnpricedTours} touring route${skippedUnpricedTours === 1 ? '' : 's'} with no active pricing`
+        : null,
+    ].filter(Boolean);
+    setMessage(
+      skipNotes.length > 0
+        ? `${applyMessage} Skipped ${skipNotes.join(' and ')} — add pricing in the relevant admin, then add them to the day cards.`
         : applyMessage,
     );
     notifySavedDaysReady(savedDays);
