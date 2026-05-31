@@ -1042,9 +1042,28 @@ async function getHotelContracts(): Promise<HotelContract[]> {
 }
 
 async function getHotelRates(): Promise<HotelRate[]> {
-  return adminPageFetchJson<HotelRate[]>(`${DATA_API_BASE_URL}/hotel-rates`, 'Quote detail hotel rates', {
-    cache: 'no-store',
-  });
+  // The /hotel-rates endpoint defaults to 50 rows and caps each page at 250,
+  // but a quote can use any hotel in the catalog (900+ rates total). Fetching a
+  // single unpaginated page silently dropped every rate past the first 50, so
+  // most hotels priced as 0.00 in the rate picker. Page through (250 at a time)
+  // until a short page signals the end.
+  const PAGE_SIZE = 250;
+  const all: HotelRate[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const page = await adminPageFetchJson<HotelRate[]>(
+      `${DATA_API_BASE_URL}/hotel-rates?limit=${PAGE_SIZE}&offset=${offset}`,
+      'Quote detail hotel rates',
+      { cache: 'no-store' },
+    );
+    if (!Array.isArray(page) || page.length === 0) {
+      break;
+    }
+    all.push(...page);
+    if (page.length < PAGE_SIZE) {
+      break;
+    }
+  }
+  return all;
 }
 
 async function getSeasons(): Promise<Season[]> {

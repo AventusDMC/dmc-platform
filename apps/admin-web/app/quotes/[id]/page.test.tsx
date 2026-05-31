@@ -671,7 +671,10 @@ describe('quote detail page regression', () => {
       "shouldLoadHotelPlanningData",
       "safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts)",
       "safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates)",
-      "return adminPageFetchJson<HotelRate[]>(`${DATA_API_BASE_URL}/hotel-rates`, 'Quote detail hotel rates', {",
+      // getHotelRates pages through the catalog (250/page) so all rates load —
+      // the unpaginated single fetch silently capped at 50, leaving most hotels
+      // priced at 0.00.
+      "`${DATA_API_BASE_URL}/hotel-rates?limit=${PAGE_SIZE}&offset=${offset}`",
       'hotels={hotels}',
     ]);
     assert.doesNotMatch(pageSource, /async function getHotelRates\(contractId/);
