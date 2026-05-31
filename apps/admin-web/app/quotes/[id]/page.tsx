@@ -1985,6 +1985,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const shouldLoadHotelPlanningData =
     activeTab === 'itinerary' ||
     activeTab === 'hotels' ||
+    // The unified service planner can add a Hotel stay on the transport/services
+    // tabs too (same editor, Hotel category chip), so hotel/contract/rate data
+    // must load there as well — otherwise the "Add Confirmed Hotel Stay" picker
+    // shows an empty "Create a hotel first" state even though hotels exist.
+    // Mirrors shouldLoadActivityCatalogData below.
+    activeTab === 'transport' ||
+    activeTab === 'services' ||
     resolvedSearchParams?.addCategory === 'hotel' ||
     Boolean(
       resolvedSearchParams?.catalogHotelId ||
