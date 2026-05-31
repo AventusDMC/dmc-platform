@@ -379,6 +379,155 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   box-shadow:inset 3px 0 0 #1F9ACF, 0 4px 12px rgba(31,154,207,.14) !important;
 }
 
+/* Stage 3b — itinerary day CONTENT card + service rows: drop the legacy beige
+   surfaces / heavy drop-shadows for the same clean hairline-on-white, cyan-accent
+   language as the day rail (mock: the `.day` timeline + `.acts`/`.act` list). */
+.quote-itinerary-day-card{
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:14px !important;
+  box-shadow:0 1px 2px rgba(20,40,60,.04), 0 4px 14px rgba(20,40,60,.05) !important;
+  padding:18px !important;
+}
+/* day index → solid cyan node tile (was a pale wash pill) */
+.quote-itinerary-day-number{
+  background:linear-gradient(135deg,#1F9ACF,#22D3EE) !important;
+  color:#fff !important;
+  border-radius:11px !important;
+  padding:.4rem .8rem !important;
+  box-shadow:0 6px 14px rgba(31,154,207,.32) !important;
+}
+/* summary cells: beige → cool neutral, hairline */
+.quote-itinerary-day-summary div{
+  background:#F6F9FC !important;
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:11px !important;
+}
+/* services panel: beige fill → calm white-ish surface, hairline */
+.quote-itinerary-day-panel{
+  background:#FBFDFE !important;
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:12px !important;
+}
+/* individual service rows → clean bordered card w/ cyan hover (mock `.act`) */
+.quote-service-item-row{
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:11px !important;
+  background:#fff !important;
+  padding:13px 15px !important;
+}
+.quote-service-item-row:hover{
+  transform:none !important;
+  border-color:#1F9ACF !important;
+  box-shadow:0 4px 14px rgba(31,154,207,.12) !important;
+}
+
+/* Stage 4 — add-service slide-over: give the editor drawer the mock's bold
+   gradient header (`.dh2`) + clean type chips + calm section cards. CSS-only. */
+.quote-service-editor-drawer .app-drawer-header{
+  background:linear-gradient(110deg,#075985 0%,#1F9ACF 100%) !important;
+  border-bottom:0 !important;
+  box-shadow:0 8px 22px rgba(31,154,207,.20) !important;
+}
+.quote-service-editor-drawer .app-drawer-header h2{ color:#fff !important; }
+.quote-service-editor-drawer .app-drawer-header p{ color:rgba(255,255,255,.82) !important; }
+/* the leading "S" glyph → frosted tile that reads on the gradient */
+.quote-service-editor-drawer .app-drawer-header > div:first-child::before{
+  background:rgba(255,255,255,.2) !important;
+  color:#fff !important;
+}
+/* Cancel/close pill floats over the gradient header → solid white w/ dark-cyan text */
+.quote-service-editor-drawer .app-drawer-header .app-drawer-actions .secondary-button{
+  background:rgba(255,255,255,.95) !important;
+  border-color:rgba(255,255,255,.95) !important;
+  color:#075985 !important;
+}
+/* section cards: flatten the heavy drop-shadow to a hairline + soft lift */
+.quote-service-editor-drawer .quote-drawer-section{
+  border:1px solid var(--rd-hairline,#E1E4EA) !important;
+  border-radius:12px !important;
+  box-shadow:0 1px 2px rgba(20,40,60,.04) !important;
+}
+.quote-drawer-section-head .eyebrow{ color:#0891B2 !important; }
+/* type chips → clean bordered pills; active = cyan-weak (mock `.type`/`.type.on`) */
+.quote-service-editor-panel-drawer .quote-service-editor-tab{
+  border:1.5px solid var(--rd-hairline,#E1E4EA) !important;
+  background:#fff !important;
+}
+.quote-service-editor-panel-drawer .quote-service-editor-tab:hover{
+  border-color:#1F9ACF !important;
+  background:#F2FBFE !important;
+}
+.quote-service-editor-panel-drawer .quote-service-editor-tab-active{
+  border-color:#1F9ACF !important;
+  background:#E9F7FD !important;
+  color:#0B6E96 !important;
+  box-shadow:0 4px 12px rgba(31,154,207,.14) !important;
+}
+
+/* Stage 5 — financial summary rail: brighten the legacy slate→cyan gradient to
+   the mock's full brand-cyan (`.summary`) and flip the margin/profit to green. */
+.app-financial-panel{
+  background:linear-gradient(160deg,#075985 0%,#1F9ACF 60%,#22D3EE 125%) !important;
+  border:0 !important;
+  box-shadow:0 12px 30px rgba(31,154,207,.26) !important;
+}
+/* row chips read a touch brighter on the lighter gradient */
+.app-financial-panel .quote-pricing-summary-row{
+  background:rgba(255,255,255,.14) !important;
+}
+/* force values white on the gradient (a legacy `.financial-value` rule wins the
+   cascade for Sell/Cost/Markup, leaving them dark + unreadable) */
+.app-financial-panel .financial-value{ color:#fff !important; }
+/* Profit (row 3) + Margin % (row 4) → mint green, like the mock's green total */
+.app-financial-panel .quote-pricing-summary-row:nth-child(3) .financial-value,
+.app-financial-panel .quote-pricing-summary-row:nth-child(4) .financial-value{
+  color:#6EE7B7 !important;
+}
+
+/* Stage 5b — focus-mode rail: a glyph per top-level nav group, and on quote
+   routes the dark sidebar collapses to a 62px icon-only rail (mock `.rail`). */
+/* base: icon sits left of the label in the normal full-width sidebar */
+.admin-top-nav-link{
+  display:grid !important;
+  grid-template-columns:1.45rem 1fr;
+  column-gap:.55rem;
+  align-items:center;
+}
+.admin-top-nav-icon{
+  grid-row:1 / span 2;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:.95rem;
+  line-height:1;
+  color:var(--rd-sidebar-muted);
+}
+.admin-top-nav-link-active .admin-top-nav-icon{ color:#fff; }
+
+/* quote routes → icon-only focus rail */
+.admin-shell:has(.quote-builder-page){ grid-template-columns:62px minmax(0,1fr) !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar{ padding:1rem .5rem !important; gap:.5rem !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-brand{ justify-items:center; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-copy{ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-brand-logo{ width:34px !important; height:auto !important; }
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link{
+  grid-template-columns:1fr !important;
+  justify-items:center;
+  padding:.5rem 0 !important;
+}
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link strong,
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link span:not(.admin-top-nav-icon){ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-top-nav-icon{
+  grid-row:auto !important;
+  font-size:1.2rem !important;
+  width:38px; height:38px;
+  border-radius:11px;
+}
+.admin-shell:has(.quote-builder-page) .admin-top-nav-link-active .admin-top-nav-icon{ color:#fff; }
+/* hide the secondary chips + account footer — focus on the icon column */
+.admin-shell:has(.quote-builder-page) .admin-sidebar-subnav{ display:none !important; }
+.admin-shell:has(.quote-builder-page) .admin-sidebar-footer{ display:none !important; }
+
 /* ---------- Tables ---------- */
 .data-table th {
   background: var(--rd-canvas) !important;
