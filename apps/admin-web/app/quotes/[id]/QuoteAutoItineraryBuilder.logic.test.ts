@@ -4,9 +4,12 @@ import {
   assignGeneratedItineraryCities,
   assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
+  classifyOvernightCity,
+  computeOvernightRuns,
   expandNightStopsToDayCities,
   generateItineraryDays,
   getAutoItineraryDayTitle,
+  isMiddleDay,
   mergeExistingItineraryDays,
   reconstructNightStopsFromDayTitles,
 } from './QuoteAutoItineraryBuilder.logic';
@@ -254,5 +257,44 @@ describe('quote auto itinerary builder logic', () => {
 
   it('reconstruction returns null on empty input', () => {
     assert.equal(reconstructNightStopsFromDayTitles([]), null);
+  });
+
+  it('classifies driver-overnight cities by policy', () => {
+    assert.equal(classifyOvernightCity('Petra'), 'standard');
+    assert.equal(classifyOvernightCity('Wadi Rum'), 'standard');
+    assert.equal(classifyOvernightCity('wadirum'), 'standard');
+    assert.equal(classifyOvernightCity('Aqaba'), 'standard');
+    assert.equal(classifyOvernightCity('Amman'), 'none');
+    assert.equal(classifyOvernightCity(''), 'none');
+    // Dead Sea is optional — none unless the operator opts in
+    assert.equal(classifyOvernightCity('Dead Sea'), 'none');
+    assert.equal(classifyOvernightCity('Dead Sea', { includeOptional: true }), 'optional');
+  });
+
+  it('identifies middle days (not arrival, not departure)', () => {
+    assert.equal(isMiddleDay(1, 5), false);
+    assert.equal(isMiddleDay(2, 5), true);
+    assert.equal(isMiddleDay(4, 5), true);
+    assert.equal(isMiddleDay(5, 5), false);
+  });
+
+  it('groups consecutive driver-overnight nights into runs anchored on the first sleep day', () => {
+    // 6 nights: Amman, Amman, Petra, Petra, Wadi Rum, Dead Sea (+ departure dup)
+    const dayCities = ['Amman', 'Amman', 'Petra', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea'];
+    assert.deepEqual(computeOvernightRuns(dayCities), [
+      { dayNumber: 3, city: 'Petra', nights: 2 },
+      { dayNumber: 5, city: 'Wadi Rum', nights: 1 },
+    ]);
+    // With Dead Sea opted in, the final night is added
+    assert.deepEqual(computeOvernightRuns(dayCities, { includeOptional: true }), [
+      { dayNumber: 3, city: 'Petra', nights: 2 },
+      { dayNumber: 5, city: 'Wadi Rum', nights: 1 },
+      { dayNumber: 6, city: 'Dead Sea', nights: 1 },
+    ]);
+  });
+
+  it('produces no overnight runs when no stop qualifies', () => {
+    assert.deepEqual(computeOvernightRuns(['Amman', 'Amman', 'Amman']), []);
+    assert.deepEqual(computeOvernightRuns([]), []);
   });
 });

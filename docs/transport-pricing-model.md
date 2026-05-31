@@ -130,16 +130,18 @@ Cost (per chosen vehicle): `4 × FD-rate + airport-transfer + half-day + station
 
 ## 8. Gaps / TODO
 
-1. **Auto-builder is per-route only.** `QuoteAutoItineraryBuilder` generates one
-   point-to-point transfer per inter-city leg + hotels + Meet & Assist. It does **not**
-   yet:
-   - cost transport in **daily-package mode** (N full days × daily rate + airport + half day + stationary),
-   - add **driver overnights** (standard Petra/Wadi Rum/Aqaba, optional Dead Sea),
-   - add **guides** (local vs escort) or escort overnights.
-   → Proposed: a **"package transport" toggle** on generate that assembles the cost
-     build-up in §7 automatically.
-2. **Rates to load** (per vehicle class): full day (75 JOD given), half day, stationary,
-   airport transfer, driver overnight per location. Source = transport company rate sheet.
+1. ~~**Auto-builder is per-route only.**~~ **DONE (2026-06-01).** `QuoteAutoItineraryBuilder`
+   now has a **"Use daily-package transport" toggle**. When on, it keeps the arrival +
+   departure airport transfers and bills each middle day as a flat **`DAILY_FULL_DAY`**
+   line (rate × dayCount via the engine), and auto-attaches **driver overnights**
+   (standard Petra/Wadi Rum/Aqaba; Dead Sea via a nested opt-in). Pricing resolves the
+   Almushtari 75 JOD/day card for FIT vehicles (≤9 pax) and falls back to Alpha Bus
+   coaches for larger groups. STILL not auto-assembled: **stationary days**, **free-day
+   detection** (all middle days default to full days; operator removes), and **guides**
+   (local vs escort + escort overnights).
+2. ~~**Rates to load.**~~ **DONE.** `DAILY_FULL_DAY` (Almushtari 75/90/100/110 JOD +
+   Alpha Bus coaches), and driver-overnight rates for Petra/Wadi Rum/Aqaba/Dead Sea
+   (15 JOD/vehicle). Still optional: half-day-departure variant, larger-vehicle daily rates.
 3. **Published-tariff (rate-card) mode** — optionally store a finished package as a
    per-person rate card by pax tier × category (vs. always building up from components),
    for selling fixed products to agents.
