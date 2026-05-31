@@ -344,48 +344,6 @@ function findAirportRoute(routes: RouteOption[], city: string, direction: 'arriv
   return gateway || matches[0];
 }
 
-/**
- * Locate touring routes operating out of (or named for) a given city.
- * Touring routes are full-day or multi-day operator-led tours stored as
- * RouteOption with canonicalRouteType=TOURING_ROUTE (or transportPickerMode
- * =TOURING_ROUTE). E.g., "Amman City Tour", "Petra by Night". These are
- * first-class in the data model with their own admin page at
- * /transport/touring-routes and their own pricing structure
- * (touringRoutePricings) — but the Auto Builder activities loop only
- * ever pulled activity services until now. Surfacing them per city
- * means operators see "you have a Petra City Tour available" without
- * having to remember to add it manually.
- */
-function findTouringRoutesForCity(routes: RouteOption[], city: string): RouteOption[] {
-  const cityKey = normalizeText(city);
-  if (!cityKey) return [];
-  return routes.filter((route) => {
-    if (!isValidRoute(route)) return false;
-    const isTouring =
-      route.canonicalRouteType === 'TOURING_ROUTE' ||
-      route.transportPickerMode === 'TOURING_ROUTE' ||
-      (route.routeType || '').toUpperCase() === 'TOURING_ROUTE';
-    if (!isTouring) return false;
-    // Only surface touring routes that have an active pricing row. The backend
-    // rejects a quote item for a variant with no active pricing ("Selected
-    // touring route variant has no active pricing row"), and that rejection
-    // would abort the whole generation — so don't auto-add un-priceable tours.
-    const hasActivePricing = (route.touringRoutePricings || []).some((pricing) => pricing.active !== false);
-    if (!hasActivePricing) return false;
-    const startCity = normalizeText(route.startCity || '');
-    const fromCity = normalizeText(route.fromPlace?.city || '');
-    const fromName = normalizeText(route.fromPlace?.name || '');
-    const routeName = normalizeText(route.name || '');
-    return (
-      startCity === cityKey ||
-      fromCity.includes(cityKey) ||
-      cityKey.includes(fromCity) ||
-      fromName.includes(cityKey) ||
-      routeName.includes(cityKey)
-    );
-  });
-}
-
 function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
   const from = normalizeText(fromCity);
   const to = normalizeText(toCity);
@@ -1150,15 +1108,13 @@ async function buildPreviewDraft(values: {
     }),
   }));
 
-  const activityService = findService(values.services, 'activity');
   const meetAssistService = findMeetAssistService(values.services);
-  // Activities array now carries TWO kinds of entries:
-  //   - service: an Activity-catalog SupplierService (e.g., "Petra Hiking
-  //     Experience"). Saved as a quote item via serviceId.
-  //   - touringRoute: a RouteOption with canonicalRouteType=TOURING_ROUTE
-  //     (e.g., "Amman City Tour"). Saved as a quote item via touringRouteId.
-  // Both surface in the activities section of the preview so the operator
-  // sees the full catalog of options for each city.
+  // Generate builds the OPERATIONAL SKELETON only: arrival/intercity/departure
+  // transfers, hotels per night, and Meet & Assist on the airport days. It does
+  // NOT auto-commit tours or activities — those are trip-specific choices the
+  // operator adds from the catalog. (Previously it dumped EVERY touring route
+  // for EVERY city plus a $0 activity placeholder per day, which flooded the
+  // quote with dozens of mislabelled "transport" rows.)
   type ActivityEntry = {
     dayNumber: number;
     city: string;
@@ -1178,19 +1134,6 @@ async function buildPreviewDraft(values: {
     activities.push({ dayNumber: firstDay.dayNumber, city: firstDay.city, service: meetAssistService, touringRoute: null });
     if (lastDay.dayNumber !== firstDay.dayNumber) {
       activities.push({ dayNumber: lastDay.dayNumber, city: lastDay.city, service: meetAssistService, touringRoute: null });
-    }
-  }
-
-  if (values.includeActivities) {
-    for (const day of days.slice(0, -1)) {
-      // Touring routes for this city — show all available so the operator
-      // sees the full menu rather than only one auto-picked option.
-      const touringRoutes = findTouringRoutesForCity(values.routes, day.city);
-      for (const touringRoute of touringRoutes) {
-        activities.push({ dayNumber: day.dayNumber, city: day.city, service: null, touringRoute });
-      }
-      // Generic activity-service placeholder (legacy behavior).
-      activities.push({ dayNumber: day.dayNumber, city: day.city, service: activityService, touringRoute: null });
     }
   }
 
@@ -1599,6 +1542,30 @@ export function QuoteAutoItineraryBuilder({
     return Array.isArray(itinerary.days) ? itinerary.days : [];
   }
 
+  // Existing quote items, used to make re-running Generate idempotent: a second
+  // run must not pile up duplicate transfers/hotels/services on days that
+  // already have them.
+  type ExistingQuoteItem = {
+    itineraryId: string | null;
+    routeId: string | null;
+    hotelId: string | null;
+    touringRouteId: string | null;
+    serviceId: string | null;
+  };
+  async function getExistingQuoteItems(): Promise<ExistingQuoteItem[]> {
+    try {
+      const response = await fetch(logFetchUrl(`${apiBaseUrl}/quotes/${quote.id}/items`), {
+        headers: buildAuthHeaders(),
+        credentials: 'include',
+      });
+      if (!response.ok) return [];
+      const items = await readJsonResponse<ExistingQuoteItem[]>(response, 'Existing quote items');
+      return Array.isArray(items) ? items : [];
+    } catch {
+      return [];
+    }
+  }
+
   async function getExistingDayAfterDuplicate(dayNumber: number) {
     const currentDays = await getCurrentItineraryDays();
     return currentDays.find((day) => day.dayNumber === dayNumber) || null;
@@ -1739,6 +1706,23 @@ export function QuoteAutoItineraryBuilder({
     const { savedDays, createdDayCount } = await saveItineraryDays(expectedDays);
     await deactivateExtraGeneratedDays(expectedDays.length);
 
+    // Idempotency: load what's already on the quote so a second Generate run
+    // doesn't duplicate transfers/hotels/services on days that already have
+    // them. Keyed per day (itineraryId) + the item's identity. Also preserves
+    // anything the operator added manually.
+    const existingItems = await getExistingQuoteItems();
+    const existingTransportKeys = new Set(
+      existingItems.filter((i) => i.routeId).map((i) => `${i.itineraryId}|${i.routeId}`),
+    );
+    const existingHotelKeys = new Set(
+      existingItems.filter((i) => i.hotelId).map((i) => `${i.itineraryId}|${i.hotelId}`),
+    );
+    const existingServiceKeys = new Set(
+      existingItems
+        .filter((i) => i.serviceId && !i.routeId && !i.hotelId && !i.touringRouteId)
+        .map((i) => `${i.itineraryId}|${i.serviceId}`),
+    );
+
     let createdItems = 0;
     let skippedUnpricedTransfers = 0;
     let skippedUnpricedTours = 0;
@@ -1748,6 +1732,11 @@ export function QuoteAutoItineraryBuilder({
         const day = savedDays.get(item.dayNumber);
 
         if (!day || !item.route) {
+          continue;
+        }
+
+        // Idempotent re-generate: this day already has this transfer route.
+        if (existingTransportKeys.has(`${day.id}|${item.route.id}`)) {
           continue;
         }
 
@@ -1849,6 +1838,10 @@ export function QuoteAutoItineraryBuilder({
       for (const group of groupedHotels) {
         const day = savedDays.get(group.firstDayNumber);
         if (!day) continue;
+        // Idempotent re-generate: this day already has this hotel.
+        if (existingHotelKeys.has(`${day.id}|${group.hotel.id}`)) {
+          continue;
+        }
         await postJson(
           `${apiBaseUrl}/quotes/${quote.id}/items`,
           {
@@ -1921,8 +1914,12 @@ export function QuoteAutoItineraryBuilder({
         continue;
       }
 
-      // Activity-service entry (legacy path): standard activity placeholder.
+      // Service entry (Meet & Assist on the airport days).
       if (!activityService || !item.service) {
+        continue;
+      }
+      // Idempotent re-generate: this day already has this service.
+      if (existingServiceKeys.has(`${day.id}|${item.service.id}`)) {
         continue;
       }
       await postJson(
