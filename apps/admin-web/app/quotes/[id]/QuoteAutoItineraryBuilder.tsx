@@ -21,7 +21,6 @@ import {
   assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
   classifyOvernightCity,
-  computeOvernightRuns,
   getAutoItineraryDayCount,
   generateItineraryDays,
   isMiddleDay,
@@ -412,10 +411,19 @@ function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
  * first, then fall back to any active same-place self-loop in Amman.
  */
 function findDailyDisposalRoute(routes: RouteOption[]): RouteOption | null {
-  const byKey = routes.find((route) => normalizeText(route.normalizedKey) === 'amman amman');
+  // NEVER a touring route: every Amman-based touring route is stored with
+  // fromPlace === toPlace === startCity (a self-loop), so the endpoint
+  // fallback below would otherwise grab one of them and price against touring
+  // pricing instead of the DAILY_FULL_DAY rates. Only real transfer routes
+  // qualify as the daily-package disposal route.
+  const isTouring = (route: RouteOption) =>
+    route.routeType === 'TOURING_ROUTE' ||
+    (route as { canonicalRouteType?: string | null }).canonicalRouteType === 'TOURING_ROUTE';
+  const transferRoutes = routes.filter((route) => !isTouring(route));
+  const byKey = transferRoutes.find((route) => normalizeText(route.normalizedKey) === 'amman amman');
   if (byKey) return byKey;
   return (
-    routes.find((route) => {
+    transferRoutes.find((route) => {
       if (route.isActive === false) return false;
       const from = routeEndpointText(route, 'fromPlace');
       const to = routeEndpointText(route, 'toPlace');
@@ -1133,10 +1141,18 @@ async function buildPreviewDraft(values: {
     const seenServiceTypeIds = new Set<string>();
     let selectedCandidate: TransportPricingCandidate | null = null;
     if (route) {
+      // Gather the best candidate from EACH applicable service type rather than
+      // stopping at the first that resolves. The airport routes carry
+      // AIRPORT_TRANSFER rates (often the pricier coach supplier) AND
+      // POINT_TO_POINT rates (the cheap car/van supplier) — stopping at the
+      // first (AIRPORT_TRANSFER) made a 2-pax arrival pick a USD coach over a
+      // ~20 JOD sedan. In cost mode pick the cheapest across both; in comfort
+      // mode keep the leg's preferred (first) service type.
+      const winners: TransportPricingCandidate[] = [];
       for (const candidateServiceType of legServiceTypes) {
         if (!candidateServiceType || seenServiceTypeIds.has(candidateServiceType.id)) continue;
         seenServiceTypeIds.add(candidateServiceType.id);
-        selectedCandidate = await resolveTransportCandidate({
+        const winner = await resolveTransportCandidate({
           apiBaseUrl: values.apiBaseUrl,
           route,
           transportServiceType: candidateServiceType,
@@ -1144,7 +1160,14 @@ async function buildPreviewDraft(values: {
           quoteType: values.quoteType,
           optimizationMode: values.optimizationMode,
         });
-        if (selectedCandidate) break;
+        if (winner) winners.push(winner);
+      }
+      if (winners.length <= 1) {
+        selectedCandidate = winners[0] ?? null;
+      } else if (values.optimizationMode === 'cost') {
+        selectedCandidate = winners.reduce((cheapest, candidate) => (candidate.price < cheapest.price ? candidate : cheapest));
+      } else {
+        selectedCandidate = winners[0];
       }
     }
     let optimizationReason: string;
@@ -1188,17 +1211,11 @@ async function buildPreviewDraft(values: {
   const dailyPackageActive = Boolean(
     values.usePackageTransport && values.dailyPackageServiceType && values.disposalRoute,
   );
-  const overnightRunByDay = new Map<number, ReturnType<typeof computeOvernightRuns>[number]>();
-  if (dailyPackageActive) {
-    for (const run of computeOvernightRuns(
-      days.map((day) => day.city),
-      { includeOptional: Boolean(values.deadSeaOvernight) },
-    )) {
-      overnightRunByDay.set(run.dayNumber, run);
-    }
-  }
-
-  const buildDailyEntry = async (dayNumber: number, city: string) => {
+  // The driver sleeps wherever the guests sleep that night = the day's CURRENT
+  // city. So a driver overnight attaches to EVERY middle day whose city is an
+  // overnight stop (Petra/Wadi Rum/Aqaba standard; Dead Sea opt-in) — e.g. two
+  // nights in Petra → an overnight on each of those days, not lumped onto one.
+  const buildDailyEntry = async (dayNumber: number, previousCity: string, currentCity: string) => {
     const disposalRoute = values.disposalRoute as RouteOption;
     const resolved = await resolveDailyTransport({
       apiBaseUrl: values.apiBaseUrl,
@@ -1209,12 +1226,19 @@ async function buildPreviewDraft(values: {
       optimizationMode: values.optimizationMode,
     });
     const selectedCandidate = resolved?.candidate ?? null;
-    // Attach a driver overnight when this is the anchor day of an overnight
-    // run, matching the supplier add-on by city + chosen vehicle + currency.
+    // Label the line by the day's ACTUAL journey: a move shows "Amman → Petra",
+    // a stay shows "Petra (full day)". The flat daily rate is the same either
+    // way; only the display + overnight differ.
+    const moved = Boolean(previousCity && currentCity) && normalizeText(previousCity) !== normalizeText(currentCity);
+    const fromCity = moved ? previousCity : currentCity;
+    const toCity = currentCity;
+    const journeyLabel = moved ? `${previousCity} → ${currentCity}` : `${currentCity || 'destination'} (full day)`;
+
+    // Driver overnight for the night spent at the current city (1 per day).
     let addOns: Array<{ rateId: string; quantity: number; label?: string }> | undefined;
-    const run = overnightRunByDay.get(dayNumber);
-    if (run && selectedCandidate && resolved) {
-      const cityKey = normalizeText(run.city);
+    const overnightPolicy = classifyOvernightCity(currentCity, { includeOptional: Boolean(values.deadSeaOvernight) });
+    if (overnightPolicy !== 'none' && selectedCandidate && resolved) {
+      const cityKey = normalizeText(currentCity);
       const match = resolved.optionalAddOns.find(
         (addOn) =>
           addOn.addOnType === 'DRIVER_OVERNIGHT' &&
@@ -1224,19 +1248,19 @@ async function buildPreviewDraft(values: {
           normalizeText(addOn.name).includes(cityKey),
       );
       if (match) {
-        addOns = [{ rateId: match.rateId, quantity: run.nights, label: `${run.city} driver overnight ×${run.nights}` }];
+        addOns = [{ rateId: match.rateId, quantity: 1, label: `${currentCity} driver overnight` }];
       }
     }
     let optimizationReason: string;
     if (selectedCandidate) {
-      optimizationReason = `Daily-package day in ${city || 'destination'}: ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/day${addOns ? ` + ${addOns[0].label}` : ''}.`;
+      optimizationReason = `${journeyLabel} — daily package: ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/day${addOns ? ` + ${addOns[0].label}` : ''}.`;
     } else {
-      optimizationReason = `Daily-package rate not configured for ${values.pax} pax. Load a DAILY_FULL_DAY vehicle rate or add this day manually.`;
+      optimizationReason = `${journeyLabel} — daily-package rate not configured for ${values.pax} pax. Load a DAILY_FULL_DAY vehicle rate or add this day manually.`;
     }
     return {
       dayNumber,
-      fromCity: city,
-      toCity: city,
+      fromCity,
+      toCity,
       distanceKm: null,
       travelTimeHours: null,
       isTravelHeavy: false,
@@ -1271,11 +1295,12 @@ async function buildPreviewDraft(values: {
         const toLabel = route?.toPlace?.name?.trim() || 'Departure';
         return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
       }
-      // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line (covers all
-      // movement that day) + any anchored driver overnight. Replaces the
-      // per-leg transit/in-city transfer entirely.
+      // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line labelled by the
+      // day's journey (move = "Amman → Petra", stay = "Petra (full day)") plus
+      // a driver overnight for that night's city. Replaces the per-leg
+      // transit/in-city transfer entirely.
       if (dailyPackageActive && isMiddleDay(day.dayNumber, totalDays)) {
-        return buildDailyEntry(day.dayNumber, currentCity);
+        return buildDailyEntry(day.dayNumber, previousCity, currentCity);
       }
       const normalizedPrevious = normalizeText(previousCity);
       const normalizedCurrent = normalizeText(currentCity);
