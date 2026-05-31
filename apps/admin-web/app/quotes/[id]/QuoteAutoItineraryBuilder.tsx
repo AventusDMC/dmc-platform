@@ -317,19 +317,27 @@ function isValidRoute(route: RouteOption) {
 function findAirportRoute(routes: RouteOption[], city: string, direction: 'arrival' | 'departure') {
   const cityKey = normalizeText(city);
   if (!cityKey) return null;
-  return (
-    routes.find((route) => {
-      if (!isValidRoute(route)) return false;
-      const routeFrom = routeEndpointText(route, 'fromPlace');
-      const routeTo = routeEndpointText(route, 'toPlace');
-      if (direction === 'arrival') {
-        // Airport → city: fromPlace has "airport", toPlace contains the city
-        return routeFrom.includes('airport') && routeTo.includes(cityKey);
-      }
-      // city → Airport: fromPlace contains the city, toPlace has "airport"
-      return routeFrom.includes(cityKey) && routeTo.includes('airport');
-    }) || null
-  );
+  const airportSide = direction === 'arrival' ? 'fromPlace' : 'toPlace';
+  const matches = routes.filter((route) => {
+    if (!isValidRoute(route)) return false;
+    const routeFrom = routeEndpointText(route, 'fromPlace');
+    const routeTo = routeEndpointText(route, 'toPlace');
+    if (direction === 'arrival') {
+      // Airport → city: fromPlace has "airport", toPlace contains the city
+      return routeFrom.includes('airport') && routeTo.includes(cityKey);
+    }
+    // city → Airport: fromPlace contains the city, toPlace has "airport"
+    return routeFrom.includes(cityKey) && routeTo.includes('airport');
+  });
+  if (matches.length === 0) return null;
+  // A city can have more than one airport (e.g. Amman has Queen Alia
+  // INTERNATIONAL plus the secondary Marka field). Inbound tours arrive/
+  // depart through the international gateway, and the secondary-airport
+  // routes are typically unpriced — picking the first match blindly grabbed
+  // "Marka Airport → Amman" and then the unpriced leg blocked generation.
+  // Prefer the route whose airport endpoint is the international one.
+  const international = matches.find((route) => routeEndpointText(route, airportSide).includes('international'));
+  return international || matches[0];
 }
 
 /**
@@ -1653,12 +1661,27 @@ export function QuoteAutoItineraryBuilder({
     await deactivateExtraGeneratedDays(expectedDays.length);
 
     let createdItems = 0;
+    let skippedUnpricedTransfers = 0;
 
     if (transportService && transportServiceType) {
       for (const item of draft.transports) {
         const day = savedDays.get(item.dayNumber);
 
         if (!day || !item.route) {
+          continue;
+        }
+
+        // Route matched but no priceable vehicle rate exists for it (e.g. an
+        // airport transfer whose route has no configured vehicle rate). The
+        // preview already swallows this per-leg as "pricing not configured
+        // yet", but creating the quote item would make the backend throw
+        // "No matching vehicle rate found …" and abort the ENTIRE generation,
+        // leaving the operator with the raw error and a half-built quote.
+        // Skip it instead — same as the hotels loop skips legs missing a
+        // contract/rate — and report the count so the operator knows to add
+        // those transfers manually.
+        if (!item.selectedCandidate) {
+          skippedUnpricedTransfers += 1;
           continue;
         }
 
@@ -1811,7 +1834,12 @@ export function QuoteAutoItineraryBuilder({
     }
 
     window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
-    setMessage(buildItineraryApplyMessage(expectedDays.length, createdDayCount));
+    const applyMessage = buildItineraryApplyMessage(expectedDays.length, createdDayCount);
+    setMessage(
+      skippedUnpricedTransfers > 0
+        ? `${applyMessage} Skipped ${skippedUnpricedTransfers} transfer${skippedUnpricedTransfers === 1 ? '' : 's'} with no vehicle rate yet — add pricing in Transfer Routes, then add them to the day cards.`
+        : applyMessage,
+    );
     notifySavedDaysReady(savedDays);
     router.refresh();
     return createdItems;
