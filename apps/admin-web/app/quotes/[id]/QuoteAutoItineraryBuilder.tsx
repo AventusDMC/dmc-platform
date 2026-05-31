@@ -1765,25 +1765,43 @@ export function QuoteAutoItineraryBuilder({
           continue;
         }
 
-        await postJson(
-          `${apiBaseUrl}/quotes/${quote.id}/items`,
-          {
-            serviceId: transportService.id,
-            itineraryId: day.id,
-            quantity: 1,
-            paxCount: numericPax,
-            dayCount: 1,
-            markupPercent: 20,
-            transportServiceTypeId: item.selectedCandidate?.serviceType.id || transportServiceType.id,
-            routeId: item.route.id,
-            normalizedKey: item.route.normalizedKey,
-            routeName: '',
-            overrideCost: item.selectedCandidate ? item.selectedCandidate.price : undefined,
-            useOverride: Boolean(item.selectedCandidate),
-          },
-          `Could not add transport for ${item.fromCity} to ${item.toCity}.`,
-        );
-        createdItems += 1;
+        // Let the backend price the leg from the route + service type + vehicle
+        // (like the manual transport picker) instead of force-overriding with the
+        // candidate's price. The candidate price is in the rate's native currency
+        // (e.g. JOD), but `overrideCost` is interpreted in the QUOTE currency — so
+        // overriding stored "JOD 20" as "USD 20" (no FX conversion). Pricing it
+        // server-side runs the JOD→quote-currency conversion correctly. Wrapped so
+        // a server-side pricing edge case skips just this leg instead of aborting.
+        try {
+          await postJson(
+            `${apiBaseUrl}/quotes/${quote.id}/items`,
+            {
+              serviceId: transportService.id,
+              itineraryId: day.id,
+              quantity: 1,
+              paxCount: numericPax,
+              dayCount: 1,
+              markupPercent: 20,
+              transportServiceTypeId: item.selectedCandidate.serviceType.id,
+              transportVehicleId: item.selectedCandidate.vehicle.id,
+              routeId: item.route.id,
+              normalizedKey: item.route.normalizedKey,
+              routeName: '',
+              overrideCost: null,
+              useOverride: false,
+              currency: item.selectedCandidate.currency,
+            },
+            `Could not add transport for ${item.fromCity} to ${item.toCity}.`,
+          );
+          createdItems += 1;
+        } catch (transferError) {
+          const transferMessage = transferError instanceof Error ? transferError.message : '';
+          if (/no matching vehicle rate|pricing rule|transport cost must be positive|maxpax/i.test(transferMessage)) {
+            skippedUnpricedTransfers += 1;
+          } else {
+            throw transferError;
+          }
+        }
       }
     }
 
