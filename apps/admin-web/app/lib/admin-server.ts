@@ -146,10 +146,18 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
     }
   }
 
+  // Default to per-request `no-store` (always-fresh). A caller may opt INTO
+  // the Next.js Data Cache by passing `next: { revalidate: N }` — used only for
+  // global, role-invariant catalog data (routes, vehicles, hotels, rates,
+  // seasons…) so repeat quote opens don't re-fetch the whole catalog every
+  // time. We do NOT force `cache: 'no-store'` in that case (no-store would
+  // override revalidate). Quote/user-scoped data never passes `next` and stays
+  // no-store.
+  const wantsDataCache = typeof (init.next as { revalidate?: number } | undefined)?.revalidate === 'number';
   const fetchInit: RequestInit = {
     ...init,
     headers: nextHeaders,
-    cache: init.cache ?? 'no-store',
+    ...(wantsDataCache ? {} : { cache: init.cache ?? 'no-store' }),
     signal: timeoutController ? timeoutController.signal : init.signal,
   };
   delete (fetchInit as { timeoutMs?: number }).timeoutMs;
