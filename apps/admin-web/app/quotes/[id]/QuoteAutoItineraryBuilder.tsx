@@ -332,12 +332,16 @@ function findAirportRoute(routes: RouteOption[], city: string, direction: 'arriv
   if (matches.length === 0) return null;
   // A city can have more than one airport (e.g. Amman has Queen Alia
   // INTERNATIONAL plus the secondary Marka field). Inbound tours arrive/
-  // depart through the international gateway, and the secondary-airport
-  // routes are typically unpriced — picking the first match blindly grabbed
-  // "Marka Airport → Amman" and then the unpriced leg blocked generation.
-  // Prefer the route whose airport endpoint is the international one.
-  const international = matches.find((route) => routeEndpointText(route, airportSide).includes('international'));
-  return international || matches[0];
+  // depart through the international gateway, so picking the first match
+  // blindly (which grabbed "Marka Airport → Amman") is wrong. Prefer the
+  // international gateway — recognised by "international" OR the gateway codes
+  // operators use in route names (QAIA / Queen Alia / King Hussein), since the
+  // catalog has Queen Alia routes named "QAIA Airport" without the word
+  // "international". Falls back to the first match for cities with no
+  // gateway-flagged route.
+  const GATEWAY_AIRPORT = /international|queen alia|qaia|king hussein/;
+  const gateway = matches.find((route) => GATEWAY_AIRPORT.test(routeEndpointText(route, airportSide)));
+  return gateway || matches[0];
 }
 
 /**
@@ -517,6 +521,38 @@ function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: Opt
 
 function findService(services: SupplierService[], category: 'hotel' | 'transport' | 'activity') {
   return services.find((service) => getQuoteServiceCategoryKey(service) === category) || null;
+}
+
+// Niche / add-on transport service types that must never be the default for a
+// road transfer: border crossings, overnight surcharges, per-hour disposal,
+// extra-km/hour, stationary waiting. Picking the first /transfer/ match used to
+// land on "Border Transfer" (it contains "transfer"), so airport + intercity
+// legs were priced against a service type that has no rate on those routes →
+// "No matching vehicle rate found" and a dead generation.
+const NICHE_TRANSPORT_SERVICE_TYPE = /border|overnight|extra|stationary|per.?hour|add.?on|\bkm\b|waiting/i;
+
+/**
+ * Pick the transport service type best suited to a leg. Tries an explicit
+ * preference list of canonical codes first (AIRPORT_TRANSFER, POINT_TO_POINT,
+ * …), then falls back to a name/code regex while excluding the niche add-on
+ * types above. Codes are the seeded canonical set; the regex fallback keeps it
+ * working if codes differ in some environment.
+ */
+function pickTransportServiceType(
+  types: TransportServiceType[],
+  preferredCodes: string[],
+  fallbackPattern: RegExp,
+): TransportServiceType | null {
+  for (const code of preferredCodes) {
+    const byCode = types.find((type) => (type.code || '').toUpperCase() === code);
+    if (byCode) return byCode;
+  }
+  return (
+    types.find(
+      (type) =>
+        fallbackPattern.test(`${type.name} ${type.code}`) && !NICHE_TRANSPORT_SERVICE_TYPE.test(`${type.name} ${type.code}`),
+    ) || null
+  );
 }
 
 /**
@@ -931,6 +967,9 @@ async function buildPreviewDraft(values: {
   hotelRates: HotelRate[];
   services: SupplierService[];
   transportServiceType: TransportServiceType | null;
+  // Airport-leg service type (AIRPORT_TRANSFER). Used for the arrival/departure
+  // airport transfers; the general transportServiceType above handles transit.
+  airportTransferServiceType?: TransportServiceType | null;
   // When the Guided Builder hands off a per-city night distribution, use
   // it for day-to-city assignment so a "Amman:3, Petra:2" stop list fills
   // 3 days with Amman + 2 with Petra rather than collapsing one day per
@@ -999,16 +1038,33 @@ async function buildPreviewDraft(values: {
   ) => {
     const route = routeOverride !== undefined ? routeOverride : findRoute(values.routes, fromCity, toCity);
     const distanceEstimate = getRouteDistanceEstimate(route, fromCity, toCity);
-    const selectedCandidate = route
-      ? await resolveTransportCandidate({
+    // Airport pickup/dropoff legs price as AIRPORT_TRANSFER; transit legs as the
+    // general (POINT_TO_POINT-style) transfer type. The catalog is inconsistent
+    // across the duplicate airport routes — some Queen Alia routes carry
+    // AIRPORT_TRANSFER rates, others only POINT_TO_POINT — so try the leg's
+    // preferred type first and fall back to the general type, deduped. Using the
+    // right type per leg is what lets the catalog rate actually resolve.
+    const legServiceTypes =
+      kind === 'arrival' || kind === 'departure'
+        ? [values.airportTransferServiceType, values.transportServiceType]
+        : [values.transportServiceType];
+    const seenServiceTypeIds = new Set<string>();
+    let selectedCandidate: TransportPricingCandidate | null = null;
+    if (route) {
+      for (const candidateServiceType of legServiceTypes) {
+        if (!candidateServiceType || seenServiceTypeIds.has(candidateServiceType.id)) continue;
+        seenServiceTypeIds.add(candidateServiceType.id);
+        selectedCandidate = await resolveTransportCandidate({
           apiBaseUrl: values.apiBaseUrl,
           route,
-          transportServiceType: values.transportServiceType,
+          transportServiceType: candidateServiceType,
           pax: values.pax,
           quoteType: values.quoteType,
           optimizationMode: values.optimizationMode,
-        })
-      : null;
+        });
+        if (selectedCandidate) break;
+      }
+    }
     let optimizationReason: string;
     if (selectedCandidate) {
       optimizationReason =
@@ -1262,12 +1318,27 @@ export function QuoteAutoItineraryBuilder({
   // lookups are O(1). When the catalog is empty the map is empty and the
   // preview transparently falls back to existing Route distance/duration.
   const routeStandardLookup = useMemo(() => buildRouteStandardLookup(routeStandards), [routeStandards]);
+  // General / intercity transfer default. Verified against the catalog: every
+  // intercity leg (Amman↔Petra, Petra↔Wadi Rum, Wadi Rum↔Dead Sea, …) prices as
+  // POINT_TO_POINT (some also PRIVATE_TRANSFER_SERVICE), so prefer those and
+  // never the niche "Border Transfer" the old first-/transfer/-match landed on.
   const transportServiceType = useMemo(
     () =>
-      transportServiceTypes.find((serviceType) => /transfer|transport|vehicle/i.test(`${serviceType.name} ${serviceType.code}`)) ||
+      pickTransportServiceType(
+        transportServiceTypes,
+        ['POINT_TO_POINT', 'PRIVATE_TRANSFER_SERVICE', 'PRIVATE_TRANSFER', 'INT', 'TRANSFER'],
+        /transfer|transport|vehicle|point.?to.?point|intercity/i,
+      ) ||
       transportServiceTypes[0] ||
       null,
     [transportServiceTypes],
+  );
+  // Airport arrival/departure legs price as AIRPORT_TRANSFER in the catalog —
+  // use that for the airport pickup/dropoff instead of the generic transfer
+  // type, so the standard inbound/outbound transfers actually resolve a rate.
+  const airportTransferServiceType = useMemo(
+    () => pickTransportServiceType(transportServiceTypes, ['AIRPORT_TRANSFER', 'ARR', 'DEP'], /airport/i) || transportServiceType,
+    [transportServiceTypes, transportServiceType],
   );
 
   const numericNightCount = Math.max(0, Math.floor(Number(nightCount) || 0));
@@ -1308,6 +1379,7 @@ export function QuoteAutoItineraryBuilder({
             pax: numericPax,
             optimizationMode: mode,
             transportServiceType,
+            airportTransferServiceType,
             travelStartDate,
             nightCount: numericNightCount,
             routeText,
@@ -1386,6 +1458,7 @@ export function QuoteAutoItineraryBuilder({
           pax: numericPax,
           optimizationMode,
           transportServiceType,
+          airportTransferServiceType,
           travelStartDate,
           nightCount: numericNightCount,
           routeText,
@@ -1875,6 +1948,7 @@ export function QuoteAutoItineraryBuilder({
         pax: numericPax,
         optimizationMode: mode,
         transportServiceType,
+        airportTransferServiceType,
         travelStartDate,
         nightCount: numericNightCount,
         routeText,
