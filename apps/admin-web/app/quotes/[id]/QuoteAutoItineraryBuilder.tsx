@@ -20,8 +20,11 @@ import {
   assignGeneratedItineraryCities,
   assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
+  classifyOvernightCity,
+  computeOvernightRuns,
   getAutoItineraryDayCount,
   generateItineraryDays,
+  isMiddleDay,
   mergeExistingItineraryDays,
   reconstructNightStopsFromDayTitles,
   type AutoItineraryExistingDay,
@@ -97,8 +100,19 @@ type TransportServiceType = {
 
 type OptimizationMode = 'cost' | 'comfort';
 
+type TransportPricingAddOn = {
+  rateId: string;
+  name: string;
+  addOnType: 'DRIVER_OVERNIGHT' | 'STATIONARY_WAITING' | 'OTHER';
+  vehicleId?: string | null;
+  unitCost?: number | null;
+  currency: string;
+  defaultQuantity?: number | null;
+};
+
 type TransportPricingCandidate = {
   routeId?: string | null;
+  vehicleRateId?: string | null;
   routeName: string;
   pricingMode?: 'per_vehicle' | 'capacity_unit';
   unitCapacity?: number | null;
@@ -116,15 +130,20 @@ type TransportPricingCandidate = {
     id: string;
     name: string;
     code: string | null;
+    classification?: string | null;
   };
 };
 
 type TransportPricingResult = {
+  routeId?: string | null;
+  vehicleRateId?: string | null;
+  routeName?: string;
   price: number;
   currency: string;
   vehicle: TransportPricingCandidate['vehicle'];
   serviceType: TransportPricingCandidate['serviceType'];
   candidates?: TransportPricingCandidate[];
+  optionalAddOns?: TransportPricingAddOn[];
 };
 
 type Quote = {
@@ -160,6 +179,9 @@ type PreviewTransport = {
   route: RouteOption | null;
   selectedCandidate: TransportPricingCandidate | null;
   optimizationReason: string;
+  isDailyPackage?: boolean;
+  dayCount?: number;
+  addOns?: Array<{ rateId: string; quantity: number; label?: string }>;
 };
 
 type PreviewHotel = {
@@ -380,6 +402,26 @@ function findRoute(routes: RouteOption[], fromCity: string, toCity: string) {
   }
 
   return exactMatch || reverseMatch;
+}
+
+/**
+ * Locate the daily-package "disposal" route. The DAILY_FULL_DAY (daily
+ * package) rates are attached to the same-area "Amman → Amman" self-loop
+ * route, because the pricing engine requires a route reference and a daily
+ * package's flat per-day cost is route-agnostic. Match by normalizedKey
+ * first, then fall back to any active same-place self-loop in Amman.
+ */
+function findDailyDisposalRoute(routes: RouteOption[]): RouteOption | null {
+  const byKey = routes.find((route) => normalizeText(route.normalizedKey) === 'amman amman');
+  if (byKey) return byKey;
+  return (
+    routes.find((route) => {
+      if (route.isActive === false) return false;
+      const from = routeEndpointText(route, 'fromPlace');
+      const to = routeEndpointText(route, 'toPlace');
+      return Boolean(from) && from === to && from.includes('amman');
+    }) || null
+  );
 }
 
 function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
@@ -916,6 +958,75 @@ async function resolveTransportCandidate(values: {
   }
 }
 
+/**
+ * Price one daily-package (DAILY_FULL_DAY) day. The flat daily rate is route-
+ * agnostic but the pricing engine requires a route, so we price against the
+ * "Amman → Amman" disposal route the DAILY_FULL_DAY rates are attached to.
+ * Returns the chosen vehicle candidate plus the supplier's optional add-ons
+ * (driver overnights) so the caller can attach overnights per night-stop.
+ * Defensive like resolveTransportCandidate — a per-day failure is non-fatal.
+ */
+async function resolveDailyTransport(values: {
+  apiBaseUrl: string;
+  disposalRoute: RouteOption;
+  dailyServiceType: TransportServiceType | null;
+  pax: number;
+  quoteType: Quote['quoteType'];
+  optimizationMode: OptimizationMode;
+}): Promise<{ candidate: TransportPricingCandidate; optionalAddOns: TransportPricingAddOn[] } | null> {
+  if (!values.dailyServiceType) {
+    return null;
+  }
+  try {
+    const response = await fetch(`${values.apiBaseUrl}/transport-pricing/calculate`, {
+      method: 'POST',
+      headers: buildAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        serviceTypeId: values.dailyServiceType.id,
+        routeId: values.disposalRoute.id,
+        normalizedKey: values.disposalRoute.normalizedKey,
+        routeName: '',
+        paxCount: values.pax,
+      }),
+    });
+
+    if (!response.ok) {
+      const bodyPreview = await response.text().catch(() => '');
+      if (bodyPreview) {
+        // eslint-disable-next-line no-console
+        console.warn(`[Auto Builder] daily-package calculate ${response.status}:`, bodyPreview.slice(0, 200));
+      }
+      return null;
+    }
+
+    const result = await readJsonResponse<TransportPricingResult>(response, 'Could not resolve daily-package pricing.');
+    if (!result.vehicle || !result.serviceType) {
+      return null;
+    }
+    // Use the PRIMARY matched rate, not a candidate pick: findMatchingRate
+    // already returns the smallest-fitting / cheapest vehicle (single unit, no
+    // pax multiplication) which is exactly what a flat daily package wants —
+    // and the optionalAddOns (driver overnights) are keyed to THIS vehicle, so
+    // using it guarantees the overnight add-on matches on apply.
+    const candidate: TransportPricingCandidate = {
+      routeId: result.routeId ?? values.disposalRoute.id,
+      vehicleRateId: result.vehicleRateId ?? null,
+      routeName: result.routeName || formatRouteLabel(values.disposalRoute),
+      price: result.price,
+      currency: result.currency,
+      vehicle: result.vehicle,
+      serviceType: result.serviceType,
+    };
+    return { candidate, optionalAddOns: result.optionalAddOns ?? [] };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('[Auto Builder] daily-package calculate threw:', error);
+    return null;
+  }
+}
+
 async function buildPreviewDraft(values: {
   apiBaseUrl: string;
   travelStartDate: string;
@@ -944,6 +1055,13 @@ async function buildPreviewDraft(values: {
   // duration/risk-flag rendering. Empty map means no standards available
   // and the preview falls back to per-route distanceKm/durationMinutes.
   routeStandardLookup?: Map<string, RouteStandardSummary>;
+  // Daily-package transport mode. When on, middle days are billed as flat
+  // DAILY_FULL_DAY lines (priced against the disposal route) instead of
+  // per-leg intercity transfers, and driver overnights are auto-attached.
+  usePackageTransport?: boolean;
+  deadSeaOvernight?: boolean;
+  dailyPackageServiceType?: TransportServiceType | null;
+  disposalRoute?: RouteOption | null;
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
@@ -1063,6 +1181,76 @@ async function buildPreviewDraft(values: {
     };
   };
 
+  // Daily-package mode: middle days are billed as a flat DAILY_FULL_DAY line
+  // (the daily rate covers all movement, so per-leg intercity transfers are
+  // dropped) plus auto-attached driver overnights. Arrival/departure airport
+  // transfers are unchanged. Off by default — the per-route path is untouched.
+  const dailyPackageActive = Boolean(
+    values.usePackageTransport && values.dailyPackageServiceType && values.disposalRoute,
+  );
+  const overnightRunByDay = new Map<number, ReturnType<typeof computeOvernightRuns>[number]>();
+  if (dailyPackageActive) {
+    for (const run of computeOvernightRuns(
+      days.map((day) => day.city),
+      { includeOptional: Boolean(values.deadSeaOvernight) },
+    )) {
+      overnightRunByDay.set(run.dayNumber, run);
+    }
+  }
+
+  const buildDailyEntry = async (dayNumber: number, city: string) => {
+    const disposalRoute = values.disposalRoute as RouteOption;
+    const resolved = await resolveDailyTransport({
+      apiBaseUrl: values.apiBaseUrl,
+      disposalRoute,
+      dailyServiceType: values.dailyPackageServiceType ?? null,
+      pax: values.pax,
+      quoteType: values.quoteType,
+      optimizationMode: values.optimizationMode,
+    });
+    const selectedCandidate = resolved?.candidate ?? null;
+    // Attach a driver overnight when this is the anchor day of an overnight
+    // run, matching the supplier add-on by city + chosen vehicle + currency.
+    let addOns: Array<{ rateId: string; quantity: number; label?: string }> | undefined;
+    const run = overnightRunByDay.get(dayNumber);
+    if (run && selectedCandidate && resolved) {
+      const cityKey = normalizeText(run.city);
+      const match = resolved.optionalAddOns.find(
+        (addOn) =>
+          addOn.addOnType === 'DRIVER_OVERNIGHT' &&
+          addOn.currency === selectedCandidate.currency &&
+          (!addOn.vehicleId || addOn.vehicleId === selectedCandidate.vehicle.id) &&
+          Boolean(cityKey) &&
+          normalizeText(addOn.name).includes(cityKey),
+      );
+      if (match) {
+        addOns = [{ rateId: match.rateId, quantity: run.nights, label: `${run.city} driver overnight ×${run.nights}` }];
+      }
+    }
+    let optimizationReason: string;
+    if (selectedCandidate) {
+      optimizationReason = `Daily-package day in ${city || 'destination'}: ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/day${addOns ? ` + ${addOns[0].label}` : ''}.`;
+    } else {
+      optimizationReason = `Daily-package rate not configured for ${values.pax} pax. Load a DAILY_FULL_DAY vehicle rate or add this day manually.`;
+    }
+    return {
+      dayNumber,
+      fromCity: city,
+      toCity: city,
+      distanceKm: null,
+      travelTimeHours: null,
+      isTravelHeavy: false,
+      route: disposalRoute,
+      routeStandard: null,
+      selectedCandidate,
+      optimizationReason,
+      isDailyPackage: true,
+      dayCount: 1,
+      addOns,
+    };
+  };
+
+  const totalDays = days.length;
   const transports = await Promise.all(
     days.map(async (day, index) => {
       const previousDay = index > 0 ? days[index - 1] : null;
@@ -1082,6 +1270,12 @@ async function buildPreviewDraft(values: {
         const route = currentCity ? findAirportRoute(values.routes, currentCity, 'departure') : null;
         const toLabel = route?.toPlace?.name?.trim() || 'Departure';
         return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
+      }
+      // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line (covers all
+      // movement that day) + any anchored driver overnight. Replaces the
+      // per-leg transit/in-city transfer entirely.
+      if (dailyPackageActive && isMiddleDay(day.dayNumber, totalDays)) {
+        return buildDailyEntry(day.dayNumber, currentCity);
       }
       const normalizedPrevious = normalizeText(previousCity);
       const normalizedCurrent = normalizeText(currentCity);
@@ -1250,6 +1444,11 @@ export function QuoteAutoItineraryBuilder({
   // transport. Previously default false meant activities never auto-pulled,
   // surprising operators who clicked the "Full Itinerary" button.
   const [includeActivities, setIncludeActivities] = useState(true);
+  // Daily-package transport mode (off by default — preserves the existing
+  // per-route behaviour). When on, middle days bill as flat DAILY_FULL_DAY
+  // lines + driver overnights. Dead Sea overnight is an extra opt-in.
+  const [usePackageTransport, setUsePackageTransport] = useState(false);
+  const [deadSeaOvernight, setDeadSeaOvernight] = useState(false);
   const [preview, setPreview] = useState<PreviewDraft | null>(null);
   const [comparison, setComparison] = useState<ComparisonState | null>(null);
   const [manualDayOverrides, setManualDayOverrides] = useState<ManualDayOverrides>({});
@@ -1289,6 +1488,15 @@ export function QuoteAutoItineraryBuilder({
     () => pickTransportServiceType(transportServiceTypes, ['AIRPORT_TRANSFER', 'ARR', 'DEP'], /airport/i) || transportServiceType,
     [transportServiceTypes, transportServiceType],
   );
+  // Daily-package (flat per-day) service type + the disposal route its rates
+  // hang off. Both required for daily-package mode; when either is missing the
+  // toggle silently no-ops and the per-route path is used.
+  const dailyPackageServiceType = useMemo(
+    () => pickTransportServiceType(transportServiceTypes, ['DAILY_FULL_DAY'], /daily|full.?day|package/i),
+    [transportServiceTypes],
+  );
+  const dailyDisposalRoute = useMemo(() => findDailyDisposalRoute(routes), [routes]);
+  const dailyPackageAvailable = Boolean(dailyPackageServiceType && dailyDisposalRoute);
 
   const numericNightCount = Math.max(0, Math.floor(Number(nightCount) || 0));
   const expectedGeneratedDayCount = getAutoItineraryDayCount(numericNightCount);
@@ -1340,6 +1548,10 @@ export function QuoteAutoItineraryBuilder({
             services,
             nightStops: guidedNightStops,
             routeStandardLookup,
+            usePackageTransport,
+            deadSeaOvernight,
+            dailyPackageServiceType,
+            disposalRoute: dailyDisposalRoute,
           }),
         ),
       );
@@ -1418,6 +1630,10 @@ export function QuoteAutoItineraryBuilder({
           hotelRates,
           services,
           routeStandardLookup,
+          usePackageTransport,
+          deadSeaOvernight,
+          dailyPackageServiceType,
+          disposalRoute: dailyDisposalRoute,
           }),
           manualDayOverrides,
         ),
@@ -1548,6 +1764,7 @@ export function QuoteAutoItineraryBuilder({
   type ExistingQuoteItem = {
     itineraryId: string | null;
     routeId: string | null;
+    transportServiceTypeId: string | null;
     hotelId: string | null;
     touringRouteId: string | null;
     serviceId: string | null;
@@ -1769,7 +1986,9 @@ export function QuoteAutoItineraryBuilder({
               itineraryId: day.id,
               quantity: 1,
               paxCount: numericPax,
-              dayCount: 1,
+              // Daily-package lines carry dayCount (backend multiplies the flat
+              // daily rate × dayCount) and the driver-overnight add-ons.
+              dayCount: item.dayCount ?? 1,
               markupPercent: 20,
               transportServiceTypeId: item.selectedCandidate.serviceType.id,
               transportVehicleId: item.selectedCandidate.vehicle.id,
@@ -1779,6 +1998,7 @@ export function QuoteAutoItineraryBuilder({
               overrideCost: null,
               useOverride: false,
               currency: item.selectedCandidate.currency,
+              transportAddOns: item.addOns?.map((addOn) => ({ rateId: addOn.rateId, quantity: addOn.quantity })) ?? [],
             },
             `Could not add transport for ${item.fromCity} to ${item.toCity}.`,
           );
@@ -2003,6 +2223,10 @@ export function QuoteAutoItineraryBuilder({
         hotelRates,
         services,
         nightStops: guidedNightStops,
+        usePackageTransport,
+        deadSeaOvernight,
+        dailyPackageServiceType,
+        disposalRoute: dailyDisposalRoute,
       }),
       manualDayOverrides,
     );
@@ -2191,6 +2415,22 @@ export function QuoteAutoItineraryBuilder({
         <input checked={includeActivities} onChange={(event) => setIncludeActivities(event.target.checked)} type="checkbox" />
         <span>Add optional activity placeholders where an activity service exists</span>
       </label>
+
+      <label className="quote-auto-itinerary-check" title={dailyPackageAvailable ? undefined : 'No DAILY_FULL_DAY rate or disposal route found in the catalog.'}>
+        <input
+          checked={usePackageTransport}
+          disabled={!dailyPackageAvailable}
+          onChange={(event) => setUsePackageTransport(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Use daily-package transport (flat daily rate per touring day + driver overnights at Petra / Wadi Rum / Aqaba)</span>
+      </label>
+      {usePackageTransport && dailyPackageAvailable ? (
+        <label className="quote-auto-itinerary-check" style={{ marginLeft: 24 }}>
+          <input checked={deadSeaOvernight} onChange={(event) => setDeadSeaOvernight(event.target.checked)} type="checkbox" />
+          <span>Also add a driver overnight for Dead Sea nights (optional — off by default)</span>
+        </label>
+      ) : null}
 
       {/* One-line helper that disambiguates the action group — the
           previous labels ("Generate & Save Draft Itinerary") sounded like

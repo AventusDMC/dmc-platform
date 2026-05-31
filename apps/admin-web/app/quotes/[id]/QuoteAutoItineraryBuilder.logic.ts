@@ -229,3 +229,86 @@ export function mergeExistingItineraryDays(...dayGroups: AutoItineraryExistingDa
 export function buildItineraryApplyMessage(totalDays: number, _addedDays: number) {
   return `${totalDays} itinerary day${totalDays === 1 ? '' : 's'} ready.`;
 }
+
+// ---------------------------------------------------------------------------
+// Daily-package transport helpers
+//
+// In daily-package mode the supplier bills a flat rate per full day plus
+// arrival/departure transfers, plus a *driver overnight* supplement whenever
+// the driver sleeps out at certain stops. Standard overnight stops (auto):
+// Petra, Wadi Rum, Aqaba. Optional (operator opt-in): Dead Sea. Amman /
+// everywhere else: none (driver is home-based or close enough).
+// ---------------------------------------------------------------------------
+
+export type OvernightPolicy = 'standard' | 'optional' | 'none';
+
+const OVERNIGHT_CITY_POLICY: Array<{ rx: RegExp; policy: Exclude<OvernightPolicy, 'none'> }> = [
+  { rx: /petra/, policy: 'standard' },
+  { rx: /wadi\s*rum/, policy: 'standard' },
+  { rx: /aqaba/, policy: 'standard' },
+  { rx: /dead\s*sea/, policy: 'optional' },
+];
+
+function normalizeCityName(city: string | null | undefined): string {
+  return String(city || '').trim().toLowerCase();
+}
+
+/**
+ * Classify a city's driver-overnight policy. When `includeOptional` is false
+ * (the default), optional stops (Dead Sea) collapse to 'none' so no overnight
+ * supplement is added unless the operator opts in.
+ */
+export function classifyOvernightCity(
+  city: string | null | undefined,
+  options: { includeOptional?: boolean } = {},
+): OvernightPolicy {
+  const norm = normalizeCityName(city);
+  if (!norm) return 'none';
+  for (const entry of OVERNIGHT_CITY_POLICY) {
+    if (entry.rx.test(norm)) {
+      if (entry.policy === 'optional' && !options.includeOptional) return 'none';
+      return entry.policy;
+    }
+  }
+  return 'none';
+}
+
+/** A "middle" day is any day that is neither arrival (1) nor departure (last). */
+export function isMiddleDay(dayNumber: number, totalDays: number): boolean {
+  return dayNumber > 1 && dayNumber < totalDays;
+}
+
+export type OvernightRun = { dayNumber: number; city: string; nights: number };
+
+/**
+ * Given the per-day city array (length = totalDays, the last entry being the
+ * departure day which shares the final city but is NOT a slept night), group
+ * consecutive nights spent at each overnight-eligible stop into runs. Each run
+ * is anchored on the driver's first sleep day at that stop, with `nights` =
+ * the number of consecutive nights — this drives the overnight add-on quantity
+ * (one add-on line per run, quantity = nights).
+ */
+export function computeOvernightRuns(
+  dayCities: string[],
+  options: { includeOptional?: boolean } = {},
+): OvernightRun[] {
+  const nights = dayCities.slice(0, Math.max(0, dayCities.length - 1));
+  const runs: OvernightRun[] = [];
+  let current: OvernightRun | null = null;
+  nights.forEach((rawCity, index) => {
+    const isOvernight = classifyOvernightCity(rawCity, options) !== 'none';
+    if (isOvernight) {
+      if (current && normalizeCityName(current.city) === normalizeCityName(rawCity)) {
+        current.nights += 1;
+      } else {
+        if (current) runs.push(current);
+        current = { dayNumber: index + 1, city: rawCity, nights: 1 };
+      }
+    } else if (current) {
+      runs.push(current);
+      current = null;
+    }
+  });
+  if (current) runs.push(current);
+  return runs;
+}
