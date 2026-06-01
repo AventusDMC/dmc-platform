@@ -33,14 +33,19 @@ the production (main) alias — so harness-verify on the branch, then merge to s
 
 ## Passes
 
-- [x] **Pass 1 · Primary money-card reskin.** ★ Done. The
-  `.quote-pricing-summary-card-dominant.app-financial-panel` card (saturated
-  navy→blue gradient + white text) reskinned to a clean token-based surface with a
-  slim accent bar, accent eyebrow, ink values, muted labels, faint-fill rows. Markup
-  unchanged → source-grep `page.test.tsx` stays green. **Finding:** the card had ~15
-  competing style blocks (lines 18856–26036); rather than untangle them now (that's
-  Pass 6 / Phase 4) an authoritative end-of-file block wins the cascade. Flagged for
-  later collapse.
+- [x] **Pass 1 · Flatten the quote financial-summary rail.** ★ Done (corrected). The
+  rail reskinned from the bright brand-cyan gradient to a clean token card (white
+  surface, slim accent bar, accent eyebrow, ink values, green Profit + Margin, muted
+  labels, faint-fill rows). CSS-only → source-grep `page.test.tsx` stays green.
+  **Two corrections after the first attempt:** (1) the gradient is *intentional*
+  (`redesign.css` "Stage 5", per the mock) — flattening it is a deliberate
+  "bold chrome / calm data" split the operator chose, not a fix of an accident.
+  (2) The first attempt put the override in `globals.css`, but `redesign.css` is
+  imported LAST with `!important`, so it was a **live no-op** (the harness gave a
+  false positive because it omitted `redesign.css`). The real fix lives in
+  `redesign.css`, quote-scoped (`.quote-pricing-summary-card-dominant.app-financial-panel`)
+  so the bookings panel keeps its gradient, `!important` + higher specificity to beat
+  Stage 5. **Lesson: harness must load all three stylesheets in import order.**
 - [ ] **Pass 0 · Token unification (foundation, run in parallel).** Finish
   design-system Phase 1b: resolve the one accent (`#1F9ACF` vs proposal `#1FA3D6`),
   point legacy `--saas-*` / `--axis-*` / base vars at `--ds-*` (live computed values),
