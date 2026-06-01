@@ -433,6 +433,30 @@ export class TransportPricingService {
     }));
   }
 
+  // FX-normalized price (USD) for cross-currency rate comparison. Mirrors the
+  // canonical FX_TO_USD in quotes/multi-currency-pricing.ts.
+  private rateComparableUsd(rate: any): number {
+    const fx: Record<string, number> = { USD: 1, EUR: 1.08, JOD: 1.41, ILS: 0.27 };
+    const currency = String(rate?.currency || 'USD').trim().toUpperCase();
+    return Number(rate?.price || 0) * (fx[currency] ?? 1);
+  }
+
+  // Among vehicle rates that ALREADY fit the pax, return the cheapest by
+  // FX-normalized price (the operator's "best rate") rather than the snuggest
+  // capacity — a cheaper larger standard coach should win over a pricier small
+  // VIP one (e.g. 31 pax: Large 49 @ 637 USD beats Large VIP 31-33 @ 903 USD).
+  // Ties break toward the snugger vehicle (smaller maxPax). Null for an empty list.
+  private pickCheapestFittingRate(rates: any[]): any | null {
+    if (!Array.isArray(rates) || rates.length === 0) return null;
+    return rates.reduce((best: any, candidate: any) => {
+      const bestUsd = this.rateComparableUsd(best);
+      const candidateUsd = this.rateComparableUsd(candidate);
+      if (candidateUsd < bestUsd - 0.001) return candidate;
+      if (candidateUsd > bestUsd + 0.001) return best;
+      return (Number(candidate?.maxPax) || 0) < (Number(best?.maxPax) || 0) ? candidate : best;
+    });
+  }
+
   async findMatchingRate(data: FindTransportRateInput) {
     if (!data.serviceTypeId) {
       throw new BadRequestException('serviceTypeId is required');
@@ -476,7 +500,7 @@ export class TransportPricingService {
       }
     }
 
-    let rate = await this.prisma.vehicleRate.findFirst({
+    const fittingRates = await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
         ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
@@ -520,6 +544,8 @@ export class TransportPricingService {
         },
       ],
     });
+    // Pick the cheapest vehicle that fits (best rate), not the smallest-capacity one.
+    let rate: any = this.pickCheapestFittingRate(fittingRates);
 
     if (!rate && data.vehicleId) {
       const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
@@ -587,7 +613,7 @@ export class TransportPricingService {
         exactVehicleRate ||
         (selectedVehicleType
           ? routeMatchedRates.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType))
-          : routeMatchedRates[0]) ||
+          : this.pickCheapestFittingRate(routeMatchedRates)) ||
         null;
     }
 
