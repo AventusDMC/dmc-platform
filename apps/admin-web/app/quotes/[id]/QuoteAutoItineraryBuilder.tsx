@@ -1786,14 +1786,17 @@ export function QuoteAutoItineraryBuilder({
   // Existing quote items, used to make re-running Generate idempotent: a second
   // run must not pile up duplicate transfers/hotels/services on days that
   // already have them.
-  type ExistingQuoteItem = {
+  type ExistingQuoteItemRaw = {
     itineraryId: string | null;
     routeId: string | null;
     transportServiceTypeId: string | null;
     hotelId: string | null;
     touringRouteId: string | null;
     serviceId: string | null;
+    // The real day link (auto-builder items leave the legacy itineraryId null).
+    quoteItineraryDayItems?: Array<{ dayId: string | null }> | null;
   };
+  type ExistingQuoteItem = ExistingQuoteItemRaw & { dayId: string | null };
   async function getExistingQuoteItems(): Promise<ExistingQuoteItem[]> {
     try {
       const response = await fetch(logFetchUrl(`${apiBaseUrl}/quotes/${quote.id}/items`), {
@@ -1801,8 +1804,14 @@ export function QuoteAutoItineraryBuilder({
         credentials: 'include',
       });
       if (!response.ok) return [];
-      const items = await readJsonResponse<ExistingQuoteItem[]>(response, 'Existing quote items');
-      return Array.isArray(items) ? items : [];
+      const items = await readJsonResponse<ExistingQuoteItemRaw[]>(response, 'Existing quote items');
+      if (!Array.isArray(items)) return [];
+      // Resolve each item's actual day: the QuoteItineraryDayItem join is the
+      // source of truth; fall back to the legacy itineraryId for older items.
+      return items.map((item) => ({
+        ...item,
+        dayId: item.quoteItineraryDayItems?.[0]?.dayId ?? item.itineraryId ?? null,
+      }));
     } catch {
       return [];
     }
@@ -1953,16 +1962,19 @@ export function QuoteAutoItineraryBuilder({
     // them. Keyed per day (itineraryId) + the item's identity. Also preserves
     // anything the operator added manually.
     const existingItems = await getExistingQuoteItems();
+    // Dedup on the item's REAL day (dayId from the join) — not the legacy
+    // itineraryId, which is null on auto-builder items and made every
+    // re-generate pile up duplicates.
     const existingTransportKeys = new Set(
-      existingItems.filter((i) => i.routeId).map((i) => `${i.itineraryId}|${i.routeId}`),
+      existingItems.filter((i) => i.routeId).map((i) => `${i.dayId}|${i.routeId}`),
     );
     const existingHotelKeys = new Set(
-      existingItems.filter((i) => i.hotelId).map((i) => `${i.itineraryId}|${i.hotelId}`),
+      existingItems.filter((i) => i.hotelId).map((i) => `${i.dayId}|${i.hotelId}`),
     );
     const existingServiceKeys = new Set(
       existingItems
         .filter((i) => i.serviceId && !i.routeId && !i.hotelId && !i.touringRouteId)
-        .map((i) => `${i.itineraryId}|${i.serviceId}`),
+        .map((i) => `${i.dayId}|${i.serviceId}`),
     );
 
     let createdItems = 0;
