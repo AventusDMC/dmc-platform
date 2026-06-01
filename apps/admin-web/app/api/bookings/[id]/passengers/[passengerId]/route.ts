@@ -47,6 +47,8 @@ export async function POST(
     const departureFlight = String(formData.get('departureFlight') || '').trim();
     const entryPoint = String(formData.get('entryPoint') || '').trim();
     const visaStatus = String(formData.get('visaStatus') || '').trim();
+    const emergencyContactName = String(formData.get('emergencyContactName') || '').trim();
+    const emergencyContactPhone = String(formData.get('emergencyContactPhone') || '').trim();
     const roomingNotes = String(formData.get('roomingNotes') || '').trim();
     const notes = String(formData.get('notes') || '').trim();
 
@@ -64,6 +66,8 @@ export async function POST(
       departureFlight: departureFlight || null,
       entryPoint: entryPoint || null,
       visaStatus: visaStatus || null,
+      emergencyContactName: emergencyContactName || null,
+      emergencyContactPhone: emergencyContactPhone || null,
       roomingNotes: roomingNotes || null,
       notes: notes || null,
     };
