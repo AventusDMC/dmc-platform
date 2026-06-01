@@ -4,6 +4,7 @@ import {
   assignGeneratedItineraryCities,
   assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
+  classifyDailyDayType,
   classifyOvernightCity,
   computeOvernightRuns,
   expandNightStopsToDayCities,
@@ -269,6 +270,24 @@ describe('quote auto itinerary builder logic', () => {
     // Dead Sea is optional — none unless the operator opts in
     assert.equal(classifyOvernightCity('Dead Sea'), 'none');
     assert.equal(classifyOvernightCity('Dead Sea', { includeOptional: true }), 'optional');
+  });
+
+  it('classifies daily-package day type by move/stay and city policy', () => {
+    // A move (different city) is always a full touring day, regardless of dest.
+    assert.equal(classifyDailyDayType(true, 'Petra'), 'full');
+    assert.equal(classifyDailyDayType(true, 'Dead Sea'), 'full');
+    assert.equal(classifyDailyDayType(true, 'Amman'), 'full');
+    // A stay at an overnight base is stationary (vehicle on local standby).
+    assert.equal(classifyDailyDayType(false, 'Petra'), 'stationary');
+    assert.equal(classifyDailyDayType(false, 'Wadi Rum'), 'stationary');
+    assert.equal(classifyDailyDayType(false, 'Aqaba'), 'stationary');
+    // An Amman stay is a full day (city tour).
+    assert.equal(classifyDailyDayType(false, 'Amman'), 'full');
+    // A Dead Sea stay is a free day (no vehicle) unless opted in → stationary.
+    assert.equal(classifyDailyDayType(false, 'Dead Sea'), 'skip');
+    assert.equal(classifyDailyDayType(false, 'Dead Sea', { includeDeadSea: true }), 'stationary');
+    // Unknown stay city defaults to full (assume a touring day).
+    assert.equal(classifyDailyDayType(false, 'Madaba'), 'full');
   });
 
   it('identifies middle days (not arrival, not departure)', () => {

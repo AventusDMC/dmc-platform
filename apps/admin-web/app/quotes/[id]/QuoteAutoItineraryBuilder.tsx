@@ -20,6 +20,7 @@ import {
   assignGeneratedItineraryCities,
   assignGeneratedItineraryCitiesByNights,
   buildItineraryApplyMessage,
+  classifyDailyDayType,
   classifyOvernightCity,
   getAutoItineraryDayCount,
   generateItineraryDays,
@@ -179,6 +180,10 @@ type PreviewTransport = {
   selectedCandidate: TransportPricingCandidate | null;
   optimizationReason: string;
   isDailyPackage?: boolean;
+  // A stationary (local-standby) daily day vs a full touring day — drives both
+  // the cheaper rate and the "min 3 FULL days" warning count (stationary days
+  // don't count toward the full-day minimum).
+  isStationary?: boolean;
   dayCount?: number;
   addOns?: Array<{ rateId: string; quantity: number; label?: string }>;
 };
@@ -430,6 +435,15 @@ function findDailyDisposalRoute(routes: RouteOption[]): RouteOption | null {
       return Boolean(from) && from === to && from.includes('amman');
     }) || null
   );
+}
+
+// In daily-package mode, an airport leg whose drive is at least this long is
+// treated as a full touring day (billed at the flat daily rate) rather than a
+// point-to-point transfer. ~2.5h cleanly separates the long gateways
+// (QAIA↔Petra/Wadi Rum/Aqaba, ~3.5h+) from short hops (QAIA↔Amman/Dead Sea).
+const LONG_AIRPORT_DRIVE_MINUTES = 150;
+function isLongAirportDrive(route: RouteOption | null): boolean {
+  return Boolean(route && route.durationMinutes != null && route.durationMinutes >= LONG_AIRPORT_DRIVE_MINUTES);
 }
 
 function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
@@ -857,7 +871,9 @@ function buildItineraryWarnings(values: {
   // Daily-package supplier minimum: the flat daily rate normally requires at
   // least 3 full touring days. Evaluated once at the PROGRAM level (the count
   // of daily-package days) — not per line — so a 5-full-day trip never warns.
-  const dailyFullDays = values.transports.filter((transport) => transport.isDailyPackage).length;
+  const dailyFullDays = values.transports.filter(
+    (transport) => transport.isDailyPackage && !transport.isStationary,
+  ).length;
   if (dailyFullDays >= 1 && dailyFullDays < 3) {
     warnings.push({
       id: 'daily-package-min-days',
@@ -1081,6 +1097,10 @@ async function buildPreviewDraft(values: {
   usePackageTransport?: boolean;
   deadSeaOvernight?: boolean;
   dailyPackageServiceType?: TransportServiceType | null;
+  // Stationary (local-standby) service type for same-city stay days at
+  // overnight bases (Petra / Wadi Rum / Aqaba). Falls back to the full-day
+  // service type when absent so the build still produces a (full-day) line.
+  stationaryServiceType?: TransportServiceType | null;
   disposalRoute?: RouteOption | null;
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
@@ -1229,22 +1249,38 @@ async function buildPreviewDraft(values: {
   // nights in Petra → an overnight on each of those days, not lumped onto one.
   const buildDailyEntry = async (dayNumber: number, previousCity: string, currentCity: string) => {
     const disposalRoute = values.disposalRoute as RouteOption;
+    const moved = Boolean(previousCity && currentCity) && normalizeText(previousCity) !== normalizeText(currentCity);
+    // Stationary applies only on STAY days at overnight bases (Petra / Wadi Rum
+    // / Aqaba). A move is always a full touring day; an Amman stay is a full day
+    // (city tour); a Dead Sea stay is a FREE day (no vehicle) unless opted in.
+    const dayType = classifyDailyDayType(moved, currentCity, {
+      includeDeadSea: Boolean(values.deadSeaOvernight),
+    });
+    if (dayType === 'skip') {
+      return null;
+    }
+    const isStationary = dayType === 'stationary';
+    const dailyServiceType = isStationary
+      ? values.stationaryServiceType ?? values.dailyPackageServiceType ?? null
+      : values.dailyPackageServiceType ?? null;
     const resolved = await resolveDailyTransport({
       apiBaseUrl: values.apiBaseUrl,
       disposalRoute,
-      dailyServiceType: values.dailyPackageServiceType ?? null,
+      dailyServiceType,
       pax: values.pax,
       quoteType: values.quoteType,
       optimizationMode: values.optimizationMode,
     });
     const selectedCandidate = resolved?.candidate ?? null;
     // Label the line by the day's ACTUAL journey: a move shows "Amman → Petra",
-    // a stay shows "Petra (full day)". The flat daily rate is the same either
-    // way; only the display + overnight differ.
-    const moved = Boolean(previousCity && currentCity) && normalizeText(previousCity) !== normalizeText(currentCity);
+    // a stay shows "Petra (stationary)" or "Amman (full day)". The overnight and
+    // the rate differ by day type; the label makes the distinction visible.
+    const dayKindLabel = isStationary ? 'stationary' : 'full day';
     const fromCity = moved ? previousCity : currentCity;
     const toCity = currentCity;
-    const journeyLabel = moved ? `${previousCity} → ${currentCity}` : `${currentCity || 'destination'} (full day)`;
+    const journeyLabel = moved
+      ? `${previousCity} → ${currentCity}`
+      : `${currentCity || 'destination'} (${dayKindLabel})`;
 
     // Driver overnight for the night spent at the current city (1 per day).
     let addOns: Array<{ rateId: string; quantity: number; label?: string }> | undefined;
@@ -1263,11 +1299,13 @@ async function buildPreviewDraft(values: {
         addOns = [{ rateId: match.rateId, quantity: 1, label: `${currentCity} driver overnight` }];
       }
     }
+    const dayKindNoun = isStationary ? 'stationary standby' : 'daily package';
     let optimizationReason: string;
     if (selectedCandidate) {
-      optimizationReason = `${journeyLabel} — daily package: ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/day${addOns ? ` + ${addOns[0].label}` : ''}.`;
+      optimizationReason = `${journeyLabel} — ${dayKindNoun}: ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/day${addOns ? ` + ${addOns[0].label}` : ''}.`;
     } else {
-      optimizationReason = `${journeyLabel} — daily-package rate not configured for ${values.pax} pax. Load a DAILY_FULL_DAY vehicle rate or add this day manually.`;
+      const rateHint = isStationary ? 'a STATIONARY_WAITING' : 'a DAILY_FULL_DAY';
+      optimizationReason = `${journeyLabel} — ${dayKindNoun} rate not configured for ${values.pax} pax. Load ${rateHint} vehicle rate or add this day manually.`;
     }
     return {
       dayNumber,
@@ -1281,13 +1319,14 @@ async function buildPreviewDraft(values: {
       selectedCandidate,
       optimizationReason,
       isDailyPackage: true,
+      isStationary,
       dayCount: 1,
       addOns,
     };
   };
 
   const totalDays = days.length;
-  const transports = await Promise.all(
+  const transportEntries = await Promise.all(
     days.map(async (day, index) => {
       const previousDay = index > 0 ? days[index - 1] : null;
       const isFirst = index === 0;
@@ -1299,12 +1338,21 @@ async function buildPreviewDraft(values: {
         // ARRIVAL transfer: Airport (or "Arrival" placeholder) -> first city.
         const route = currentCity ? findAirportRoute(values.routes, currentCity, 'arrival') : null;
         const fromLabel = route?.fromPlace?.name?.trim() || 'Arrival';
+        // In a daily package, a LONG airport drive (~2.5h+, e.g. QAIA↔Petra/
+        // Wadi Rum/Aqaba) is effectively a full touring day and bills at the
+        // flat daily rate; a short hop (QAIA↔Amman/Dead Sea) stays a transfer.
+        if (dailyPackageActive && isLongAirportDrive(route)) {
+          return buildDailyEntry(day.dayNumber, fromLabel, currentCity);
+        }
         return buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
       }
       if (isLast) {
         // DEPARTURE transfer: last city -> Airport (or "Departure" placeholder).
         const route = currentCity ? findAirportRoute(values.routes, currentCity, 'departure') : null;
         const toLabel = route?.toPlace?.name?.trim() || 'Departure';
+        if (dailyPackageActive && isLongAirportDrive(route)) {
+          return buildDailyEntry(day.dayNumber, currentCity, toLabel);
+        }
         return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
       }
       // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line labelled by the
@@ -1324,6 +1372,12 @@ async function buildPreviewDraft(values: {
       // TRANSIT: previous city -> current city.
       return buildTransportEntry(day.dayNumber, previousCity, currentCity, undefined, 'transit');
     }),
+  );
+  // Daily-package free days (e.g. a Dead Sea stay with no opted-in vehicle)
+  // return null from buildDailyEntry — drop them so no empty transport line is
+  // created for that day.
+  const transports = transportEntries.filter(
+    (entry): entry is NonNullable<typeof entry> => entry !== null,
   );
 
   const hotels = days.slice(0, values.nightCount).map((day) => ({
@@ -1532,6 +1586,13 @@ export function QuoteAutoItineraryBuilder({
     () => pickTransportServiceType(transportServiceTypes, ['DAILY_FULL_DAY'], /daily|full.?day|package/i),
     [transportServiceTypes],
   );
+  // Stationary (local-standby) service type for same-city stay days at Petra /
+  // Wadi Rum / Aqaba — the vehicle waits locally instead of touring all day, so
+  // it bills cheaper than a full day.
+  const stationaryServiceType = useMemo(
+    () => pickTransportServiceType(transportServiceTypes, ['STATIONARY_WAITING', 'STATIONARY'], /stationary|standby|waiting/i),
+    [transportServiceTypes],
+  );
   const dailyDisposalRoute = useMemo(() => findDailyDisposalRoute(routes), [routes]);
   const dailyPackageAvailable = Boolean(dailyPackageServiceType && dailyDisposalRoute);
 
@@ -1588,6 +1649,7 @@ export function QuoteAutoItineraryBuilder({
             usePackageTransport,
             deadSeaOvernight,
             dailyPackageServiceType,
+            stationaryServiceType,
             disposalRoute: dailyDisposalRoute,
           }),
         ),
@@ -1670,6 +1732,7 @@ export function QuoteAutoItineraryBuilder({
           usePackageTransport,
           deadSeaOvernight,
           dailyPackageServiceType,
+          stationaryServiceType,
           disposalRoute: dailyDisposalRoute,
           }),
           manualDayOverrides,
@@ -2275,6 +2338,7 @@ export function QuoteAutoItineraryBuilder({
         usePackageTransport,
         deadSeaOvernight,
         dailyPackageServiceType,
+        stationaryServiceType,
         disposalRoute: dailyDisposalRoute,
       }),
       manualDayOverrides,
@@ -2472,12 +2536,12 @@ export function QuoteAutoItineraryBuilder({
           onChange={(event) => setUsePackageTransport(event.target.checked)}
           type="checkbox"
         />
-        <span>Use daily-package transport (flat daily rate per touring day + driver overnights at Petra / Wadi Rum / Aqaba)</span>
+        <span>Use daily-package transport (drive days + Amman = full day; Petra / Wadi Rum / Aqaba stay days = stationary; driver overnights auto-added)</span>
       </label>
       {usePackageTransport && dailyPackageAvailable ? (
         <label className="quote-auto-itinerary-check" style={{ marginLeft: 24 }}>
           <input checked={deadSeaOvernight} onChange={(event) => setDeadSeaOvernight(event.target.checked)} type="checkbox" />
-          <span>Also add a driver overnight for Dead Sea nights (optional — off by default)</span>
+          <span>Add Dead Sea vehicle + driver overnight (off by default — Dead Sea stay days are free days with no transport)</span>
         </label>
       ) : null}
 

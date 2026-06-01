@@ -278,6 +278,36 @@ export function isMiddleDay(dayNumber: number, totalDays: number): boolean {
   return dayNumber > 1 && dayNumber < totalDays;
 }
 
+export type DailyDayType = 'full' | 'stationary' | 'skip';
+
+/**
+ * In daily-package mode, classify a middle day's vehicle engagement so it bills
+ * at the right rate:
+ *  - 'full'       — an inter-city DRIVE day (the vehicle is out touring all day),
+ *                   OR a same-city stay in a touring base (Amman, where there is
+ *                   usually a city/region tour). Billed at the flat full-day rate.
+ *  - 'stationary' — a same-city STAY in an overnight base where the vehicle is on
+ *                   local standby only (Petra / Wadi Rum / Aqaba — hotel ↔ site ↔
+ *                   hotel). Billed at the cheaper stationary rate. The driver
+ *                   overnight still applies (he sleeps there either way).
+ *  - 'skip'       — a same-city STAY that is a FREE day with no vehicle service
+ *                   (Dead Sea), unless the operator opts in (then 'stationary').
+ *
+ * A move (different previous vs current city) is always 'full': the vehicle
+ * makes the inter-city journey regardless of the destination's stay policy.
+ */
+export function classifyDailyDayType(
+  moved: boolean,
+  currentCity: string | null | undefined,
+  options: { includeDeadSea?: boolean } = {},
+): DailyDayType {
+  if (moved) return 'full';
+  const policy = classifyOvernightCity(currentCity, { includeOptional: true });
+  if (policy === 'standard') return 'stationary'; // Petra / Wadi Rum / Aqaba
+  if (policy === 'optional') return options.includeDeadSea ? 'stationary' : 'skip'; // Dead Sea
+  return 'full'; // Amman + anywhere else: assume a touring day
+}
+
 export type OvernightRun = { dayNumber: number; city: string; nights: number };
 
 /**
