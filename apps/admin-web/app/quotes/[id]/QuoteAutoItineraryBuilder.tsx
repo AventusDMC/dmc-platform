@@ -432,6 +432,15 @@ function findDailyDisposalRoute(routes: RouteOption[]): RouteOption | null {
   );
 }
 
+// In daily-package mode, an airport leg whose drive is at least this long is
+// treated as a full touring day (billed at the flat daily rate) rather than a
+// point-to-point transfer. ~2.5h cleanly separates the long gateways
+// (QAIA↔Petra/Wadi Rum/Aqaba, ~3.5h+) from short hops (QAIA↔Amman/Dead Sea).
+const LONG_AIRPORT_DRIVE_MINUTES = 150;
+function isLongAirportDrive(route: RouteOption | null): boolean {
+  return Boolean(route && route.durationMinutes != null && route.durationMinutes >= LONG_AIRPORT_DRIVE_MINUTES);
+}
+
 function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
   if (mode === 'comfort') {
     return route.durationMinutes ?? route.distanceKm ?? Number.MAX_SAFE_INTEGER;
@@ -1299,12 +1308,21 @@ async function buildPreviewDraft(values: {
         // ARRIVAL transfer: Airport (or "Arrival" placeholder) -> first city.
         const route = currentCity ? findAirportRoute(values.routes, currentCity, 'arrival') : null;
         const fromLabel = route?.fromPlace?.name?.trim() || 'Arrival';
+        // In a daily package, a LONG airport drive (~2.5h+, e.g. QAIA↔Petra/
+        // Wadi Rum/Aqaba) is effectively a full touring day and bills at the
+        // flat daily rate; a short hop (QAIA↔Amman/Dead Sea) stays a transfer.
+        if (dailyPackageActive && isLongAirportDrive(route)) {
+          return buildDailyEntry(day.dayNumber, fromLabel, currentCity);
+        }
         return buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
       }
       if (isLast) {
         // DEPARTURE transfer: last city -> Airport (or "Departure" placeholder).
         const route = currentCity ? findAirportRoute(values.routes, currentCity, 'departure') : null;
         const toLabel = route?.toPlace?.name?.trim() || 'Departure';
+        if (dailyPackageActive && isLongAirportDrive(route)) {
+          return buildDailyEntry(day.dayNumber, currentCity, toLabel);
+        }
         return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
       }
       // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line labelled by the
