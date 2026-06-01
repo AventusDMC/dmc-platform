@@ -86,10 +86,28 @@ type CreateActivityInput = {
   operationalNotes?: string | null;
   categoryTags?: string[] | null;
   reviewNotes?: string | null;
+  // Guided Quote Builder taxonomy — see Activity model comments.
+  moodCategory?: string | null;
+  experienceType?: string | null;
+  operationalIntensity?: string | null;
+  religiousSignificance?: boolean | null;
+  premiumExperienceFlag?: boolean | null;
   rateVariants?: ActivityRateVariantInput[];
 };
 
 type UpdateActivityInput = Partial<CreateActivityInput>;
+
+const VALID_MOOD_CATEGORIES = ['CULTURE', 'ADVENTURE', 'RELIGIOUS', 'RELAXATION', 'FAMILY', 'WELLNESS', 'FOOD_LOCAL'];
+const VALID_OPERATIONAL_INTENSITIES = ['RELAXED', 'MODERATE', 'INTENSE'];
+
+// Normalizes a free-text taxonomy value to its canonical uppercase form,
+// falling back to null when it is not one of the values the Guided Quote
+// Builder groups by (so a typo never silently breaks mood grouping).
+function normalizeEnumString(value: string | null | undefined, allowed: string[]): string | null {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim().toUpperCase();
+  return allowed.includes(normalized) ? normalized : null;
+}
 
 @Injectable()
 export class ActivitiesService {
@@ -156,6 +174,13 @@ export class ActivitiesService {
         operationalNotes: normalizeOptionalString(data.operationalNotes),
         categoryTags: this.normalizeCategoryTags(data.categoryTags),
         reviewNotes: normalizeOptionalString(data.reviewNotes),
+        moodCategory: normalizeEnumString(data.moodCategory, VALID_MOOD_CATEGORIES),
+        experienceType: normalizeOptionalString(data.experienceType),
+        operationalIntensity: normalizeEnumString(data.operationalIntensity, VALID_OPERATIONAL_INTENSITIES),
+        religiousSignificance:
+          data.religiousSignificance === undefined || data.religiousSignificance === null ? false : Boolean(data.religiousSignificance),
+        premiumExperienceFlag:
+          data.premiumExperienceFlag === undefined || data.premiumExperienceFlag === null ? false : Boolean(data.premiumExperienceFlag),
         active: data.active === undefined ? true : Boolean(data.active),
         rateVariants: this.buildCreateRateVariants(data.rateVariants, defaultVariantCurrency),
       },
@@ -219,6 +244,12 @@ export class ActivitiesService {
           operationalNotes: data.operationalNotes === undefined ? undefined : normalizeOptionalString(data.operationalNotes),
           categoryTags: data.categoryTags === undefined ? undefined : this.normalizeCategoryTags(data.categoryTags),
           reviewNotes: data.reviewNotes === undefined ? undefined : normalizeOptionalString(data.reviewNotes),
+          moodCategory: data.moodCategory === undefined ? undefined : normalizeEnumString(data.moodCategory, VALID_MOOD_CATEGORIES),
+          experienceType: data.experienceType === undefined ? undefined : normalizeOptionalString(data.experienceType),
+          operationalIntensity:
+            data.operationalIntensity === undefined ? undefined : normalizeEnumString(data.operationalIntensity, VALID_OPERATIONAL_INTENSITIES),
+          religiousSignificance: data.religiousSignificance === undefined ? undefined : Boolean(data.religiousSignificance),
+          premiumExperienceFlag: data.premiumExperienceFlag === undefined ? undefined : Boolean(data.premiumExperienceFlag),
           active: data.active === undefined ? undefined : Boolean(data.active),
         },
         include: {
@@ -263,6 +294,11 @@ export class ActivitiesService {
         operationalNotes: source.operationalNotes,
         categoryTags: source.categoryTags,
         reviewNotes: source.reviewNotes,
+        moodCategory: source.moodCategory,
+        experienceType: source.experienceType,
+        operationalIntensity: source.operationalIntensity,
+        religiousSignificance: source.religiousSignificance,
+        premiumExperienceFlag: source.premiumExperienceFlag,
         active: false,
         rateVariants: this.buildCreateRateVariants(
           (source.rateVariants || []).map((variant: ActivityRateVariantRecord) => ({

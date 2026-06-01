@@ -112,6 +112,11 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, existingActivi
   const [costPrice, setCostPrice] = useState(toStringValue(initialValues?.costPrice));
   const [sellPrice, setSellPrice] = useState(toStringValue(initialValues?.sellPrice));
   const [durationMinutes, setDurationMinutes] = useState(toStringValue(initialValues?.durationMinutes));
+  const [moodCategory, setMoodCategory] = useState(initialValues?.moodCategory || '');
+  const [experienceType, setExperienceType] = useState(initialValues?.experienceType || '');
+  const [operationalIntensity, setOperationalIntensity] = useState(initialValues?.operationalIntensity || '');
+  const [religiousSignificance, setReligiousSignificance] = useState(Boolean(initialValues?.religiousSignificance));
+  const [premiumExperienceFlag, setPremiumExperienceFlag] = useState(Boolean(initialValues?.premiumExperienceFlag));
   const [active, setActive] = useState(initialValues?.active ?? true);
   const [rateVariants, setRateVariants] = useState<ActivityRateVariantFormRow[]>(
     initialValues?.rateVariants?.map(toVariantRow) || [],
@@ -279,6 +284,11 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, existingActivi
         costPrice: normalizedCostPrice,
         sellPrice: normalizedSellPrice,
         durationMinutes: durationMinutes.trim() ? Number(durationMinutes) : null,
+        moodCategory: moodCategory || null,
+        experienceType: experienceType.trim() || null,
+        operationalIntensity: operationalIntensity || null,
+        religiousSignificance,
+        premiumExperienceFlag,
         active,
         rateVariants: normalizedRateVariants,
       };
@@ -394,6 +404,66 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, existingActivi
           Description
           <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
         </label>
+      </section>
+
+      <section className="quote-hotel-step-panel">
+        <div className="quote-hotel-step-head">
+          <div>
+            <h3>Guided experience taxonomy</h3>
+            <p className="detail-copy">
+              Drives the Guided Quote Builder&apos;s per-destination mood grouping, pacing, and top-experience highlights. Optional — untagged
+              activities are auto-classified from their name and category.
+            </p>
+          </div>
+        </div>
+
+        <div className="form-row form-row-3">
+          <label>
+            Mood category
+            <select value={moodCategory} onChange={(event) => setMoodCategory(event.target.value)}>
+              <option value="">Auto (infer from name &amp; category)</option>
+              <option value="CULTURE">Culture</option>
+              <option value="ADVENTURE">Adventure</option>
+              <option value="RELIGIOUS">Religious</option>
+              <option value="RELAXATION">Relaxation</option>
+              <option value="FAMILY">Family</option>
+              <option value="WELLNESS">Wellness</option>
+              <option value="FOOD_LOCAL">Food &amp; Local Experience</option>
+            </select>
+          </label>
+          <label>
+            Operational intensity
+            <select value={operationalIntensity} onChange={(event) => setOperationalIntensity(event.target.value)}>
+              <option value="">Not specified</option>
+              <option value="RELAXED">Relaxed</option>
+              <option value="MODERATE">Moderate</option>
+              <option value="INTENSE">Intense</option>
+            </select>
+          </label>
+          <label>
+            Experience type
+            <input value={experienceType} onChange={(event) => setExperienceType(event.target.value)} placeholder="Guided heritage walk" />
+          </label>
+        </div>
+
+        <div className="form-row">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={religiousSignificance}
+              onChange={(event) => setReligiousSignificance(event.target.checked)}
+            />
+            Religious significance
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={premiumExperienceFlag}
+              onChange={(event) => setPremiumExperienceFlag(event.target.checked)}
+            />
+            Premium / signature experience
+          </label>
+        </div>
       </section>
 
       <section className="quote-hotel-step-panel">
