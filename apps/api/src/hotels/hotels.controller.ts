@@ -8,6 +8,7 @@ type CreateHotelBody = {
   category?: string;
   hotelCategoryId?: string | null;
   supplierId: string;
+  preferenceRank?: number | null;
 };
 
 type UpdateHotelBody = Partial<CreateHotelBody>;

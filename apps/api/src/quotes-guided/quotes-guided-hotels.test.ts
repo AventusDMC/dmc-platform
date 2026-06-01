@@ -182,6 +182,40 @@ test('getHotelSuggestionsForJourney: VERIFIED contracts win sort tie-breaks with
   assert.equal(luxuryTier[1].hasVerifiedContract, false);
 });
 
+test('getHotelSuggestionsForJourney: operator preferenceRank overrides the trust tie-break', async () => {
+  const prisma = buildFakePrisma({
+    hotels: [
+      // h-verified is VERIFIED but unranked; h-preferred is only
+      // unverified yet operator-ranked #1. Explicit preference wins.
+      { id: 'h-verified', name: 'Verified Hotel', city: 'Petra', category: '5*', preferenceRank: null, contracts: [{ id: 'c1', confidence: 'VERIFIED' }] },
+      { id: 'h-preferred', name: 'Preferred Hotel', city: 'Petra', category: '5*', preferenceRank: 1, contracts: [{ id: 'c2', confidence: 'IMPORTED_UNVERIFIED' }] },
+    ],
+    operationalAreas: [],
+  });
+  const service = new QuotesGuidedService(prisma as any);
+  const response = await service.getHotelSuggestionsForJourney({ destinations: ['Petra'] });
+  const luxuryTier = response.suggestions[0].tiers.Luxury;
+  assert.equal(luxuryTier[0].name, 'Preferred Hotel');
+  assert.equal(luxuryTier[0].preferenceRank, 1);
+  assert.equal(luxuryTier[1].name, 'Verified Hotel');
+  assert.equal(luxuryTier[1].preferenceRank, null);
+});
+
+test('getHotelSuggestionsForJourney: lower preferenceRank sorts ahead of higher', async () => {
+  const prisma = buildFakePrisma({
+    hotels: [
+      { id: 'h-2', name: 'Second Choice', city: 'Petra', category: '5*', preferenceRank: 2, contracts: [] },
+      { id: 'h-1', name: 'First Choice', city: 'Petra', category: '5*', preferenceRank: 1, contracts: [] },
+    ],
+    operationalAreas: [],
+  });
+  const service = new QuotesGuidedService(prisma as any);
+  const response = await service.getHotelSuggestionsForJourney({ destinations: ['Petra'] });
+  const luxuryTier = response.suggestions[0].tiers.Luxury;
+  assert.equal(luxuryTier[0].name, 'First Choice');
+  assert.equal(luxuryTier[1].name, 'Second Choice');
+});
+
 // ---------------------------------------------------------------------------
 // enrichHotelForSuggestion — composes all helpers
 // ---------------------------------------------------------------------------

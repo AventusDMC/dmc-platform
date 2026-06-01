@@ -10,6 +10,7 @@ type CreateHotelInput = {
   category?: string;
   hotelCategoryId?: string | null;
   supplierId: string;
+  preferenceRank?: number | null;
 };
 
 type UpdateHotelInput = Partial<CreateHotelInput>;
@@ -32,6 +33,14 @@ type CreateHotelRoomCategoryInput = {
 };
 
 type UpdateHotelRoomCategoryInput = Partial<Omit<CreateHotelRoomCategoryInput, 'hotelId'>>;
+
+// Normalizes a preferred-hotel rank to a positive integer (1 = most
+// preferred) or null when cleared/invalid. Mirrors OperationalArea.priority.
+function normalizePreferenceRank(value: number | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Math.trunc(Number(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : null;
+}
 
 @Injectable()
 export class HotelsService {
@@ -106,6 +115,7 @@ export class HotelsService {
         category: true,
         supplierId: true,
         supplierName: true,
+        preferenceRank: true,
         cityRecord: { select: { id: true, name: true } },
         hotelCategory: { select: { id: true, name: true } },
         _count: {
@@ -156,6 +166,7 @@ export class HotelsService {
         roomCategoryCount: hotel._count?.roomCategories || 0,
         confidenceSummary,
         hasVerifiedContract,
+        preferenceRank: hotel.preferenceRank ?? null,
       };
     });
   }
@@ -394,6 +405,7 @@ export class HotelsService {
         category: categoryDetails.categoryName,
         hotelCategoryId: categoryDetails.hotelCategoryId,
         supplierId: requireTrimmedString(data.supplierId, 'supplierId'),
+        preferenceRank: normalizePreferenceRank(data.preferenceRank),
       },
       include: {
         cityRecord: true,
@@ -435,6 +447,7 @@ export class HotelsService {
         category: categoryDetails.categoryName,
         hotelCategoryId: categoryDetails.hotelCategoryId,
         supplierId: data.supplierId === undefined ? undefined : requireTrimmedString(data.supplierId, 'supplierId'),
+        preferenceRank: data.preferenceRank === undefined ? undefined : normalizePreferenceRank(data.preferenceRank),
       },
       include: {
         cityRecord: true,

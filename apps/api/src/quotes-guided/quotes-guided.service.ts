@@ -98,6 +98,10 @@ export type SuggestedHotel = {
   // for this hotel carries confidence = VERIFIED. Drives the sort
   // boost + "Operationally trusted" label in the Guided picker.
   hasVerifiedContract: boolean;
+  // Preferred Hotel Ranking — operator-set, lower wins (1 = most
+  // preferred). NULL = unranked. Sorts ahead of the trust/alpha
+  // tie-breakers within each tier.
+  preferenceRank: number | null;
   recommendedMealPlan: RecommendedMealPlan;
   operationalConfidence: OperationalConfidence;
   // Short heuristic notes shown to the operator.
@@ -474,6 +478,7 @@ export class QuotesGuidedService {
           name: true,
           city: true,
           category: true,
+          preferenceRank: true,
           hotelCategory: { select: { name: true } },
           contracts: {
             where: { validFrom: { lte: today }, validTo: { gte: today } },
@@ -506,14 +511,22 @@ export class QuotesGuidedService {
         tiers[enriched.tier].push(enriched);
       }
       // Cap each tier at 4 so the UI stays scannable. Sort order:
-      //   1. VERIFIED contracts win (Trustworthiness v2 boost)
-      //   2. Then hotels with any active contract
-      //   3. Then alphabetical
+      //   1. Operator preferenceRank (lower wins; unranked sorts last)
+      //   2. VERIFIED contracts win (Trustworthiness v2 boost)
+      //   3. Then hotels with any active contract
+      //   4. Then alphabetical
       // Verified hotels also surface the "Operationally trusted" label
       // via enrichHotelForSuggestion → notes.
       for (const tier of Object.keys(tiers) as CommercialTier[]) {
         tiers[tier] = tiers[tier]
           .sort((a, b) => {
+            if (a.preferenceRank !== b.preferenceRank) {
+              // Explicit operator preference overrides trust heuristics.
+              // null = unranked, always sorts after any ranked hotel.
+              if (a.preferenceRank == null) return 1;
+              if (b.preferenceRank == null) return -1;
+              return a.preferenceRank - b.preferenceRank;
+            }
             if (a.hasVerifiedContract !== b.hasVerifiedContract) {
               return a.hasVerifiedContract ? -1 : 1;
             }
@@ -1172,7 +1185,14 @@ export function deriveQuickNotes(hotel: { name: string; city: string; category: 
 
 /** Combine all per-hotel derivations into the suggestion shape. */
 export function enrichHotelForSuggestion(
-  hotel: { id: string; name: string; city: string; category: string; contracts?: Array<{ id: string; confidence?: string | null }> },
+  hotel: {
+    id: string;
+    name: string;
+    city: string;
+    category: string;
+    preferenceRank?: number | null;
+    contracts?: Array<{ id: string; confidence?: string | null }>;
+  },
   destination: string,
 ): SuggestedHotel {
   const hasActiveContract = Array.isArray(hotel.contracts) && hotel.contracts.length > 0;
@@ -1195,6 +1215,7 @@ export function enrichHotelForSuggestion(
     tier: deriveCommercialTier(hotel.category),
     hasActiveContract,
     hasVerifiedContract,
+    preferenceRank: typeof hotel.preferenceRank === 'number' ? hotel.preferenceRank : null,
     recommendedMealPlan: recommendMealPlanForDestination(destination),
     operationalConfidence: deriveOperationalConfidence({
       name: hotel.name,
