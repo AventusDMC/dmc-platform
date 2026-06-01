@@ -1209,7 +1209,24 @@ async function buildPreviewDraft(values: {
       if (winners.length <= 1) {
         selectedCandidate = winners[0] ?? null;
       } else if (values.optimizationMode === 'cost') {
-        selectedCandidate = winners.reduce((cheapest, candidate) => (candidate.price < cheapest.price ? candidate : cheapest));
+        const cheapest = winners.reduce((best, candidate) => (candidate.price < best.price ? candidate : best));
+        // On an airport pickup/dropoff, don't split the party across several
+        // vehicles just to shave cost. A POINT_TO_POINT car rate billed by
+        // capacity unit (e.g. 6 × Mini Van 5 for a group) is cheaper on paper
+        // but reads wrong on an arrival/departure and isn't how the trip runs —
+        // prefer the dedicated AIRPORT_TRANSFER vehicle when one resolved and it
+        // doesn't itself need multiple vehicles. Small parties (a single
+        // car/van fits) still keep the cheaper POINT_TO_POINT.
+        const splitsVehicles = (candidate: TransportPricingCandidate) =>
+          candidate.pricingMode === 'capacity_unit' && (candidate.unitCount ?? 1) > 1;
+        const airportWinner =
+          (kind === 'arrival' || kind === 'departure') && values.airportTransferServiceType
+            ? winners.find((candidate) => candidate.serviceType.id === values.airportTransferServiceType?.id)
+            : undefined;
+        selectedCandidate =
+          airportWinner && airportWinner !== cheapest && splitsVehicles(cheapest) && !splitsVehicles(airportWinner)
+            ? airportWinner
+            : cheapest;
       } else {
         selectedCandidate = winners[0];
       }
