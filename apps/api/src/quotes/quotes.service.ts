@@ -2397,6 +2397,16 @@ export class QuotesService {
         activityRateVariant: true,
         ticketRateVariant: true,
         itinerary: true,
+        // The real day link lives on the QuoteItineraryDayItem join, not the
+        // legacy `itineraryId` scalar (null for auto-builder items). Expose it
+        // so the auto-builder's idempotent re-generate can tell which day each
+        // item is actually on (otherwise it can't dedupe and re-runs duplicate).
+        quoteItineraryDayItems: {
+          where: { isActive: true },
+          select: { dayId: true },
+          orderBy: { sortOrder: 'asc' },
+          take: 1,
+        },
         hotel: true,
         contract: true,
         roomCategory: true,
