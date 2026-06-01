@@ -7490,7 +7490,17 @@ export class QuotesService {
 
   private isExcludedAutomaticSupplement(supplement: any) {
     const normalizedType = String(supplement?.type || '').trim().toUpperCase();
+    // Gala dinners are event/date-specific (e.g. a mandatory NYE gala dated only
+    // 31 Dec) — they must NOT be auto-applied as blanket mandatory supplements on
+    // every stay; the operator adds them to the stays that actually fall on the
+    // event. BUG FIX: the CURRENT enum type is `GALA_DINNER`
+    // (HotelContractSupplementType), but this list only held the older
+    // `*_GALA_DINNER` strings, so a mandatory `GALA_DINNER` was never excluded and
+    // auto-applied to unrelated dates (e.g. a 31-Dec gala charged on a July stay,
+    // ×nights). Added `GALA_DINNER`; the other (legacy) strings are kept so
+    // existing data/tests that still use them stay excluded.
     return [
+      'GALA_DINNER',
       'NEW_YEAR_GALA_DINNER',
       'CHRISTMAS_GALA_DINNER',
       'ROOM_CATEGORY_SUPPLEMENT',
