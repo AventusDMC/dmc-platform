@@ -854,6 +854,18 @@ function buildItineraryWarnings(values: {
     });
   }
 
+  // Daily-package supplier minimum: the flat daily rate normally requires at
+  // least 3 full touring days. Evaluated once at the PROGRAM level (the count
+  // of daily-package days) — not per line — so a 5-full-day trip never warns.
+  const dailyFullDays = values.transports.filter((transport) => transport.isDailyPackage).length;
+  if (dailyFullDays >= 1 && dailyFullDays < 3) {
+    warnings.push({
+      id: 'daily-package-min-days',
+      title: 'Daily-package supplier minimum is 3 full days',
+      description: `This program has ${dailyFullDays} full touring day${dailyFullDays === 1 ? '' : 's'}. The supplier's flat daily rate usually needs at least 3 — confirm the rate still applies, or price these days per route.`,
+    });
+  }
+
   return warnings;
 }
 
