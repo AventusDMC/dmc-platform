@@ -600,14 +600,18 @@ function pickTransportServiceType(
  * manually every quote.
  */
 function findMeetAssistService(services: SupplierService[]) {
-  return (
-    services.find((service) => {
-      const code = String(service.serviceType?.code || '').trim().toUpperCase();
-      if (code === 'MEET_ASSIST' || code === 'AIRPORT_ASSISTANCE') return true;
-      const haystack = `${service.category || ''} ${service.name || ''} ${service.serviceType?.name || ''}`.toLowerCase();
-      return haystack.includes('meet') && haystack.includes('assist');
-    }) || null
-  );
+  const isMeetAssist = (service: SupplierService) => {
+    const code = String(service.serviceType?.code || '').trim().toUpperCase();
+    if (code === 'MEET_ASSIST' || code === 'AIRPORT_ASSISTANCE') return true;
+    const haystack = `${service.category || ''} ${service.name || ''} ${service.serviceType?.name || ''}`.toLowerCase();
+    return haystack.includes('meet') && haystack.includes('assist');
+  };
+  const matches = services.filter(isMeetAssist);
+  // Prefer a per-group price over a per-person one. A meet & assist is a single
+  // airport greeter for the whole party, so billing it × pax overstates it
+  // (e.g. 30 pax × USD 42 = USD 1,260 for one greeter). When the catalog has a
+  // per_group variant, use it; otherwise fall back to the first match.
+  return matches.find((service) => service.unitType === 'per_group') || matches[0] || null;
 }
 
 type HotelSetupMissingReason = 'no-hotel-in-city' | 'no-valid-contract' | 'no-rate' | null;
