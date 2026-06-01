@@ -69,9 +69,12 @@ the production (main) alias — so harness-verify on the branch, then merge to s
   Days") is now a **numbered vertical timeline** (mock's itinerary spine): a connector
   line down the gutter + a numbered node per day, active day's node filled cyan with a
   ring. CSS-only via a counter (no markup change → no test impact), in `redesign.css`.
-  Verified in a faithful 3-stylesheet harness. **Still to do:** the day CONTENT
-  service rows (the mock's `.act` stay/tour/move/meal color-coded rows) — that's a
-  bigger restructure of the day editor, best done with live iteration.
+  Verified in a faithful 3-stylesheet harness. The day's service lanes (Hotel /
+  Transport / Meals / Activity / Ticketing / Guide / Other / External) are now
+  **color-coded by type** — a colored left accent bar + matching lane-head label
+  via the existing `.quote-service-lane-<type>` classes (CSS-only, no markup). The
+  mock's per-type lane palette, scannable at a glance. **Still to do:** individual
+  service ROWS could get the mock's icon chips — a bigger day-editor change, deferred.
 - [ ] **Pass 4 · Stepper + Add-Service slide-over.** The color-coded stage stepper and
   the slide-over add-service panel from the mock — the remaining blend chrome. Also
   the natural home to resolve the money duplication (top command-bar money vs the

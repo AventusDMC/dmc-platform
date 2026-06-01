@@ -622,3 +622,22 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 .metric-card strong,
 .app-metric-card strong,
 .workspace-summary-card strong { color: var(--rd-ink) !important; }
+
+/* ---------- Day service lanes: color-coded by type (mock's lane palette) ----------
+   Each grouped service lane (Hotel / Transport / Meals / Activity / …) gets a
+   colored left accent bar + a matching lane-head label, so the day's service
+   board reads at a glance. CSS-only via the existing .quote-service-lane-<type>. */
+.quote-service-lane{ position:relative !important; }
+.quote-service-lane::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  border-radius:3px 0 0 3px; background:var(--lane,#94A3B8); pointer-events:none;
+}
+.quote-service-lane-head > div > span{ color:var(--lane,#475569) !important; font-weight:700 !important; }
+.quote-service-lane-hotel{ --lane:#0EA5E9; }
+.quote-service-lane-transport{ --lane:#F59E0B; }
+.quote-service-lane-meal{ --lane:#F43F5E; }
+.quote-service-lane-activity{ --lane:#06B6D4; }
+.quote-service-lane-ticketing{ --lane:#8B5CF6; }
+.quote-service-lane-guide{ --lane:#10B981; }
+.quote-service-lane-other{ --lane:#64748B; }
+.quote-service-lane-external{ --lane:#6366F1; }
