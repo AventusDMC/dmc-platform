@@ -14537,20 +14537,10 @@ h1,
 }
 
 /* AXIS dashboard and branding polish */
-:root {
-  --axis-blue: #1F9ACF;
-  --axis-blue-dark: #1C7FB8;
-  --axis-blue-soft: rgba(31, 154, 207, 0.1);
-  --axis-blue-border: rgba(31, 154, 207, 0.22);
-  --axis-gray: #1F2937;
-  --axis-text-soft: #6B6B6B;
-  --background: #FFFFFF;
-  --foreground: #6B6B6B;
-  --text: #1F2937;
-  --border: #E5E7EB;
-  --accent: var(--axis-blue);
-}
-
+/* (Design-system Pass 0) The duplicate `--axis-*` :root block that stood here was
+   removed — a later, superseding `--axis-*` :root block (search `--axis-navy`)
+   redefined every var it set EXCEPT `--axis-gray`, which has been folded into that
+   block. Verified byte-identical via getComputedStyle before/after. */
 a {
   color: var(--axis-blue);
 }
@@ -14811,6 +14801,9 @@ a {
   --axis-blue-soft: rgba(31, 154, 207, 0.1);
   --axis-blue-border: rgba(31, 154, 207, 0.24);
   --axis-text-soft: #6B6B6B;
+  /* --axis-gray folded in from the now-deleted duplicate :root block above
+     (design-system Pass 0 dedup); it was that block's only live-unique var. */
+  --axis-gray: #1F2937;
   --axis-navy: #111827;
   --axis-text: #1F2937;
   --axis-background: #FFFFFF;
