@@ -6549,20 +6549,22 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   --saas-bg: #f3f6fb;
   --saas-bg-soft: #f8fafd;
   --saas-surface: rgba(255, 255, 255, 0.92);
-  --saas-surface-solid: #FFFFFF;
+  /* (Pass 0) vars whose values already equal a canonical --ds-* token now source
+     from it, so the brand/scale lives in one place. Verified byte-identical. */
+  --saas-surface-solid: var(--ds-color-surface);
   --saas-border: rgba(148, 163, 184, 0.22);
   --saas-border-strong: rgba(100, 116, 139, 0.24);
   --saas-text: #172033;
   --saas-muted: #667085;
   --saas-muted-soft: #8792a2;
-  --saas-accent: #1C7FB8;
-  --saas-accent-strong: #1C7FB8;
+  --saas-accent: var(--ds-color-accent-strong);
+  --saas-accent-strong: var(--ds-color-accent-strong);
   --saas-accent-soft: rgba(31, 154, 207, 0.12);
   --saas-focus: rgba(31, 154, 207, 0.18);
   --saas-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 44px rgba(15, 23, 42, 0.055);
   --saas-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.035), 0 10px 28px rgba(15, 23, 42, 0.045);
-  --saas-radius: 16px;
-  --saas-radius-sm: 12px;
+  --saas-radius: var(--ds-radius-lg);
+  --saas-radius-sm: var(--ds-radius-md);
   --background: var(--saas-bg);
   --foreground: var(--saas-muted);
   --text: var(--saas-text);
