@@ -184,6 +184,10 @@ type PreviewTransport = {
   // the cheaper rate and the "min 3 FULL days" warning count (stationary days
   // don't count toward the full-day minimum).
   isStationary?: boolean;
+  // A short airport leg billed as a half day of the daily vehicle (coaches that
+  // have no transfer rate). Like isDailyPackage it carries dayCount + the daily
+  // route, but uses the HALF_DAY service type.
+  isHalfDay?: boolean;
   dayCount?: number;
   addOns?: Array<{ rateId: string; quantity: number; label?: string }>;
 };
@@ -437,13 +441,18 @@ function findDailyDisposalRoute(routes: RouteOption[]): RouteOption | null {
   );
 }
 
-// In daily-package mode, an airport leg whose drive is at least this long is
-// treated as a full touring day (billed at the flat daily rate) rather than a
-// point-to-point transfer. ~2.5h cleanly separates the long gateways
-// (QAIA↔Petra/Wadi Rum/Aqaba, ~3.5h+) from short hops (QAIA↔Amman/Dead Sea).
-const LONG_AIRPORT_DRIVE_MINUTES = 150;
+// In daily-package mode, an airport leg is a FULL touring day (flat daily rate)
+// when its drive is >= 100 km OR >= 5 h; under BOTH it's "short" — a transfer for
+// a car, or a HALF day for a coach (operator rule). This separates the long
+// gateways (QAIA↔Petra/Wadi Rum/Aqaba, 200km+/3.5h+) from short hops
+// (QAIA↔Amman/Dead Sea, ~35-55 km).
+const LONG_AIRPORT_DRIVE_MINUTES = 300;
+const LONG_AIRPORT_DRIVE_KM = 100;
 function isLongAirportDrive(route: RouteOption | null): boolean {
-  return Boolean(route && route.durationMinutes != null && route.durationMinutes >= LONG_AIRPORT_DRIVE_MINUTES);
+  if (!route) return false;
+  if (route.distanceKm != null && route.distanceKm >= LONG_AIRPORT_DRIVE_KM) return true;
+  if (route.durationMinutes != null && route.durationMinutes >= LONG_AIRPORT_DRIVE_MINUTES) return true;
+  return false;
 }
 
 function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
@@ -1101,6 +1110,9 @@ async function buildPreviewDraft(values: {
   // overnight bases (Petra / Wadi Rum / Aqaba). Falls back to the full-day
   // service type when absent so the build still produces a (full-day) line.
   stationaryServiceType?: TransportServiceType | null;
+  // Half-day service type for short airport drives the daily vehicle can't
+  // transfer-price (coaches). Falls back to the transfer when absent.
+  halfDayServiceType?: TransportServiceType | null;
   disposalRoute?: RouteOption | null;
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
@@ -1325,6 +1337,46 @@ async function buildPreviewDraft(values: {
     };
   };
 
+  // A short airport drive (< 100 km / < 5 h) the daily vehicle can't be
+  // transfer-priced for (e.g. a coach for a large group) bills as a HALF DAY of
+  // the daily vehicle. Returns null if no half-day rate resolves (the caller then
+  // keeps the transfer, even if unpriced).
+  const buildHalfDayAirportEntry = async (dayNumber: number, fromLabel: string, toLabel: string) => {
+    if (!values.halfDayServiceType || !values.disposalRoute) {
+      return null;
+    }
+    const disposalRoute = values.disposalRoute as RouteOption;
+    const resolved = await resolveDailyTransport({
+      apiBaseUrl: values.apiBaseUrl,
+      disposalRoute,
+      dailyServiceType: values.halfDayServiceType,
+      pax: values.pax,
+      quoteType: values.quoteType,
+      optimizationMode: values.optimizationMode,
+    });
+    const selectedCandidate = resolved?.candidate ?? null;
+    if (!selectedCandidate) {
+      return null;
+    }
+    const journeyLabel = `${fromLabel} → ${toLabel}`;
+    return {
+      dayNumber,
+      fromCity: fromLabel,
+      toCity: toLabel,
+      distanceKm: null,
+      travelTimeHours: null,
+      isTravelHeavy: false,
+      route: disposalRoute,
+      routeStandard: null,
+      selectedCandidate,
+      optimizationReason: `${journeyLabel} — half day (short airport drive): ${selectedCandidate.vehicle.name} at ${selectedCandidate.currency} ${selectedCandidate.price}/half-day.`,
+      isDailyPackage: true,
+      isHalfDay: true,
+      dayCount: 1,
+      addOns: undefined as Array<{ rateId: string; quantity: number; label?: string }> | undefined,
+    };
+  };
+
   const totalDays = days.length;
   const transportEntries = await Promise.all(
     days.map(async (day, index) => {
@@ -1344,7 +1396,12 @@ async function buildPreviewDraft(values: {
         if (dailyPackageActive && isLongAirportDrive(route)) {
           return buildDailyEntry(day.dayNumber, fromLabel, currentCity);
         }
-        return buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
+        const arrivalTransfer = await buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
+        if (dailyPackageActive && !arrivalTransfer?.selectedCandidate) {
+          const halfDay = await buildHalfDayAirportEntry(day.dayNumber, fromLabel, currentCity);
+          if (halfDay) return halfDay;
+        }
+        return arrivalTransfer;
       }
       if (isLast) {
         // DEPARTURE transfer: last city -> Airport (or "Departure" placeholder).
@@ -1353,7 +1410,12 @@ async function buildPreviewDraft(values: {
         if (dailyPackageActive && isLongAirportDrive(route)) {
           return buildDailyEntry(day.dayNumber, currentCity, toLabel);
         }
-        return buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
+        const departureTransfer = await buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
+        if (dailyPackageActive && !departureTransfer?.selectedCandidate) {
+          const halfDay = await buildHalfDayAirportEntry(day.dayNumber, currentCity, toLabel);
+          if (halfDay) return halfDay;
+        }
+        return departureTransfer;
       }
       // DAILY-PACKAGE middle day: one flat DAILY_FULL_DAY line labelled by the
       // day's journey (move = "Amman → Petra", stay = "Petra (full day)") plus
@@ -1593,6 +1655,14 @@ export function QuoteAutoItineraryBuilder({
     () => pickTransportServiceType(transportServiceTypes, ['STATIONARY_WAITING', 'STATIONARY'], /stationary|standby|waiting/i),
     [transportServiceTypes],
   );
+  // Half-day service type — used for a SHORT airport drive (< 100 km / < 5 h) that
+  // the daily vehicle can't be transfer-priced for (e.g. a coach for a large
+  // group): a Dead Sea / Amman → airport run is half a day's vehicle use, not a
+  // full touring day.
+  const halfDayServiceType = useMemo(
+    () => pickTransportServiceType(transportServiceTypes, ['HALF_DAY'], /half.?day/i),
+    [transportServiceTypes],
+  );
   const dailyDisposalRoute = useMemo(() => findDailyDisposalRoute(routes), [routes]);
   const dailyPackageAvailable = Boolean(dailyPackageServiceType && dailyDisposalRoute);
 
@@ -1650,6 +1720,7 @@ export function QuoteAutoItineraryBuilder({
             deadSeaOvernight,
             dailyPackageServiceType,
             stationaryServiceType,
+            halfDayServiceType,
             disposalRoute: dailyDisposalRoute,
           }),
         ),
@@ -1733,6 +1804,7 @@ export function QuoteAutoItineraryBuilder({
           deadSeaOvernight,
           dailyPackageServiceType,
           stationaryServiceType,
+          halfDayServiceType,
           disposalRoute: dailyDisposalRoute,
           }),
           manualDayOverrides,
@@ -2339,6 +2411,7 @@ export function QuoteAutoItineraryBuilder({
         deadSeaOvernight,
         dailyPackageServiceType,
         stationaryServiceType,
+        halfDayServiceType,
         disposalRoute: dailyDisposalRoute,
       }),
       manualDayOverrides,
