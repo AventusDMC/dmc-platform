@@ -359,7 +359,13 @@ test('getHotelSuggestionsForJourney: caps each tier at 4 entries (keeps UI scann
 test('quotes-guided service NEVER references hotel pricing modules / rates / contracts pricing', () => {
   const fs = require('fs');
   const path = require('path');
-  const source = fs.readFileSync(path.join(__dirname, 'quotes-guided.service.ts'), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, 'quotes-guided.service.ts'), 'utf8');
+  // Strip comments first: the guardrail targets *code-level* references, not
+  // explanatory prose. Block comments (/* ... */) and line comments (// ...)
+  // legitimately contain words like "pricing" ("never touches pricing.").
+  const source = raw
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
   const forbidden = [
     'hotelRate',
     'HotelRate',
