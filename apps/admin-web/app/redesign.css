@@ -492,6 +492,33 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   color:#6EE7B7 !important;
 }
 
+/* Stage 5 override (quote-page polish) — the operator opted to CALM the quote
+   financial rail to a flat token card even though the header keeps its gradient
+   ("bold chrome, calm data"). Quote-scoped via .quote-pricing-summary-card-dominant
+   so the shared bookings .app-financial-panel above keeps its gradient. Higher
+   specificity + !important to beat the Stage-5 gradient rules. */
+.quote-pricing-summary-card-dominant.app-financial-panel{
+  background: var(--ds-color-surface) !important;
+  border: 1px solid var(--ds-color-border) !important;
+  box-shadow: var(--ds-shadow-sm) !important;
+}
+.quote-pricing-summary-card-dominant.app-financial-panel::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:4px; pointer-events:none;
+  background:linear-gradient(180deg, var(--ds-color-accent), var(--ds-color-accent-strong));
+}
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row{
+  background: var(--ds-color-surface-soft) !important;
+  border:1px solid var(--ds-color-border) !important;
+}
+.quote-pricing-summary-card-dominant.app-financial-panel .eyebrow{ color: var(--ds-color-accent) !important; }
+.quote-pricing-summary-card-dominant.app-financial-panel h3,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value{ color: var(--ds-color-text-strong) !important; }
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row > span,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value-shell p{ color: var(--ds-color-text-muted) !important; }
+/* keep Profit (row 3) + Margin % (row 4) green as positive-metric emphasis */
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row:nth-child(3) .financial-value,
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row:nth-child(4) .financial-value{ color: var(--ds-color-success) !important; }
+
 /* Stage 5b — focus-mode rail: a glyph per top-level nav group, and on quote
    routes the dark sidebar collapses to a 62px icon-only rail (mock `.rail`). */
 /* base: icon sits left of the label in the normal full-width sidebar */
