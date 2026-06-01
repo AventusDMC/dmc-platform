@@ -65,10 +65,13 @@ the production (main) alias — so harness-verify on the branch, then merge to s
 - [ ] **Pass 2b · Typographic hierarchy + card consistency.** Replace the wall of
   identical small-caps gray labels with eyebrow / title / sub tiers; standardize card
   padding, radius, shadow on `--ds-*`. Page-wide scannability.
-- [ ] **Pass 3 · Day-by-day timeline (centerpiece).** Adopt the mock's color-coded
-  timeline (day nodes + colored service rows). Tie-in: full-day / stationary /
-  free-day daily-package days get distinct visual treatment so the pricing logic
-  reads at a glance.
+- [~] **Pass 3 · Day-by-day timeline.** Partly done. The day rail ("Base Program
+  Days") is now a **numbered vertical timeline** (mock's itinerary spine): a connector
+  line down the gutter + a numbered node per day, active day's node filled cyan with a
+  ring. CSS-only via a counter (no markup change → no test impact), in `redesign.css`.
+  Verified in a faithful 3-stylesheet harness. **Still to do:** the day CONTENT
+  service rows (the mock's `.act` stay/tour/move/meal color-coded rows) — that's a
+  bigger restructure of the day editor, best done with live iteration.
 - [ ] **Pass 4 · Stepper + Add-Service slide-over.** The color-coded stage stepper and
   the slide-over add-service panel from the mock — the remaining blend chrome. Also
   the natural home to resolve the money duplication (top command-bar money vs the

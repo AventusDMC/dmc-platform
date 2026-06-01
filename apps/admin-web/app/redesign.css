@@ -387,6 +387,28 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   box-shadow:inset 3px 0 0 #1F9ACF, 0 4px 12px rgba(31,154,207,.14) !important;
 }
 
+/* Day rail → numbered vertical timeline (mock's itinerary spine). CSS-only via a
+   counter so there's no markup change: a connector line runs down the gutter with
+   a numbered node per day; the active day's node fills with the accent. */
+.app-day-navigation-list{ counter-reset:dsrail; position:relative; padding-left:30px !important; }
+.app-day-navigation-list::before{
+  content:''; position:absolute; left:11px; top:16px; bottom:16px; width:2px;
+  background:linear-gradient(var(--ds-color-accent,#1F9ACF), var(--rd-hairline,#E1E4EA));
+}
+.app-day-navigation-card{ position:relative !important; counter-increment:dsrail; overflow:visible !important; }
+.app-day-navigation-card::before{
+  content:counter(dsrail);
+  position:absolute; left:-30px; top:14px;
+  width:24px; height:24px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800; line-height:1; color:#fff;
+  background:#94A3B8; border:2px solid #fff; box-shadow:0 0 0 1px var(--rd-hairline,#E1E4EA);
+}
+.app-day-navigation-card-active::before{
+  background:var(--ds-color-accent,#1F9ACF);
+  box-shadow:0 0 0 1px var(--ds-color-accent,#1F9ACF), 0 0 0 4px var(--ds-color-accent-soft,rgba(31,154,207,.18));
+}
+
 /* Stage 3b — itinerary day CONTENT card + service rows: drop the legacy beige
    surfaces / heavy drop-shadows for the same clean hairline-on-white, cyan-accent
    language as the day rail (mock: the `.day` timeline + `.acts`/`.act` list). */
