@@ -4000,6 +4000,103 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // Rooming auto-allocation — pairs UNASSIGNED passengers into twin/double
+  // rooms (odd remainder → single), leaving existing rooms untouched. This
+  // is the "auto room allocation + twin matching" operation; it deliberately
+  // does NOT compute single-supplement charges (no pricing-engine coupling).
+  async autoAssignRooming(
+    bookingId: string,
+    data: { actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ) {
+    requireActorCompanyId(data.companyActor);
+
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findFirst({
+        where: {
+          id: bookingId,
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
+        select: {
+          id: true,
+          passengers: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              title: true,
+              isLead: true,
+              roomingAssignments: { select: { id: true } },
+            },
+            orderBy: [{ isLead: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
+          },
+          roomingEntries: {
+            select: { sortOrder: true },
+            orderBy: { sortOrder: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      await this.assertLatestBookingAmendment(bookingId, tx);
+
+      const unassigned = booking.passengers.filter((passenger) => passenger.roomingAssignments.length === 0);
+      if (unassigned.length === 0) {
+        return {
+          roomsCreated: 0,
+          passengersAssigned: 0,
+          message: 'All passengers are already assigned to rooms.',
+        };
+      }
+
+      let sortOrder = Number(booking.roomingEntries[0]?.sortOrder ?? 0);
+      let roomsCreated = 0;
+      let passengersAssigned = 0;
+
+      // Stable-order pairing: two solos share a twin; the odd one gets a single.
+      for (let i = 0; i < unassigned.length; i += 2) {
+        const pair = unassigned.slice(i, i + 2);
+        const isTwin = pair.length === 2;
+        sortOrder += 1;
+        const roomingEntry = await tx.bookingRoomingEntry.create({
+          data: {
+            bookingId,
+            roomType: isTwin ? 'TWN' : 'SGL',
+            occupancy: isTwin ? BookingRoomOccupancy.double : BookingRoomOccupancy.single,
+            notes: 'Auto-allocated',
+            sortOrder,
+          },
+        });
+        roomsCreated += 1;
+        for (const passenger of pair) {
+          await tx.bookingRoomingAssignment.create({
+            data: {
+              bookingRoomingEntryId: roomingEntry.id,
+              bookingPassengerId: passenger.id,
+            },
+          });
+          passengersAssigned += 1;
+        }
+      }
+
+      const message = `Auto-allocated ${passengersAssigned} passenger${passengersAssigned === 1 ? '' : 's'} into ${roomsCreated} room${roomsCreated === 1 ? '' : 's'}.`;
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_rooming_auto_assigned',
+        newValue: message,
+        actor: data.actor,
+      });
+
+      return { roomsCreated, passengersAssigned, message };
+    });
+  }
+
   async updateRoomingEntry(
     bookingId: string,
     roomingEntryId: string,

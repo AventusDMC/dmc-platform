@@ -2741,6 +2741,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                     description="Room entries, occupancy, and passenger assignments."
                     context={<p>{booking.roomingEntries.length} rooming entries in scope</p>}
                     createPanel={
+                      <>
                       <CollapsibleCreatePanel title="Add room" description="Create a rooming entry without pushing the room list off screen." triggerLabelOpen="Add room">
                         <InlineRowEditorShell>
                           <form action={`/api/bookings/${booking.id}/rooming`} method="POST" className="quote-status-form">
@@ -2776,6 +2777,18 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                           </form>
                         </InlineRowEditorShell>
                       </CollapsibleCreatePanel>
+                      {unassignedPassengerCount > 0 ? (
+                        <form action={`/api/bookings/${booking.id}/rooming/auto-assign`} method="POST" className="quote-status-form" style={{ marginTop: '0.75rem' }}>
+                          <p className="form-helper">
+                            Auto-allocate the {unassignedPassengerCount} unassigned passenger{unassignedPassengerCount === 1 ? '' : 's'} into twin/double rooms
+                            (an odd one out gets a single). Existing rooms are left untouched — review and adjust after.
+                          </p>
+                          <div className="quote-status-actions">
+                            <button type="submit">Auto-allocate unassigned passengers</button>
+                          </div>
+                        </form>
+                      ) : null}
+                      </>
                     }
                     emptyState={
                       <BookingOperationsEmptyState
