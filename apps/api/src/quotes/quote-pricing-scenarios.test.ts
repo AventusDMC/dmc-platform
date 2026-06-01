@@ -1798,6 +1798,19 @@ test('quote save accepts HB derived from BB rate plus HB supplement without dire
                 isMandatory: true,
                 notes: 'Season: ALL_SEASONS',
               },
+              {
+                // Current-enum gala type (HotelContractSupplementType). A mandatory
+                // gala is event/date-specific and must NOT auto-apply to every stay
+                // — regression guard for the bug where it was charged on unrelated
+                // dates (×nights). Excluded → baseCost below stays 220.
+                id: 'generic-gala',
+                type: 'GALA_DINNER',
+                amount: 80,
+                chargeBasis: 'PER_PERSON',
+                isActive: true,
+                isMandatory: true,
+                notes: 'Season: ALL_SEASONS',
+              },
             ],
           }),
         ];
