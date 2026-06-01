@@ -322,16 +322,42 @@ function parseRateAmountFromDescription(description: string | null | undefined) 
   return match ? Number(match[2]) : null;
 }
 
+// The supplier COST a saved item carries (pre-tax base, incl. supplements), used
+// when the description states a cost rate so we compare cost-to-cost.
+function getSavedComparableCost(item: PricingDiagnosticQuoteItem) {
+  if (hasNumericValue(item.costBaseAmount)) return Number(item.costBaseAmount);
+  if (hasNumericValue(item.baseCost)) return Number(item.baseCost);
+  if (hasNumericValue(item.totalCost)) return Number(item.totalCost);
+  if (hasNumericValue(item.finalCost)) return Number(item.finalCost);
+  return null;
+}
+
+// Hotel descriptions append "| Supplements CCC NNN" (mandatory supplements folded
+// into the cost). Parse it so the rate-based recompute adds it back.
+function parseSupplementFromDescription(description: string | null | undefined) {
+  const match = String(description || '').match(/Supplements?\s+[A-Z]{3}\s+([0-9]+(?:\.[0-9]+)?)/i);
+  return match ? Number(match[1]) : 0;
+}
+
 function buildPricingBreakdownRows(item: PricingDiagnosticQuoteItem, mode: string | null | undefined, rate?: PricingDiagnosticRate | null): PricingBreakdownRows {
-  const savedTotal = getSavedDisplayTotal(item);
   const unitCount = Math.max(1, getUnitCountForMode(mode, item, rate));
   const parsedRateAmount = parseRateAmountFromDescription(item.pricingDescription);
-  const unitPrice = hasNumericValue(parsedRateAmount)
-    ? parsedRateAmount
+  // A description-stated "Rate CCC NNN" (hotels) is a COST rate, so verify the
+  // saved COST against rate x units (+ supplements) — a cost-to-cost check.
+  // Without a stated rate (activities/tickets/transport) fall back to the prior
+  // sell-based self-check (unit price derived from the saved total). NOTE: the
+  // old code parsed the hotel cost rate but compared it against the marked-up
+  // SELL, so every rate-described hotel with markup/tax/supplements showed a
+  // spurious "Mismatch".
+  const rateIsCostBased = hasNumericValue(parsedRateAmount);
+  const parsedSupplement = rateIsCostBased ? parseSupplementFromDescription(item.pricingDescription) : 0;
+  const savedTotal = rateIsCostBased ? getSavedComparableCost(item) : getSavedDisplayTotal(item);
+  const unitPrice = rateIsCostBased
+    ? Number(parsedRateAmount)
     : hasNumericValue(savedTotal)
       ? roundMoney(Number(savedTotal) / unitCount)
       : null;
-  const calculatedTotal = hasNumericValue(unitPrice) ? roundMoney(Number(unitPrice) * unitCount) : null;
+  const calculatedTotal = hasNumericValue(unitPrice) ? roundMoney(Number(unitPrice) * unitCount + parsedSupplement) : null;
   const currency = item.quoteCurrency || item.currency || item.costCurrency || 'USD';
   const nights = getPositiveNumber(item.nightCount, 1);
   const isSynced = hasNumericValue(savedTotal) && hasNumericValue(calculatedTotal) && Math.abs(Number(savedTotal) - Number(calculatedTotal)) <= 0.01;

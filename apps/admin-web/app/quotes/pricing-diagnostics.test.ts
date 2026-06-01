@@ -123,6 +123,54 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.suggestedMarkup, '15.00%');
   });
 
+  it('reports a rate-described hotel as Synced by comparing cost, not the marked-up sell', () => {
+    // Regression: the saved cost (296) matches rate 74 x 2 pax x 2 nights (296),
+    // so Status is Synced even though the client sell is 355.20. Previously the
+    // diagnostic compared the parsed COST rate against the SELL -> false Mismatch.
+    const diagnostics = buildPricingDiagnostics({
+      roomCount: 1,
+      paxCount: 2,
+      nightCount: 2,
+      costBaseAmount: 296,
+      baseCost: 296,
+      totalCost: 296,
+      totalSell: 355.2,
+      currency: 'USD',
+      markupPercent: 20,
+      contract: { name: 'TA Rates 2026/27' },
+      seasonName: 'Low Season',
+      roomCategory: { name: 'Deluxe Room' },
+      mealPlan: 'BB',
+      hotel: { name: 'Dead Sea Spa Hotel' },
+      pricingDescription: 'TA Rates 2026/27 | Low Season | Deluxe Room | DBL | BB | Rate USD 74.00 x 2 pax x 2 nights',
+    });
+
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 74.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 296.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 296.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
+  });
+
+  it('adds a description supplement back into the hotel rate recompute', () => {
+    // Saved cost 616 = room (74 x 4) + a 320 supplement folded into the cost; the
+    // recompute parses "| Supplements USD 320.00" and adds it -> Synced.
+    const diagnostics = buildPricingDiagnostics({
+      roomCount: 1,
+      paxCount: 2,
+      nightCount: 2,
+      costBaseAmount: 616,
+      totalCost: 616,
+      totalSell: 739.2,
+      currency: 'USD',
+      hotel: { name: 'Dead Sea Spa Hotel' },
+      pricingDescription: 'TA Rates | Low Season | Deluxe Room | DBL | BB | Rate USD 74.00 x 2 pax x 2 nights | Supplements USD 320.00',
+    });
+
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 616.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 616.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
+  });
+
   it('reports hotel per-person-night diagnostics from saved rate description and totals', () => {
     const diagnostics = buildPricingDiagnostics({
       paxCount: 2,
