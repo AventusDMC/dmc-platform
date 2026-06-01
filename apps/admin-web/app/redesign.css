@@ -349,6 +349,14 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   background:rgba(245,158,11,.32) !important; border-color:rgba(245,158,11,.55) !important; color:#FEF3C7 !important;
 }
 
+/* Header action toolbar — keep the buttons a tidy top-aligned cluster. The
+   redundant conversion-blocker "Operational Review" notice was moved out of the
+   toolbar (it still shows in the sidebar Actions card + review section); without
+   it the row no longer balloons. Top-align wrapped rows and normalize the Accept
+   dropdown to button height so the cluster reads as one row group. */
+.quote-dashboard-actions{ align-items:flex-start !important; align-content:flex-start !important; row-gap:8px !important; }
+.quote-dashboard-actions .row-details-summary{ padding:8px 15px !important; align-self:flex-start !important; }
+
 /* Stage 2 — color-code the stepper steps (extends the shipped Stage-2 stepper). */
 .quote-dashboard-tab:nth-of-type(1){ --sc:#10B981; --scw:#ECFDF5; }
 .quote-dashboard-tab:nth-of-type(2){ --sc:#1F9ACF; --scw:#E9F7FD; }

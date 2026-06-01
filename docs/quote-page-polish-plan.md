@@ -46,7 +46,18 @@ the production (main) alias — so harness-verify on the branch, then merge to s
   point legacy `--saas-*` / `--axis-*` / base vars at `--ds-*` (live computed values),
   delete dead `:root` blocks. Verified no-op via computed-style capture + screenshot.
   Until this lands, every restyle fights duplicate blocks (see Pass 1 finding).
-- [ ] **Pass 2 · Typographic hierarchy + card consistency.** Replace the wall of
+- [x] **Pass 2 · Tighten the gradient command-bar header.** ★ Done. The header
+  rendered ~612px tall with action buttons scattered across empty gradient voids.
+  Root cause (found via `getComputedStyle` on the live header): the `.quote-dashboard-actions`
+  flex-wrap row ballooned to ~383px because the redundant conversion-blocker
+  "Operational Review" `<details>` notice was rendered *inline* inside the Convert
+  action. Fix: drop that inline notice from the header toolbar (it still shows in the
+  sidebar Actions card + review section) + a redesign.css polish that top-aligns the
+  action cluster and normalizes the Accept dropdown height. Header → ~230px, buttons
+  in a tidy cluster. Verified in a faithful harness (all 3 stylesheets + the real
+  composite action DOM, which reproduced the 612px balloon then the fix). Tests:
+  43 pass / 20 fail, identical to baseline (no new failures).
+- [ ] **Pass 2b · Typographic hierarchy + card consistency.** Replace the wall of
   identical small-caps gray labels with eyebrow / title / sub tiers; standardize card
   padding, radius, shadow on `--ds-*`. Page-wide scannability.
 - [ ] **Pass 3 · Day-by-day timeline (centerpiece).** Adopt the mock's color-coded

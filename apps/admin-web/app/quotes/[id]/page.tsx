@@ -2959,10 +2959,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : quoteReadOnly ? (
                 <button type="button" className="secondary-button" disabled>Convert</button>
               ) : convertBlocked ? (
-                <div className="section-stack">
-                  <button type="button" className="secondary-button" disabled>Convert</button>
-                  {conversionBlockerDetails}
-                </div>
+                // The disabled button signals "blocked"; the full blocker
+                // breakdown (conversionBlockerDetails) renders in the sidebar
+                // Actions card + review section, so it's NOT repeated inline in
+                // the header toolbar — inline it ballooned the action row to
+                // ~380px and scattered the buttons (quote-page polish pass 2).
+                <button type="button" className="secondary-button" disabled>Convert</button>
               ) : (
                 <ConvertToBookingButton quoteId={quote.id} label="Convert" />
               )}
