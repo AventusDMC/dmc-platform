@@ -1,9 +1,14 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeTransportPricingMode } from '../common/transport-pricing-mode-normalization';
 
-const serviceSource = readFileSync(new URL('./vehicle-rates.service.ts', import.meta.url), 'utf8');
+// Use __dirname (CommonJS) rather than import.meta.url — the production
+// `nest build` compiles test files too (tsconfig.build excludes *spec.ts, not
+// *.test.ts) under module:commonjs, where import.meta is a hard compile error
+// that fails the Railway image build. Matches every other source-reading test.
+const serviceSource = readFileSync(join(__dirname, 'vehicle-rates.service.ts'), 'utf8');
 
 describe('transport import service-type guard', () => {
   it('normalizes the import aliases that previously created duplicate service types', () => {
