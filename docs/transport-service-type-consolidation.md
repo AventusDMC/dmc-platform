@@ -40,18 +40,18 @@ Reference columns counted: `VehicleRate.serviceTypeId`, `TransportPricingRule.tr
 | `Stationary` (8 rules, 0 rates) | `Stationary / Waiting` | rules here, rates on the other |
 | `Day Tour` (2 excursion) | `Half Day` **or** `Daily Full Day` | **semantic — needs ops decision** |
 
-### Dead — remove (8, zero references)
+### Dead — remove (zero references)
 
-`Departure Transfer` (DEP), `Excursion Transfer` (EXC), `Extra Hour` (EXTRA_HOUR),
-`Extra KM` (EXTRA_KM), `Intercity Transfer` (INT), `Per Hour` (PER_HOUR), `Transfer` (TRANSFER),
-`Transport Add-on / Daily Charge` (TRANSPORT_ADD_ON_DAILY_CHARGE).
+8 types had zero refs, but **2 are core seeded add-ons** (`Extra Hour`, `Extra KM`) that
+`TransportServiceTypesService.ensureCorePricingModeServiceTypes()` re-creates on demand — so
+they're intentionally available (just unused) and must be kept. That leaves **6 truly removable**:
+`Departure Transfer` (DEP), `Excursion Transfer` (EXC), `Intercity Transfer` (INT),
+`Per Hour` (PER_HOUR), `Transfer` (TRANSFER), `Transport Add-on / Daily Charge` (TRANSPORT_ADD_ON_DAILY_CHARGE).
 
-> **Phase 1 dry-run (2026-06-02): all 8 re-confirmed zero-ref.**
-> **Blocker:** `TransportServiceType` has **no `active`/`isActive` column**, so there is no
-> soft-delete. Removal options:
-> 1. **Hard delete** — destructive but safe given zero refs; irreversible without a restore.
-> 2. **Add an `isActive` column** (migration) and soft-deactivate — reversible, hides from pickers.
-> 3. **Rename with a `[DEPRECATED]` prefix** — no migration, reversible, but doesn't truly hide.
+> **✅ Phase 1 DONE (2026-06-02).** `TransportServiceType` had no soft-delete column, so we added
+> `isActive Boolean @default(true)` (migration `add_transport_service_type_is_active`), soft-deactivated
+> the 6, and filtered `transport-service-types` `findAll` to `isActive: true` so they drop out of
+> pickers. Reversible (set `isActive` back to true). 18 active / 6 inactive.
 
 ## Migration mechanics (per merge)
 
@@ -77,7 +77,7 @@ Reference columns counted: `VehicleRate.serviceTypeId`, `TransportPricingRule.tr
 
 | Phase | Scope | Effort | Risk |
 |---|---|---|---|
-| 1 | Remove the 8 dead (zero-ref) types | ½ day | low (zero refs) — but hard-delete pending method decision |
+| 1 | ✅ DONE — soft-deactivated the 6 removable dead types (kept Extra Hour/Extra KM core add-ons) via new `isActive` column | — | low (zero refs) |
 | 2 | Mechanical merges (Full Day, Private Transfer Service, Arrival/Departure→Airport, Stationary) via one reusable repoint+dedupe script, dry-run each | 1–2 days | medium (touches quote items → ops sign-off) |
 | 3 | Semantic merges (Day Tour, Excursion Transfer); finalize canonical list | depends on ops | medium |
 | 4 | **Import guard** — normalize service-type on the import paths that created these duplicates so it doesn't recur | ½–1 day | low — this is what makes it stick |

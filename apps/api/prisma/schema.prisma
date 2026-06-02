@@ -2166,6 +2166,7 @@ model TransportServiceType {
   name                 String
   code                 String                         @unique
   classification       TransportServiceClassification @default(ROUTE_TRANSFER)
+  isActive             Boolean                        @default(true)
   createdAt            DateTime                       @default(now())
   updatedAt            DateTime                       @updatedAt
   vehicleRates         VehicleRate[]
