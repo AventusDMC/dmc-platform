@@ -127,7 +127,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
   const packageSummary = buildPackagePlannerSummary(packageDays, currentComponents, packageDurationDays);
   const activeComponentCount = currentComponents.filter((component) => component.active).length;
   const optionalComponentCount = currentComponents.filter((component) => component.isOptional).length;
-  const unlinkedComponents = currentComponents.filter((component) => !packageComponentMappability(component).ready);
+  const isCategoryTemplate = Boolean(template.hotelCategoryNotes && template.hotelCategoryNotes.trim());
+  const unlinkedComponents = currentComponents.filter(
+    (component) => packageComponentMappability(component, { categoryTemplate: isCategoryTemplate }).state === 'unlinked',
+  );
   const unlinkedHotelCount = unlinkedComponents.filter((component) => component.componentType === 'HOTEL').length;
   const orderedDayIds = packageDays.map((day) => day.id);
 
@@ -252,7 +255,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                           <tbody>
                             {day.components.map((component) => {
                               const orderedComponentIds = day.components.map((item) => item.id);
-                              const mappability = packageComponentMappability(component);
+                              const mappability = packageComponentMappability(component, { categoryTemplate: isCategoryTemplate });
                               const linkOptions =
                                 component.componentType === 'HOTEL'
                                   ? catalogs.hotelContracts.map((item) => ({ id: item.id, label: `${item.hotel?.name || 'Hotel'} - ${item.name}` }))
@@ -292,10 +295,22 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                     </span>
                                     {component.isOptional ? <span className="status-pill status-pill-warning">Optional</span> : null}
                                     <span
-                                      className={mappability.ready ? 'status-pill status-pill-success' : 'status-pill status-pill-warning'}
+                                      className={
+                                        mappability.state === 'ready'
+                                          ? 'status-pill status-pill-success'
+                                          : mappability.state === 'category'
+                                            ? 'status-pill status-pill-muted'
+                                            : 'status-pill status-pill-warning'
+                                      }
                                       title={mappability.reason}
                                     >
-                                      {mappability.ready ? 'Ready' : 'Unlinked'}
+                                      {mappability.state === 'ready'
+                                        ? 'Ready'
+                                        : mappability.state === 'category'
+                                          ? component.componentType === 'HOTEL'
+                                            ? 'Category'
+                                            : 'Placeholder'
+                                          : 'Unlinked'}
                                     </span>
                                   </td>
                                   <td>{component.operationalNotes || 'None'}</td>
