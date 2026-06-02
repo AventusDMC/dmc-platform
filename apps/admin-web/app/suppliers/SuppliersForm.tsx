@@ -18,6 +18,7 @@ type SuppliersFormProps = {
     email: string;
     phone: string;
     notes: string;
+    transportDiscountPercent?: number;
   };
 };
 
@@ -28,6 +29,9 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
   const [email, setEmail] = useState(initialValues?.email || '');
   const [phone, setPhone] = useState(initialValues?.phone || '');
   const [notes, setNotes] = useState(initialValues?.notes || '');
+  const [transportDiscountPercent, setTransportDiscountPercent] = useState(
+    initialValues?.transportDiscountPercent != null ? String(initialValues.transportDiscountPercent) : '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(supplierId);
@@ -49,6 +53,8 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
           email: email || undefined,
           phone: phone || undefined,
           notes: notes || undefined,
+          transportDiscountPercent:
+            type === 'transport' ? (transportDiscountPercent === '' ? 0 : Number(transportDiscountPercent)) : undefined,
         }),
       });
 
@@ -62,6 +68,7 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
         setEmail('');
         setPhone('');
         setNotes('');
+        setTransportDiscountPercent('');
       }
 
       router.refresh();
@@ -101,6 +108,24 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
           <input value={phone} onChange={(event) => setPhone(event.target.value)} />
         </label>
       </div>
+
+      {type === 'transport' ? (
+        <label>
+          Transport discount %
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={transportDiscountPercent}
+            onChange={(event) => setTransportDiscountPercent(event.target.value)}
+            placeholder="0"
+          />
+          <span className="form-helper">
+            Negotiated discount off this supplier&apos;s published vehicle rates. Applied automatically to all transport pricing — set once here.
+          </span>
+        </label>
+      ) : null}
 
       <label>
         Notes

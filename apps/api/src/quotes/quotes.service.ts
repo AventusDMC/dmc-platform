@@ -5555,6 +5555,10 @@ export class QuotesService {
       // Per-vehicle deduction applied when this transfer is sold standalone (not
       // part of a programme) — captured from the resolved rate, subtracted below.
       let standaloneDeductionPerUnit = 0;
+      // Negotiated per-supplier transport discount (Supplier.transportDiscountPercent),
+      // captured from whichever pricing path resolves the rate, applied to the
+      // per-unit cost below before the day/unit multiplier.
+      let transportSupplierDiscountPct = 0;
 
       try {
         if (data.vehicleRateId) {
@@ -5571,6 +5575,7 @@ export class QuotesService {
 
         baseCost = resolvedPricing.discountedBaseCost;
         currency = resolvedPricing.rule.currency;
+        transportSupplierDiscountPct = Number((resolvedPricing.rule.supplier as any)?.transportDiscountPercent ?? 0) || 0;
         routeId = resolvedPricing.rule.routeId;
         transportServiceTypeId = resolvedPricing.rule.transportServiceTypeId;
         vehicleId = resolvedPricing.rule.vehicleId;
@@ -5634,6 +5639,7 @@ export class QuotesService {
 
         baseCost = vehicleRate.price;
         currency = vehicleRate.currency;
+        transportSupplierDiscountPct = Number((vehicleRate.supplier as any)?.transportDiscountPercent ?? 0) || 0;
         if (!Number.isFinite(vehicleRate.maxPax) || vehicleRate.maxPax < 1) {
           throw new BadRequestException('Transport maxPaxPerUnit must be positive');
         }
@@ -5656,6 +5662,13 @@ export class QuotesService {
         pricingDescription = `${vehicleRate.serviceType.name} | ${vehicleRate.routeName} | ${vehicleRate.vehicle.name}`;
         appliedVehicleRateId = vehicleRate.id;
         standaloneDeductionPerUnit = Number((vehicleRate as any).standaloneDeductionAmount || 0);
+      }
+
+      // Apply the negotiated per-supplier transport discount to the per-unit rate
+      // (before the day/unit multiplier so it scales correctly). Transport only.
+      if (transportSupplierDiscountPct > 0) {
+        baseCost = Number((baseCost * (1 - transportSupplierDiscountPct / 100)).toFixed(2));
+        transportPricingDescriptionParts.push(`Supplier transport discount ${transportSupplierDiscountPct}% applied`);
       }
 
       if (transportPricingMode === 'capacity_unit' && unitCount) {

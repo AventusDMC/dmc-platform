@@ -8,6 +8,7 @@ type CreateSupplierInput = {
   email?: string;
   phone?: string;
   notes?: string;
+  transportDiscountPercent?: number;
 };
 
 type UpdateSupplierInput = {
@@ -16,7 +17,12 @@ type UpdateSupplierInput = {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  transportDiscountPercent?: number;
 };
+
+function clampDiscountPercent(value: number | undefined): number {
+  return Math.min(100, Math.max(0, Number(value) || 0));
+}
 
 @Injectable()
 export class SuppliersService {
@@ -38,6 +44,7 @@ export class SuppliersService {
         email: normalizeOptionalString(data.email),
         phone: normalizeOptionalString(data.phone),
         notes: normalizeOptionalString(data.notes),
+        transportDiscountPercent: clampDiscountPercent(data.transportDiscountPercent),
       },
     });
   }
@@ -57,6 +64,8 @@ export class SuppliersService {
         email: data.email === undefined ? undefined : normalizeOptionalString(data.email ?? undefined),
         phone: data.phone === undefined ? undefined : normalizeOptionalString(data.phone ?? undefined),
         notes: data.notes === undefined ? undefined : normalizeOptionalString(data.notes ?? undefined),
+        transportDiscountPercent:
+          data.transportDiscountPercent === undefined ? undefined : clampDiscountPercent(data.transportDiscountPercent),
       },
     });
   }
