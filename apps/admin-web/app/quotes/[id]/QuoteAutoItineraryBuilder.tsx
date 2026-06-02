@@ -557,7 +557,24 @@ function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: Opt
 }
 
 function findService(services: SupplierService[], category: 'hotel' | 'transport' | 'activity') {
-  return services.find((service) => getQuoteServiceCategoryKey(service) === category) || null;
+  const matches = services.filter((service) => getQuoteServiceCategoryKey(service) === category);
+  if (category === 'transport') {
+    // This representative transport service is linked to EVERY auto-generated
+    // transfer line (its name is what the day card shows). Skip niche add-on
+    // services — driver overnight, stationary, extra-km, border — the same way
+    // NICHE_TRANSPORT_SERVICE_TYPE guards service-type selection. Picking the
+    // first transport-category service used to land on "Petra Overnight", so
+    // every daily-package line read "Petra Overnight" regardless of the day's
+    // city. Fall back to the first match when no general transfer service exists.
+    const general = matches.find(
+      (service) =>
+        !NICHE_TRANSPORT_SERVICE_TYPE.test(
+          `${service.name || ''} ${service.category || ''} ${service.serviceType?.name || ''} ${service.serviceType?.code || ''}`,
+        ),
+    );
+    if (general) return general;
+  }
+  return matches[0] || null;
 }
 
 // Niche / add-on transport service types that must never be the default for a
