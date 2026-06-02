@@ -1719,3 +1719,28 @@ test('proposal does NOT show country headings for a single-country itinerary', (
   const html = (service as any).renderItineraryDays(proposal);
   assert.doesNotMatch(html, /proposal-country-heading/);
 });
+
+test('a stored manual country override wins over the derived hotel country', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      itineraries: [],
+      quoteItems: [],
+      quoteItineraryDays: [
+        createPlannerDay({
+          id: 'planner-day-1',
+          country: 'Egypt', // operator override
+          dayItems: [
+            createPlannerDayItem(
+              createHotelPdfItem({
+                hotel: { name: 'Amman Grand', city: 'Amman', cityRecord: { country: 'Jordan' } },
+              }),
+            ),
+          ],
+        }),
+      ],
+    }),
+  );
+
+  // Hotel city resolves to Jordan, but the manual override must win.
+  assert.equal(proposal.days[0].country, 'Egypt');
+});

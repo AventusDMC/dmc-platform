@@ -1286,6 +1286,11 @@ model QuoteItineraryDay {
   dayNumber            Int
   title                String
   notes                String?
+  // Manual destination-country override for the day. NULL = derive at read
+  // time from the day's services (deriveDayCountry). When set, it wins over
+  // the derived value in the builder + proposal grouping. Location metadata
+  // only — never touches pricing.
+  country              String?
   sortOrder            Int                      @default(0)
   isActive             Boolean                  @default(true)
   createdAt            DateTime                 @default(now())
