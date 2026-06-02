@@ -2209,6 +2209,12 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       </Link>
                     </article>
                     <article className="detail-card">
+                      <p className="eyebrow">Dining Vouchers</p>
+                      <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                        Open dining vouchers
+                      </Link>
+                    </article>
+                    <article className="detail-card">
                       <p className="eyebrow">Supplier Confirmation</p>
                       <Link href={`/bookings/${booking.id}/supplier-confirmation`} className="secondary-button">
                         Supplier confirmation
