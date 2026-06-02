@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AppAlert } from '../../components/ui';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 
 export const dynamic = 'force-dynamic';
@@ -126,36 +127,28 @@ export default async function IntelligencePage() {
           <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Intelligence' }]} />
           <h1>Operations Intelligence</h1>
         </div>
-        <section
-          style={{
-            background: '#fef3f2',
-            border: '2px solid #f04438',
-            borderRadius: 12,
-            padding: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          <strong style={{ color: '#b42318' }}>Could not load intelligence dashboard.</strong>
-          {error ? (
-            <details>
-              <summary style={{ cursor: 'pointer', color: '#7a271a', fontWeight: 600 }}>Error details</summary>
-              <pre
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  fontSize: '0.78rem',
-                  color: '#7a271a',
-                  maxHeight: '20rem',
-                  overflow: 'auto',
-                  marginTop: '0.5rem',
-                }}
-              >
-                {error}
-              </pre>
-            </details>
-          ) : null}
-        </section>
+        <AppAlert tone="danger">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <strong>Could not load intelligence dashboard.</strong>
+            {error ? (
+              <details>
+                <summary style={{ cursor: 'pointer', color: '#7a271a', fontWeight: 600 }}>Error details</summary>
+                <pre
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '0.78rem',
+                    color: '#7a271a',
+                    maxHeight: '20rem',
+                    overflow: 'auto',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {error}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        </AppAlert>
       </main>
     );
   }
@@ -209,27 +202,18 @@ export default async function IntelligencePage() {
 
       {/* Warnings */}
       {data.warnings.length > 0 ? (
-        <section
-          style={{
-            background: '#fff8eb',
-            border: '2px solid #f79009',
-            borderRadius: 12,
-            padding: '0.85rem 1rem',
-            marginBottom: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.4rem',
-          }}
-        >
-          <strong style={{ color: '#b54708', fontSize: '0.85rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            ⚠ Intelligence Warnings
-          </strong>
-          <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#7a2e0e' }}>
-            {data.warnings.map((w, i) => (
-              <li key={i} style={{ marginBottom: '0.2rem' }}>{w}</li>
-            ))}
-          </ul>
-        </section>
+        <AppAlert tone="warning" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <strong style={{ fontSize: '0.85rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              ⚠ Intelligence Warnings
+            </strong>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#7a2e0e' }}>
+              {data.warnings.map((w, i) => (
+                <li key={i} style={{ marginBottom: '0.2rem' }}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        </AppAlert>
       ) : null}
 
       {/* Efficiency + SLA strip */}
