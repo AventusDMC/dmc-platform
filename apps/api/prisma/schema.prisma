@@ -1175,6 +1175,7 @@ model QuoteItem {
   currency                           String
   quoteCurrency                      String                  @default("USD")
   pricingDescription                 String?
+  transportLabel                     String?
   itineraryId                        String?                 @db.Uuid
   serviceDate                        DateTime?
   startTime                          String?

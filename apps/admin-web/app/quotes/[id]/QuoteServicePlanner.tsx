@@ -297,6 +297,7 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  transportLabel?: string | null;
   jordanPassCovered?: boolean;
   jordanPassSavingsJod?: number;
   markupPercent: number;
@@ -1126,6 +1127,12 @@ function getItemServiceName(item: QuoteItem) {
   }
 
   if (item.appliedVehicleRate) {
+    // Daily-package lines carry a per-day journey label ("Amman → Petra",
+    // "Petra (full day)") — show it instead of the generic disposal-route
+    // rate name. Ordinary transfers have no label and keep the derived name.
+    if (item.transportLabel?.trim()) {
+      return item.transportLabel.trim();
+    }
     return buildTransportServiceDisplayName(
       item.service?.name || null,
       getTransportPricingModeDisplayName(item),

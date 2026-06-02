@@ -268,6 +268,7 @@ type CreateQuoteItemInput = {
   touringRoutePricingId?: string | null;
   normalizedKey?: string;
   routeName?: string;
+  transportLabel?: string | null;
   transportAddOns?: Array<{
     rateId?: string;
     quantity?: number;
@@ -6057,6 +6058,11 @@ export class QuotesService {
               } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
             : pricingDescription,
         appliedVehicleRateId,
+        // Per-day journey label for daily-package transport lines (e.g. "Wadi
+        // Rum (full day)", "Amman → Petra"). Computed by the auto-builder and
+        // stored verbatim so the committed line reads the day's journey rather
+        // than the generic disposal-rate name. Other items leave it null.
+        transportLabel: data.transportLabel === undefined ? undefined : data.transportLabel || null,
         routeId: data.routeId === undefined ? undefined : routeId,
         transportServiceTypeId: data.transportServiceTypeId === undefined ? undefined : transportServiceTypeId,
         vehicleId: data.transportVehicleId === undefined ? undefined : vehicleId,

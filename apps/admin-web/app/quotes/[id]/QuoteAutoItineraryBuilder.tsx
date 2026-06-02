@@ -190,6 +190,11 @@ type PreviewTransport = {
   isHalfDay?: boolean;
   dayCount?: number;
   addOns?: Array<{ rateId: string; quantity: number; label?: string }>;
+  // Per-day journey label for daily-package lines ("Amman → Petra",
+  // "Petra (full day)") — persisted on the committed item so the line reads
+  // the journey rather than the generic disposal-route rate name. Undefined for
+  // ordinary per-leg transfers, which keep their route/service-derived label.
+  journeyLabel?: string | null;
 };
 
 type PreviewHotel = {
@@ -1372,6 +1377,10 @@ async function buildPreviewDraft(values: {
       isStationary,
       dayCount: 1,
       addOns,
+      // The day's actual journey ("Amman → Petra" / "Petra (full day)" /
+      // "Petra (stationary)"), persisted so the committed line reads the
+      // journey instead of the generic disposal-route rate name.
+      journeyLabel,
     };
   };
 
@@ -1412,6 +1421,7 @@ async function buildPreviewDraft(values: {
       isHalfDay: true,
       dayCount: 1,
       addOns: undefined as Array<{ rateId: string; quantity: number; label?: string }> | undefined,
+      journeyLabel,
     };
   };
 
@@ -2217,6 +2227,7 @@ export function QuoteAutoItineraryBuilder({
               routeId: item.route.id,
               normalizedKey: item.route.normalizedKey,
               routeName: '',
+              transportLabel: item.journeyLabel ?? null,
               overrideCost: null,
               useOverride: false,
               currency: item.selectedCandidate.currency,
