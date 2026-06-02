@@ -104,6 +104,13 @@ export type SuggestedHotel = {
   preferenceRank: number | null;
   recommendedMealPlan: RecommendedMealPlan;
   operationalConfidence: OperationalConfidence;
+  // Hotel Recommendation Engine — a transparent, deterministic score
+  // combining verified/active contract, operator preference rank, and
+  // operational confidence. Higher = stronger recommendation; drives the
+  // suggestion sort. `recommendationReasons` is the human-readable "why"
+  // shown on the card so operators can trust (and override) it.
+  recommendationScore: number;
+  recommendationReasons: string[];
   // Short heuristic notes shown to the operator.
   notes: string[];
 };
@@ -520,18 +527,17 @@ export class QuotesGuidedService {
       for (const tier of Object.keys(tiers) as CommercialTier[]) {
         tiers[tier] = tiers[tier]
           .sort((a, b) => {
+            // Recommendation score is the primary signal (it already encodes
+            // verified/active contract + operator preference + operational
+            // confidence). Ties break on explicit preference rank (lower wins,
+            // unranked last) then alphabetical.
+            if (a.recommendationScore !== b.recommendationScore) {
+              return b.recommendationScore - a.recommendationScore;
+            }
             if (a.preferenceRank !== b.preferenceRank) {
-              // Explicit operator preference overrides trust heuristics.
-              // null = unranked, always sorts after any ranked hotel.
               if (a.preferenceRank == null) return 1;
               if (b.preferenceRank == null) return -1;
               return a.preferenceRank - b.preferenceRank;
-            }
-            if (a.hasVerifiedContract !== b.hasVerifiedContract) {
-              return a.hasVerifiedContract ? -1 : 1;
-            }
-            if (a.hasActiveContract !== b.hasActiveContract) {
-              return a.hasActiveContract ? -1 : 1;
             }
             return a.name.localeCompare(b.name);
           })
@@ -1207,6 +1213,34 @@ export function enrichHotelForSuggestion(
   if (hasVerifiedContract) {
     notes.unshift('Operationally trusted');
   }
+  const preferenceRank = typeof hotel.preferenceRank === 'number' ? hotel.preferenceRank : null;
+  const operationalConfidence = deriveOperationalConfidence({ name: hotel.name, hasActiveContract });
+
+  // Transparent recommendation score. Each signal adds points AND a reason,
+  // so the card can explain why a hotel is ranked where it is.
+  const recommendationReasons: string[] = [];
+  let recommendationScore = 0;
+  if (hasVerifiedContract) {
+    recommendationScore += 50;
+    recommendationReasons.push('Verified contract');
+  } else if (hasActiveContract) {
+    recommendationScore += 20;
+    recommendationReasons.push('Active contract on file');
+  } else {
+    recommendationReasons.push('No current contract — confirm rates');
+  }
+  if (preferenceRank != null) {
+    // Operator preference: rank 1 = strongest. Decays per rank, floored so a
+    // preferred hotel always out-scores an equivalent unranked one.
+    const preferenceBoost = Math.max(5, 35 - (preferenceRank - 1) * 10);
+    recommendationScore += preferenceBoost;
+    recommendationReasons.push(`Preferred supplier (rank ${preferenceRank})`);
+  }
+  if (operationalConfidence === 'Operationally smooth') {
+    recommendationScore += 10;
+    recommendationReasons.push('Operationally smooth');
+  }
+
   return {
     id: hotel.id,
     name: hotel.name,
@@ -1215,12 +1249,11 @@ export function enrichHotelForSuggestion(
     tier: deriveCommercialTier(hotel.category),
     hasActiveContract,
     hasVerifiedContract,
-    preferenceRank: typeof hotel.preferenceRank === 'number' ? hotel.preferenceRank : null,
+    preferenceRank,
     recommendedMealPlan: recommendMealPlanForDestination(destination),
-    operationalConfidence: deriveOperationalConfidence({
-      name: hotel.name,
-      hasActiveContract,
-    }),
+    operationalConfidence,
+    recommendationScore,
+    recommendationReasons,
     notes,
   };
 }
