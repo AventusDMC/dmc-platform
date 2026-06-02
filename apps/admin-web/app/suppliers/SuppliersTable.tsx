@@ -14,6 +14,7 @@ type Supplier = {
   email: string | null;
   phone: string | null;
   notes: string | null;
+  transportDiscountPercent?: number | null;
 };
 
 type SuppliersTableProps = {
@@ -125,6 +126,7 @@ export function SuppliersTable({ apiBaseUrl, suppliers }: SuppliersTableProps) {
                               email: supplier.email || '',
                               phone: supplier.phone || '',
                               notes: supplier.notes || '',
+                              transportDiscountPercent: supplier.transportDiscountPercent ?? 0,
                             }}
                           />
                         </InlineRowEditorShell>
