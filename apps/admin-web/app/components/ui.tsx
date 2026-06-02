@@ -413,3 +413,74 @@ export function DayNavigation({ items, activeId, onSelect, title = 'Days', class
     </nav>
   );
 }
+
+type AppAlertTone = 'info' | 'success' | 'warning' | 'danger';
+
+type AppAlertProps = ComponentPropsWithoutRef<'div'> & {
+  tone?: AppAlertTone;
+  title?: ReactNode;
+  icon?: ReactNode;
+};
+
+/**
+ * Inline status banner built on the canonical `--ds-color-*` feedback tokens
+ * (see app/design-tokens.css). Replaces hand-rolled `style={{ background:'#fef3f2', … }}`
+ * banners so the danger/warning/success/info palette lives in one place. The token
+ * values intentionally equal the hexes those inline banners used, so swapping an
+ * existing banner to <AppAlert> is a visual no-op.
+ */
+const APP_ALERT_TONES: Record<AppAlertTone, { fg: string; surface: string; border: string }> = {
+  info: {
+    fg: 'var(--ds-color-accent-strong, #1C7FB8)',
+    surface: 'var(--ds-color-accent-soft, rgba(31, 154, 207, 0.1))',
+    border: 'var(--ds-color-accent-border, rgba(31, 154, 207, 0.24))',
+  },
+  success: {
+    fg: 'var(--ds-color-success, #067647)',
+    surface: 'var(--ds-color-success-surface, #ECFDF3)',
+    border: 'var(--ds-color-success-border, #ABEFC6)',
+  },
+  warning: {
+    fg: 'var(--ds-color-warning, #B54708)',
+    surface: 'var(--ds-color-warning-surface, #FFFAEB)',
+    border: 'var(--ds-color-warning-border, #FEDF89)',
+  },
+  danger: {
+    fg: 'var(--ds-color-danger, #B42318)',
+    surface: 'var(--ds-color-danger-surface, #FEF3F2)',
+    border: 'var(--ds-color-danger-border, #FECDCA)',
+  },
+};
+
+export function AppAlert({ tone = 'info', title, icon, className, children, style, role, ...props }: AppAlertProps) {
+  const palette = APP_ALERT_TONES[tone];
+
+  return (
+    <div
+      role={role ?? (tone === 'danger' ? 'alert' : 'status')}
+      className={cx('app-alert', `app-alert-${tone}`, className)}
+      style={{
+        display: 'flex',
+        gap: '0.6rem',
+        alignItems: 'flex-start',
+        background: palette.surface,
+        border: `1px solid ${palette.border}`,
+        color: palette.fg,
+        borderRadius: 'var(--ds-radius-md, 8px)',
+        padding: '0.7rem 0.85rem',
+        fontSize: '0.85rem',
+        lineHeight: 1.45,
+        ...style,
+      }}
+      {...props}
+    >
+      {icon ? <span aria-hidden="true" style={{ flexShrink: 0, lineHeight: 1.45 }}>{icon}</span> : null}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {title ? (
+          <strong style={{ display: 'block', marginBottom: children ? '0.2rem' : 0 }}>{title}</strong>
+        ) : null}
+        {children}
+      </div>
+    </div>
+  );
+}

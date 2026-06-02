@@ -5,6 +5,8 @@
 // error" blank screen. We surface error.message + digest so the actual cause
 // is visible — much faster to diagnose than guessing from a digest hash.
 
+import { AppAlert } from '../../components/ui';
+
 type DispatchErrorProps = {
   error: Error & { digest?: string };
   reset: () => void;
@@ -17,18 +19,9 @@ export default function DispatchError({ error, reset }: DispatchErrorProps) {
         <h1>Operations Dispatch</h1>
         <p className="admin-muted-copy">The dispatch page failed to render. Details below.</p>
       </div>
-      <section
-        style={{
-          background: '#fef3f2',
-          border: '2px solid #f04438',
-          borderRadius: 12,
-          padding: '1rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-        }}
-      >
-        <p style={{ margin: 0, color: '#b42318', fontWeight: 700 }}>
+      <AppAlert tone="danger">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <p style={{ margin: 0, fontWeight: 700 }}>
           {error.message || 'Unknown render error'}
         </p>
         {error.digest ? (
@@ -84,7 +77,8 @@ export default function DispatchError({ error, reset }: DispatchErrorProps) {
             Back to operations
           </a>
         </div>
-      </section>
+        </div>
+      </AppAlert>
     </main>
   );
 }
