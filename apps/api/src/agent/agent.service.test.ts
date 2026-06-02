@@ -322,6 +322,42 @@ nodeTestAgent.test('agent portal omits commission when no company rate is config
   agentAssert.equal(bookings[0].commissionAmount, null);
 });
 
+nodeTestAgent.test('agent analytics aggregates conversion, value, commission, status mix and trend', async () => {
+  const service = createAgentService({
+    prisma: {
+      company: {
+        findUnique: async () => ({ id: 'company-1', name: 'Desert Compass', agentCommissionPercent: 10 }),
+      },
+      quote: {
+        findMany: async () => [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }, { id: 'q4' }],
+      },
+      booking: {
+        findMany: async () => [
+          { id: 'b1', status: 'confirmed', createdAt: new Date('2026-04-10T00:00:00Z'), pricingSnapshotJson: { totalSell: 1000 }, snapshotJson: {} },
+          { id: 'b2', status: 'completed', createdAt: new Date('2026-05-12T00:00:00Z'), pricingSnapshotJson: { totalSell: 3000 }, snapshotJson: {} },
+          { id: 'b3', status: 'cancelled', createdAt: new Date('2026-05-20T00:00:00Z'), pricingSnapshotJson: { totalSell: 5000 }, snapshotJson: {} },
+        ],
+      },
+    },
+  });
+  const actor = { id: 'agent-1', email: 'a@x.com', role: 'agent', name: 'A', auditLabel: 'A', companyId: 'company-1' };
+
+  const analytics = await service.getAnalytics(actor as any);
+
+  agentAssert.equal(analytics.quoteCount, 4);
+  agentAssert.equal(analytics.bookingCount, 2); // cancelled excluded
+  agentAssert.equal(analytics.cancelledBookings, 1);
+  agentAssert.equal(analytics.conversionRate, 50); // 2 of 4
+  agentAssert.equal(analytics.totalBookingValue, 4000); // 1000 + 3000
+  agentAssert.equal(analytics.avgBookingValue, 2000);
+  agentAssert.equal(analytics.commissionPercent, 10);
+  agentAssert.equal(analytics.totalCommission, 400); // 10% of 4000
+  agentAssert.equal(analytics.bookingsByStatus.reduce((total: number, row: any) => total + row.count, 0), 3);
+  agentAssert.equal(analytics.monthlyTrend.length, 2);
+  agentAssert.equal(analytics.monthlyTrend[0].month, '2026-04');
+  agentAssert.equal(analytics.monthlyTrend[1].bookingValue, 3000);
+});
+
 nodeTestAgent.test('agent booking requests enforce stop sale, waitlist over-capacity, and create request audit log', async () => {
   const createdLogs: any[] = [];
   const service = createAgentService({
