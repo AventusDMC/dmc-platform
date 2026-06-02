@@ -4458,7 +4458,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return (this.prisma.bookingService as any).findMany({
       where: {
         bookingDayId,
-        ...this.buildBookingServiceCompanyWhere(actor),
+        booking: this.buildBookingCompanyWhere(actor),
       },
       include: {
         supplier: true,
@@ -4665,7 +4665,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         id: bookingServiceId,
         bookingId,
         bookingDayId,
-        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       include: {
         supplier: true,
@@ -4772,7 +4772,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         id: bookingServiceId,
         bookingId,
         bookingDayId,
-        ...this.buildBookingServiceCompanyWhere(companyActor),
+        booking: this.buildBookingCompanyWhere(companyActor),
       } as any,
       select: {
         id: true,
@@ -10917,7 +10917,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       where: {
         id: bookingServiceId,
         bookingId,
-        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       include: {
         bookingDay: true,
