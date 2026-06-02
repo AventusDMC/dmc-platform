@@ -12,6 +12,7 @@ type CreateCompanyInput = {
   primaryColor?: string;
   country?: string;
   city?: string;
+  agentCommissionPercent?: number | null;
 };
 
 type UpdateCompanyInput = {
@@ -22,6 +23,7 @@ type UpdateCompanyInput = {
   primaryColor?: string;
   country?: string;
   city?: string;
+  agentCommissionPercent?: number | null;
 };
 
 type UpdateBrandingInput = {
@@ -191,6 +193,7 @@ export class CompaniesService {
         primaryColor: this.normalizeCompanyColor(data.primaryColor),
         country: normalizeOptionalString(data.country),
         city: normalizeOptionalString(data.city),
+        agentCommissionPercent: this.normalizeCommissionPercent(data.agentCommissionPercent),
       },
       include: {
         branding: true,
@@ -216,11 +219,21 @@ export class CompaniesService {
         primaryColor: this.normalizeCompanyColor(data.primaryColor),
         country: normalizeOptionalString(data.country),
         city: normalizeOptionalString(data.city),
+        agentCommissionPercent: this.normalizeCommissionPercent(data.agentCommissionPercent),
       },
       include: {
         branding: true,
       },
     });
+  }
+
+  // Commission % clamped to 0–100; null clears it. Mirrors the lossy
+  // update semantics of the sibling fields (undefined also clears).
+  private normalizeCommissionPercent(value: number | null | undefined): number | null {
+    if (value === undefined || value === null || value === ('' as unknown)) return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return Math.min(parsed, 100);
   }
 
   async getBranding(companyId: string, actor?: CompanyScopedActor) {
