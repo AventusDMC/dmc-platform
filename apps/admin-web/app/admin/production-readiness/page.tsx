@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AppAlert } from '../../components/ui';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 
 export const dynamic = 'force-dynamic';
@@ -65,27 +66,19 @@ export default async function ProductionReadinessPage() {
           <AdminBreadcrumbs items={[{ label: 'Admin' }, { label: 'Production Readiness' }]} />
           <h1>Production Readiness</h1>
         </div>
-        <section
-          style={{
-            background: '#fef3f2',
-            border: '2px solid #f04438',
-            borderRadius: 12,
-            padding: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          <strong style={{ color: '#b42318' }}>Could not load production readiness dashboard.</strong>
-          {error ? (
-            <details>
-              <summary style={{ cursor: 'pointer', color: '#7a271a', fontWeight: 600 }}>Error details</summary>
-              <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.78rem', color: '#7a271a', maxHeight: '20rem', overflow: 'auto', marginTop: '0.5rem' }}>
-                {error}
-              </pre>
-            </details>
-          ) : null}
-        </section>
+        <AppAlert tone="danger">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <strong>Could not load production readiness dashboard.</strong>
+            {error ? (
+              <details>
+                <summary style={{ cursor: 'pointer', color: '#7a271a', fontWeight: 600 }}>Error details</summary>
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.78rem', color: '#7a271a', maxHeight: '20rem', overflow: 'auto', marginTop: '0.5rem' }}>
+                  {error}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        </AppAlert>
       </main>
     );
   }
