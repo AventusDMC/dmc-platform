@@ -20,6 +20,7 @@ import { BookingFeedbackBannerCleanup } from './BookingFeedbackBannerCleanup';
 import { DeleteOperationButton } from './DeleteOperationButton';
 import { BookingServiceVoucherDownloadButton } from './BookingServiceVoucherDownloadButton';
 import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
+import { BookingSingleSupplementCard } from './BookingSingleSupplementCard';
 import { BookingServiceTimeline } from './BookingServiceTimeline';
 import { BookingPortalLinkActions } from './BookingPortalLinkActions';
 import { BookingFinancialsTab } from './BookingFinancialsTab';
@@ -2769,6 +2770,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       </div>
                     </div>
                   </div>
+                  <BookingSingleSupplementCard bookingId={booking.id} />
                   <TableSectionShell
                     title="Rooming"
                     description="Room entries, occupancy, and passenger assignments."
