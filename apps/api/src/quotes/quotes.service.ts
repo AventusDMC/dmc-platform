@@ -269,6 +269,7 @@ type CreateQuoteItemInput = {
   normalizedKey?: string;
   routeName?: string;
   transportLabel?: string | null;
+  standaloneTransfer?: boolean;
   transportAddOns?: Array<{
     rateId?: string;
     quantity?: number;
@@ -5541,6 +5542,10 @@ export class QuotesService {
         throw new BadRequestException('Transport service type is required');
       }
 
+      // Per-vehicle deduction applied when this transfer is sold standalone (not
+      // part of a programme) — captured from the resolved rate, subtracted below.
+      let standaloneDeductionPerUnit = 0;
+
       try {
         if (data.vehicleRateId) {
           throw new NotFoundException('Use selected vehicle rate row');
@@ -5598,6 +5603,7 @@ export class QuotesService {
             travelDate: serviceDate || undefined,
           });
           appliedVehicleRateId = displayVehicleRate.id;
+          standaloneDeductionPerUnit = Number((displayVehicleRate as any).standaloneDeductionAmount || 0);
         } catch {
           appliedVehicleRateId = null;
         }
@@ -5639,6 +5645,7 @@ export class QuotesService {
         }
         pricingDescription = `${vehicleRate.serviceType.name} | ${vehicleRate.routeName} | ${vehicleRate.vehicle.name}`;
         appliedVehicleRateId = vehicleRate.id;
+        standaloneDeductionPerUnit = Number((vehicleRate as any).standaloneDeductionAmount || 0);
       }
 
       if (transportPricingMode === 'capacity_unit' && unitCount) {
@@ -5652,6 +5659,16 @@ export class QuotesService {
         transportAddOnUnitCost = addOnResult.unitCost;
         transportPricingDescriptionParts.push(...addOnResult.descriptions);
         baseCost = Number((baseCost * transportUnitCostMultiplier + transportAddOnUnitCost).toFixed(2));
+      }
+
+      // Standalone transfer: deduct the per-vehicle amount (card "if not part of
+      // a programme") from the per-unit cost; it then scales per vehicle via
+      // unitCount downstream. Floored at zero.
+      if (data.standaloneTransfer && standaloneDeductionPerUnit > 0) {
+        baseCost = Number(Math.max(0, baseCost - standaloneDeductionPerUnit).toFixed(2));
+        transportPricingDescriptionParts.push(
+          `Standalone transfer (-${standaloneDeductionPerUnit.toFixed(2)} ${currency}/vehicle)`,
+        );
       }
 
       supplierCostBaseAmount = baseCost;
@@ -6063,6 +6080,7 @@ export class QuotesService {
         // stored verbatim so the committed line reads the day's journey rather
         // than the generic disposal-rate name. Other items leave it null.
         transportLabel: data.transportLabel === undefined ? undefined : data.transportLabel || null,
+        standaloneTransfer: data.standaloneTransfer === undefined ? undefined : Boolean(data.standaloneTransfer),
         routeId: data.routeId === undefined ? undefined : routeId,
         transportServiceTypeId: data.transportServiceTypeId === undefined ? undefined : transportServiceTypeId,
         vehicleId: data.transportVehicleId === undefined ? undefined : vehicleId,
