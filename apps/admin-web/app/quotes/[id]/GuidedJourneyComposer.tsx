@@ -102,6 +102,8 @@ type SuggestedHotel = {
     reason: string;
   };
   operationalConfidence: OperationalConfidence;
+  recommendationScore?: number;
+  recommendationReasons?: string[];
   notes: string[];
 };
 
@@ -1124,7 +1126,28 @@ function HotelCard({
         >
           Meal plan: {hotel.recommendedMealPlan.code} recommended
         </span>
+        {typeof hotel.recommendationScore === 'number' ? (
+          <span
+            style={{
+              background: '#f0fdf4',
+              color: '#15803d',
+              border: '1px solid #bbf7d0',
+              padding: '0.05rem 0.45rem',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontWeight: 700,
+            }}
+            title="Recommendation score — higher suggestions rank first"
+          >
+            ★ {hotel.recommendationScore}
+          </span>
+        ) : null}
       </div>
+      {hotel.recommendationReasons && hotel.recommendationReasons.length > 0 ? (
+        <p style={{ margin: 0, color: '#15803d', fontSize: '0.74rem' }}>
+          Why recommended: {hotel.recommendationReasons.join(' · ')}
+        </p>
+      ) : null}
       {hotel.notes.length > 0 ? (
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
           {hotel.notes.join(' · ')}

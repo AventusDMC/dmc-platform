@@ -148,6 +148,38 @@ test('enrichHotelForSuggestion: VERIFIED contract surfaces "Operationally truste
   assert.equal(enriched.notes[0], 'Operationally trusted');
 });
 
+test('recommendation score: verified contract scores higher than unverified-active than no-contract, with reasons', () => {
+  const verified = enrichHotelForSuggestion(
+    { id: 'h1', name: 'Verified Hotel', city: 'Petra', category: '5*', contracts: [{ id: 'c1', confidence: 'VERIFIED' }] },
+    'Petra',
+  );
+  const active = enrichHotelForSuggestion(
+    { id: 'h2', name: 'Active Hotel', city: 'Petra', category: '5*', contracts: [{ id: 'c2', confidence: 'IMPORTED_UNVERIFIED' }] },
+    'Petra',
+  );
+  const none = enrichHotelForSuggestion({ id: 'h3', name: 'No Contract Hotel', city: 'Petra', category: '5*', contracts: [] }, 'Petra');
+
+  assert.ok(verified.recommendationScore > active.recommendationScore);
+  assert.ok(active.recommendationScore > none.recommendationScore);
+  assert.ok(verified.recommendationReasons.includes('Verified contract'));
+  assert.ok(active.recommendationReasons.includes('Active contract on file'));
+  assert.ok(none.recommendationReasons.includes('No current contract — confirm rates'));
+});
+
+test('recommendation score: operator preference boosts an unverified hotel above a verified one + names the reason', () => {
+  const preferred = enrichHotelForSuggestion(
+    { id: 'h1', name: 'Preferred Hotel', city: 'Petra', category: '5*', preferenceRank: 1, contracts: [{ id: 'c1', confidence: 'IMPORTED_UNVERIFIED' }] },
+    'Petra',
+  );
+  const verified = enrichHotelForSuggestion(
+    { id: 'h2', name: 'Verified Hotel', city: 'Petra', category: '5*', preferenceRank: null, contracts: [{ id: 'c2', confidence: 'VERIFIED' }] },
+    'Petra',
+  );
+  // active(20) + pref rank1(35) = 55 > verified(50)
+  assert.ok(preferred.recommendationScore > verified.recommendationScore);
+  assert.ok(preferred.recommendationReasons.includes('Preferred supplier (rank 1)'));
+});
+
 test('enrichHotelForSuggestion: unverified contract does NOT promote hasVerifiedContract', () => {
   const enriched = enrichHotelForSuggestion(
     {
