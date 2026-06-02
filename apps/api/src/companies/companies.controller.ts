@@ -27,6 +27,7 @@ type CreateCompanyBody = {
   primaryColor?: string;
   country?: string;
   city?: string;
+  agentCommissionPercent?: number | null;
 };
 
 type UpdateCompanyBody = {
@@ -37,6 +38,7 @@ type UpdateCompanyBody = {
   primaryColor?: string;
   country?: string;
   city?: string;
+  agentCommissionPercent?: number | null;
 };
 
 type UpdateBrandingBody = {

@@ -21,6 +21,7 @@ type Company = {
   primaryColor: string | null;
   country: string | null;
   city: string | null;
+  agentCommissionPercent?: number | null;
   branding?: {
     displayName: string | null;
     logoUrl: string | null;
@@ -122,6 +123,7 @@ export function CompaniesTable({ apiBaseUrl, companies }: CompaniesTableProps) {
                               primaryColor: company.primaryColor || '#0F766E',
                               country: company.country || '',
                               city: company.city || '',
+                              agentCommissionPercent: company.agentCommissionPercent ?? null,
                             }}
                           />
                           <BrandingSettingsForm

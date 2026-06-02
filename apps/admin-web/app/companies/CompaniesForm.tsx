@@ -19,6 +19,7 @@ type CompaniesFormProps = {
     primaryColor: string;
     country: string;
     city: string;
+    agentCommissionPercent?: number | null;
   };
 };
 
@@ -31,6 +32,9 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
   const [primaryColor, setPrimaryColor] = useState(initialValues?.primaryColor || '#0F766E');
   const [country, setCountry] = useState(initialValues?.country || '');
   const [city, setCity] = useState(initialValues?.city || '');
+  const [agentCommissionPercent, setAgentCommissionPercent] = useState(
+    initialValues?.agentCommissionPercent != null ? String(initialValues.agentCommissionPercent) : '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState<ApiValidationError[]>([]);
@@ -51,6 +55,7 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         primaryColor: primaryColor.trim() || undefined,
         country: country.trim() || undefined,
         city: city.trim() || undefined,
+        agentCommissionPercent: agentCommissionPercent.trim() === '' ? null : Number(agentCommissionPercent),
       };
       const response = await fetch(`${apiBaseUrl}/companies${companyId ? `/${companyId}` : ''}`, {
         method: companyId ? 'PATCH' : 'POST',
@@ -74,6 +79,7 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         setPrimaryColor('#0F766E');
         setCountry('');
         setCity('');
+        setAgentCommissionPercent('');
         window.location.reload();
         return;
       }
@@ -130,6 +136,20 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
       </div>
 
       <CountryCityFields country={country} city={city} onCountryChange={setCountry} onCityChange={setCity} />
+
+      <label>
+        Agent commission %
+        <input
+          value={agentCommissionPercent}
+          onChange={(event) => setAgentCommissionPercent(event.target.value)}
+          type="number"
+          min="0"
+          max="100"
+          step="0.5"
+          placeholder="e.g. 10 — leave blank for none"
+        />
+        <span className="form-helper">Commission this agent company earns on the sell value of its bookings. Shown in the agent portal.</span>
+      </label>
 
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Create company')}

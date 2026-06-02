@@ -18,7 +18,7 @@ export class AgentService {
     const company = actor.companyId
       ? await this.prisma.company.findUnique({
           where: { id: actor.companyId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, agentCommissionPercent: true },
         })
       : null;
 
@@ -79,7 +79,20 @@ export class AgentService {
         createdAt: 'desc',
       },
     });
-    return bookings.map((booking: any) => this.mapAgentBookingSummary(booking));
+    const commissionPercent = await this.resolveAgentCommissionPercent(actor);
+    return bookings.map((booking: any) => this.mapAgentBookingSummary(booking, commissionPercent));
+  }
+
+  // Agent Portal — the commission rate (%) configured on the agent's company,
+  // used to compute the commission they earn on each booking's sell value.
+  private async resolveAgentCommissionPercent(actor: AuthenticatedActor): Promise<number | null> {
+    if (!actor.companyId) return null;
+    const company = await this.prisma.company.findUnique({
+      where: { id: actor.companyId },
+      select: { agentCommissionPercent: true },
+    });
+    const rate = company?.agentCommissionPercent;
+    return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
   }
 
   async getBooking(id: string, actor: AuthenticatedActor) {
@@ -119,7 +132,11 @@ export class AgentService {
         },
       },
     });
-    return booking ? this.mapAgentBookingDetail(booking) : null;
+    if (!booking) {
+      return null;
+    }
+    const commissionPercent = await this.resolveAgentCommissionPercent(actor);
+    return this.mapAgentBookingDetail(booking, commissionPercent);
   }
 
   async getInvoices(actor: AuthenticatedActor) {
@@ -423,7 +440,23 @@ export class AgentService {
     };
   }
 
-  private mapAgentBookingSummary(booking: any) {
+  // Computes the agent's commission on a booking's sell value at the given
+  // rate. Returns nulls when no rate is configured so the UI can hide it.
+  private computeAgentCommission(sellTotal: number, commissionPercent: number | null) {
+    if (commissionPercent === null || !Number.isFinite(sellTotal) || sellTotal <= 0) {
+      return { commissionPercent, commissionAmount: null as number | null };
+    }
+    return {
+      commissionPercent,
+      commissionAmount: Number(((sellTotal * commissionPercent) / 100).toFixed(2)),
+    };
+  }
+
+  private mapAgentBookingSummary(booking: any, commissionPercent: number | null = null) {
+    const sellTotal = Number(
+      booking.finance?.totalSell || booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0,
+    );
+    const commission = this.computeAgentCommission(sellTotal, commissionPercent);
     return {
       id: booking.id,
       bookingRef: booking.bookingRef || booking.id,
@@ -440,11 +473,13 @@ export class AgentService {
       nightCount: booking.nightCount ?? 0,
       travelStartDate: booking.snapshotJson?.travelStartDate || null,
       createdAt: booking.createdAt,
+      commissionPercent: commission.commissionPercent,
+      commissionAmount: commission.commissionAmount,
     };
   }
 
-  private mapAgentBookingDetail(booking: any) {
-    const summary = this.mapAgentBookingSummary(booking);
+  private mapAgentBookingDetail(booking: any, commissionPercent: number | null = null) {
+    const summary = this.mapAgentBookingSummary(booking, commissionPercent);
     const payments = Array.isArray(booking.payments) ? booking.payments : [];
     const clientPayments = payments.filter((payment: any) => payment.type === 'CLIENT');
     const paid = clientPayments
@@ -459,6 +494,8 @@ export class AgentService {
         totalSell,
         depositsReceived: paid,
         remainingBalance: balance,
+        commissionPercent: summary.commissionPercent,
+        commissionAmount: this.computeAgentCommission(totalSell, commissionPercent).commissionAmount,
         paymentStatus: balance <= 0 ? 'paid' : paid > 0 ? 'partially_paid' : 'unpaid',
         paymentMethods: this.listPaymentMethods(),
         paymentReferences: clientPayments.map((payment: any) => ({

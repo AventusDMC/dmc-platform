@@ -247,6 +247,10 @@ model Company {
   updatedAt    DateTime         @updatedAt
   logoUrl      String?
   primaryColor String?
+  // Agent Portal — commission rate (%) the agent company earns on the sell
+  // value of its bookings. NULL = no commission configured. Set by admins on
+  // the company record; surfaced read-only in the agent portal.
+  agentCommissionPercent Float?
   activities   Activity[]
   branding     CompanyBranding?
   contacts     Contact[]

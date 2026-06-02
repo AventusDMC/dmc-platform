@@ -265,6 +265,63 @@ nodeTestAgent.test('agent portal phase one isolates visibility and exposes finan
   agentAssert.deepEqual(departures[0].hotelCategories, ['4 star']);
 });
 
+nodeTestAgent.test('agent portal computes commission on bookings from the company rate', async () => {
+  const service = createAgentService({
+    prisma: {
+      company: {
+        findUnique: async () => ({ id: 'company-1', name: 'Desert Compass', agentCommissionPercent: 10 }),
+      },
+      booking: {
+        findMany: async () => [
+          {
+            id: 'booking-1',
+            bookingRef: 'BK-1',
+            status: 'confirmed',
+            snapshotJson: { title: 'Trip', totalSell: 2000 },
+            pricingSnapshotJson: { totalSell: 2000 },
+            quote: { clientCompany: { name: 'Client Co' } },
+          },
+        ],
+      },
+    },
+  });
+  const actor = { id: 'agent-1', email: 'a@x.com', role: 'agent', name: 'A', auditLabel: 'A', companyId: 'company-1' };
+
+  const me = await service.getMe(actor as any);
+  agentAssert.equal(me.company.agentCommissionPercent, 10);
+
+  const bookings = await service.getBookings(actor as any);
+  agentAssert.equal(bookings[0].commissionPercent, 10);
+  agentAssert.equal(bookings[0].commissionAmount, 200); // 10% of 2000
+});
+
+nodeTestAgent.test('agent portal omits commission when no company rate is configured', async () => {
+  const service = createAgentService({
+    prisma: {
+      company: {
+        findUnique: async () => ({ id: 'company-1', name: 'Desert Compass', agentCommissionPercent: null }),
+      },
+      booking: {
+        findMany: async () => [
+          {
+            id: 'booking-1',
+            bookingRef: 'BK-1',
+            status: 'confirmed',
+            snapshotJson: { totalSell: 2000 },
+            pricingSnapshotJson: { totalSell: 2000 },
+            quote: {},
+          },
+        ],
+      },
+    },
+  });
+  const actor = { id: 'agent-1', email: 'a@x.com', role: 'agent', name: 'A', auditLabel: 'A', companyId: 'company-1' };
+
+  const bookings = await service.getBookings(actor as any);
+  agentAssert.equal(bookings[0].commissionPercent, null);
+  agentAssert.equal(bookings[0].commissionAmount, null);
+});
+
 nodeTestAgent.test('agent booking requests enforce stop sale, waitlist over-capacity, and create request audit log', async () => {
   const createdLogs: any[] = [];
   const service = createAgentService({

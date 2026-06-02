@@ -12,6 +12,8 @@ type AgentBookingDetail = {
     totalSell: number;
     depositsReceived: number;
     remainingBalance: number;
+    commissionPercent: number | null;
+    commissionAmount: number | null;
     paymentStatus: string;
     paymentMethods: string[];
     paymentReferences: Array<{
@@ -116,6 +118,12 @@ export default async function AgentBookingDetailPage({ params }: AgentBookingPag
               <span>Balance</span>
               <strong>{formatMoney(booking.finance.remainingBalance)}</strong>
             </article>
+            {booking.finance.commissionAmount !== null ? (
+              <article className="quote-client-summary-card">
+                <span>Your commission{booking.finance.commissionPercent !== null ? ` (${booking.finance.commissionPercent}%)` : ''}</span>
+                <strong>{formatMoney(booking.finance.commissionAmount)}</strong>
+              </article>
+            ) : null}
             <article className="quote-client-summary-card">
               <span>Vouchers</span>
               <strong>{booking.vouchers.length}</strong>
