@@ -1425,6 +1425,20 @@ async function buildPreviewDraft(values: {
     };
   };
 
+  // A daily-package airport leg should fall back to a Half Day of the daily
+  // vehicle when the per-leg transfer either can't price OR can only price by
+  // splitting the party across multiple vehicles (a capacity-unit rate, e.g.
+  // Dead Sea → QAIA has only small point-to-point vans, so a group needs 4×Van).
+  // The operator bills those short Dead-Sea/Amman ↔ airport runs as a half day,
+  // so prefer one Half-Day coach over a multi-van split.
+  const airportLegNeedsHalfDayFallback = (
+    entry: Awaited<ReturnType<typeof buildTransportEntry>> | null | undefined,
+  ) => {
+    const candidate = entry?.selectedCandidate;
+    if (!candidate) return true;
+    return candidate.pricingMode === 'capacity_unit' && (candidate.unitCount ?? 1) > 1;
+  };
+
   const totalDays = days.length;
   const transportEntries = await Promise.all(
     days.map(async (day, index) => {
@@ -1445,7 +1459,7 @@ async function buildPreviewDraft(values: {
           return buildDailyEntry(day.dayNumber, fromLabel, currentCity);
         }
         const arrivalTransfer = await buildTransportEntry(day.dayNumber, fromLabel, currentCity, route, 'arrival');
-        if (dailyPackageActive && !arrivalTransfer?.selectedCandidate) {
+        if (dailyPackageActive && airportLegNeedsHalfDayFallback(arrivalTransfer)) {
           const halfDay = await buildHalfDayAirportEntry(day.dayNumber, fromLabel, currentCity);
           if (halfDay) return halfDay;
         }
@@ -1459,7 +1473,7 @@ async function buildPreviewDraft(values: {
           return buildDailyEntry(day.dayNumber, currentCity, toLabel);
         }
         const departureTransfer = await buildTransportEntry(day.dayNumber, currentCity, toLabel, route, 'departure');
-        if (dailyPackageActive && !departureTransfer?.selectedCandidate) {
+        if (dailyPackageActive && airportLegNeedsHalfDayFallback(departureTransfer)) {
           const halfDay = await buildHalfDayAirportEntry(day.dayNumber, currentCity, toLabel);
           if (halfDay) return halfDay;
         }
