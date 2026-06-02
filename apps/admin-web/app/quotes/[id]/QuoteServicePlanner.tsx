@@ -4543,15 +4543,24 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   });
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const itineraryDays = localItineraries;
-  const plannerQuote = {
-    ...props.quote,
-    itineraries: localItineraries,
-    quoteItems: applyPlannerDayAssignments(props.quote.quoteItems, props.quoteItinerary),
-    quoteOptions: props.quote.quoteOptions.map((option) => ({
-      ...option,
-      quoteItems: applyPlannerDayAssignments(option.quoteItems, props.quoteItinerary),
-    })),
-  };
+  // Memoized so `quoteItems` keeps a STABLE reference across renders. It was
+  // recomputed inline every render, and `applyPlannerDayAssignments` returns a
+  // fresh array each call — so the downstream `setLocalItems(scope.items)` sync
+  // effect fired on every render and clobbered optimistic/in-place updates (e.g.
+  // an excursion-template insert), making newly added services appear only after
+  // a slow full refresh. Recompute only when the underlying server data changes.
+  const plannerQuote = useMemo(
+    () => ({
+      ...props.quote,
+      itineraries: localItineraries,
+      quoteItems: applyPlannerDayAssignments(props.quote.quoteItems, props.quoteItinerary),
+      quoteOptions: props.quote.quoteOptions.map((option) => ({
+        ...option,
+        quoteItems: applyPlannerDayAssignments(option.quoteItems, props.quoteItinerary),
+      })),
+    }),
+    [props.quote, props.quoteItinerary, localItineraries],
+  );
 
   useEffect(() => {
     if (!props.focusedDayId) {
