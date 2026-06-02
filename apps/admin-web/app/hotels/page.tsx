@@ -36,6 +36,7 @@ type HotelDirectorySummary = {
   roomCategoryCount: number;
   confidenceSummary: 'verified' | 'needs-review' | 'mixed' | 'no-contracts';
   hasVerifiedContract: boolean;
+  preferenceRank: number | null;
 };
 
 async function getHotels(): Promise<HotelDirectorySummary[]> {
@@ -140,6 +141,22 @@ export default async function HotelsListPage() {
                         >
                           {hotel.name || '(unnamed)'}
                         </Link>
+                        {hotel.preferenceRank !== null ? (
+                          <span
+                            title={`Preferred hotel (rank ${hotel.preferenceRank}) — boosted in Guided suggestions`}
+                            style={{
+                              marginLeft: '0.5rem',
+                              padding: '0.1rem 0.4rem',
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              borderRadius: 999,
+                              color: '#7c3aed',
+                              border: '1px solid #7c3aed',
+                            }}
+                          >
+                            ★ {hotel.preferenceRank}
+                          </span>
+                        ) : null}
                       </td>
                       <td>{hotel.city || '—'}</td>
                       <td>{hotel.category || '—'}</td>

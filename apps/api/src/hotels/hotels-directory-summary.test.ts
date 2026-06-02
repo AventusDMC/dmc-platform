@@ -206,6 +206,7 @@ test('findDirectorySummary: select clause matches the Hotel schema (allow-list r
     'updatedAt',
     'cityId',
     'hotelCategoryId',
+    'preferenceRank',
   ]);
   const HOTEL_RELATION_ALLOWLIST = new Set([
     'cityRecord',

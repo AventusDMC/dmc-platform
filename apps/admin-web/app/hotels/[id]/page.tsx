@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
+import { HotelPreferenceRankEditor } from './HotelPreferenceRankEditor';
 
 // Hotels Engine — Phase 1 PR #145.
 //
@@ -25,6 +26,7 @@ type HotelDetail = {
   category: string;
   supplierId: string;
   supplierName: string | null;
+  preferenceRank: number | null;
   cityRecord: { id: string; name: string } | null;
   hotelCategory: { id: string; name: string } | null;
   factSheet: {
@@ -139,6 +141,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
             <Field label="City">{cityLabel}</Field>
             <Field label="Category">{categoryLabel}</Field>
             <Field label="Supplier">{supplierLabel}</Field>
+            <Field label="Guided rank">{hotel.preferenceRank === null ? 'Unranked' : `Preferred (${hotel.preferenceRank})`}</Field>
             {hotel.factSheet?.shortDescription ? (
               <Field label="Description">{hotel.factSheet.shortDescription}</Field>
             ) : null}
@@ -150,6 +153,9 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
             ) : null}
           </dl>
         </section>
+
+        {/* Preferred Hotel Ranking — client island */}
+        <HotelPreferenceRankEditor hotelId={hotel.id} initialRank={hotel.preferenceRank} />
 
         {/* Room types */}
         <section data-testid="hotel-room-types" style={{ marginBottom: '1.5rem' }}>

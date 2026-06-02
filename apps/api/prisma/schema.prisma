@@ -965,6 +965,11 @@ model Hotel {
   updatedAt            DateTime              @updatedAt
   cityId               String?               @db.Uuid
   hotelCategoryId      String?               @db.Uuid
+  // Preferred Hotel Ranking — operators flag preferred hotels so the
+  // Guided Quote Builder surfaces them first within each commercial
+  // tier. Lower value wins (1 = most preferred). NULL = unranked and
+  // falls back to the VERIFIED → active-contract → alphabetical sort.
+  preferenceRank       Int?
   contracts            HotelContract[]
   factSheet            HotelFactSheet?
   rates                HotelRate[]
