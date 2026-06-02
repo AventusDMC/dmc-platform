@@ -561,6 +561,7 @@ type Booking = {
     visaStatus: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
+    dietaryNotes: string | null;
     roomingNotes: string | null;
     isLead: boolean;
     notes: string | null;
@@ -2597,6 +2598,10 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                               <input type="text" name="emergencyContactPhone" placeholder="Next-of-kin phone" />
                             </label>
                             <label>
+                              Dietary requirements
+                              <input type="text" name="dietaryNotes" placeholder="e.g. vegetarian, nut allergy" />
+                            </label>
+                            <label>
                               Notes
                               <input type="text" name="notes" placeholder="Special handling or document note" />
                             </label>
@@ -2694,6 +2699,10 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                         <label>
                                           Emergency phone
                                           <input type="text" name="emergencyContactPhone" defaultValue={passenger.emergencyContactPhone || ''} placeholder="Next-of-kin phone" />
+                                        </label>
+                                        <label>
+                                          Dietary requirements
+                                          <input type="text" name="dietaryNotes" defaultValue={passenger.dietaryNotes || ''} placeholder="e.g. vegetarian, nut allergy" />
                                         </label>
                                         <label>
                                           Notes

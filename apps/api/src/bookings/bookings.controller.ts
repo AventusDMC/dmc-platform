@@ -196,6 +196,7 @@ type CreateBookingPassengerBody = {
   visaStatus?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  dietaryNotes?: string | null;
   roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
@@ -218,6 +219,7 @@ type UpdateBookingPassengerBody = {
   visaStatus?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  dietaryNotes?: string | null;
   roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
@@ -917,6 +919,7 @@ export class BookingsController {
       visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
       emergencyContactName: body.emergencyContactName === undefined ? undefined : body.emergencyContactName || null,
       emergencyContactPhone: body.emergencyContactPhone === undefined ? undefined : body.emergencyContactPhone || null,
+      dietaryNotes: body.dietaryNotes === undefined ? undefined : body.dietaryNotes || null,
       roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
@@ -950,6 +953,7 @@ export class BookingsController {
       visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
       emergencyContactName: body.emergencyContactName === undefined ? undefined : body.emergencyContactName || null,
       emergencyContactPhone: body.emergencyContactPhone === undefined ? undefined : body.emergencyContactPhone || null,
+      dietaryNotes: body.dietaryNotes === undefined ? undefined : body.dietaryNotes || null,
       roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
