@@ -78,7 +78,7 @@ test('passenger manifest export route uses extensionless URL and Excel response 
     },
   };
 
-  await controller.downloadPassengerManifestExcel('booking-1', { companyId: 'company-1' }, response);
+  await controller.downloadPassengerManifestExcel('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' }, response);
 
   assert.equal(headers['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   assert.equal(headers['Content-Disposition'], 'attachment; filename="BK-1-passenger-manifest.xlsx"');
@@ -108,7 +108,7 @@ test('admin booking voucher PDF route returns attachment PDF without false permi
     },
   };
 
-  const stream = await controller.downloadVoucherPdf('booking-1', actor, response);
+  const stream = await controller.downloadVoucherPdf('11111111-1111-4111-8111-111111111111', actor, response);
 
   assert.equal(headers['Content-Type'], 'application/pdf');
   assert.equal(headers['Content-Disposition'], 'attachment; filename="bk-1-voucher.pdf"');
@@ -192,7 +192,7 @@ test('financial document PDF renders totals deposits balance payment methods and
   const lines = capturePdfText(service as any);
   (service as any).fetchImageBuffer = async () => null;
   (service as any).findOne = async () => ({
-    id: 'booking-1',
+    id: '11111111-1111-4111-8111-111111111111',
     bookingRef: 'JOR-HL-2026-001',
     bookingType: 'GROUP',
     nightCount: 3,
@@ -210,7 +210,7 @@ test('financial document PDF renders totals deposits balance payment methods and
     payments: [
       {
         id: 'payment-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         type: 'CLIENT',
         amount: 600,
         currency: 'USD',
@@ -225,7 +225,7 @@ test('financial document PDF renders totals deposits balance payment methods and
       },
       {
         id: 'payment-2',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         type: 'SUPPLIER',
         amount: 300,
         currency: 'USD',
@@ -254,7 +254,7 @@ test('financial document PDF renders totals deposits balance payment methods and
     ],
   });
 
-  await service.generateFinancialDocumentPdf('booking-1', 'supplier-payable-summary', 'ITEMIZED');
+  await service.generateFinancialDocumentPdf('11111111-1111-4111-8111-111111111111', 'supplier-payable-summary', 'ITEMIZED');
   const text = lines.join('\n');
 
   assert.match(text, /Supplier Payable Summary/);
@@ -265,7 +265,7 @@ test('financial document PDF renders totals deposits balance payment methods and
   assert.match(text, /Payment methods: bank transfer, CliQ, MB WAY, cash, credit card, custom\/manual/);
 
   lines.length = 0;
-  await service.generateFinancialDocumentPdf('booking-1', 'deposit-invoice', 'PACKAGE');
+  await service.generateFinancialDocumentPdf('11111111-1111-4111-8111-111111111111', 'deposit-invoice', 'PACKAGE');
   const depositText = lines.join('\n');
   assert.match(depositText, /Deposit Invoice/);
   assert.match(depositText, /Deposits received/);
@@ -276,8 +276,8 @@ test('booking voucher PDF uses professional placeholders and no internal pricing
   const service = createService({});
   capturePdfText(service as any);
 
-  const buffer = await service.generateVoucherPdf('booking-1', { companyId: 'dmc-company-1' }, {
-    id: 'booking-1',
+  const buffer = await service.generateVoucherPdf('11111111-1111-4111-8111-111111111111', { companyId: 'dmc-company-1' }, {
+    id: '11111111-1111-4111-8111-111111111111',
     bookingRef: 'BK-1',
     bookingType: 'FIT',
     adults: 2,
@@ -332,7 +332,7 @@ test('supplier confirmation tracking preserves references and confirmed timestam
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         supplierConfirmationStatus: 'SENT',
         confirmationSentAt: new Date('2026-05-09T09:00:00.000Z'),
         supplierConfirmedAt: existingConfirmedAt,
@@ -386,7 +386,7 @@ test('operations dashboard readiness counts supplier confirmation states', async
   const services = [
     {
       id: 'service-pending',
-      bookingId: 'booking-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
       description: 'Hotel',
       serviceType: 'HOTEL',
       operationType: 'HOTEL',
@@ -402,11 +402,11 @@ test('operations dashboard readiness counts supplier confirmation states', async
       supplierConfirmationStatus: 'SENT',
       confirmationDeadline: new Date('2026-05-11T00:00:00.000Z'),
       vouchers: [],
-      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+      booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
     },
     {
       id: 'service-rejected',
-      bookingId: 'booking-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
       description: 'Activity',
       serviceType: 'ACTIVITY',
       operationType: 'ACTIVITY',
@@ -422,11 +422,11 @@ test('operations dashboard readiness counts supplier confirmation states', async
       supplierConfirmationStatus: 'REJECTED',
       confirmationDeadline: null,
       vouchers: [],
-      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+      booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
     },
     {
       id: 'service-confirmed',
-      bookingId: 'booking-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
       description: 'Transfer',
       serviceType: 'TRANSPORT',
       operationType: 'TRANSPORT',
@@ -442,12 +442,12 @@ test('operations dashboard readiness counts supplier confirmation states', async
       supplierConfirmationStatus: 'CONFIRMED',
       confirmationDeadline: null,
       vouchers: [{ id: 'voucher-1', status: 'ISSUED', type: 'TRANSPORT' }],
-      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+      booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
     },
   ];
   const bookings = [
     {
-      id: 'booking-1',
+      id: '11111111-1111-4111-8111-111111111111',
       bookingRef: 'BK-1',
       status: 'in_progress',
       startDate: dashboardDate,
@@ -485,7 +485,7 @@ test('supplier confirmation action persists confirmed lifecycle fields', async (
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         description: 'Hotel stay',
         serviceType: 'HOTEL',
         operationType: 'HOTEL',
@@ -513,7 +513,7 @@ test('supplier confirmation action persists confirmed lifecycle fields', async (
         confirmationRequestedAt: new Date('2026-05-20T00:00:00.000Z'),
         confirmationConfirmedAt: null,
         supplier: { id: 'supplier-1', name: 'Hotel Supplier', email: 'hotel@example.com' },
-        booking: { id: 'booking-1', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
+        booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
       }),
       update: async ({ data }: any) => {
         updatedData = data;
@@ -561,7 +561,7 @@ test('supplier confirmation queues group operational services by service type', 
       findMany: async () => [
         {
           id: 'hotel-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           description: 'Hotel',
           serviceType: 'HOTEL',
           operationType: 'HOTEL',
@@ -577,11 +577,11 @@ test('supplier confirmation queues group operational services by service type', 
           lastSupplierContactAt: nowPastDue,
           reconfirmationRequired: true,
           reconfirmationDueAt: nowPastDue,
-          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+          booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
         },
         {
           id: 'transport-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           description: 'Transfer',
           serviceType: 'TRANSPORT',
           operationType: 'TRANSPORT',
@@ -597,11 +597,11 @@ test('supplier confirmation queues group operational services by service type', 
           lastSupplierContactAt: nowPastDue,
           reconfirmationRequired: false,
           reconfirmationDueAt: null,
-          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+          booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
         },
         {
           id: 'activity-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           description: 'Excursion',
           serviceType: 'ACTIVITY',
           operationType: 'ACTIVITY',
@@ -617,7 +617,7 @@ test('supplier confirmation queues group operational services by service type', 
           lastSupplierContactAt: nowPastDue,
           reconfirmationRequired: false,
           reconfirmationDueAt: null,
-          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+          booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
         },
       ],
     },
@@ -640,7 +640,7 @@ test('supplier reconfirmation action marks service requested with due date', asy
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         description: 'Excursion',
         serviceType: 'ACTIVITY',
         operationType: 'ACTIVITY',
@@ -668,7 +668,7 @@ test('supplier reconfirmation action marks service requested with due date', asy
         confirmationRequestedAt: new Date('2026-05-20T00:00:00.000Z'),
         confirmationConfirmedAt: new Date('2026-05-21T00:00:00.000Z'),
         supplier: { id: 'supplier-1', name: 'Activity Supplier', email: 'activity@example.com' },
-        booking: { id: 'booking-1', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
+        booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
       }),
       update: async ({ data }: any) => {
         updatedData = data;
@@ -712,7 +712,7 @@ test('hotel reservation operations persist room block release alternatives and r
     bookingService: {
       findFirst: async () => ({
         id: 'hotel-service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         serviceType: 'SERVICE',
         operationType: 'HOTEL',
         serviceDate: new Date('2026-06-01T00:00:00.000Z'),
@@ -791,7 +791,7 @@ test('operations dashboard refinement builds department queues KPIs alerts and h
   const services = [
     {
       id: 'hotel-1',
-      bookingId: 'booking-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
       description: 'Hotel stay',
       serviceType: 'HOTEL',
       operationType: 'HOTEL',
@@ -810,11 +810,11 @@ test('operations dashboard refinement builds department queues KPIs alerts and h
       reconfirmationRequired: true,
       reconfirmationDueAt: dashboardDate,
       vouchers: [],
-      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+      booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
     },
     {
       id: 'transport-1',
-      bookingId: 'booking-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
       description: 'Airport transfer',
       serviceType: 'TRANSPORT',
       operationType: 'TRANSPORT',
@@ -833,7 +833,7 @@ test('operations dashboard refinement builds department queues KPIs alerts and h
       reconfirmationRequired: false,
       reconfirmationDueAt: null,
       vouchers: [],
-      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+      booking: { id: '11111111-1111-4111-8111-111111111111', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
     },
     {
       id: 'activity-1',
@@ -861,7 +861,7 @@ test('operations dashboard refinement builds department queues KPIs alerts and h
   ];
   const bookings = [
     {
-      id: 'booking-1',
+      id: '11111111-1111-4111-8111-111111111111',
       bookingRef: 'BK-1',
       status: 'in_progress',
       startDate: dashboardDate,
@@ -933,7 +933,7 @@ test('operations dashboard refinement builds department queues KPIs alerts and h
   assert.equal(dashboard.alerts.occupancyMismatch.count, 1);
   assert.equal(dashboard.alerts.missingTimings.count, 1);
   assert.equal(dashboard.alerts.unassignedPassengers.count, 1);
-  assert.equal(dashboard.readinessHeatmap.items.find((item: any) => item.id === 'booking-1').health, 'red');
+  assert.equal(dashboard.readinessHeatmap.items.find((item: any) => item.id === '11111111-1111-4111-8111-111111111111').health, 'red');
   assert.equal(dashboard.readinessHeatmap.items.find((item: any) => item.id === 'booking-2').health, 'green');
   assert.ok(serviceWheres.some((where) => JSON.stringify(where).includes('TRANSPORT')));
   assert.ok(serviceWheres.some((where) => JSON.stringify(where).includes('Transport')));
@@ -947,7 +947,7 @@ test('cancel booking sets status to cancelled without deleting related data', as
       callback({
         booking: {
           findFirst: async () => ({
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             status: 'confirmed',
             services: [
               {
@@ -966,7 +966,7 @@ test('cancel booking sets status to cancelled without deleting related data', as
           }),
           update: async ({ data }: any) => {
             updateData = data;
-            return { id: 'booking-1', status: data.status };
+            return { id: '11111111-1111-4111-8111-111111111111', status: data.status };
           },
         },
         bookingAuditLog: {
@@ -978,7 +978,7 @@ test('cancel booking sets status to cancelled without deleting related data', as
       }),
   });
 
-  const booking = await service.cancelBooking('booking-1', {
+  const booking = await service.cancelBooking('11111111-1111-4111-8111-111111111111', {
     actor: { userId: 'user-1', label: 'Admin' },
     companyActor: { companyId: 'company-1' },
   });
@@ -999,12 +999,12 @@ test('old booking amendments cannot be updated', async () => {
       callback({
         booking: {
           findFirst: async ({ where }: any) => {
-            if (where?.amendedFromId === 'booking-1') {
-              return { id: 'booking-2', amendedFromId: 'booking-1' };
+            if (where?.amendedFromId === '11111111-1111-4111-8111-111111111111') {
+              return { id: 'booking-2', amendedFromId: '11111111-1111-4111-8111-111111111111' };
             }
 
             return {
-              id: 'booking-1',
+              id: '11111111-1111-4111-8111-111111111111',
               status: 'confirmed',
               services: [
                 {
@@ -1028,7 +1028,7 @@ test('old booking amendments cannot be updated', async () => {
 
   await assert.rejects(
     () =>
-      service.updateBookingStatus('booking-1', {
+      service.updateBookingStatus('11111111-1111-4111-8111-111111111111', {
         status: 'completed',
         note: 'Complete booking',
         companyActor: { companyId: 'company-1' },
@@ -1045,7 +1045,7 @@ test('amend booking clones days passengers and services without changing origina
   const createdRoomingAssignments: any[] = [];
   const createdServices: any[] = [];
   const original = {
-    id: 'booking-1',
+    id: '11111111-1111-4111-8111-111111111111',
     quoteId: 'quote-1',
     acceptedVersionId: 'version-1',
     clientCompanyId: 'client-company-1',
@@ -1146,7 +1146,7 @@ test('amend booking clones days passengers and services without changing origina
     $transaction: async (callback: any) =>
       callback({
         booking: {
-          findFirst: async ({ where }: any) => (where?.id === 'booking-1' ? original : null),
+          findFirst: async ({ where }: any) => (where?.id === '11111111-1111-4111-8111-111111111111' ? original : null),
           create: async ({ data }: any) => {
             createdBookingData = data;
             return { id: 'booking-2', ...data };
@@ -1188,7 +1188,7 @@ test('amend booking clones days passengers and services without changing origina
       }),
   });
 
-  const amended = await service.amendBooking('booking-1', {
+  const amended = await service.amendBooking('11111111-1111-4111-8111-111111111111', {
     actor: { userId: 'user-1', label: 'Admin' },
     companyActor: { companyId: 'dmc-company-1' },
   });
@@ -1197,7 +1197,7 @@ test('amend booking clones days passengers and services without changing origina
   assert.equal(createdBookingData.quoteId, 'quote-1');
   assert.equal(createdBookingData.clientCompanyId, 'client-company-1');
   assert.equal(createdBookingData.amendmentNumber, 2);
-  assert.equal(createdBookingData.amendedFromId, 'booking-1');
+  assert.equal(createdBookingData.amendedFromId, '11111111-1111-4111-8111-111111111111');
   assert.equal(createdDays.length, 1);
   assert.equal(createdPassengers.length, 1);
   assert.equal(createdRoomingEntries.length, 1);
@@ -1216,7 +1216,7 @@ test('passenger manifest validates required fields and dates', async () => {
     $transaction: async (callback: any) =>
       callback({
         booking: {
-          findFirst: async () => ({ id: 'booking-1' }),
+          findFirst: async () => ({ id: '11111111-1111-4111-8111-111111111111' }),
         },
         bookingPassenger: {
           create: async ({ data }: any) => ({ id: 'passenger-1', ...data }),
@@ -1230,7 +1230,7 @@ test('passenger manifest validates required fields and dates', async () => {
 
   await assert.rejects(
     () =>
-      service.createPassenger('booking-1', {
+      service.createPassenger('11111111-1111-4111-8111-111111111111', {
         fullName: 'Lina Haddad',
         nationality: '',
         passportNumber: 'P1234567',
@@ -1241,7 +1241,7 @@ test('passenger manifest validates required fields and dates', async () => {
   );
   await assert.rejects(
     () =>
-      service.createPassenger('booking-1', {
+      service.createPassenger('11111111-1111-4111-8111-111111111111', {
         fullName: 'Lina Haddad',
         nationality: 'Jordanian',
         passportNumber: 'P1234567',
@@ -1257,7 +1257,7 @@ test('booking detail masks passport number in list response', async () => {
   const service = createService({
     booking: {
       findFirst: async () => ({
-        id: 'booking-1',
+        id: '11111111-1111-4111-8111-111111111111',
         quoteId: 'quote-1',
         adults: 1,
         children: 0,
@@ -1305,7 +1305,7 @@ test('booking detail masks passport number in list response', async () => {
     },
   });
 
-  const booking = await service.findOne('booking-1', { companyId: 'company-1' });
+  const booking = await service.findOne('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' });
 
   assert.equal(booking.passengers[0].passportNumber, undefined);
   assert.equal(booking.passengers[0].passportNumberMasked, '****4567');
@@ -1315,7 +1315,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
   const service = createService({
     booking: {
       findFirst: async () => ({
-        id: 'booking-1',
+        id: '11111111-1111-4111-8111-111111111111',
         bookingRef: 'BK-2026-0001',
         startDate: new Date('2026-10-01T00:00:00.000Z'),
         snapshotJson: { title: 'Jordan Operations Booking' },
@@ -1384,7 +1384,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
     },
   });
 
-  const exported = await service.exportPassengerManifestExcel('booking-1', { companyId: 'company-1' });
+  const exported = await service.exportPassengerManifestExcel('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' });
   const workbook = XLSX.read(exported.buffer);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Passenger Manifest']) as any[];
   const roomingRows = XLSX.utils.sheet_to_json(workbook.Sheets['Rooming List']) as any[];
@@ -1436,7 +1436,7 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
     $transaction: async (callback: any) =>
       callback({
         booking: {
-          findFirst: async () => ({ id: 'booking-1', roomingEntries: [] }),
+          findFirst: async () => ({ id: '11111111-1111-4111-8111-111111111111', roomingEntries: [] }),
         },
         bookingRoomingEntry: {
           create: async ({ data }: any) => {
@@ -1445,7 +1445,7 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
           },
           findFirst: async () => ({
             id: 'room-1',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             roomType: 'TWN',
             occupancy: 'double',
             sortOrder: 1,
@@ -1455,7 +1455,7 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
         bookingPassenger: {
           findFirst: async ({ where }: any) => ({
             id: where.id,
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             firstName: where.id === 'passenger-2' ? 'Omar' : 'Nadia',
             lastName: 'Haddad',
             title: null,
@@ -1475,7 +1475,7 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
       }),
   });
 
-  const roomingEntry = await service.createRoomingEntry('booking-1', {
+  const roomingEntry = await service.createRoomingEntry('11111111-1111-4111-8111-111111111111', {
     roomType: 'TWN',
     occupancy: 'TWN',
     companyActor: { companyId: 'company-1' },
@@ -1483,10 +1483,10 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
 
   assert.equal(roomingEntry.occupancy, 'double');
   assert.equal(createdRoomingEntries[0].roomType, 'TWN');
-  const assignment = await service.assignPassengerToRoom('booking-1', 'room-1', 'passenger-2', undefined, { companyId: 'company-1' });
+  const assignment = await service.assignPassengerToRoom('11111111-1111-4111-8111-111111111111', 'room-1', 'passenger-2', undefined, { companyId: 'company-1' });
   assert.equal(assignment.bookingPassengerId, 'passenger-2');
   await assert.rejects(
-    () => service.assignPassengerToRoom('booking-1', 'room-1', 'passenger-3', undefined, { companyId: 'company-1' }),
+    () => service.assignPassengerToRoom('11111111-1111-4111-8111-111111111111', 'room-1', 'passenger-3', undefined, { companyId: 'company-1' }),
     /occupancy limit/i,
   );
   assert.equal(createdAssignments.length, 1);
@@ -1502,7 +1502,7 @@ test('rooming reassignment moves a passenger from the previous room assignment',
         bookingRoomingEntry: {
           findFirst: async () => ({
             id: 'room-2',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             roomType: 'DBL',
             occupancy: 'double',
             sortOrder: 2,
@@ -1512,7 +1512,7 @@ test('rooming reassignment moves a passenger from the previous room assignment',
         bookingPassenger: {
           findFirst: async () => ({
             id: 'passenger-1',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             firstName: 'Lina',
             lastName: 'Haddad',
             title: null,
@@ -1538,7 +1538,7 @@ test('rooming reassignment moves a passenger from the previous room assignment',
       }),
   });
 
-  const assignment = await service.assignPassengerToRoom('booking-1', 'room-2', 'passenger-1', undefined, { companyId: 'company-1' });
+  const assignment = await service.assignPassengerToRoom('11111111-1111-4111-8111-111111111111', 'room-2', 'passenger-1', undefined, { companyId: 'company-1' });
 
   assert.deepEqual(deletedAssignments, ['assignment-old']);
   assert.equal(createdAssignments[0].bookingRoomingEntryId, 'room-2');
@@ -1560,7 +1560,7 @@ test('rooming auto-assign pairs unassigned passengers into twins with an odd sin
             // assertLatestBookingAmendment probes by amendedFromId — no newer amendment.
             if (where?.amendedFromId !== undefined) return null;
             return {
-              id: 'booking-1',
+              id: '11111111-1111-4111-8111-111111111111',
               passengers: [
                 { id: 'p1', firstName: 'Lead', lastName: 'A', title: null, isLead: true, roomingAssignments: [{ id: 'a1' }] },
                 { id: 'p2', firstName: 'Solo', lastName: 'B', title: null, isLead: false, roomingAssignments: [] },
@@ -1593,7 +1593,7 @@ test('rooming auto-assign pairs unassigned passengers into twins with an odd sin
       }),
   });
 
-  const result = await service.autoAssignRooming('booking-1', { companyActor: { companyId: 'company-1' } });
+  const result = await service.autoAssignRooming('11111111-1111-4111-8111-111111111111', { companyActor: { companyId: 'company-1' } });
 
   assert.equal(result.roomsCreated, 2);
   assert.equal(result.passengersAssigned, 3);
@@ -1619,7 +1619,7 @@ test('rooming auto-assign is a no-op when every passenger already has a room', a
           findFirst: async ({ where }: any) => {
             if (where?.amendedFromId !== undefined) return null;
             return {
-              id: 'booking-1',
+              id: '11111111-1111-4111-8111-111111111111',
               passengers: [
                 { id: 'p1', firstName: 'A', lastName: 'A', title: null, isLead: true, roomingAssignments: [{ id: 'a1' }] },
               ],
@@ -1638,7 +1638,7 @@ test('rooming auto-assign is a no-op when every passenger already has a room', a
       }),
   });
 
-  const result = await service.autoAssignRooming('booking-1', { companyActor: { companyId: 'company-1' } });
+  const result = await service.autoAssignRooming('11111111-1111-4111-8111-111111111111', { companyActor: { companyId: 'company-1' } });
   assert.equal(result.roomsCreated, 0);
   assert.equal(result.passengersAssigned, 0);
   assert.equal(createdRoomingEntries.length, 0);
@@ -1648,7 +1648,7 @@ test('findPortalBooking surfaces the DMC emergency contact and strips raw brand 
   const service = createService({
     booking: {
       findFirst: async () => ({
-        id: 'booking-1',
+        id: '11111111-1111-4111-8111-111111111111',
         bookingRef: 'BK-1',
         adults: 2,
         children: 0,
@@ -1665,7 +1665,7 @@ test('findPortalBooking surfaces the DMC emergency contact and strips raw brand 
     },
   });
 
-  const portal: any = await service.findPortalBooking('booking-1', 'token-123');
+  const portal: any = await service.findPortalBooking('11111111-1111-4111-8111-111111111111', 'token-123');
   assert.equal(portal.emergencyContact.name, 'Aventus Travel');
   assert.equal(portal.emergencyContact.phone, '+962790000000');
   assert.equal(portal.emergencyContact.email, 'ops@aventus.jo');
@@ -1678,13 +1678,13 @@ test('findPortalBooking surfaces the DMC emergency contact and strips raw brand 
 test('findPortalBooking returns null without a token and null emergency contact when no brand data', async () => {
   const noToken = await createService({
     booking: { findFirst: async () => { throw new Error('should not query without token'); } },
-  }).findPortalBooking('booking-1', '');
+  }).findPortalBooking('11111111-1111-4111-8111-111111111111', '');
   assert.equal(noToken, null);
 
   const service = createService({
     booking: {
       findFirst: async () => ({
-        id: 'booking-1',
+        id: '11111111-1111-4111-8111-111111111111',
         bookingRef: 'BK-1',
         adults: 1,
         children: 0,
@@ -1697,7 +1697,7 @@ test('findPortalBooking returns null without a token and null emergency contact 
       }),
     },
   });
-  const portal: any = await service.findPortalBooking('booking-1', 'token-123');
+  const portal: any = await service.findPortalBooking('11111111-1111-4111-8111-111111111111', 'token-123');
   assert.equal(portal.emergencyContact, null);
 });
 
@@ -1709,7 +1709,7 @@ test('rooming unassignment removes the passenger assignment', async () => {
         bookingRoomingEntry: {
           findFirst: async () => ({
             id: 'room-1',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             roomType: 'SGL',
             occupancy: 'single',
             sortOrder: 1,
@@ -1718,7 +1718,7 @@ test('rooming unassignment removes the passenger assignment', async () => {
         bookingPassenger: {
           findFirst: async () => ({
             id: 'passenger-1',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             firstName: 'Lina',
             lastName: 'Haddad',
             title: null,
@@ -1737,7 +1737,7 @@ test('rooming unassignment removes the passenger assignment', async () => {
       }),
   });
 
-  const result = await service.unassignPassengerFromRoom('booking-1', 'room-1', 'passenger-1', undefined, { companyId: 'company-1' });
+  const result = await service.unassignPassengerFromRoom('11111111-1111-4111-8111-111111111111', 'room-1', 'passenger-1', undefined, { companyId: 'company-1' });
 
   assert.deepEqual(deletedAssignments, ['assignment-1']);
   assert.equal(result.bookingPassengerId, 'passenger-1');
@@ -1750,7 +1750,7 @@ test('room deletion rules require assignments to be removed first', async () => 
         bookingRoomingEntry: {
           findFirst: async () => ({
             id: 'room-1',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             roomType: 'DBL',
             occupancy: 'double',
             notes: null,
@@ -1765,7 +1765,7 @@ test('room deletion rules require assignments to be removed first', async () => 
   });
 
   await assert.rejects(
-    () => service.deleteRoomingEntry('booking-1', 'room-1', undefined, { companyId: 'company-1' }),
+    () => service.deleteRoomingEntry('11111111-1111-4111-8111-111111111111', 'room-1', undefined, { companyId: 'company-1' }),
     /Unassign passengers from the room before deleting/i,
   );
 });
@@ -1890,9 +1890,9 @@ test('DMC admin booking access requires auth without single-client company filte
     },
   });
 
-  await service.findOne('booking-1', { companyId: 'company-a' });
+  await service.findOne('11111111-1111-4111-8111-111111111111', { companyId: 'company-a' });
 
-  assert.equal(whereClause.id, 'booking-1');
+  assert.equal(whereClause.id, '11111111-1111-4111-8111-111111111111');
   assert.equal(whereClause.quote, undefined);
 });
 
@@ -1901,11 +1901,11 @@ test('booking detail loads selected client booking when actor company differs', 
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        if (where?.id === 'booking-1') {
+        if (where?.id === '11111111-1111-4111-8111-111111111111') {
           baseWhere = where;
         }
         return {
-          id: 'booking-1',
+          id: '11111111-1111-4111-8111-111111111111',
           quoteId: 'quote-1',
           clientCompanyId: 'client-company-1',
           adults: 2,
@@ -1947,11 +1947,11 @@ test('booking detail loads selected client booking when actor company differs', 
     },
   });
 
-  const booking = await service.findOne('booking-1', { companyId: 'dmc-company-1' });
+  const booking = await service.findOne('11111111-1111-4111-8111-111111111111', { companyId: 'dmc-company-1' });
 
-  assert.equal(baseWhere.id, 'booking-1');
+  assert.equal(baseWhere.id, '11111111-1111-4111-8111-111111111111');
   assert.equal(baseWhere.quote, undefined);
-  assert.equal(booking.id, 'booking-1');
+  assert.equal(booking.id, '11111111-1111-4111-8111-111111111111');
   assert.equal(booking.clientCompanyId, 'client-company-1');
 });
 
@@ -1965,7 +1965,7 @@ test('booking passenger service manifest and voucher flows work for selected cli
         booking: {
           findFirst: async ({ where }: any) => {
             seenWheres.push(where);
-            return { id: 'booking-1', clientCompanyId: 'client-company-1' };
+            return { id: '11111111-1111-4111-8111-111111111111', clientCompanyId: 'client-company-1' };
           },
         },
         bookingPassenger: {
@@ -1979,7 +1979,7 @@ test('booking passenger service manifest and voucher flows work for selected cli
           },
           update: async ({ data }: any) => {
             updatedRows.push(data);
-            return { id: 'service-1', bookingId: 'booking-1', ...data };
+            return { id: 'service-1', bookingId: '11111111-1111-4111-8111-111111111111', ...data };
           },
         },
         voucher: {
@@ -1994,9 +1994,9 @@ test('booking passenger service manifest and voucher flows work for selected cli
         seenWheres.push(where);
         return {
           id: 'day-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           date: new Date('2026-10-01T00:00:00.000Z'),
-          booking: { id: 'booking-1', clientCompanyId: 'client-company-1', adults: 2, children: 1 },
+          booking: { id: '11111111-1111-4111-8111-111111111111', clientCompanyId: 'client-company-1', adults: 2, children: 1 },
         };
       },
     },
@@ -2006,7 +2006,7 @@ test('booking passenger service manifest and voucher flows work for selected cli
         seenWheres.push(where);
         return {
           id: 'service-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           bookingDayId: 'day-1',
           serviceType: 'GUIDE',
           operationType: 'GUIDE',
@@ -2029,7 +2029,7 @@ test('booking passenger service manifest and voucher flows work for selected cli
       findFirst: async ({ where }: any) => {
         seenWheres.push(where);
         return {
-          id: 'booking-1',
+          id: '11111111-1111-4111-8111-111111111111',
           bookingRef: 'BK-DMC-1',
           clientCompanyId: 'client-company-1',
           startDate: new Date('2026-10-01T00:00:00.000Z'),
@@ -2049,39 +2049,39 @@ test('booking passenger service manifest and voucher flows work for selected cli
     },
   });
 
-  const passenger = await service.createPassenger('booking-1', {
+  const passenger = await service.createPassenger('11111111-1111-4111-8111-111111111111', {
     fullName: 'Lina Haddad',
     nationality: 'Jordanian',
     passportNumber: 'P1234567',
     passportExpiryDate: '2030-01-01',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const createdService = await service.createBookingService('booking-1', 'day-1', {
+  const createdService = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'GUIDE',
     supplierId: 'supplier-1',
     assignedTo: 'Guide Lina',
     status: 'REQUESTED',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const updatedService = await service.updateBookingService('booking-1', 'day-1', 'service-1', {
+  const updatedService = await service.updateBookingService('11111111-1111-4111-8111-111111111111', 'day-1', 'service-1', {
     type: 'GUIDE',
     supplierId: 'supplier-1',
     assignedTo: 'Guide Lina Updated',
     status: 'CONFIRMED',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const manifest = await service.exportPassengerManifestExcel('booking-1', { companyId: 'dmc-company-1' });
-  const voucher = await service.createServiceVoucher('booking-1', 'service-1', {
+  const manifest = await service.exportPassengerManifestExcel('11111111-1111-4111-8111-111111111111', { companyId: 'dmc-company-1' });
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-1', {
     companyActor: { companyId: 'dmc-company-1' },
   });
 
-  assert.equal(passenger.bookingId, 'booking-1');
+  assert.equal(passenger.bookingId, '11111111-1111-4111-8111-111111111111');
   assert.equal(createdService.supplierId, 'supplier-1');
   assert.equal(updatedService.assignedTo, 'Guide Lina Updated');
-  assert.equal(voucher.bookingId, 'booking-1');
+  assert.equal(voucher.bookingId, '11111111-1111-4111-8111-111111111111');
   assert.equal(manifest.fileName, 'bk-dmc-1-passenger-manifest.xlsx');
   assert.ok(seenWheres.every((where) => !where.quote?.clientCompanyId && !where.booking?.quote?.clientCompanyId));
-  assert.ok(createdRows.some((row) => row.bookingId === 'booking-1' && row.supplierId === 'supplier-1'));
+  assert.ok(createdRows.some((row) => row.bookingId === '11111111-1111-4111-8111-111111111111' && row.supplierId === 'supplier-1'));
   assert.ok(updatedRows.some((row) => row.supplierId === 'supplier-1'));
 });
 
@@ -2093,7 +2093,7 @@ test('GET /bookings returns list with post-migration-safe booking service select
         findManyArgs = args;
         return [
           {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             quoteId: 'quote-1',
             bookingRef: 'BK-1',
             status: 'confirmed',
@@ -2110,7 +2110,7 @@ test('GET /bookings returns list with post-migration-safe booking service select
             services: [
               {
                 id: 'service-1',
-                bookingId: 'booking-1',
+                bookingId: '11111111-1111-4111-8111-111111111111',
                 serviceType: 'Transport',
                 serviceDate: null,
                 startTime: null,
@@ -2138,7 +2138,7 @@ test('GET /bookings returns list with post-migration-safe booking service select
   assert.equal(findManyArgs.select.services.select.operationType, undefined);
   assert.equal(findManyArgs.select.services.select.bookingDayId, undefined);
   assert.equal(bookings.length, 1);
-  assert.equal(bookings[0].id, 'booking-1');
+  assert.equal(bookings[0].id, '11111111-1111-4111-8111-111111111111');
   assert.equal(bookings[0].sourceQuoteId, 'quote-1');
   assert.equal(bookings[0].finance.quotedTotalSell, 130);
   assert.equal(bookings[0].operations.badge.breakdown.pendingConfirmations, 1);
@@ -2162,7 +2162,7 @@ test('GET /bookings falls back to base booking list when optional relations fail
           }
           return [
             {
-              id: 'booking-1',
+              id: '11111111-1111-4111-8111-111111111111',
               quoteId: 'quote-1',
               bookingRef: 'BK-1',
               status: 'confirmed',
@@ -2204,9 +2204,9 @@ test('GET /bookings/:id returns base booking when optional relation loads fail a
     const service = createService({
       booking: {
         findFirst: async ({ where }: any) => {
-          assert.equal(where.id, 'booking-1');
+          assert.equal(where.id, '11111111-1111-4111-8111-111111111111');
           return {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             quoteId: 'quote-1',
             acceptedVersionId: 'version-1',
             bookingRef: 'BK-1',
@@ -2272,9 +2272,9 @@ test('GET /bookings/:id returns base booking when optional relation loads fail a
     });
     const controller = new BookingsController(service, {});
 
-    const booking = await controller.findOne('booking-1', { companyId: 'company-1' } as any);
+    const booking = await controller.findOne('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' } as any);
 
-    assert.equal(booking.id, 'booking-1');
+    assert.equal(booking.id, '11111111-1111-4111-8111-111111111111');
     assert.deepEqual(booking.passengers, []);
     assert.deepEqual(booking.days, []);
     assert.deepEqual(booking.services, []);
@@ -2288,7 +2288,7 @@ test('GET /bookings/:id returns base booking when optional relation loads fail a
 
 test('operations dashboard returns scoped counts and missing passenger alerts', async () => {
   const bookingBase = {
-    id: 'booking-1',
+    id: '11111111-1111-4111-8111-111111111111',
     bookingRef: 'BK-1',
     status: 'draft',
     startDate: new Date('2026-04-27T08:00:00.000Z'),
@@ -2312,7 +2312,7 @@ test('operations dashboard returns scoped counts and missing passenger alerts', 
   };
   const transportService = {
     id: 'service-1',
-    bookingId: 'booking-1',
+    bookingId: '11111111-1111-4111-8111-111111111111',
     description: 'Airport transfer',
     serviceType: 'TRANSPORT',
     operationType: 'TRANSPORT',
@@ -2425,7 +2425,7 @@ test('booking operation service status update persists execution status safely',
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         operationStatus: 'PENDING',
         status: 'pending',
       }),
@@ -2480,7 +2480,7 @@ test('operations mobile data returns days services masked passports and no prici
         whereClause = where;
         return [
           {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             bookingRef: 'BK-1',
             status: 'in_progress',
             startDate: new Date('2026-04-27T00:00:00.000Z'),
@@ -2562,10 +2562,10 @@ test('guarantee letter and mobile operations stay client-safe for DMC-managed bo
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.id, 'booking-1');
+        assert.equal(where.id, '11111111-1111-4111-8111-111111111111');
         assert.equal(where.quote, undefined);
         return {
-          id: 'booking-1',
+          id: '11111111-1111-4111-8111-111111111111',
           bookingRef: 'BK-DMC-GL',
           clientCompanyId: 'client-company-1',
           pax: 2,
@@ -2616,7 +2616,7 @@ test('guarantee letter and mobile operations stay client-safe for DMC-managed bo
         assert.equal(where.quote, undefined);
         return [
           {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             bookingRef: 'BK-DMC-MOB',
             clientCompanyId: 'client-company-1',
             status: 'in_progress',
@@ -2663,7 +2663,7 @@ test('guarantee letter and mobile operations stay client-safe for DMC-managed bo
   });
   const lines = capturePdfText(service);
 
-  const guarantee = await service.generateGuaranteeLetterPdf('booking-1', { companyId: 'dmc-company-1' });
+  const guarantee = await service.generateGuaranteeLetterPdf('11111111-1111-4111-8111-111111111111', { companyId: 'dmc-company-1' });
   const mobile = await service.getOperationsMobileData({ actor: { companyId: 'dmc-company-1' }, date: '2026-10-01' });
   const mobileText = JSON.stringify(mobile);
   const guaranteeText = lines.join('\n');
@@ -2679,26 +2679,26 @@ test('guarantee letter and mobile operations stay client-safe for DMC-managed bo
 test('booking-side DMC operations still require authentication context', async () => {
   const service = createService({
     booking: {
-      findFirst: async () => ({ id: 'booking-1' }),
+      findFirst: async () => ({ id: '11111111-1111-4111-8111-111111111111' }),
     },
     bookingDay: {
-      findFirst: async () => ({ id: 'day-1', bookingId: 'booking-1', booking: { adults: 1, children: 0 } }),
+      findFirst: async () => ({ id: 'day-1', bookingId: '11111111-1111-4111-8111-111111111111', booking: { adults: 1, children: 0 } }),
     },
     bookingService: {
-      findFirst: async () => ({ id: 'service-1', bookingId: 'booking-1' }),
+      findFirst: async () => ({ id: 'service-1', bookingId: '11111111-1111-4111-8111-111111111111' }),
     },
     $transaction: async (callback: any) =>
       callback({
         booking: {
-          findFirst: async () => ({ id: 'booking-1' }),
+          findFirst: async () => ({ id: '11111111-1111-4111-8111-111111111111' }),
         },
       }),
   });
 
-  await assert.rejects(() => service.findOne('booking-1', undefined), /Company context is required/);
+  await assert.rejects(() => service.findOne('11111111-1111-4111-8111-111111111111', undefined), /Company context is required/);
   await assert.rejects(
     () =>
-      service.createPassenger('booking-1', {
+      service.createPassenger('11111111-1111-4111-8111-111111111111', {
         fullName: 'Lina Haddad',
         nationality: 'Jordanian',
         passportNumber: 'P1234567',
@@ -2707,20 +2707,20 @@ test('booking-side DMC operations still require authentication context', async (
     /Company context is required/,
   );
   await assert.rejects(
-    () => service.createBookingService('booking-1', 'day-1', { type: 'GUIDE', assignedTo: 'Guide Lina' }),
+    () => service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', { type: 'GUIDE', assignedTo: 'Guide Lina' }),
     /Company context is required/,
   );
-  await assert.rejects(() => service.exportPassengerManifestExcel('booking-1', undefined), /Company context is required/);
-  await assert.rejects(() => service.generateGuaranteeLetterPdf('booking-1', undefined), /Company context is required/);
+  await assert.rejects(() => service.exportPassengerManifestExcel('11111111-1111-4111-8111-111111111111', undefined), /Company context is required/);
+  await assert.rejects(() => service.generateGuaranteeLetterPdf('11111111-1111-4111-8111-111111111111', undefined), /Company context is required/);
   await assert.rejects(
-    () => service.createServiceVoucher('booking-1', 'service-1', { companyActor: undefined }),
+    () => service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-1', { companyActor: undefined }),
     /Company context is required/,
   );
 });
 
 test('end-to-end operations workflow keeps field data scoped and client-safe', async () => {
   const booking: any = {
-    id: 'booking-1',
+    id: '11111111-1111-4111-8111-111111111111',
     bookingRef: 'BK-E2E-1',
     status: 'in_progress',
     startDate: new Date('2026-04-27T00:00:00.000Z'),
@@ -2749,8 +2749,8 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     },
     passengers: [],
     days: [
-      { id: 'day-1', bookingId: 'booking-1', dayNumber: 1, date: new Date('2026-04-27T00:00:00.000Z'), title: 'Arrival', notes: 'Meet and assist', status: 'PENDING', services: [] },
-      { id: 'day-2', bookingId: 'booking-1', dayNumber: 2, date: new Date('2026-04-28T00:00:00.000Z'), title: 'Petra', notes: 'Full-day touring', status: 'PENDING', services: [] },
+      { id: 'day-1', bookingId: '11111111-1111-4111-8111-111111111111', dayNumber: 1, date: new Date('2026-04-27T00:00:00.000Z'), title: 'Arrival', notes: 'Meet and assist', status: 'PENDING', services: [] },
+      { id: 'day-2', bookingId: '11111111-1111-4111-8111-111111111111', dayNumber: 2, date: new Date('2026-04-28T00:00:00.000Z'), title: 'Petra', notes: 'Full-day touring', status: 'PENDING', services: [] },
     ],
     services: [],
   };
@@ -2880,7 +2880,7 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
   const service = createService(prisma);
   const pdfLines = capturePdfText(service);
 
-  await service.createPassenger('booking-1', {
+  await service.createPassenger('11111111-1111-4111-8111-111111111111', {
     fullName: 'Lina Haddad',
     firstName: 'Lina',
     lastName: 'Haddad',
@@ -2891,7 +2891,7 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     entryPoint: 'QAIA',
     companyActor: { companyId: 'company-1' },
   });
-  await service.createPassenger('booking-1', {
+  await service.createPassenger('11111111-1111-4111-8111-111111111111', {
     fullName: 'Omar Haddad',
     firstName: 'Omar',
     lastName: 'Haddad',
@@ -2901,12 +2901,12 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     companyActor: { companyId: 'company-1' },
   });
 
-  const manifest = await service.exportPassengerManifestExcel('booking-1', { companyId: 'company-1' });
+  const manifest = await service.exportPassengerManifestExcel('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' });
   const manifestRows = XLSX.utils.sheet_to_json(XLSX.read(manifest.buffer).Sheets['Passenger Manifest']) as any[];
   assert.equal(manifestRows.length, 2);
   assert.equal(manifestRows[0]['Passport Number'], 'P1234567');
 
-  const transport = await service.createBookingService('booking-1', 'day-1', {
+  const transport = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'TRANSPORT',
     referenceId: 'route-1',
     vehicleId: 'vehicle-1',
@@ -2917,7 +2917,7 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     notes: 'Airport pickup',
     companyActor: { companyId: 'company-1' },
   });
-  const guide = await service.createBookingService('booking-1', 'day-2', {
+  const guide = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-2', {
     type: 'GUIDE',
     supplierId: 'supplier-guide',
     assignedTo: 'Nadia Guide',
@@ -2926,7 +2926,7 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     notes: 'English guide',
     companyActor: { companyId: 'company-1' },
   });
-  const hotel = await service.createBookingService('booking-1', 'day-1', {
+  const hotel = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'HOTEL',
     supplierId: 'supplier-hotel',
     confirmationNumber: 'PETRA-123',
@@ -2935,12 +2935,12 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
     companyActor: { companyId: 'company-1' },
   });
 
-  await service.createServiceVoucher('booking-1', transport.id, { companyActor: { companyId: 'company-1' } });
-  await service.createServiceVoucher('booking-1', guide.id, { companyActor: { companyId: 'company-1' } });
-  await service.createServiceVoucher('booking-1', hotel.id, { companyActor: { companyId: 'company-1' } });
+  await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', transport.id, { companyActor: { companyId: 'company-1' } });
+  await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', guide.id, { companyActor: { companyId: 'company-1' } });
+  await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', hotel.id, { companyActor: { companyId: 'company-1' } });
   assert.equal(vouchers.length, 3);
 
-  const guarantee = await service.generateGuaranteeLetterPdf('booking-1', { companyId: 'company-1' });
+  const guarantee = await service.generateGuaranteeLetterPdf('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' });
   assert.match(guarantee.toString(), /Lina Haddad/);
   assert.match(guarantee.toString(), /Omar Driver/);
   assert.doesNotMatch(guarantee.toString(), /margin|totalSell|totalCost/i);
@@ -2958,7 +2958,7 @@ test('end-to-end operations workflow keeps field data scoped and client-safe', a
   assert.doesNotMatch(JSON.stringify(mobile), /P1234567|P7654321|totalCost|totalSell|margin/i);
   assert.equal(mobile.bookings[0].days[0].services[0].vouchers[0].id, 'voucher-1');
 
-  const updatedTransport = await service.updateBookingService('booking-1', 'day-1', transport.id, {
+  const updatedTransport = await service.updateBookingService('11111111-1111-4111-8111-111111111111', 'day-1', transport.id, {
     type: 'TRANSPORT',
     referenceId: 'route-1',
     vehicleId: 'vehicle-1',
@@ -3032,9 +3032,9 @@ test('create update and delete booking service assignment rows', async () => {
         assert.equal(where.booking?.quote, undefined);
         return {
           id: 'day-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           date: new Date('2026-10-01T00:00:00.000Z'),
-          booking: { id: 'booking-1', adults: 2, children: 1 },
+          booking: { id: '11111111-1111-4111-8111-111111111111', adults: 2, children: 1 },
         };
       },
     },
@@ -3042,7 +3042,7 @@ test('create update and delete booking service assignment rows', async () => {
       count: async () => 0,
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         bookingDayId: 'day-1',
         operationType: 'GUIDE',
         operationStatus: 'PENDING',
@@ -3085,7 +3085,7 @@ test('create update and delete booking service assignment rows', async () => {
       }),
   });
 
-  const created = await service.createBookingService('booking-1', 'day-1', {
+  const created = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'GUIDE',
     assignedTo: 'Samir',
     guidePhone: '+962700000000',
@@ -3102,7 +3102,7 @@ test('create update and delete booking service assignment rows', async () => {
   assert.equal(created.confirmationStatus, 'requested');
   assert.equal(createdRows[0].participantCount, 3);
 
-  const updated = await service.updateBookingService('booking-1', 'day-1', 'service-1', {
+  const updated = await service.updateBookingService('11111111-1111-4111-8111-111111111111', 'day-1', 'service-1', {
     type: 'GUIDE',
     assignedTo: 'Nadia',
     status: 'CONFIRMED',
@@ -3116,7 +3116,7 @@ test('create update and delete booking service assignment rows', async () => {
   assert.equal(updated.status, 'confirmed');
   assert.equal(updatedRows[0].confirmationStatus, 'confirmed');
 
-  const deleted = await service.deleteBookingService('booking-1', 'day-1', 'service-1', undefined, { companyId: 'company-1' });
+  const deleted = await service.deleteBookingService('11111111-1111-4111-8111-111111111111', 'day-1', 'service-1', undefined, { companyId: 'company-1' });
 
   assert.deepEqual(deleted, { id: 'service-1', deleted: true });
   assert.deepEqual(deletedIds, ['service-1']);
@@ -3127,9 +3127,9 @@ test('transport booking service uses route and vehicle catalog and saves vehicle
     bookingDay: {
       findFirst: async () => ({
         id: 'day-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         date: new Date('2026-10-01T00:00:00.000Z'),
-        booking: { id: 'booking-1', adults: 2, children: 0 },
+        booking: { id: '11111111-1111-4111-8111-111111111111', adults: 2, children: 0 },
       }),
     },
     bookingService: {
@@ -3164,7 +3164,7 @@ test('transport booking service uses route and vehicle catalog and saves vehicle
       }),
   });
 
-  const created = await service.createBookingService('booking-1', 'day-1', {
+  const created = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'TRANSPORT',
     referenceId: 'route-1',
     vehicleId: 'vehicle-1',
@@ -3199,10 +3199,10 @@ test('DMC booking operations assign transport supplier and voucher across actor 
         seen.bookingDay.push(where);
         return {
           id: 'day-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           date: new Date('2026-10-01T00:00:00.000Z'),
           booking: {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             clientCompanyId: 'client-company-1',
             adults: 3,
             children: 1,
@@ -3219,7 +3219,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
         seen.bookingService.push(where);
         return {
           id: 'service-transport',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           bookingDayId: 'day-1',
           serviceType: 'TRANSPORT',
           operationType: 'TRANSPORT',
@@ -3276,7 +3276,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
             updatedRows.push(data);
             return {
               id: 'service-transport',
-              bookingId: 'booking-1',
+              bookingId: '11111111-1111-4111-8111-111111111111',
               bookingDayId: 'day-1',
               ...data,
               supplier: { id: data.supplierId, name: data.supplierName },
@@ -3307,7 +3307,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
       }),
   });
 
-  const created = await service.createBookingService('booking-1', 'day-1', {
+  const created = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'TRANSPORT',
     referenceId: 'route-1',
     vehicleId: 'vehicle-1',
@@ -3316,7 +3316,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
     status: 'REQUESTED',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const updated = await service.updateBookingService('booking-1', 'day-1', 'service-transport', {
+  const updated = await service.updateBookingService('11111111-1111-4111-8111-111111111111', 'day-1', 'service-transport', {
     type: 'TRANSPORT',
     referenceId: 'route-1',
     vehicleId: 'vehicle-1',
@@ -3325,7 +3325,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
     status: 'CONFIRMED',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const voucher = await service.createServiceVoucher('booking-1', 'service-transport', {
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-transport', {
     companyActor: { companyId: 'dmc-company-1' },
   });
 
@@ -3335,7 +3335,7 @@ test('DMC booking operations assign transport supplier and voucher across actor 
   assert.equal(voucher.supplierId, 'supplier-company-1');
   assert.equal(voucher.type, 'TRANSPORT');
   assert.equal(vouchers.length, 1);
-  assert.ok(createdRows.some((row) => row.bookingId === 'booking-1' && row.supplierId === 'supplier-company-1'));
+  assert.ok(createdRows.some((row) => row.bookingId === '11111111-1111-4111-8111-111111111111' && row.supplierId === 'supplier-company-1'));
   assert.ok(updatedRows.some((row) => row.supplierId === 'supplier-company-1'));
 
   const allWheres = Object.values(seen).flat();
@@ -3355,12 +3355,12 @@ test('DMC booking operations assign activity service and generate supplier vouch
         seenWheres.push(where);
         return {
           id: 'day-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           dayNumber: 1,
           title: 'Petra touring',
           date: new Date('2026-10-01T00:00:00.000Z'),
           booking: {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             clientCompanyId: 'client-company-1',
             adults: 3,
             children: 1,
@@ -3374,7 +3374,7 @@ test('DMC booking operations assign activity service and generate supplier vouch
         seenWheres.push(where);
         return {
           id: 'service-activity',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           bookingDayId: 'day-1',
           serviceType: 'ACTIVITY',
           operationType: 'ACTIVITY',
@@ -3414,7 +3414,7 @@ test('DMC booking operations assign activity service and generate supplier vouch
           }),
           update: async ({ data }: any) => ({
             id: 'service-activity',
-            bookingId: 'booking-1',
+            bookingId: '11111111-1111-4111-8111-111111111111',
             bookingDayId: 'day-1',
             ...data,
             supplier: { id: data.supplierId, name: data.supplierName },
@@ -3443,14 +3443,14 @@ test('DMC booking operations assign activity service and generate supplier vouch
       }),
   });
 
-  const created = await service.createBookingService('booking-1', 'day-1', {
+  const created = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'ACTIVITY',
     supplierId: 'supplier-activity-1',
     notes: 'Petra by Night',
     status: 'CONFIRMED',
     companyActor: { companyId: 'dmc-company-1' },
   });
-  const voucher = await service.createServiceVoucher('booking-1', 'service-activity', {
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-activity', {
     companyActor: { companyId: 'dmc-company-1' },
   });
 
@@ -3469,7 +3469,7 @@ test('dining operation rows generate a RESTAURANT voucher (not a generic SERVICE
     bookingService: {
       findFirst: async () => ({
         id: 'service-dining',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         bookingDayId: 'day-1',
         serviceType: 'DINING',
         operationType: 'DINING',
@@ -3513,7 +3513,7 @@ test('dining operation rows generate a RESTAURANT voucher (not a generic SERVICE
       }),
   });
 
-  const voucher = await service.createServiceVoucher('booking-1', 'service-dining', {
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-dining', {
     companyActor: { companyId: 'dmc-company-1' },
   });
 
@@ -3527,16 +3527,16 @@ test('hotel confirmation and external package operations services persist constr
     bookingDay: {
       findFirst: async () => ({
         id: 'day-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         date: new Date('2026-10-01T00:00:00.000Z'),
-        booking: { id: 'booking-1', adults: 2, children: 0 },
+        booking: { id: '11111111-1111-4111-8111-111111111111', adults: 2, children: 0 },
       }),
     },
     bookingService: {
       count: async () => 0,
       findFirst: async () => ({
         id: 'service-external',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         bookingDayId: 'day-1',
         operationType: 'EXTERNAL_PACKAGE',
         operationStatus: 'PENDING',
@@ -3563,7 +3563,7 @@ test('hotel confirmation and external package operations services persist constr
       }),
   });
 
-  const hotel = await service.createBookingService('booking-1', 'day-1', {
+  const hotel = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'HOTEL',
     supplierId: 'supplier-hotel',
     confirmationNumber: 'CN-7788',
@@ -3575,7 +3575,7 @@ test('hotel confirmation and external package operations services persist constr
   assert.equal(hotel.supplierId, 'supplier-hotel');
   assert.equal(hotel.confirmationNumber, 'CN-7788');
 
-  const external = await service.createBookingService('booking-1', 'day-1', {
+  const external = await service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
     type: 'EXTERNAL_PACKAGE',
     supplierId: 'should-be-ignored',
     assignedTo: 'should be ignored',
@@ -3590,7 +3590,7 @@ test('hotel confirmation and external package operations services persist constr
 
   await assert.rejects(
     () =>
-      service.updateBookingService('booking-1', 'day-1', 'service-external', {
+      service.updateBookingService('11111111-1111-4111-8111-111111111111', 'day-1', 'service-external', {
         type: 'TRANSPORT',
         companyActor: { companyId: 'company-1' },
       }),
@@ -3610,7 +3610,7 @@ test('booking operation service status validation keeps booking-day lookup DMC s
 
   await assert.rejects(
     () =>
-      service.createBookingService('booking-1', 'day-1', {
+      service.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
         type: 'GUIDE',
         assignedTo: 'Samir',
         status: 'BROKEN',
@@ -3623,16 +3623,16 @@ test('booking operation service status validation keeps booking-day lookup DMC s
     bookingDay: {
       findFirst: async () => ({
         id: 'day-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         date: null,
-        booking: { id: 'booking-1', adults: 1, children: 0 },
+        booking: { id: '11111111-1111-4111-8111-111111111111', adults: 1, children: 0 },
       }),
     },
   });
 
   await assert.rejects(
     () =>
-      validationService.createBookingService('booking-1', 'day-1', {
+      validationService.createBookingService('11111111-1111-4111-8111-111111111111', 'day-1', {
         type: 'GUIDE',
         assignedTo: 'Samir',
         status: 'BROKEN',
@@ -3646,10 +3646,10 @@ test('guarantee letter PDF contains booking passenger transport and guide data w
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.id, 'booking-1');
+        assert.equal(where.id, '11111111-1111-4111-8111-111111111111');
         assert.equal(where.quote, undefined);
         return {
-          id: 'booking-1',
+          id: '11111111-1111-4111-8111-111111111111',
           bookingRef: 'BK-GL-001',
           pax: 2,
           adults: 2,
@@ -3710,7 +3710,7 @@ test('guarantee letter PDF contains booking passenger transport and guide data w
   });
   capturePdfText(service as any);
 
-  const buffer = await service.generateGuaranteeLetterPdf('booking-1', { companyId: 'company-1' });
+  const buffer = await service.generateGuaranteeLetterPdf('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' });
   const text = buffer.toString('utf8');
 
   assert.match(text, /To whom it may concern/);
@@ -3733,7 +3733,7 @@ test('guarantee letter returns not found when booking does not exist', async () 
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.id, 'booking-1');
+        assert.equal(where.id, '11111111-1111-4111-8111-111111111111');
         assert.equal(where.quote, undefined);
         return null;
       },
@@ -3741,7 +3741,7 @@ test('guarantee letter returns not found when booking does not exist', async () 
   });
 
   await assert.rejects(
-    () => service.generateGuaranteeLetterPdf('booking-1', { companyId: 'company-b' }),
+    () => service.generateGuaranteeLetterPdf('11111111-1111-4111-8111-111111111111', { companyId: 'company-b' }),
     /booking not found/i,
   );
 });
@@ -3751,10 +3751,10 @@ test('service voucher generation creates one supplier voucher per transport serv
     bookingService: {
       findFirst: async ({ where }: any) => {
         assert.equal(where.id, 'service-1');
-        assert.equal(where.bookingId, 'booking-1');
+        assert.equal(where.bookingId, '11111111-1111-4111-8111-111111111111');
         return {
           id: 'service-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           operationType: 'TRANSPORT',
           serviceType: 'TRANSPORT',
           supplierId: 'supplier-1',
@@ -3777,7 +3777,7 @@ test('service voucher generation creates one supplier voucher per transport serv
       }),
   });
 
-  const voucher = await service.createServiceVoucher('booking-1', 'service-1', {
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-1', {
     companyActor: { companyId: 'company-1' },
   });
 
@@ -3792,7 +3792,7 @@ test('service voucher generation allows draft vouchers with unresolved supplier 
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         operationType: 'HOTEL',
         serviceType: 'HOTEL',
         supplierId: null,
@@ -3813,7 +3813,7 @@ test('service voucher generation allows draft vouchers with unresolved supplier 
       }),
   });
 
-  const voucher = await service.createServiceVoucher('booking-1', 'service-1', { companyActor: { companyId: 'company-1' } });
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-1', { companyActor: { companyId: 'company-1' } });
 
   assert.equal(voucher.status, 'DRAFT');
   assert.equal(voucher.supplierId, null);
@@ -3824,7 +3824,7 @@ test('excursion service voucher preserves touring route and vehicle context', as
     bookingService: {
       findFirst: async () => ({
         id: 'service-1',
-        bookingId: 'booking-1',
+        bookingId: '11111111-1111-4111-8111-111111111111',
         operationType: 'ACTIVITY',
         serviceType: 'Excursion',
         supplierId: 'supplier-1',
@@ -3864,7 +3864,7 @@ test('excursion service voucher preserves touring route and vehicle context', as
       }),
   });
 
-  const voucher = await service.createServiceVoucher('booking-1', 'service-1', {
+  const voucher = await service.createServiceVoucher('11111111-1111-4111-8111-111111111111', 'service-1', {
     companyActor: { companyId: 'company-1' },
   });
 
@@ -3888,7 +3888,7 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
           notes: 'Meet at arrivals',
           supplier: { name: 'Desert Transport' },
           booking: {
-            id: 'booking-1',
+            id: '11111111-1111-4111-8111-111111111111',
             bookingRef: 'BK-001',
             pax: 3,
             adults: 2,
@@ -3952,7 +3952,7 @@ test('voucher status transitions draft to ready to sent and blocks cross-company
         assert.equal(where.booking?.quote, undefined);
         return {
           id: 'voucher-1',
-          bookingId: 'booking-1',
+          bookingId: '11111111-1111-4111-8111-111111111111',
           bookingServiceId: 'service-1',
           status: 'DRAFT',
           issuedAt: null,
