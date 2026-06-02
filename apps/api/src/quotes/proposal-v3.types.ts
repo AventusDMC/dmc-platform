@@ -62,6 +62,9 @@ export type ProposalV3QuoteItem = {
   hotel?: {
     name: string;
     city?: string | null;
+    cityRecord?: {
+      country?: string | null;
+    } | null;
   } | null;
   contract?: {
     name: string;
@@ -255,6 +258,9 @@ export type ProposalV3Day = {
   title: string;
   summary: string | null;
   overnightLocation: string | null;
+  /** Derived destination country for the day (location metadata; null when
+   *  unresolved). Used to group a multi-country itinerary in the proposal. */
+  country: string | null;
   groups: ProposalV3DayGroup[];
 };
 
