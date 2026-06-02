@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AppAlert } from '../../components/ui';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../lib/operations-timezone';
 
@@ -301,17 +302,9 @@ export default async function RehearsalPage({
           ) : null}
         </>
       ) : (
-        <section
-          style={{
-            background: '#fef3f2',
-            border: '2px solid #f04438',
-            borderRadius: 12,
-            padding: '1rem',
-            marginBottom: '1rem',
-          }}
-        >
-          <strong style={{ color: '#b42318' }}>Could not load scorecard.</strong>
-        </section>
+        <AppAlert tone="danger" style={{ marginBottom: '1rem' }}>
+          <strong>Could not load scorecard.</strong>
+        </AppAlert>
       )}
 
       {/* Scenario picker */}

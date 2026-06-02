@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
+import { AppAlert } from '../../../components/ui';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../../lib/admin-server';
 
 export const dynamic = 'force-dynamic';
@@ -161,43 +162,32 @@ export default async function ScaleSimulationPage({
 
       {/* Clear synthetic data */}
       {hasSynthetic ? (
-        <section
-          style={{
-            background: '#fef3f2',
-            border: '2px solid #f04438',
-            borderRadius: 12,
-            padding: '0.85rem 1rem',
-            marginBottom: '1rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '0.75rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div>
-            <strong style={{ color: '#b42318' }}>{status.syntheticServiceCount} synthetic services are currently in the system.</strong>
-            <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
-              Clear them before applying a new preset, or before going back to real operational work.
-            </p>
+        <AppAlert tone="danger" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div>
+              <strong>{status.syntheticServiceCount} synthetic services are currently in the system.</strong>
+              <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
+                Clear them before applying a new preset, or before going back to real operational work.
+              </p>
+            </div>
+            <form method="POST" action="/api/operations/simulation/scale/clear" style={{ margin: 0 }}>
+              <button
+                type="submit"
+                style={{
+                  background: '#b42318',
+                  color: '#ffffff',
+                  padding: '0.6rem 1rem',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                🧹 Clear synthetic data
+              </button>
+            </form>
           </div>
-          <form method="POST" action="/api/operations/simulation/scale/clear" style={{ margin: 0 }}>
-            <button
-              type="submit"
-              style={{
-                background: '#b42318',
-                color: '#ffffff',
-                padding: '0.6rem 1rem',
-                borderRadius: 8,
-                fontWeight: 700,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              🧹 Clear synthetic data
-            </button>
-          </form>
-        </section>
+        </AppAlert>
       ) : null}
 
       {/* Presets */}

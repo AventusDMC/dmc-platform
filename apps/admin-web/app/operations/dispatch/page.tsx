@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AppAlert } from '../../components/ui';
 import {
   ADMIN_API_BASE_URL,
   adminPageFetchJson,
@@ -1028,37 +1029,28 @@ function renderDispatchBody({
           {/* Resolution Queue — list of ISSUE-state rows ordered oldest-first
               so the most-overdue incident is at the top. Hidden when empty. */}
           {data.execution?.resolutionQueue && data.execution.resolutionQueue.count > 0 ? (
-            <section
-              style={{
-                background: '#fef3f2',
-                border: '2px solid #f04438',
-                borderRadius: 12,
-                padding: '1rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-              }}
-              aria-label="Resolution queue"
-            >
-              <div>
-                <p style={{ margin: 0, color: '#b42318', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                  Resolution Queue · oldest first
-                </p>
-                <h2 style={{ margin: 0, color: '#7a271a' }}>
-                  {data.execution.resolutionQueue.count} incident{data.execution.resolutionQueue.count === 1 ? '' : 's'} need resolution
-                </h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {data.execution.resolutionQueue.rows.slice(0, 10).map((row) => (
-                  <DispatchCard key={`res-${row.serviceId}`} row={row} returnTo={returnTo} />
-                ))}
-                {data.execution.resolutionQueue.count > 10 ? (
-                  <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
-                    + {data.execution.resolutionQueue.count - 10} more in the queue.
+            <AppAlert tone="danger" aria-label="Resolution queue">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <p style={{ margin: 0, color: '#b42318', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Resolution Queue · oldest first
                   </p>
-                ) : null}
+                  <h2 style={{ margin: 0, color: '#7a271a' }}>
+                    {data.execution.resolutionQueue.count} incident{data.execution.resolutionQueue.count === 1 ? '' : 's'} need resolution
+                  </h2>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {data.execution.resolutionQueue.rows.slice(0, 10).map((row) => (
+                    <DispatchCard key={`res-${row.serviceId}`} row={row} returnTo={returnTo} />
+                  ))}
+                  {data.execution.resolutionQueue.count > 10 ? (
+                    <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
+                      + {data.execution.resolutionQueue.count - 10} more in the queue.
+                    </p>
+                  ) : null}
+                </div>
               </div>
-            </section>
+            </AppAlert>
           ) : null}
 
           {/* Live Operations command panel — drawn FIRST because what's
@@ -1070,48 +1062,32 @@ function renderDispatchBody({
 
           {/* Critical Issues — dominant red banner if any */}
           {criticalRows.length > 0 ? (
-            <section
-              style={{
-                background: '#fef3f2',
-                border: '2px solid #f04438',
-                borderRadius: 12,
-                padding: '1rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                <div>
-                  <p style={{ margin: 0, color: '#b42318', fontWeight: 700, letterSpacing: '0.04em', fontSize: '0.78rem', textTransform: 'uppercase' }}>
-                    Critical · resolve first
-                  </p>
-                  <h2 style={{ margin: 0, color: '#7a271a' }}>{criticalRows.length} row{criticalRows.length === 1 ? '' : 's'} blocking dispatch</h2>
+            <AppAlert tone="danger">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                  <div>
+                    <p style={{ margin: 0, color: '#b42318', fontWeight: 700, letterSpacing: '0.04em', fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                      Critical · resolve first
+                    </p>
+                    <h2 style={{ margin: 0, color: '#7a271a' }}>{criticalRows.length} row{criticalRows.length === 1 ? '' : 's'} blocking dispatch</h2>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {criticalRows.slice(0, 10).map((row) => (
+                    <DispatchCard key={`crit-${row.serviceId}`} row={{ ...row, severity: 'CRITICAL' }} returnTo={returnTo} />
+                  ))}
+                  {criticalRows.length > 10 ? (
+                    <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
+                      + {criticalRows.length - 10} more critical rows in the lanes below.
+                    </p>
+                  ) : null}
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {criticalRows.slice(0, 10).map((row) => (
-                  <DispatchCard key={`crit-${row.serviceId}`} row={{ ...row, severity: 'CRITICAL' }} returnTo={returnTo} />
-                ))}
-                {criticalRows.length > 10 ? (
-                  <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
-                    + {criticalRows.length - 10} more critical rows in the lanes below.
-                  </p>
-                ) : null}
-              </div>
-            </section>
+            </AppAlert>
           ) : (
-            <section
-              style={{
-                background: '#f0fdf4',
-                border: '1px solid #12b76a',
-                borderRadius: 12,
-                padding: '0.85rem 1rem',
-                color: '#067647',
-              }}
-            >
+            <AppAlert tone="success">
               <strong>No critical issues blocking dispatch in this window.</strong>
-            </section>
+            </AppAlert>
           )}
 
           {/* View body: timeline-first (default) or lane-based */}
