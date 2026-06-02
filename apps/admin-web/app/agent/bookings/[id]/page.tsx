@@ -12,6 +12,7 @@ type AgentBookingDetail = {
     totalSell: number;
     depositsReceived: number;
     remainingBalance: number;
+    rateMode: 'GROSS' | 'NET';
     commissionPercent: number | null;
     commissionAmount: number | null;
     paymentStatus: string;
@@ -106,6 +107,12 @@ export default async function AgentBookingDetailPage({ params }: AgentBookingPag
           </div>
 
           <section className="quote-client-summary-strip" aria-label="Agent booking financial summary">
+            {booking.finance.rateMode === 'NET' ? (
+              <article className="quote-client-summary-card">
+                <span>Your net rate</span>
+                <strong>{formatMoney(booking.finance.totalSell)}</strong>
+              </article>
+            ) : null}
             <article className="quote-client-summary-card">
               <span>Payment status</span>
               <strong>{booking.finance.paymentStatus}</strong>

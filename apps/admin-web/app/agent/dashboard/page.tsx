@@ -10,6 +10,8 @@ type AgentMe = {
     id: string;
     name: string;
   } | null;
+  rateMode?: 'GROSS' | 'NET';
+  netHandlingPercent?: number | null;
 };
 
 type AgentQuote = {
@@ -169,6 +171,13 @@ export default async function AgentDashboardPage() {
               <p className="detail-copy">Read-only access for assigned quotes, bookings, invoices, vouchers, departures, payment status, and controlled amendment requests.</p>
             </div>
           </div>
+
+          {me.rateMode === 'NET' ? (
+            <p className="detail-copy" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+              <strong>Net rates.</strong> Prices throughout your portal are your net buy rates
+              {me.netHandlingPercent ? ` (cost + ${me.netHandlingPercent}% handling)` : ''}. Add your own margin when quoting your clients.
+            </p>
+          ) : null}
 
           <section className="quote-client-summary-strip" aria-label="Agent summary">
             <article className="quote-client-summary-card">

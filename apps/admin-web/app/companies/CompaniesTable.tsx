@@ -22,6 +22,8 @@ type Company = {
   country: string | null;
   city: string | null;
   agentCommissionPercent?: number | null;
+  agentRateMode?: string | null;
+  agentNetHandlingPercent?: number | null;
   branding?: {
     displayName: string | null;
     logoUrl: string | null;
@@ -124,6 +126,8 @@ export function CompaniesTable({ apiBaseUrl, companies }: CompaniesTableProps) {
                               country: company.country || '',
                               city: company.city || '',
                               agentCommissionPercent: company.agentCommissionPercent ?? null,
+                              agentRateMode: company.agentRateMode ?? 'GROSS',
+                              agentNetHandlingPercent: company.agentNetHandlingPercent ?? null,
                             }}
                           />
                           <BrandingSettingsForm

@@ -8,6 +8,8 @@ type AgentBooking = {
   status: string;
   clientName: string;
   travelStartDate: string | null;
+  totalSell: number;
+  rateMode: 'GROSS' | 'NET';
   commissionPercent: number | null;
   commissionAmount: number | null;
 };
@@ -28,6 +30,8 @@ export default async function AgentBookingsPage() {
   const bookings = await getBookings();
   const hasCommission = bookings.some((booking) => booking.commissionAmount !== null);
   const totalCommission = bookings.reduce((total, booking) => total + (booking.commissionAmount || 0), 0);
+  const isNet = bookings.some((booking) => booking.rateMode === 'NET');
+  const totalNet = bookings.reduce((total, booking) => total + (booking.totalSell || 0), 0);
 
   return (
     <main className="page">
@@ -41,6 +45,12 @@ export default async function AgentBookingsPage() {
             </div>
           </div>
 
+          {isNet ? (
+            <p className="detail-copy" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+              Net rates: amounts shown are your net buy rates. Add your own margin when quoting your clients.
+            </p>
+          ) : null}
+
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -49,6 +59,7 @@ export default async function AgentBookingsPage() {
                   <th>Client</th>
                   <th>Travel Date</th>
                   <th>Status</th>
+                  {isNet ? <th className="money-cell">Net rate</th> : null}
                   {hasCommission ? <th className="money-cell">Commission</th> : null}
                   <th>Actions</th>
                 </tr>
@@ -63,6 +74,7 @@ export default async function AgentBookingsPage() {
                     <td>{booking.clientName}</td>
                     <td>{formatDate(booking.travelStartDate)}</td>
                     <td><span className="status-badge">{booking.status}</span></td>
+                    {isNet ? <td className="money-cell">{formatMoney(booking.totalSell)}</td> : null}
                     {hasCommission ? (
                       <td className="money-cell">{booking.commissionAmount !== null ? formatMoney(booking.commissionAmount) : '—'}</td>
                     ) : null}
@@ -72,7 +84,16 @@ export default async function AgentBookingsPage() {
                   </tr>
                 ))}
               </tbody>
-              {hasCommission ? (
+              {isNet ? (
+                <tfoot>
+                  <tr>
+                    <td colSpan={4}><strong>Total net</strong></td>
+                    <td className="money-cell"><strong>{formatMoney(totalNet)}</strong></td>
+                    {hasCommission ? <td /> : null}
+                    <td />
+                  </tr>
+                </tfoot>
+              ) : hasCommission ? (
                 <tfoot>
                   <tr>
                     <td colSpan={4}><strong>Total commission</strong></td>

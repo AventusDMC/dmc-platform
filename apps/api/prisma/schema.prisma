@@ -252,6 +252,13 @@ model Company {
   // value of its bookings. NULL = no commission configured. Set by admins on
   // the company record; surfaced read-only in the agent portal.
   agentCommissionPercent Float?
+  // Agent Portal — rate mode. GROSS (default): agent sees the published sell
+  // price and earns agentCommissionPercent. NET: agent sees a net buy rate
+  // (cost + agentNetHandlingPercent) instead of gross, and earns no
+  // commission (they add their own margin downstream). Display-layer only —
+  // the quote pricing engine is unchanged.
+  agentRateMode          String  @default("GROSS")
+  agentNetHandlingPercent Float?
   activities   Activity[]
   branding     CompanyBranding?
   contacts     Contact[]

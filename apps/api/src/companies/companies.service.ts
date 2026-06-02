@@ -13,6 +13,8 @@ type CreateCompanyInput = {
   country?: string;
   city?: string;
   agentCommissionPercent?: number | null;
+  agentRateMode?: string | null;
+  agentNetHandlingPercent?: number | null;
 };
 
 type UpdateCompanyInput = {
@@ -24,6 +26,8 @@ type UpdateCompanyInput = {
   country?: string;
   city?: string;
   agentCommissionPercent?: number | null;
+  agentRateMode?: string | null;
+  agentNetHandlingPercent?: number | null;
 };
 
 type UpdateBrandingInput = {
@@ -194,6 +198,8 @@ export class CompaniesService {
         country: normalizeOptionalString(data.country),
         city: normalizeOptionalString(data.city),
         agentCommissionPercent: this.normalizeCommissionPercent(data.agentCommissionPercent),
+        agentRateMode: this.normalizeAgentRateMode(data.agentRateMode),
+        agentNetHandlingPercent: this.normalizeCommissionPercent(data.agentNetHandlingPercent),
       },
       include: {
         branding: true,
@@ -220,11 +226,18 @@ export class CompaniesService {
         country: normalizeOptionalString(data.country),
         city: normalizeOptionalString(data.city),
         agentCommissionPercent: this.normalizeCommissionPercent(data.agentCommissionPercent),
+        agentRateMode: this.normalizeAgentRateMode(data.agentRateMode),
+        agentNetHandlingPercent: this.normalizeCommissionPercent(data.agentNetHandlingPercent),
       },
       include: {
         branding: true,
       },
     });
+  }
+
+  // GROSS (default) or NET; anything unrecognized falls back to GROSS.
+  private normalizeAgentRateMode(value: string | null | undefined): 'GROSS' | 'NET' {
+    return String(value || 'GROSS').toUpperCase() === 'NET' ? 'NET' : 'GROSS';
   }
 
   // Commission % clamped to 0–100; null clears it. Mirrors the lossy

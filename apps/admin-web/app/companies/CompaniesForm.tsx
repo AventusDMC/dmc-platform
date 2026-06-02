@@ -20,6 +20,8 @@ type CompaniesFormProps = {
     country: string;
     city: string;
     agentCommissionPercent?: number | null;
+    agentRateMode?: string | null;
+    agentNetHandlingPercent?: number | null;
   };
 };
 
@@ -34,6 +36,12 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
   const [city, setCity] = useState(initialValues?.city || '');
   const [agentCommissionPercent, setAgentCommissionPercent] = useState(
     initialValues?.agentCommissionPercent != null ? String(initialValues.agentCommissionPercent) : '',
+  );
+  const [agentRateMode, setAgentRateMode] = useState(
+    String(initialValues?.agentRateMode || 'GROSS').toUpperCase() === 'NET' ? 'NET' : 'GROSS',
+  );
+  const [agentNetHandlingPercent, setAgentNetHandlingPercent] = useState(
+    initialValues?.agentNetHandlingPercent != null ? String(initialValues.agentNetHandlingPercent) : '',
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +64,8 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         country: country.trim() || undefined,
         city: city.trim() || undefined,
         agentCommissionPercent: agentCommissionPercent.trim() === '' ? null : Number(agentCommissionPercent),
+        agentRateMode,
+        agentNetHandlingPercent: agentNetHandlingPercent.trim() === '' ? null : Number(agentNetHandlingPercent),
       };
       const response = await fetch(`${apiBaseUrl}/companies${companyId ? `/${companyId}` : ''}`, {
         method: companyId ? 'PATCH' : 'POST',
@@ -80,6 +90,8 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         setCountry('');
         setCity('');
         setAgentCommissionPercent('');
+        setAgentRateMode('GROSS');
+        setAgentNetHandlingPercent('');
         window.location.reload();
         return;
       }
@@ -138,18 +150,43 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
       <CountryCityFields country={country} city={city} onCountryChange={setCountry} onCityChange={setCity} />
 
       <label>
-        Agent commission %
-        <input
-          value={agentCommissionPercent}
-          onChange={(event) => setAgentCommissionPercent(event.target.value)}
-          type="number"
-          min="0"
-          max="100"
-          step="0.5"
-          placeholder="e.g. 10 — leave blank for none"
-        />
-        <span className="form-helper">Commission this agent company earns on the sell value of its bookings. Shown in the agent portal.</span>
+        Agent rate mode
+        <select value={agentRateMode} onChange={(event) => setAgentRateMode(event.target.value)}>
+          <option value="GROSS">Gross — sees published price, earns commission</option>
+          <option value="NET">Net — sees net buy rate (cost + handling %), no commission</option>
+        </select>
+        <span className="form-helper">How this agent sees pricing in their portal. Net agents add their own margin downstream.</span>
       </label>
+
+      {agentRateMode === 'NET' ? (
+        <label>
+          Net handling %
+          <input
+            value={agentNetHandlingPercent}
+            onChange={(event) => setAgentNetHandlingPercent(event.target.value)}
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            placeholder="e.g. 12 — added to cost to form the net rate"
+          />
+          <span className="form-helper">The net price this agent sees = your cost + this %. Blank = your raw cost.</span>
+        </label>
+      ) : (
+        <label>
+          Agent commission %
+          <input
+            value={agentCommissionPercent}
+            onChange={(event) => setAgentCommissionPercent(event.target.value)}
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            placeholder="e.g. 10 — leave blank for none"
+          />
+          <span className="form-helper">Commission this agent company earns on the sell value of its bookings. Shown in the agent portal.</span>
+        </label>
+      )}
 
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Create company')}
