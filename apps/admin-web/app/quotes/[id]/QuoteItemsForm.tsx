@@ -610,13 +610,22 @@ function getTransportCandidateCapacity(candidate: Pick<TransportPricingCandidate
   return candidate.unitCapacity && candidate.unitCapacity > 0 ? candidate.unitCapacity : candidate.vehicle.maxPax;
 }
 
+// VIP / VVIP vehicles are luxury tiers — the operator quotes standard coaches by
+// default, so standard vehicles are suggested ahead of luxury ones.
+function isLuxuryTransportVehicle(vehicleName: string) {
+  return /vip|vvip|luxury|limo/i.test(vehicleName || '');
+}
+
 function compareTransportCandidates(left: TransportPricingCandidate, right: TransportPricingCandidate, pax: number) {
   const leftCapacity = getTransportCandidateCapacity(left);
   const rightCapacity = getTransportCandidateCapacity(right);
   const leftSupplier = formatSupplierName(left.supplier?.name, left.supplier?.id);
   const rightSupplier = formatSupplierName(right.supplier?.name, right.supplier?.id);
+  const leftLuxury = isLuxuryTransportVehicle(left.vehicle.name);
+  const rightLuxury = isLuxuryTransportVehicle(right.vehicle.name);
 
   return (
+    (leftLuxury === rightLuxury ? 0 : leftLuxury ? 1 : -1) ||
     leftCapacity - rightCapacity ||
     left.price - right.price ||
     leftSupplier.localeCompare(rightSupplier) ||
