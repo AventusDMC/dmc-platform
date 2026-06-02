@@ -30,6 +30,7 @@ export async function POST(
   const visaStatus = String(formData.get('visaStatus') || '').trim();
   const emergencyContactName = String(formData.get('emergencyContactName') || '').trim();
   const emergencyContactPhone = String(formData.get('emergencyContactPhone') || '').trim();
+  const dietaryNotes = String(formData.get('dietaryNotes') || '').trim();
   const roomingNotes = String(formData.get('roomingNotes') || '').trim();
   const notes = String(formData.get('notes') || '').trim();
   const isLead = formData.get('isLead') === 'on';
@@ -57,6 +58,7 @@ export async function POST(
       visaStatus: visaStatus || null,
       emergencyContactName: emergencyContactName || null,
       emergencyContactPhone: emergencyContactPhone || null,
+      dietaryNotes: dietaryNotes || null,
       roomingNotes: roomingNotes || null,
       notes: notes || null,
       isLead,

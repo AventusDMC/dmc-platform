@@ -3667,6 +3667,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       visaStatus?: string | null;
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
+      dietaryNotes?: string | null;
       roomingNotes?: string | null;
       notes?: string | null;
       isLead?: boolean;
@@ -3750,6 +3751,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       visaStatus?: string | null;
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
+      dietaryNotes?: string | null;
       roomingNotes?: string | null;
       notes?: string | null;
       isLead?: boolean;
@@ -3783,6 +3785,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           visaStatus: true,
           emergencyContactName: true,
           emergencyContactPhone: true,
+          dietaryNotes: true,
           roomingNotes: true,
           notes: true,
           isLead: true,
@@ -3824,6 +3827,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             data.emergencyContactName === undefined ? passenger.emergencyContactName : data.emergencyContactName,
           emergencyContactPhone:
             data.emergencyContactPhone === undefined ? passenger.emergencyContactPhone : data.emergencyContactPhone,
+          dietaryNotes: data.dietaryNotes === undefined ? passenger.dietaryNotes : data.dietaryNotes,
           roomingNotes: data.roomingNotes === undefined ? passenger.roomingNotes : data.roomingNotes,
         },
         true,
@@ -9016,6 +9020,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       visaStatus?: string | null;
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
+      dietaryNotes?: string | null;
       roomingNotes?: string | null;
     },
     required: boolean,
@@ -9047,6 +9052,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       visaStatus: this.normalizeOptionalText(values.visaStatus),
       emergencyContactName: this.normalizeOptionalText(values.emergencyContactName),
       emergencyContactPhone: this.normalizeOptionalText(values.emergencyContactPhone),
+      dietaryNotes: this.normalizeOptionalText(values.dietaryNotes),
       roomingNotes: this.normalizeOptionalText(values.roomingNotes),
     };
   }
@@ -10557,6 +10563,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       'Room Assignment': roomLabelForPassenger(passenger),
       'Emergency Contact': passenger.emergencyContactName || '',
       'Emergency Phone': passenger.emergencyContactPhone || '',
+      'Dietary': passenger.dietaryNotes || '',
       'Emergency Notes': passenger.notes || passenger.roomingNotes || '',
     }));
     const roomingRows = (booking.roomingEntries || []).map((entry: any) => {
@@ -10595,6 +10602,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       'Visa Status': passenger.visaStatus || '',
       'Emergency Contact': passenger.emergencyContactName || '',
       'Emergency Phone': passenger.emergencyContactPhone || '',
+      'Dietary': passenger.dietaryNotes || '',
       'Emergency Notes': passenger.notes || '',
       'Rooming Notes': passenger.roomingNotes || '',
     }));
@@ -10615,6 +10623,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         'Room Assignment',
         'Emergency Contact',
         'Emergency Phone',
+        'Dietary',
         'Emergency Notes',
       ],
     });
@@ -10634,6 +10643,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       { wch: 20 },
       { wch: 22 },
       { wch: 18 },
+      { wch: 22 },
       { wch: 28 },
     ];
     const workbook = XLSX.utils.book_new();
@@ -10645,7 +10655,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       header: ['Booking Name', 'Full Name', 'Nationality', 'Passport Number', 'Arrival Date', 'Arrival Flight', 'Entry Point', 'Departure Date', 'Departure Flight'],
     }), 'Arrival Departure');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(operationalRows, {
-      header: ['Full Name', 'Gender', 'DOB', 'Nationality', 'Passport Number', 'Room Assignment', 'Arrival Flight', 'Departure Flight', 'Visa Status', 'Emergency Contact', 'Emergency Phone', 'Emergency Notes', 'Rooming Notes'],
+      header: ['Full Name', 'Gender', 'DOB', 'Nationality', 'Passport Number', 'Room Assignment', 'Arrival Flight', 'Departure Flight', 'Visa Status', 'Emergency Contact', 'Emergency Phone', 'Dietary', 'Emergency Notes', 'Rooming Notes'],
     }), 'Operational Manifest');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
     const safeRef = String(booking.bookingRef || 'booking').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

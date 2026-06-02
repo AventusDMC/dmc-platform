@@ -1338,6 +1338,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
             visaStatus: 'Approved',
             emergencyContactName: 'Omar Haddad',
             emergencyContactPhone: '+962700000000',
+            dietaryNotes: 'Vegetarian, no nuts',
             notes: 'Emergency contact: Omar +962700000000',
             roomingNotes: 'Near elevator',
             roomingAssignments: [
@@ -1406,6 +1407,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
     'Room Assignment',
     'Emergency Contact',
     'Emergency Phone',
+    'Dietary',
     'Emergency Notes',
   ]);
   assert.equal(rows[0]['Booking Name'], 'Jordan Operations Booking');
@@ -1416,11 +1418,13 @@ test('passenger manifest Excel export contains government-ready columns and valu
   assert.equal(rows[0]['Room Assignment'], 'TWN');
   assert.equal(rows[0]['Emergency Contact'], 'Omar Haddad');
   assert.equal(rows[0]['Emergency Phone'], '+962700000000');
+  assert.equal(rows[0]['Dietary'], 'Vegetarian, no nuts');
   assert.equal(roomingRows[0].Capacity, 2);
   assert.equal(roomingRows[0].Status, 'Matched');
   assert.equal(movementRows[0]['Departure Flight'], 'RJ102');
   assert.equal(operationalRows[0]['Emergency Contact'], 'Omar Haddad');
   assert.equal(operationalRows[0]['Emergency Phone'], '+962700000000');
+  assert.equal(operationalRows[0]['Dietary'], 'Vegetarian, no nuts');
   assert.equal(operationalRows[0]['Emergency Notes'], 'Emergency contact: Omar +962700000000');
 });
 
