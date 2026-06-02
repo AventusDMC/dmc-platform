@@ -868,7 +868,12 @@ describe('transport catalog supplier rate-card UX', () => {
       'Save Rate Card',
     ]);
 
-    assert.equal(tableSource.includes("function handleSaveManualRateCard() {\n    setError('');\n    setSuccessMessage('');\n\n    if (!manualRateCardCanSave"), true);
+    // Normalize line endings so this exact-body assertion is robust on CRLF
+    // (Windows) checkouts as well as LF (CI).
+    assert.equal(
+      tableSource.replace(/\r\n/g, '\n').includes("function handleSaveManualRateCard() {\n    setError('');\n    setSuccessMessage('');\n\n    if (!manualRateCardCanSave"),
+      true,
+    );
   });
 
   it('uses catalog dropdowns for supplier rate-card vehicle type and route fields', () => {

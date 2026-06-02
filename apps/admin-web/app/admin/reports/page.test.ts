@@ -94,7 +94,10 @@ test('alerts API proxy route exists', () => {
 test('finance navigation includes summary link under Finance', () => {
   const navSource = readFileSync(new URL('../../admin-nav.ts', import.meta.url), 'utf8');
 
-  assert.match(navSource, /label: 'Finance Summary'/);
+  // The Finance group exposes the reports/summary page; its label is 'Reports'
+  // (renamed from 'Finance Summary'). Assert the link exists via its stable href
+  // plus the current label.
+  assert.match(navSource, /label: 'Reports'/);
   assert.match(navSource, /href: '\/admin\/reports'/);
 });
 
