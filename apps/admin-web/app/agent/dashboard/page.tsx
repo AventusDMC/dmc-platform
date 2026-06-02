@@ -246,6 +246,7 @@ export default async function AgentDashboardPage() {
               <p className="eyebrow">Quick Links</p>
               <h2>Workspace</h2>
               <div className="table-action-row">
+                <Link href="/agent/analytics" className="secondary-button">Analytics</Link>
                 <Link href="/agent/quotes" className="secondary-button">Quotes</Link>
                 <Link href="/agent/bookings" className="secondary-button">Bookings</Link>
                 <Link href="/agent/invoices" className="secondary-button">Invoices</Link>

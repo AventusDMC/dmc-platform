@@ -139,6 +139,75 @@ export class AgentService {
     return this.mapAgentBookingDetail(booking, commissionPercent);
   }
 
+  // Agent Portal — performance analytics across the agent's assigned quotes
+  // and bookings: conversion, booking value, commission earned, status mix,
+  // and a 6-month trend. Read-only aggregation over existing data.
+  async getAnalytics(actor: AuthenticatedActor) {
+    const [quotes, bookings, commissionPercent] = await Promise.all([
+      this.prisma.quote.findMany({
+        where: this.buildAssignedQuoteWhere(actor),
+        select: { id: true, status: true, totalSell: true, createdAt: true },
+      }),
+      (this.prisma.booking as any).findMany({
+        where: { quote: this.buildAssignedQuoteWhere(actor) },
+        select: { id: true, status: true, createdAt: true, snapshotJson: true, pricingSnapshotJson: true },
+      }),
+      this.resolveAgentCommissionPercent(actor),
+    ]);
+
+    const isCancelled = (status: any) => String(status || '').toLowerCase() === 'cancelled';
+    const bookingSell = (booking: any) => Number(booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0);
+
+    const quoteCount = quotes.length;
+    const activeBookings = (bookings as any[]).filter((booking) => !isCancelled(booking.status));
+    const bookingCount = activeBookings.length;
+    const cancelledBookings = (bookings as any[]).length - bookingCount;
+    const conversionRate = quoteCount > 0 ? Number(((bookingCount / quoteCount) * 100).toFixed(1)) : 0;
+
+    const totalBookingValue = Number(activeBookings.reduce((total, booking) => total + bookingSell(booking), 0).toFixed(2));
+    const avgBookingValue = bookingCount > 0 ? Number((totalBookingValue / bookingCount).toFixed(2)) : 0;
+    const totalCommission =
+      commissionPercent !== null ? Number(((totalBookingValue * commissionPercent) / 100).toFixed(2)) : null;
+
+    const statusCounts = new Map<string, number>();
+    for (const booking of bookings as any[]) {
+      const status = String(booking.status || 'unknown');
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+    }
+    const bookingsByStatus = [...statusCounts.entries()]
+      .map(([status, count]) => ({ status, count }))
+      .sort((left, right) => right.count - left.count);
+
+    // 6-month trend keyed by the month the booking was created.
+    const monthly = new Map<string, { bookingCount: number; bookingValue: number }>();
+    for (const booking of activeBookings) {
+      const created = booking.createdAt ? new Date(booking.createdAt) : null;
+      if (!created || Number.isNaN(created.getTime())) continue;
+      const key = `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, '0')}`;
+      const row = monthly.get(key) || { bookingCount: 0, bookingValue: 0 };
+      row.bookingCount += 1;
+      row.bookingValue += bookingSell(booking);
+      monthly.set(key, row);
+    }
+    const monthlyTrend = [...monthly.entries()]
+      .map(([month, value]) => ({ month, bookingCount: value.bookingCount, bookingValue: Number(value.bookingValue.toFixed(2)) }))
+      .sort((left, right) => left.month.localeCompare(right.month))
+      .slice(-6);
+
+    return {
+      quoteCount,
+      bookingCount,
+      cancelledBookings,
+      conversionRate,
+      totalBookingValue,
+      avgBookingValue,
+      commissionPercent,
+      totalCommission,
+      bookingsByStatus,
+      monthlyTrend,
+    };
+  }
+
   async getInvoices(actor: AuthenticatedActor) {
     const invoices = await (this.prisma as any).invoice.findMany({
       where: {

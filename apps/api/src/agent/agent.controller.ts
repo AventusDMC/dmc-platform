@@ -13,6 +13,11 @@ export class AgentController {
     return this.agentService.getMe(actor);
   }
 
+  @Get('analytics')
+  getAnalytics(@Actor() actor: AuthenticatedActor) {
+    return this.agentService.getAnalytics(actor);
+  }
+
   @Get('quotes')
   getQuotes(@Actor() actor: AuthenticatedActor) {
     return this.agentService.getQuotes(actor);
