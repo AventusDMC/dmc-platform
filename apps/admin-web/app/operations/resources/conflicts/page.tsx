@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../../lib/operations-timezone';
+import { STATUS_TONE } from '../../../lib/status-tone';
 
 export const dynamic = 'force-dynamic';
 
@@ -264,12 +265,7 @@ function ConflictCounter({
   value: number;
   tone: 'critical' | 'action' | 'ready';
 }) {
-  const palette: Record<string, { bg: string; border: string; text: string }> = {
-    critical: { bg: '#fef3f2', border: '#f04438', text: '#b42318' },
-    action: { bg: '#fff8eb', border: '#f79009', text: '#b54708' },
-    ready: { bg: '#f0fdf4', border: '#12b76a', text: '#067647' },
-  };
-  const p = value === 0 ? palette.ready : palette[tone];
+  const p = value === 0 ? STATUS_TONE.ready : STATUS_TONE[tone];
   return (
     <div
       style={{
