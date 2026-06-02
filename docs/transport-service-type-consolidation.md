@@ -1,6 +1,9 @@
 # Transport Service-Type Consolidation — Scope
 
-_Status: scoped, not started (Phase 1 dry-run complete). Last updated 2026-06-02._
+_Status: ✅ COMPLETE — Phases 1–4 done 2026-06-02. Transport service types reduced 24 → 13 active
+(11 soft-deactivated); transport resolution unchanged (26/30); import guard prevents recurrence.
+Remaining is optional ops housekeeping: confirm the final canonical list and decide whether to
+ever hard-delete the soft-deactivated rows._
 
 ## Problem
 
@@ -38,7 +41,7 @@ Reference columns counted: `VehicleRate.serviceTypeId`, `TransportPricingRule.tr
 | `Private Transfer Service` (1 rate, 1 rule) | `Private Transfer` | ✅ Phase 2 |
 | `Arrival Transfer` (4 package) | `Airport Transfer` | ✅ Phase 2 |
 | `Stationary` (8 rules) | `Stationary / Waiting` | ✅ Phase 2 |
-| `Day Tour` (2 excursion) | `Half Day` **or** `Daily Full Day` | ⏳ Phase 3 — **semantic, needs ops decision** |
+| `Day Tour` (2 excursion) | `Daily Full Day` | ✅ Phase 3 — per canonical alias map; 2 excursion components repointed |
 
 > **✅ Phase 2 DONE (2026-06-02).** All 4 classifications matched (no semantic risk). For each merge we
 > repointed only the **operational** references (VehicleRate / TransportPricingRule / TouringRoutePricing /
@@ -86,7 +89,7 @@ they're intentionally available (just unused) and must be kept. That leaves **6 
 |---|---|---|---|
 | 1 | ✅ DONE — soft-deactivated the 6 removable dead types (kept Extra Hour/Extra KM core add-ons) via new `isActive` column | — | low (zero refs) |
 | 2 | ✅ DONE — merged Full Day, Private Transfer Service, Arrival Transfer, Stationary into their canonical types (operational refs only; quote items preserved) | — | resolved with no QuoteItem rewrite |
-| 3 | Semantic merges (Day Tour, Excursion Transfer); finalize canonical list | depends on ops | medium |
+| 3 | ✅ DONE — Day Tour → Daily Full Day (per canonical alias map; 2 excursion components, 0 quote items) | — | low |
 | 4 | ✅ DONE — `findOrCreateTransportImportServiceType` (+ matcher) now route through the canonical `normalizeTransportPricingMode` before creating a raw type, so imports reuse canonical types. Locked by `transport-import-service-type-guard.test.ts` | — | low — makes it stick |
 
 ## Decisions needed from ops before Phase 2/3
