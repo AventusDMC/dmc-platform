@@ -194,6 +194,8 @@ type CreateBookingPassengerBody = {
   departureFlight?: string | null;
   entryPoint?: string | null;
   visaStatus?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
   roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
@@ -214,6 +216,8 @@ type UpdateBookingPassengerBody = {
   departureFlight?: string | null;
   entryPoint?: string | null;
   visaStatus?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
   roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
@@ -911,6 +915,8 @@ export class BookingsController {
       departureFlight: body.departureFlight === undefined ? undefined : body.departureFlight || null,
       entryPoint: body.entryPoint === undefined ? undefined : body.entryPoint || null,
       visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
+      emergencyContactName: body.emergencyContactName === undefined ? undefined : body.emergencyContactName || null,
+      emergencyContactPhone: body.emergencyContactPhone === undefined ? undefined : body.emergencyContactPhone || null,
       roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
@@ -942,6 +948,8 @@ export class BookingsController {
       departureFlight: body.departureFlight === undefined ? undefined : body.departureFlight || null,
       entryPoint: body.entryPoint === undefined ? undefined : body.entryPoint || null,
       visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
+      emergencyContactName: body.emergencyContactName === undefined ? undefined : body.emergencyContactName || null,
+      emergencyContactPhone: body.emergencyContactPhone === undefined ? undefined : body.emergencyContactPhone || null,
       roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),

@@ -149,6 +149,8 @@ model BookingPassenger {
   departureFlight      String?
   entryPoint           String?
   visaStatus           String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
   roomingNotes         String?
   hotelCategoryVariant String?
   branchExtension      String?

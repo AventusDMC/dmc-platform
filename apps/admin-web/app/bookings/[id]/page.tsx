@@ -559,6 +559,8 @@ type Booking = {
     departureFlight: string | null;
     entryPoint: string | null;
     visaStatus: string | null;
+    emergencyContactName: string | null;
+    emergencyContactPhone: string | null;
     roomingNotes: string | null;
     isLead: boolean;
     notes: string | null;
@@ -2581,6 +2583,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                               <input type="text" name="arrivalFlight" />
                             </label>
                             <label>
+                              Emergency contact
+                              <input type="text" name="emergencyContactName" placeholder="Next-of-kin name" />
+                            </label>
+                            <label>
+                              Emergency phone
+                              <input type="text" name="emergencyContactPhone" placeholder="Next-of-kin phone" />
+                            </label>
+                            <label>
                               Notes
                               <input type="text" name="notes" placeholder="Special handling or document note" />
                             </label>
@@ -2670,6 +2680,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                         <label>
                                           Visa status
                                           <input type="text" name="visaStatus" defaultValue={passenger.visaStatus || ''} />
+                                        </label>
+                                        <label>
+                                          Emergency contact
+                                          <input type="text" name="emergencyContactName" defaultValue={passenger.emergencyContactName || ''} placeholder="Next-of-kin name" />
+                                        </label>
+                                        <label>
+                                          Emergency phone
+                                          <input type="text" name="emergencyContactPhone" defaultValue={passenger.emergencyContactPhone || ''} placeholder="Next-of-kin phone" />
                                         </label>
                                         <label>
                                           Notes
