@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { deriveDayCountry } from '../quotes/quote-day-country';
 import {
   CreateQuoteItineraryDayDto,
   CreateQuoteItineraryDayItemDto,
@@ -44,7 +45,7 @@ export class QuoteItineraryService {
                     serviceType: true,
                   },
                 },
-                hotel: true,
+                hotel: { include: { cityRecord: true } },
                 contract: true,
                 roomCategory: true,
                 option: true,
@@ -383,7 +384,7 @@ export class QuoteItineraryService {
                     serviceType: true,
                   },
                 },
-                hotel: true,
+                hotel: { include: { cityRecord: true } },
                 contract: true,
                 roomCategory: true,
                 option: true,
@@ -653,6 +654,17 @@ export class QuoteItineraryService {
       dayNumber: day.dayNumber,
       title: day.title,
       notes: day.notes,
+      // Destination country for the builder grouping: a stored manual override
+      // wins, otherwise derive from the day's services (location metadata only,
+      // never pricing). NULL/empty leaves it to "To be confirmed".
+      country:
+        (typeof day.country === 'string' && day.country.trim()) ||
+        deriveDayCountry({
+          items: (day.dayItems || []).map((item: any) => ({
+            hotelCountry: item.quoteService?.hotel?.cityRecord?.country ?? null,
+            externalPackageCountry: item.quoteService?.externalPackageCountry ?? null,
+          })),
+        }),
       sortOrder: day.sortOrder,
       isActive: day.isActive,
       createdAt: day.createdAt,
