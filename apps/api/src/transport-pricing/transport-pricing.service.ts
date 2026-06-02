@@ -173,11 +173,10 @@ export class TransportPricingService {
     }
 
     const route = await this.resolveRouteReference(data);
-    let rule = await this.prisma.transportPricingRule.findFirst({
+    const candidateRules = await this.prisma.transportPricingRule.findMany({
       where: {
         routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
-        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         isActive: true,
         minPax: {
           lte: data.pax,
@@ -192,39 +191,27 @@ export class TransportPricingService {
         transportServiceType: true,
         vehicle: true,
       },
-      orderBy: [
-        {
-          unitCapacity: 'asc',
-        },
-        {
-          baseCost: 'asc',
-        },
-        {
-          vehicleId: 'asc',
-        },
-      ],
+      orderBy: [{ unitCapacity: 'asc' }, { baseCost: 'asc' }, { vehicleId: 'asc' }],
     });
 
-    if (!rule && data.vehicleId) {
-      const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
-      const candidateRules = await this.prisma.transportPricingRule.findMany({
-        where: {
-          routeId: route.id,
-          transportServiceTypeId: data.transportServiceTypeId,
-          isActive: true,
-          minPax: { lte: data.pax },
-          maxPax: { gte: data.pax },
-        },
-        include: {
-          route: true,
-          supplier: true,
-          transportServiceType: true,
-          vehicle: true,
-        },
-        orderBy: [{ unitCapacity: 'asc' }, { baseCost: 'asc' }, { vehicleId: 'asc' }],
-      });
-      rule = candidateRules.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType)) || null;
+    // Narrow to the requested vehicle when one is pinned: the exact vehicle
+    // first, otherwise the same canonical vehicle type.
+    let pool = candidateRules;
+    if (data.vehicleId) {
+      const exact = candidateRules.filter((entry: any) => entry.vehicleId === data.vehicleId);
+      if (exact.length > 0) {
+        pool = exact;
+      } else {
+        const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
+        pool = candidateRules.filter((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType));
+      }
     }
+
+    // Pick the cheapest by FX-normalized TOTAL (baseCost x units), not the
+    // smallest-capacity vehicle. Ordering by unitCapacity and taking the first
+    // used to return e.g. 6 x Mini Van over a single fitting coach that costs
+    // less in total. Mirrors pickCheapestFittingRate on the vehicle-rate path.
+    const rule = this.pickCheapestRuleByTotal(pool, data.pax);
 
     if (!rule) {
       throw new NotFoundException('No matching transport pricing rule found');
@@ -454,6 +441,38 @@ export class TransportPricingService {
       if (candidateUsd < bestUsd - 0.001) return candidate;
       if (candidateUsd > bestUsd + 0.001) return best;
       return (Number(candidate?.maxPax) || 0) < (Number(best?.maxPax) || 0) ? candidate : best;
+    });
+  }
+
+  // Units a rule needs for the given pax (capacity-unit rules multiply; others = 1).
+  private ruleUnitCount(rule: any, pax: number): number {
+    return rule?.pricingMode === 'capacity_unit' && rule?.unitCapacity
+      ? Math.ceil(pax / rule.unitCapacity)
+      : 1;
+  }
+
+  // FX-normalized TOTAL cost (USD) of a rule for the given pax = discounted
+  // baseCost x units. Lets a single fitting coach beat a multi-vehicle split.
+  private ruleTotalUsd(rule: any, pax: number): number {
+    const fx: Record<string, number> = { USD: 1, EUR: 1.08, JOD: 1.41, ILS: 0.27 };
+    const currency = String(rule?.currency || 'USD').trim().toUpperCase();
+    const discounted = Number(rule?.baseCost || 0) * (1 - Number(rule?.discountPercent || 0) / 100);
+    return discounted * this.ruleUnitCount(rule, pax) * (fx[currency] ?? 1);
+  }
+
+  // Among matching rules, the cheapest by FX-normalized TOTAL. Ties prefer fewer
+  // vehicles (a single coach over a split), then the snugger vehicle.
+  private pickCheapestRuleByTotal(rules: any[], pax: number): any | null {
+    if (!Array.isArray(rules) || rules.length === 0) return null;
+    return rules.reduce((best: any, candidate: any) => {
+      const bestUsd = this.ruleTotalUsd(best, pax);
+      const candidateUsd = this.ruleTotalUsd(candidate, pax);
+      if (candidateUsd < bestUsd - 0.001) return candidate;
+      if (candidateUsd > bestUsd + 0.001) return best;
+      const bestUnits = this.ruleUnitCount(best, pax);
+      const candidateUnits = this.ruleUnitCount(candidate, pax);
+      if (candidateUnits !== bestUnits) return candidateUnits < bestUnits ? candidate : best;
+      return (Number(candidate?.vehicle?.maxPax) || 0) < (Number(best?.vehicle?.maxPax) || 0) ? candidate : best;
     });
   }
 

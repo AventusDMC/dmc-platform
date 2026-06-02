@@ -31,8 +31,7 @@ function buildRule(overrides: Record<string, unknown>) {
   } as any;
 }
 
-test('transport pricing resolves the smallest active capacity that fits pax before larger vehicles', async () => {
-  let findFirstArgs: any;
+test('transport pricing resolves the cheapest total rule, preferring a single coach over a multi-vehicle split', async () => {
   const service = new TransportPricingService({
     route: {
       findUnique: async () => ({
@@ -44,27 +43,33 @@ test('transport pricing resolves the smallest active capacity that fits pax befo
       }),
     },
     transportPricingRule: {
-      findFirst: async (args: any) => {
-        findFirstArgs = args;
-        return buildRule({});
-      },
+      findMany: async () => [
+        buildRule({}),
+        buildRule({
+          id: 'rule-minivan',
+          vehicleId: 'vehicle-minivan',
+          unitCapacity: 6,
+          baseCost: 60,
+          vehicle: { id: 'vehicle-minivan', name: 'Mini Van', maxPax: 6, luggageCapacity: 6 },
+        }),
+      ],
     },
   } as any);
 
   const resolved = await service.resolvePricingRule({
     routeId: 'route-1',
     transportServiceTypeId: 'service-transfer',
-    pax: 2,
+    pax: 6,
   });
 
-  assert.equal(findFirstArgs.orderBy[0].unitCapacity, 'asc');
-  assert.equal(resolved.rule.vehicle.name, 'Car');
+  // Car (capacity 2) needs 3 units = 135 JOD; the Mini Van fits 6 in a single
+  // unit = 60 JOD — the cheaper single vehicle wins over the multi-vehicle split.
+  assert.equal(resolved.rule.vehicle.name, 'Mini Van');
   assert.equal(resolved.unitCount, 1);
-  assert.equal(resolved.calculatedCost, 45);
+  assert.equal(resolved.calculatedCost, 60);
 });
 
 test('transport pricing preserves a user-selected vehicle during quote save', async () => {
-  let findFirstArgs: any;
   const service = new TransportPricingService({
     route: {
       findUnique: async () => ({
@@ -76,16 +81,17 @@ test('transport pricing preserves a user-selected vehicle during quote save', as
       }),
     },
     transportPricingRule: {
-      findFirst: async (args: any) => {
-        findFirstArgs = args;
-        return buildRule({
+      findMany: async () => [
+        // A cheaper Car rule exists, but the pinned vehicle must win regardless.
+        buildRule({}),
+        buildRule({
           id: 'rule-minivan',
           vehicleId: 'vehicle-minivan',
           unitCapacity: 6,
           baseCost: 60,
           vehicle: { id: 'vehicle-minivan', name: 'Mini Van', maxPax: 6, luggageCapacity: 6 },
-        });
-      },
+        }),
+      ],
     },
   } as any);
 
@@ -96,7 +102,6 @@ test('transport pricing preserves a user-selected vehicle during quote save', as
     pax: 3,
   });
 
-  assert.equal(findFirstArgs.where.vehicleId, 'vehicle-minivan');
   assert.equal(resolved.rule.vehicle.name, 'Mini Van');
   assert.equal(resolved.unitCount, 1);
 });
