@@ -780,6 +780,13 @@ function isRecommendedVehicleCategory(quoteType: Quote['quoteType'], pax: number
   return category === 'van';
 }
 
+// VIP / VVIP vehicles are luxury tiers. The operator quotes standard coaches by
+// default and only upgrades to luxury on request, so standard vehicles are
+// ranked ahead of VIP/VVIP when both otherwise qualify.
+function isLuxuryTransportVehicle(vehicleName: string) {
+  return /vip|vvip|luxury|limo/i.test(vehicleName || '');
+}
+
 function chooseTransportCandidate(
   candidates: TransportPricingCandidate[],
   mode: OptimizationMode,
@@ -810,6 +817,13 @@ function chooseTransportCandidate(
         return left.vehicle.maxPax >= pax ? -1 : 1;
       }
 
+      // Standard coaches before VIP/VVIP luxury when both fit.
+      const leftLuxury = isLuxuryTransportVehicle(left.vehicle.name);
+      const rightLuxury = isLuxuryTransportVehicle(right.vehicle.name);
+      if (leftLuxury !== rightLuxury) {
+        return leftLuxury ? 1 : -1;
+      }
+
       if ((left.vehicle.luggageCapacity || 0) !== (right.vehicle.luggageCapacity || 0)) {
         return (right.vehicle.luggageCapacity || 0) - (left.vehicle.luggageCapacity || 0);
       }
@@ -822,6 +836,13 @@ function chooseTransportCandidate(
 
     if (leftPricePerPax !== rightPricePerPax) {
       return leftPricePerPax - rightPricePerPax;
+    }
+
+    // Equal price: prefer a standard vehicle over a VIP/VVIP luxury one.
+    const leftLuxuryCost = isLuxuryTransportVehicle(left.vehicle.name);
+    const rightLuxuryCost = isLuxuryTransportVehicle(right.vehicle.name);
+    if (leftLuxuryCost !== rightLuxuryCost) {
+      return leftLuxuryCost ? 1 : -1;
     }
 
     return leftCapacityGap - rightCapacityGap;
