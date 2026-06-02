@@ -87,12 +87,13 @@ they're intentionally available (just unused) and must be kept. That leaves **6 
 | 1 | ✅ DONE — soft-deactivated the 6 removable dead types (kept Extra Hour/Extra KM core add-ons) via new `isActive` column | — | low (zero refs) |
 | 2 | ✅ DONE — merged Full Day, Private Transfer Service, Arrival Transfer, Stationary into their canonical types (operational refs only; quote items preserved) | — | resolved with no QuoteItem rewrite |
 | 3 | Semantic merges (Day Tour, Excursion Transfer); finalize canonical list | depends on ops | medium |
-| 4 | **Import guard** — normalize service-type on the import paths that created these duplicates so it doesn't recur | ½–1 day | low — this is what makes it stick |
+| 4 | ✅ DONE — `findOrCreateTransportImportServiceType` (+ matcher) now route through the canonical `normalizeTransportPricingMode` before creating a raw type, so imports reuse canonical types. Locked by `transport-import-service-type-guard.test.ts` | — | low — makes it stick |
 
 ## Decisions needed from ops before Phase 2/3
 
 1. Confirm the ~10 canonical types to keep.
-2. `Day Tour` → Half Day or Daily Full Day?
+2. ~~`Day Tour` → Half Day or Daily Full Day?~~ → **Resolved**: the canonical alias map already maps
+   `Day Tour → Daily Full Day`. Phase 3 merge can proceed mechanically whenever wanted.
 3. Removal method for dead/merged types: hard-delete vs add `isActive` soft-delete vs rename-prefix.
 4. Sign-off that repointing `QuoteItem.transportServiceTypeId` on historical quotes is acceptable
    (no price change — label only).

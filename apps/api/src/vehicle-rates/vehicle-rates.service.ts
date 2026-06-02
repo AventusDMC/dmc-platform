@@ -3072,6 +3072,15 @@ export class VehicleRatesService {
   }
 
   private async findOrCreateTransportImportServiceType(serviceName: string, serviceCategory = '') {
+    // Import guard: if the imported name maps to a canonical transport pricing mode
+    // (e.g. "Full Day", "Day Tour", "Transfer", "Stationary"), reuse the canonical
+    // service type instead of creating a near-duplicate. This stops the transport
+    // service-type taxonomy from re-accumulating duplicates on every import.
+    const canonical = await this.resolveCanonicalTransportPricingModeServiceType({ id: '', name: serviceName, code: serviceName });
+    if (canonical) {
+      return canonical;
+    }
+
     const code = normalizeCode(serviceName);
     const classification = getServiceCategoryClassification(serviceCategory, serviceName);
     const existing = await this.prisma.transportServiceType.findFirst({
@@ -3094,6 +3103,24 @@ export class VehicleRatesService {
   }
 
   private async findTransportImportServiceTypeMatch(serviceName: string) {
+    // Prefer the canonical service type when the imported name is a known alias,
+    // so import preview matches the create-time normalization above.
+    const pricingMode = normalizeTransportPricingMode(serviceName);
+    if (pricingMode) {
+      const canonicalCode = normalizeCode(pricingMode);
+      const canonical = await this.prisma.transportServiceType.findFirst({
+        where: {
+          OR: [
+            { name: { equals: pricingMode, mode: 'insensitive' } },
+            { code: { equals: canonicalCode, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (canonical) {
+        return canonical;
+      }
+    }
+
     const code = normalizeCode(serviceName);
     return this.prisma.transportServiceType.findFirst({
       where: {
