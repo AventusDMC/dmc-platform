@@ -418,6 +418,8 @@ type ProposalV3DaySource = {
   dayNumber: number;
   title: string;
   description?: string | null;
+  /** Stored manual country override for the day (planner days only); null = derive. */
+  country?: string | null;
   items: ProposalV3QuoteItem[];
 };
 
@@ -792,6 +794,7 @@ function buildActivePlannerDaySources(quote: ProposalV3Quote): ProposalV3DaySour
       dayNumber: day.dayNumber,
       title: day.title,
       description: day.notes || null,
+      country: (day as any).country ?? null,
       items: (day.dayItems || [])
         .filter((dayItem) => dayItem?.isActive !== false && isPresentQuoteItem(dayItem?.quoteService))
         .sort(sortPlannerDayItems)
@@ -928,12 +931,15 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
       summary: isPlaceholderText(summary) ? null : summary || null,
       overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
-      country: deriveDayCountry({
-        items: dayItems.map((item) => ({
-          hotelCountry: item.hotel?.cityRecord?.country ?? null,
-          externalPackageCountry: item.externalPackageCountry ?? null,
-        })),
-      }),
+      // A stored manual override (day.country) wins; otherwise derive from services.
+      country:
+        (typeof day.country === 'string' && day.country.trim()) ||
+        deriveDayCountry({
+          items: dayItems.map((item) => ({
+            hotelCountry: item.hotel?.cityRecord?.country ?? null,
+            externalPackageCountry: item.externalPackageCountry ?? null,
+          })),
+        }),
       groups: buildDayGroups(day, dayItems, quote.quoteCurrency || 'USD'),
     };
   });

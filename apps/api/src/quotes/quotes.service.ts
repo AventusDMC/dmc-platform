@@ -837,15 +837,18 @@ export class QuotesService {
           notes: day.notes,
           sortOrder: day.sortOrder,
           isActive: day.isActive,
-          // Derived destination country for the day (location metadata only — not
-          // pricing). Lets the builder group a multi-country itinerary by country.
-          country: deriveDayCountry({
-            items: (day.dayItems || []).map((di: any) => ({
-              hotelCountry: di.quoteService?.hotel?.cityRecord?.country ?? null,
-              externalPackageCountry: di.quoteService?.externalPackageCountry ?? null,
-            })),
-            quoteFallbackCountry: (quote as any)?.series?.destinationCountry ?? null,
-          }),
+          // Destination country for the day (location metadata only — not pricing).
+          // A stored manual override (day.country) wins; otherwise derive from the
+          // day's services. Lets the builder group a multi-country itinerary.
+          country:
+            (typeof day.country === 'string' && day.country.trim()) ||
+            deriveDayCountry({
+              items: (day.dayItems || []).map((di: any) => ({
+                hotelCountry: di.quoteService?.hotel?.cityRecord?.country ?? null,
+                externalPackageCountry: di.quoteService?.externalPackageCountry ?? null,
+              })),
+              quoteFallbackCountry: (quote as any)?.series?.destinationCountry ?? null,
+            }),
           dayItems: day.dayItems.map((item: any) => ({
             sortOrder: item.sortOrder,
             notes: item.notes,
