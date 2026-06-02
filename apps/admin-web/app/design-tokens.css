@@ -49,6 +49,12 @@
   --ds-color-success-surface: #ECFDF3;
   --ds-color-success-border: #ABEFC6;
 
+  /* Feedback — info (neutral-blue, distinct from the teal brand accent;
+     matches the dashboard "info" status chips currently inline) */
+  --ds-color-info: #175CD3;
+  --ds-color-info-surface: #EFF8FF;
+  --ds-color-info-border: #84CAFF;
+
   /* Radius */
   --ds-radius-sm: 8px;
   --ds-radius-md: 12px;
