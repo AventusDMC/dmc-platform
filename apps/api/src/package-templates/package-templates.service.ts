@@ -124,6 +124,180 @@ export class PackageTemplatesService {
     });
   }
 
+  async createFromQuote(quoteId: string, overrides: { name?: string | null } = {}) {
+    if (!String(quoteId || '').trim()) {
+      throw new BadRequestException('quoteId is required');
+    }
+
+    const quote = await (this.prisma as any).quote.findUnique({
+      where: { id: quoteId },
+      include: {
+        itineraryDays: {
+          where: { isActive: true },
+          orderBy: [{ dayNumber: 'asc' }],
+          include: {
+            dayItems: {
+              where: { isActive: true },
+              orderBy: [{ sortOrder: 'asc' }],
+              include: {
+                quoteService: {
+                  include: {
+                    activity: true,
+                    contract: { include: { hotel: true } },
+                    service: { include: { serviceType: true, entranceFee: true } },
+                    touringRoute: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    throwIfNotFound(quote, 'Quote');
+
+    const activeDays = quote.itineraryDays || [];
+    if (activeDays.length === 0) {
+      throw new BadRequestException('This quote has no active itinerary days to convert into a template.');
+    }
+
+    const durationDays = Math.max(...activeDays.map((day: any) => day.dayNumber), activeDays.length, 1);
+    const dayByNumber = new Map<number, any>(activeDays.map((day: any) => [day.dayNumber, day]));
+    const name = requireTrimmedString(overrides.name || `${quote.title} (template)`, 'name');
+
+    const created = await (this.prisma as any).$transaction(async (tx: any) => {
+      const template = await tx.packageTemplate.create({
+        data: {
+          name,
+          durationDays,
+          summary: normalizeOptionalString(quote.description),
+          inclusions: normalizeOptionalString(quote.inclusionsText),
+          exclusions: normalizeOptionalString(quote.exclusionsText),
+          active: false,
+        },
+      });
+
+      for (let dayNumber = 1; dayNumber <= durationDays; dayNumber += 1) {
+        const sourceDay = dayByNumber.get(dayNumber);
+        const day = await tx.packageTemplateDay.create({
+          data: {
+            packageTemplateId: template.id,
+            dayNumber,
+            title: sourceDay?.title || `Day ${dayNumber}`,
+            description: normalizeOptionalString(sourceDay?.notes),
+            active: true,
+          },
+        });
+
+        const dayItems = sourceDay?.dayItems || [];
+        let sortOrder = 0;
+        for (const dayItem of dayItems) {
+          const mapped = this.mapQuoteItemToComponent(dayItem.quoteService);
+          if (!mapped) {
+            continue;
+          }
+          await tx.packageTemplateComponent.create({
+            data: {
+              packageTemplateId: template.id,
+              packageTemplateDayId: day.id,
+              dayNumber,
+              sortOrder: sortOrder++,
+              isOptional: false,
+              active: true,
+              operationalNotes: normalizeOptionalString(dayItem.notes),
+              ...mapped,
+            },
+          });
+        }
+      }
+
+      return template;
+    });
+
+    return this.findOne(created.id);
+  }
+
+  private mapQuoteItemToComponent(item: any) {
+    if (!item) {
+      return null;
+    }
+
+    const base = {
+      label: '',
+      componentType: 'OTHER' as PackageTemplateComponentType,
+      excursionTemplateId: null as string | null,
+      activityId: null as string | null,
+      hotelContractId: null as string | null,
+      routeId: null as string | null,
+      touringRouteId: null as string | null,
+      transportServiceTypeId: null as string | null,
+      pricingMode: null as string | null,
+      supplierServiceId: null as string | null,
+    };
+
+    if (item.excursionTemplateId) {
+      return { ...base, componentType: 'EXCURSION_TEMPLATE', excursionTemplateId: item.excursionTemplateId, label: item.pricingDescription || 'Excursion' };
+    }
+    if (item.activityId) {
+      return { ...base, componentType: 'ACTIVITY', activityId: item.activityId, label: item.activity?.name || item.pricingDescription || 'Activity' };
+    }
+    if (item.contractId) {
+      const hotelLabel = [item.contract?.hotel?.name, item.contract?.name].filter(Boolean).join(' - ');
+      return { ...base, componentType: 'HOTEL', hotelContractId: item.contractId, label: hotelLabel || item.pricingDescription || 'Hotel' };
+    }
+    if (item.touringRouteId) {
+      return {
+        ...base,
+        componentType: 'TRANSPORT',
+        touringRouteId: item.touringRouteId,
+        transportServiceTypeId: item.transportServiceTypeId || null,
+        label: item.touringRoute?.name || item.pricingDescription || 'Transport',
+      };
+    }
+    if (item.routeId) {
+      return {
+        ...base,
+        componentType: 'TRANSPORT',
+        routeId: item.routeId,
+        transportServiceTypeId: item.transportServiceTypeId || null,
+        label: item.pricingDescription || 'Transport',
+      };
+    }
+    if (item.serviceId) {
+      const componentType = this.classifyServiceComponentType(item);
+      return { ...base, componentType, supplierServiceId: item.serviceId, label: item.service?.name || item.pricingDescription || 'Service' };
+    }
+    if (item.externalPackageName) {
+      return { ...base, componentType: 'EXTERNAL_PACKAGE', label: item.externalPackageName };
+    }
+
+    return { ...base, label: item.pricingDescription || 'Service' };
+  }
+
+  private classifyServiceComponentType(item: any): PackageTemplateComponentType {
+    if (item.entranceFeeId || item.service?.entranceFee) {
+      return 'ENTRANCE';
+    }
+    if (item.ticketRateVariantId) {
+      return 'TICKET';
+    }
+    const typeText = `${item.service?.serviceType?.code || ''} ${item.service?.serviceType?.name || ''} ${item.service?.category || ''}`.toUpperCase();
+    if (typeText.includes('GUIDE')) {
+      return 'GUIDE';
+    }
+    if (typeText.includes('MEAL')) {
+      return 'MEAL';
+    }
+    if (typeText.includes('DINING') || typeText.includes('RESTAURANT') || typeText.includes('LUNCH') || typeText.includes('DINNER')) {
+      return 'DINING';
+    }
+    if (typeText.includes('TICKET') || typeText.includes('ENTRANCE')) {
+      return 'TICKET';
+    }
+    return 'SERVICE';
+  }
+
   async update(id: string, data: UpdatePackageTemplateInput) {
     await this.findOne(id);
 

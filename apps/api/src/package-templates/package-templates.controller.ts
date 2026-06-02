@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Roles } from '../auth/auth.decorators';
+import { PackageTemplatePricingService } from './package-template-pricing.service';
 import { PackageTemplatesService } from './package-templates.service';
 
 type PackageTemplateComponentType =
@@ -35,6 +36,11 @@ type CreatePackageTemplateBody = {
 
 type MovePackageComponentBody = {
   dayNumber: number;
+};
+
+type CreateFromQuoteBody = {
+  quoteId: string;
+  name?: string | null;
 };
 
 type PackageTemplateComponentBody = {
@@ -75,11 +81,21 @@ type ReorderPackageDayComponentsBody = {
 
 @Controller('package-templates')
 export class PackageTemplatesController {
-  constructor(private readonly packageTemplatesService: PackageTemplatesService) {}
+  constructor(
+    private readonly packageTemplatesService: PackageTemplatesService,
+    private readonly packageTemplatePricingService: PackageTemplatePricingService,
+  ) {}
 
   @Get()
   findAll() {
     return this.packageTemplatesService.findAll();
+  }
+
+  @Get(':id/cost-estimate')
+  costEstimate(@Param('id') id: string, @Query('pax') pax?: string) {
+    return this.packageTemplatePricingService.estimate(id, {
+      pax: pax === undefined ? undefined : Number(pax),
+    });
   }
 
   @Get(':id')
@@ -91,6 +107,12 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   create(@Body() body: CreatePackageTemplateBody) {
     return this.packageTemplatesService.create(this.normalizeTemplateBody(body));
+  }
+
+  @Post('from-quote')
+  @Roles('admin', 'operations')
+  createFromQuote(@Body() body: CreateFromQuoteBody) {
+    return this.packageTemplatesService.createFromQuote(body.quoteId, { name: body.name });
   }
 
   @Patch(':id')

@@ -16,6 +16,8 @@ import {
   packageComponentTypeLabel,
   resolvePackageTemplateDays,
 } from '../package-template-display';
+import { PackageCostEstimatePanel } from '../PackageCostEstimatePanel';
+import { ComponentDragRow, DayDragHandle, DayDragZone, ItineraryDnDProvider } from '../PackageItineraryDnD';
 import { PackageComponentMoveControls } from '../PackageComponentMoveControls';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
@@ -162,6 +164,8 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
 
             <PackageQuoteAssemblyPanel apiBaseUrl="/api" packageTemplateId={template.id} />
 
+            <PackageCostEstimatePanel apiBaseUrl="/api" packageTemplateId={template.id} />
+
             <TableSectionShell
               title="Linked itinerary structure"
               description="Package days hold reusable itinerary titles, notes, and linked operational components without duplicating inventory."
@@ -191,12 +195,16 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                 </CollapsibleCreatePanel>
               }
             >
+              <ItineraryDnDProvider apiBaseUrl="/api" packageTemplateId={template.id} orderedDayIds={orderedDayIds}>
               <div className="section-stack">
                 {packageDays.map((day) => (
-                  <details key={day.id} className="detail-card" open={day.active || day.components.length > 0}>
+                  <DayDragZone key={day.id} dayId={day.id} dayNumber={day.dayNumber}>
+                  <details className="detail-card" open={day.active || day.components.length > 0}>
                     <summary className="section-header">
                       <span>
-                        <span className="eyebrow">Day {day.dayNumber}</span>
+                        <span className="eyebrow">
+                          <DayDragHandle dayId={day.id} /> Day {day.dayNumber}
+                        </span>
                         <strong>{day.title}</strong>
                         {day.description ? <p className="table-cell-copy">{day.description}</p> : null}
                       </span>
@@ -231,7 +239,14 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                               const mappability = packageComponentMappability(component);
 
                               return (
-                                <tr key={component.id} className={!component.active ? 'muted-row' : undefined}>
+                                <ComponentDragRow
+                                  key={component.id}
+                                  componentId={component.id}
+                                  dayId={day.id}
+                                  dayNumber={day.dayNumber}
+                                  orderedComponentIds={orderedComponentIds}
+                                  className={!component.active ? 'muted-row' : undefined}
+                                >
                                   <td>
                                     <strong>{component.label}</strong>
                                     <p className="table-cell-copy">Position {orderedComponentIds.indexOf(component.id) + 1}</p>
@@ -275,7 +290,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                       />
                                     </span>
                                   </td>
-                                </tr>
+                                </ComponentDragRow>
                               );
                             })}
                           </tbody>
@@ -288,8 +303,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                       </div>
                     )}
                   </details>
+                  </DayDragZone>
                 ))}
               </div>
+              </ItineraryDnDProvider>
             </TableSectionShell>
           </section>
         </WorkspaceShell>
