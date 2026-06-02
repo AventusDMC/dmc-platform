@@ -2944,6 +2944,8 @@ function ScopePlanner({
   const [dayContentDrafts, setDayContentDrafts] = useState<Record<string, string>>({});
   const [savingDayId, setSavingDayId] = useState<string | null>(null);
   const [dayContentError, setDayContentError] = useState('');
+  const [savingCountryDayId, setSavingCountryDayId] = useState<string | null>(null);
+  const [dayCountryError, setDayCountryError] = useState('');
   const [activeDayDescription, setActiveDayDescription] = useState<{ day: QuoteReadinessDay; draft: string } | null>(null);
   const [activeTimelineItem, setActiveTimelineItem] = useState<{ day: QuoteReadinessDay; index: number; draft: DayTimelineItem } | null>(null);
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
@@ -3068,6 +3070,34 @@ function ScopePlanner({
       : latestQuote.quoteItems;
 
     setLocalItems(applyPlannerDayAssignments(latestItems, latestItinerary));
+  }
+
+  async function saveDayCountry(day: QuoteReadinessDay, countryValue: string) {
+    setSavingCountryDayId(day.id);
+    setDayCountryError('');
+
+    try {
+      const response = await fetch(`${plannerProps.apiBaseUrl}/itinerary/day/${day.id}`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/json',
+        }),
+        // Empty string clears the override (server normalizes '' -> null -> auto-detect).
+        body: JSON.stringify({ country: countryValue.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not save the day country.'));
+      }
+
+      router.refresh();
+      return true;
+    } catch (caughtError) {
+      setDayCountryError(caughtError instanceof Error ? caughtError.message : 'Could not save the day country.');
+      return false;
+    } finally {
+      setSavingCountryDayId((current) => (current === day.id ? null : current));
+    }
   }
 
   async function saveDayContent(day: QuoteReadinessDay, contentOverride?: string) {
@@ -3809,6 +3839,39 @@ function ScopePlanner({
                       </div>
                     ))}
                   </div>
+                </section>
+
+                <section className="quote-service-side-section">
+                  <div className="workspace-section-head">
+                    <div>
+                      <p className="eyebrow">Destination</p>
+                      <h4>Country</h4>
+                    </div>
+                  </div>
+                  <form
+                    key={summary.day.id}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const value = String(new FormData(event.currentTarget).get('country') || '');
+                      void saveDayCountry(summary.day, value);
+                    }}
+                    style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}
+                  >
+                    <input
+                      name="country"
+                      defaultValue={summary.day.country ?? ''}
+                      placeholder="Auto-detected from hotels"
+                      className="app-input"
+                      aria-label="Day destination country"
+                    />
+                    <button type="submit" className="secondary-button" disabled={savingCountryDayId === summary.day.id}>
+                      {savingCountryDayId === summary.day.id ? 'Saving…' : 'Save country'}
+                    </button>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-color-muted, #475569)' }}>
+                      Groups multi-country trips. Leave blank to auto-detect from the day&rsquo;s hotels.
+                    </p>
+                  </form>
+                  {dayCountryError ? <p className="form-error">{dayCountryError}</p> : null}
                 </section>
 
                 <details className="quote-operational-collapsible quote-operational-collapsible-intelligence" open>

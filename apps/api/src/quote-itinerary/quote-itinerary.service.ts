@@ -135,6 +135,7 @@ export class QuoteItineraryService {
           dayNumber: normalized.dayNumber,
           title: normalized.title,
           notes: normalized.notes,
+          country: normalized.country,
           isActive: normalized.isActive,
         },
       });
@@ -507,6 +508,7 @@ export class QuoteItineraryService {
       dayNumber: nextDayNumber,
       title: data.title === undefined ? existing.title : requireTrimmedString(data.title, 'title'),
       notes: data.notes === undefined ? existing.notes : normalizeOptionalString(data.notes),
+      country: data.country === undefined ? existing.country : normalizeOptionalString(data.country),
       sortOrder: nextSortOrder,
       isActive: data.isActive ?? existing.isActive,
     };

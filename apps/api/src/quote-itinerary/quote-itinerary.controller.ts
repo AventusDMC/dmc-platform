@@ -13,6 +13,7 @@ type CreateDayBody = {
   dayNumber: number | string;
   title: string;
   notes?: string | null;
+  country?: string | null;
   sortOrder?: number | string;
   isActive?: boolean;
 };
@@ -101,6 +102,7 @@ export class QuoteItineraryController {
       dayNumber: body.dayNumber === undefined ? undefined : Number(body.dayNumber),
       title: body.title,
       notes: body.notes,
+      country: body.country,
       sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       isActive: body.isActive,
     };

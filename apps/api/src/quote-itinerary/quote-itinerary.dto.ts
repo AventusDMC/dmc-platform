@@ -15,6 +15,7 @@ export type UpdateQuoteItineraryDayDto = {
   dayNumber?: number;
   title?: string;
   notes?: string | null;
+  country?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 };
