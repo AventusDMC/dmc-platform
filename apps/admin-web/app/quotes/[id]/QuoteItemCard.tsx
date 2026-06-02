@@ -181,6 +181,7 @@ type QuoteItem = {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  transportLabel?: string | null;
   externalPackageCountry?: string | null;
   externalPackageName?: string | null;
   externalSupplierName?: string | null;
@@ -432,6 +433,12 @@ function getQuoteItemServiceName(item: QuoteItem) {
   }
 
   if (item.appliedVehicleRate) {
+    // Daily-package lines carry a per-day journey label ("Amman → Petra",
+    // "Petra (full day)") — show it instead of the generic disposal-route
+    // rate name. Ordinary transfers have no label and keep the derived name.
+    if (item.transportLabel?.trim()) {
+      return item.transportLabel.trim();
+    }
     return buildTransportServiceDisplayName(item.service?.name || null, getTransportPricingModeDisplayName(item), item.appliedVehicleRate.supplier?.name || null);
   }
 

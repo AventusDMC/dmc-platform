@@ -176,6 +176,7 @@ type CreateQuoteItemBody = {
   touringRoutePricingId?: string | null;
   normalizedKey?: string;
   routeName?: string;
+  transportLabel?: string | null;
   transportAddOns?: Array<{ rateId?: string; quantity?: number }>;
 };
 
@@ -1075,6 +1076,7 @@ export class QuotesController {
       touringRoutePricingId: body.touringRoutePricingId === undefined ? undefined : body.touringRoutePricingId || null,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1268,6 +1270,7 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1575,6 +1578,7 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1674,6 +1678,7 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,

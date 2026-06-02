@@ -70,6 +70,7 @@ type QuoteItem = {
   unitCost?: number;
   currency: string;
   pricingDescription: string | null;
+  transportLabel?: string | null;
   totalSell: number;
   service: {
     id: string;
@@ -332,7 +333,11 @@ function getItemSummary(item: QuoteItem) {
   if (item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan) {
     summary = `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
   } else if (item.appliedVehicleRate) {
-    summary = `${item.appliedVehicleRate.routeName} | ${item.appliedVehicleRate.vehicle.name} | ${item.appliedVehicleRate.serviceType.name}`;
+    // Daily-package lines carry a per-day journey label ("Amman → Petra",
+    // "Petra (full day)"); use it in place of the generic disposal-route rate
+    // name, keeping the vehicle + service-type detail.
+    const routeLabel = item.transportLabel?.trim() || item.appliedVehicleRate.routeName;
+    summary = `${routeLabel} | ${item.appliedVehicleRate.vehicle.name} | ${item.appliedVehicleRate.serviceType.name}`;
   } else {
     const finalCost =
       item.useOverride && item.overrideCost !== null ? item.overrideCost : (item.baseCost ?? item.unitCost ?? 0);
