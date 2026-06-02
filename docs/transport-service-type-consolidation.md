@@ -32,13 +32,20 @@ Reference columns counted: `VehicleRate.serviceTypeId`, `TransportPricingRule.tr
 
 ### Merge sources → targets (low ref counts to repoint)
 
-| Source (refs) | → Target | Notes |
+| Source (refs) | → Target | Status |
 |---|---|---|
-| `Full Day` (4 quoteItems, 1 excursion, 1 inactive rule) | `Daily Full Day` | package components already repointed |
-| `Private Transfer Service` (1 rate, 1 rule) | `Private Transfer` | near-identical |
-| `Arrival Transfer` (4 package) | `Airport Transfer` | arrival == airport |
-| `Stationary` (8 rules, 0 rates) | `Stationary / Waiting` | rules here, rates on the other |
-| `Day Tour` (2 excursion) | `Half Day` **or** `Daily Full Day` | **semantic — needs ops decision** |
+| `Full Day` (1 rule, 1 excursion) | `Daily Full Day` | ✅ Phase 2 — operational refs repointed; 4 quoteItems preserved as-sold |
+| `Private Transfer Service` (1 rate, 1 rule) | `Private Transfer` | ✅ Phase 2 |
+| `Arrival Transfer` (4 package) | `Airport Transfer` | ✅ Phase 2 |
+| `Stationary` (8 rules) | `Stationary / Waiting` | ✅ Phase 2 |
+| `Day Tour` (2 excursion) | `Half Day` **or** `Daily Full Day` | ⏳ Phase 3 — **semantic, needs ops decision** |
+
+> **✅ Phase 2 DONE (2026-06-02).** All 4 classifications matched (no semantic risk). For each merge we
+> repointed only the **operational** references (VehicleRate / TransportPricingRule / TouringRoutePricing /
+> PackageTemplateComponent / ExcursionTemplateComponent) to the canonical type, then soft-deactivated the
+> source. **Historical `QuoteItem` rows were deliberately left as-sold** (don't rewrite finance history — this
+> also makes ops decision #4 moot). Rollback ids captured. Transport resolution unchanged (26/30); active
+> service types 24 → 14.
 
 ### Dead — remove (zero references)
 
@@ -78,7 +85,7 @@ they're intentionally available (just unused) and must be kept. That leaves **6 
 | Phase | Scope | Effort | Risk |
 |---|---|---|---|
 | 1 | ✅ DONE — soft-deactivated the 6 removable dead types (kept Extra Hour/Extra KM core add-ons) via new `isActive` column | — | low (zero refs) |
-| 2 | Mechanical merges (Full Day, Private Transfer Service, Arrival/Departure→Airport, Stationary) via one reusable repoint+dedupe script, dry-run each | 1–2 days | medium (touches quote items → ops sign-off) |
+| 2 | ✅ DONE — merged Full Day, Private Transfer Service, Arrival Transfer, Stationary into their canonical types (operational refs only; quote items preserved) | — | resolved with no QuoteItem rewrite |
 | 3 | Semantic merges (Day Tour, Excursion Transfer); finalize canonical list | depends on ops | medium |
 | 4 | **Import guard** — normalize service-type on the import paths that created these duplicates so it doesn't recur | ½–1 day | low — this is what makes it stick |
 
