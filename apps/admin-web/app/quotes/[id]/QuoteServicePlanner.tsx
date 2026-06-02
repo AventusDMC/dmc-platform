@@ -236,6 +236,7 @@ type PlannerItineraryDay = {
   title: string;
   notes?: string | null;
   description?: string | null;
+  country?: string | null;
   isActive: boolean;
   dayItems: PlannerItineraryDayItem[];
 };
@@ -1021,6 +1022,7 @@ function getPlannerDays(quote: Quote, quoteItinerary?: PlannerItineraryResponse)
       dayNumber: day.dayNumber,
       title: day.title || `Day ${day.dayNumber}`,
       description: day.description || day.notes || null,
+      country: day.country ?? null,
     }));
 
   return quoteItineraryDays.length > 0
@@ -3641,6 +3643,7 @@ function ScopePlanner({
                 helper: `${summary.items.length} service${summary.items.length === 1 ? '' : 's'} / ${summary.completionPercent}% complete`,
                 total: dayTotalSell > 0 ? formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency) : null,
                 warning,
+                group: summary.day.country || 'To be confirmed',
               };
             })}
           />

@@ -88,6 +88,8 @@ export type QuoteReadinessDay = {
   dayNumber: number;
   title: string;
   description: string | null;
+  /** Derived destination country for the day (location metadata; may be null). */
+  country?: string | null;
 };
 
 export type QuoteReadinessOption = {

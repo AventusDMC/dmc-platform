@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react';
+import { ComponentPropsWithoutRef, ElementType, Fragment, ReactNode } from 'react';
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -374,6 +374,9 @@ type DayNavigationItem = {
   helper?: ReactNode;
   total?: ReactNode;
   warning?: ReactNode;
+  /** Optional group label (e.g. destination country). A header is rendered
+   *  above the first item of each new group as the list is scanned in order. */
+  group?: ReactNode;
 };
 
 type DayNavigationProps = {
@@ -392,21 +395,39 @@ export function DayNavigation({ items, activeId, onSelect, title = 'Days', class
         <strong>{items.length}</strong>
       </div>
       <div className="app-day-navigation-list">
-        {items.map((item) => {
+        {items.map((item, index) => {
           const active = item.id === activeId;
+          const showGroupHeader =
+            item.group != null && item.group !== '' && item.group !== items[index - 1]?.group;
           return (
-            <button
-              key={item.id}
-              type="button"
-              className={cx('app-day-navigation-card', active && 'app-day-navigation-card-active')}
-              onClick={() => onSelect?.(item.id)}
-              aria-current={active ? 'true' : undefined}
-            >
-              <span>{item.label}</span>
-              {item.helper ? <em>{item.helper}</em> : null}
-              {item.total ? <strong>{item.total}</strong> : null}
-              {item.warning ? <small>{item.warning}</small> : null}
-            </button>
+            <Fragment key={item.id}>
+              {showGroupHeader ? (
+                <div
+                  className="app-day-navigation-group"
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ds-color-muted, #475569)',
+                    padding: '0.5rem 0 0.15rem',
+                  }}
+                >
+                  {item.group}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className={cx('app-day-navigation-card', active && 'app-day-navigation-card-active')}
+                onClick={() => onSelect?.(item.id)}
+                aria-current={active ? 'true' : undefined}
+              >
+                <span>{item.label}</span>
+                {item.helper ? <em>{item.helper}</em> : null}
+                {item.total ? <strong>{item.total}</strong> : null}
+                {item.warning ? <small>{item.warning}</small> : null}
+              </button>
+            </Fragment>
           );
         })}
       </div>

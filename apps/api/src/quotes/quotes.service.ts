@@ -36,6 +36,7 @@ import { TransportPricingService } from '../transport-pricing/transport-pricing.
 import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
+import { deriveDayCountry } from './quote-day-country';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
 import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
@@ -771,7 +772,7 @@ export class QuotesService {
                       serviceType: true,
                     },
                   },
-                  hotel: true,
+                  hotel: { include: { cityRecord: true } },
                   roomCategory: true,
                   appliedVehicleRate: {
                     include: {
@@ -836,6 +837,15 @@ export class QuotesService {
           notes: day.notes,
           sortOrder: day.sortOrder,
           isActive: day.isActive,
+          // Derived destination country for the day (location metadata only — not
+          // pricing). Lets the builder group a multi-country itinerary by country.
+          country: deriveDayCountry({
+            items: (day.dayItems || []).map((di: any) => ({
+              hotelCountry: di.quoteService?.hotel?.cityRecord?.country ?? null,
+              externalPackageCountry: di.quoteService?.externalPackageCountry ?? null,
+            })),
+            quoteFallbackCountry: (quote as any)?.series?.destinationCountry ?? null,
+          }),
           dayItems: day.dayItems.map((item: any) => ({
             sortOrder: item.sortOrder,
             notes: item.notes,
