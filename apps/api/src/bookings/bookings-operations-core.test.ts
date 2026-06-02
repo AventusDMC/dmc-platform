@@ -1640,6 +1640,63 @@ test('rooming auto-assign is a no-op when every passenger already has a room', a
   assert.equal(createdRoomingEntries.length, 0);
 });
 
+test('findPortalBooking surfaces the DMC emergency contact and strips raw brand data', async () => {
+  const service = createService({
+    booking: {
+      findFirst: async () => ({
+        id: 'booking-1',
+        bookingRef: 'BK-1',
+        adults: 2,
+        children: 0,
+        roomCount: 1,
+        nightCount: 3,
+        snapshotJson: { title: 'Jordan Highlights' },
+        contactSnapshotJson: { firstName: 'Lina', lastName: 'Haddad' },
+        brandSnapshotJson: {
+          name: 'Aventus DMC',
+          branding: { displayName: 'Aventus Travel', phone: '+962790000000', email: 'ops@aventus.jo', website: 'https://aventus.jo' },
+        },
+        services: [],
+      }),
+    },
+  });
+
+  const portal: any = await service.findPortalBooking('booking-1', 'token-123');
+  assert.equal(portal.emergencyContact.name, 'Aventus Travel');
+  assert.equal(portal.emergencyContact.phone, '+962790000000');
+  assert.equal(portal.emergencyContact.email, 'ops@aventus.jo');
+  assert.equal(portal.emergencyContact.website, 'https://aventus.jo');
+  // Raw brand snapshot must not leak to the public portal response.
+  assert.equal('brandSnapshotJson' in portal, false);
+  assert.equal(portal.contactSnapshotJson.firstName, 'Lina');
+});
+
+test('findPortalBooking returns null without a token and null emergency contact when no brand data', async () => {
+  const noToken = await createService({
+    booking: { findFirst: async () => { throw new Error('should not query without token'); } },
+  }).findPortalBooking('booking-1', '');
+  assert.equal(noToken, null);
+
+  const service = createService({
+    booking: {
+      findFirst: async () => ({
+        id: 'booking-1',
+        bookingRef: 'BK-1',
+        adults: 1,
+        children: 0,
+        roomCount: 1,
+        nightCount: 1,
+        snapshotJson: {},
+        contactSnapshotJson: { firstName: 'A', lastName: 'B' },
+        brandSnapshotJson: { name: 'No Contact DMC' },
+        services: [],
+      }),
+    },
+  });
+  const portal: any = await service.findPortalBooking('booking-1', 'token-123');
+  assert.equal(portal.emergencyContact, null);
+});
+
 test('rooming unassignment removes the passenger assignment', async () => {
   const deletedAssignments: string[] = [];
   const service = createService({
