@@ -3709,9 +3709,19 @@ export class QuotesService {
       const existing = await (this.prisma as any).quoteItem.findFirst({
         where: {
           quoteId: quote.id,
-          itineraryId: data.itineraryId || null,
           excursionTemplateComponentId: component.id,
           serviceDate: data.serviceDate || null,
+          // Day membership lives on the QuoteItineraryDayItem join (the scalar
+          // `itineraryId` is null for join-assigned items), so matching only on
+          // the scalar never found the existing row and re-adding a template
+          // silently duplicated every component. Match the legacy scalar OR an
+          // active join row on the same target day.
+          OR: [
+            { itineraryId: data.itineraryId || null },
+            ...(data.itineraryId
+              ? [{ quoteItineraryDayItems: { some: { dayId: data.itineraryId, isActive: true } } }]
+              : []),
+          ],
         },
         select: { id: true },
       });

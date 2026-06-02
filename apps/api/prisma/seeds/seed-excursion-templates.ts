@@ -398,7 +398,7 @@ const GOLDEN_JORDAN_EXCURSION_TEMPLATES: ExcursionTemplateSeed[] = [
   {
     code: 'AMMAN_CITY_DESERT_CASTLES',
     name: 'Amman City & Desert Castles',
-    description: 'Sellable Amman city and Desert Castles excursion. Touring route is pending canonical route review.',
+    description: 'Sellable Amman city and Desert Castles excursion using the canonical Desert Castles round-trip touring route.',
     defaultDepartureCity: 'Amman',
     region: 'Central / East Jordan',
     durationMinutes: 480,
@@ -415,17 +415,18 @@ const GOLDEN_JORDAN_EXCURSION_TEMPLATES: ExcursionTemplateSeed[] = [
     inclusions: 'Sellable excursion shell with ticket/guide placeholders where catalog records exist.',
     exclusions: 'Entrance tickets, meals, gratuities, and services not linked as components.',
     seasonalRestrictions: 'Desert heat and site opening times must be checked.',
-    operationalWarnings: 'Canonical Touring Route not created in this task; transport component is flagged for route review.',
+    operationalWarnings: 'Desert Castles routing uses the canonical RT touring route; confirm route pricing covers the eastern loop for the pax band.',
     components: [
       {
         componentType: 'TRANSPORT',
         label: 'Amman City & Desert Castles routing',
+        touringRouteCode: 'JOR-TR-CENTRAL-DESERT-CASTLES-RT',
         suggestedDepartureCity: 'Amman',
         suggestedArrivalCity: 'Amman',
         durationMinutes: 240,
         supplierConfirmationRequired: true,
         voucherRequired: true,
-        operationalNotes: 'No duplicate Touring Route is created here. Link to canonical route after route library review.',
+        operationalNotes: 'Linked to the canonical Amman → Desert Castles → Amman RT touring route.',
       },
       {
         componentType: 'TICKET',
@@ -523,13 +524,30 @@ function includesAny(value: string, terms: string[]) {
   return terms.some((term) => haystack.includes(normalized(term)));
 }
 
+// Resolve by search-term PRIORITY, not "first service that matches any term".
+// `ticketSearch` lists terms most-specific-first (e.g. ['Ajloun Castle', 'Ajloun
+// Ticket', 'Ajloun']); a plain `find(includesAny(..., terms))` would return
+// whichever service happens to come first in the list and matches the broad
+// fallback term ("Ajloun" → "Ajloun Reserve…" instead of "Ajloun Castle…").
+// Trying each term in order keeps the specific match winning over the fallback.
+function findServiceByPriority<T extends { name: string; category: string | null }>(
+  services: T[],
+  terms: string[],
+) {
+  for (const term of terms) {
+    const match = services.find((service) => includesAny(`${service.name} ${service.category ?? ''}`, [term]));
+    if (match) return match;
+  }
+  return null;
+}
+
 async function findTicketService(prisma: PrismaClient, terms: string[] | undefined) {
   if (!terms?.length) return null;
   const services = await prisma.supplierService.findMany({
     where: { category: { contains: 'ticket', mode: 'insensitive' } },
     take: 300,
   });
-  return services.find((service) => includesAny(`${service.name} ${service.category}`, terms)) || null;
+  return findServiceByPriority(services, terms);
 }
 
 async function findDiningService(prisma: PrismaClient, terms: string[] | undefined) {
@@ -538,7 +556,7 @@ async function findDiningService(prisma: PrismaClient, terms: string[] | undefin
     where: { category: { contains: 'dining', mode: 'insensitive' } },
     take: 300,
   });
-  return services.find((service) => includesAny(`${service.name} ${service.category}`, terms)) || null;
+  return findServiceByPriority(services, terms);
 }
 
 async function buildComponents(prisma: PrismaClient, template: ExcursionTemplateSeed) {
