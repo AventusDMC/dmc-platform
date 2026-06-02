@@ -23,6 +23,7 @@ import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { blockDelete, normalizeOptionalString, requireSupportedCurrency, requireTrimmedString } from '../common/crud.helpers';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
+import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import {
   resolveServiceTaxonomyGroup,
   getServiceTaxonomySource,
@@ -3768,6 +3769,87 @@ export class QuotesService {
     };
   }
 
+  // Large-vehicle excursion transport prices off Alpha's Full-Day card: the cheapest
+  // Alpha "Daily Full Day" rate for the same vehicle CLASS (canonical type) that fits
+  // pax, plus distance-based extra-km (route km − 200 incl) at the vehicle's Extra-KM
+  // rate, minus the supplier's negotiated discount. Free mileage (no extra-km) when the
+  // quote's package toggle is on. Almushtari has no large vehicles, so the canonical
+  // match resolves to Alpha. Returns null when no Alpha class match exists.
+  private async resolveAlphaFullDayExcursionCost(values: {
+    vehicle: { id?: string | null; name?: string | null; vehicleType?: string | null };
+    paxCount: number;
+    routeKm: number;
+    freeMileage: boolean;
+  }): Promise<{ overrideCost: number; currency: string; description: string } | null> {
+    const canonical =
+      normalizeVehicleTypeLabel(values.vehicle.vehicleType) || normalizeVehicleTypeLabel(values.vehicle.name);
+    if (!canonical) {
+      return null;
+    }
+    const fullDayType = await (this.prisma as any).transportServiceType.findFirst({
+      where: { name: 'Daily Full Day' },
+      select: { id: true },
+    });
+    if (!fullDayType) {
+      return null;
+    }
+    const candidates = await (this.prisma as any).vehicleRate.findMany({
+      where: {
+        serviceTypeId: fullDayType.id,
+        active: true,
+        minPax: { lte: values.paxCount },
+        maxPax: { gte: values.paxCount },
+      },
+      include: { vehicle: true, supplier: true },
+    });
+    const fullDay = candidates
+      .filter(
+        (rate: any) =>
+          (normalizeVehicleTypeLabel(rate.vehicle?.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle?.name)) ===
+          canonical,
+      )
+      .sort((a: any, b: any) => a.price - b.price)[0];
+    if (!fullDay) {
+      return null;
+    }
+    const discountPct = Number((fullDay.supplier as any)?.transportDiscountPercent ?? 0) || 0;
+    let extraKmCost = 0;
+    let mileageNote = 'free mileage (3+ day package)';
+    if (!values.freeMileage) {
+      const includedKm = 200; // Full Day allowance
+      const extraKm = Math.max(0, Math.round(values.routeKm) - includedKm);
+      if (extraKm > 0) {
+        const extraKmType = await (this.prisma as any).transportServiceType.findFirst({
+          where: { name: 'Extra KM' },
+          select: { id: true },
+        });
+        const extraKmRate = extraKmType
+          ? await (this.prisma as any).vehicleRate.findFirst({
+              where: { vehicleId: fullDay.vehicleId, serviceTypeId: extraKmType.id, active: true, currency: fullDay.currency },
+              select: { price: true },
+            })
+          : null;
+        const perKm = Number((extraKmRate as any)?.price ?? 0) || 0;
+        extraKmCost = extraKm * perKm;
+        mileageNote = `extra ${extraKm}km @ ${fullDay.currency} ${perKm}/km`;
+      } else {
+        mileageNote = 'within 200km';
+      }
+    }
+    const gross = fullDay.price + extraKmCost;
+    const overrideCost = Number((gross * (1 - discountPct / 100)).toFixed(2));
+    const description = [
+      `${(fullDay.supplier as any)?.name || 'Supplier'} Full Day`,
+      fullDay.vehicle?.name,
+      `${fullDay.currency} ${fullDay.price}`,
+      mileageNote,
+      discountPct > 0 ? `-${discountPct}% discount` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    return { overrideCost, currency: fullDay.currency, description };
+  }
+
   private async buildExcursionTemplateQuoteItemPayload(values: {
     quote: { id: string; adults?: number | null; children?: number | null };
     template: { id: string; name?: string | null };
@@ -5533,13 +5615,29 @@ export class QuotesService {
           throw new BadRequestException('Selected touring route variant has no active pricing row');
         }
 
+        // Large vehicles (Coaster 17+ — capacity >= 13) price off Alpha's Full-Day card:
+        // cheapest Alpha vehicle of the same class fitting pax + distance-based extra-km,
+        // minus Alpha's supplier discount, with free mileage when the package toggle is on.
+        // Almushtari has no large vehicles, so the canonical match resolves to Alpha.
+        // Small vehicles keep the touring-route per-route rate (Almushtari, <3-day rate).
+        const excursionVehicleCapacity = Number(selectedPricing.maxPax ?? 0) || 0;
+        const largeVehicleAlpha =
+          excursionVehicleCapacity >= 13 && selectedPricing.vehicle
+            ? await this.resolveAlphaFullDayExcursionCost({
+                vehicle: selectedPricing.vehicle,
+                paxCount,
+                routeKm: Number((touringRoute as any).estimatedDistanceKm ?? 0) || 0,
+                freeMileage: Boolean((quote as any).excursionPackageRate),
+              })
+            : null;
+
         const serviceType = selectedPricing.transportServiceType || { id: data.transportServiceTypeId, name: 'Touring route', code: 'TOURING_ROUTE' };
         const destinations = Array.isArray(touringRoute.mainDestinations) ? touringRoute.mainDestinations.filter(Boolean) : [];
         const stopNames = (touringRoute.stops || []).map((stop: any) => stop.location || stop.city).filter(Boolean);
         const routePath = destinations.length > 0 ? destinations : stopNames;
         const routeDisplay = routePath.length > 0 ? `${touringRoute.startCity} -> ${routePath.join(' -> ')} -> ${touringRoute.startCity}` : touringRoute.name;
-        baseCost = Number(selectedPricing.baseCost || 0);
-        currency = selectedPricing.currency || currency || 'USD';
+        baseCost = largeVehicleAlpha ? largeVehicleAlpha.overrideCost : Number(selectedPricing.baseCost || 0);
+        currency = largeVehicleAlpha ? largeVehicleAlpha.currency : selectedPricing.currency || currency || 'USD';
         supplierCostBaseAmount = baseCost;
         supplierCostCurrency = currency;
         transportServiceTypeId = selectedPricing.transportServiceTypeId || data.transportServiceTypeId;
@@ -5549,9 +5647,9 @@ export class QuotesService {
           routeDisplay,
           serviceType.name,
           selectedPricing.vehicle?.name,
-          selectedPricing.pricingBasis,
-          selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
-          selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
+          largeVehicleAlpha ? largeVehicleAlpha.description : selectedPricing.pricingBasis,
+          largeVehicleAlpha ? null : selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
+          largeVehicleAlpha ? null : selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
         ].filter(Boolean).join(' | ');
       } else {
       const routeNormalizedKey = data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined);
