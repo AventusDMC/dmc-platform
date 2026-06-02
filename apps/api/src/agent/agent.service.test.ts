@@ -322,6 +322,54 @@ nodeTestAgent.test('agent portal omits commission when no company rate is config
   agentAssert.equal(bookings[0].commissionAmount, null);
 });
 
+nodeTestAgent.test('net-rate agents see cost+handling pricing and earn no commission', async () => {
+  const service = createAgentService({
+    prisma: {
+      company: {
+        findUnique: async () => ({
+          id: 'company-1',
+          name: 'Net Partner',
+          agentRateMode: 'NET',
+          agentNetHandlingPercent: 12,
+          agentCommissionPercent: 10, // ignored in NET mode
+        }),
+      },
+      quote: {
+        findMany: async () => [
+          { id: 'q1', title: 'Trip', status: 'SENT', totalSell: 1500, totalCost: 1000, adults: 2, children: 0, pricePerPax: 750 },
+        ],
+      },
+      booking: {
+        findMany: async () => [
+          {
+            id: 'b1',
+            bookingRef: 'BK-1',
+            status: 'confirmed',
+            snapshotJson: { totalSell: 1500 },
+            pricingSnapshotJson: { totalSell: 1500, totalCost: 1000 },
+            quote: {},
+          },
+        ],
+      },
+    },
+  });
+  const actor = { id: 'agent-1', email: 'a@x.com', role: 'agent', name: 'A', auditLabel: 'A', companyId: 'company-1' };
+
+  const me = await service.getMe(actor as any);
+  agentAssert.equal(me.rateMode, 'NET');
+  agentAssert.equal(me.netHandlingPercent, 12);
+
+  const quotes = await service.getQuotes(actor as any);
+  agentAssert.equal(quotes[0].rateMode, 'NET');
+  agentAssert.equal(quotes[0].totalSell, 1120); // 1000 cost + 12% handling, NOT the 1500 gross
+  agentAssert.equal(quotes[0].pricePerPax, 560); // 1120 / 2 pax
+
+  const bookings = await service.getBookings(actor as any);
+  agentAssert.equal(bookings[0].rateMode, 'NET');
+  agentAssert.equal(bookings[0].totalSell, 1120);
+  agentAssert.equal(bookings[0].commissionAmount, null); // net agents add their own margin, no commission
+});
+
 nodeTestAgent.test('agent analytics aggregates conversion, value, commission, status mix and trend', async () => {
   const service = createAgentService({
     prisma: {

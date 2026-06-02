@@ -28,6 +28,8 @@ type CreateCompanyBody = {
   country?: string;
   city?: string;
   agentCommissionPercent?: number | null;
+  agentRateMode?: string | null;
+  agentNetHandlingPercent?: number | null;
 };
 
 type UpdateCompanyBody = {
@@ -39,6 +41,8 @@ type UpdateCompanyBody = {
   country?: string;
   city?: string;
   agentCommissionPercent?: number | null;
+  agentRateMode?: string | null;
+  agentNetHandlingPercent?: number | null;
 };
 
 type UpdateBrandingBody = {

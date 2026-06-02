@@ -18,9 +18,10 @@ export class AgentService {
     const company = actor.companyId
       ? await this.prisma.company.findUnique({
           where: { id: actor.companyId },
-          select: { id: true, name: true, agentCommissionPercent: true },
+          select: { id: true, name: true, agentCommissionPercent: true, agentRateMode: true, agentNetHandlingPercent: true },
         })
       : null;
+    const rateConfig = await this.resolveAgentRateConfig(actor);
 
     return {
       id: actor.id,
@@ -30,6 +31,8 @@ export class AgentService {
       lastName: actor.lastName,
       name: actor.name,
       company,
+      rateMode: rateConfig.mode,
+      netHandlingPercent: rateConfig.mode === 'NET' ? rateConfig.netHandlingPercent : null,
       accountStatus: 'active',
       portalPermissions: {
         readOnly: true,
@@ -50,7 +53,8 @@ export class AgentService {
         createdAt: 'desc',
       },
     });
-    return quotes.map((quote: any) => this.mapAgentQuoteSummary(quote));
+    const rateConfig = await this.resolveAgentRateConfig(actor);
+    return quotes.map((quote: any) => this.mapAgentQuoteSummary(quote, rateConfig));
   }
 
   async getQuote(id: string, actor: AuthenticatedActor) {
@@ -60,7 +64,8 @@ export class AgentService {
       return null;
     }
 
-    return this.mapAgentQuoteDetail(quote as any);
+    const rateConfig = await this.resolveAgentRateConfig(actor);
+    return this.mapAgentQuoteDetail(quote as any, rateConfig);
   }
 
   async getBookings(actor: AuthenticatedActor) {
@@ -79,20 +84,53 @@ export class AgentService {
         createdAt: 'desc',
       },
     });
-    const commissionPercent = await this.resolveAgentCommissionPercent(actor);
-    return bookings.map((booking: any) => this.mapAgentBookingSummary(booking, commissionPercent));
+    const rateConfig = await this.resolveAgentRateConfig(actor);
+    return bookings.map((booking: any) => this.mapAgentBookingSummary(booking, rateConfig));
   }
 
-  // Agent Portal — the commission rate (%) configured on the agent's company,
-  // used to compute the commission they earn on each booking's sell value.
-  private async resolveAgentCommissionPercent(actor: AuthenticatedActor): Promise<number | null> {
-    if (!actor.companyId) return null;
+  // Agent Portal rate config resolved from the agent's company:
+  //  - GROSS (default): agent sees the published sell price and earns
+  //    commissionPercent on it.
+  //  - NET: agent sees a net buy rate (cost + netHandlingPercent) instead of
+  //    gross, and earns NO commission (they add their own margin downstream).
+  private async resolveAgentRateConfig(
+    actor: AuthenticatedActor,
+  ): Promise<{ mode: 'GROSS' | 'NET'; netHandlingPercent: number; commissionPercent: number | null }> {
+    const gross = { mode: 'GROSS' as const, netHandlingPercent: 0, commissionPercent: null as number | null };
+    if (!actor.companyId) return gross;
     const company = await this.prisma.company.findUnique({
       where: { id: actor.companyId },
-      select: { agentCommissionPercent: true },
+      select: { agentCommissionPercent: true, agentRateMode: true, agentNetHandlingPercent: true },
     });
-    const rate = company?.agentCommissionPercent;
-    return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
+    const mode = String(company?.agentRateMode || 'GROSS').toUpperCase() === 'NET' ? 'NET' : 'GROSS';
+    if (mode === 'NET') {
+      const handling = company?.agentNetHandlingPercent;
+      return {
+        mode: 'NET',
+        netHandlingPercent: typeof handling === 'number' && Number.isFinite(handling) && handling >= 0 ? handling : 0,
+        commissionPercent: null, // net agents earn margin, not commission
+      };
+    }
+    const commission = company?.agentCommissionPercent;
+    return {
+      mode: 'GROSS',
+      netHandlingPercent: 0,
+      commissionPercent: typeof commission === 'number' && Number.isFinite(commission) && commission > 0 ? commission : null,
+    };
+  }
+
+  // The price an agent sees: gross sell for GROSS agents, or net (cost +
+  // handling %) for NET agents. The quote pricing engine is never modified —
+  // this only changes what the agent portal displays.
+  private agentDisplaySell(
+    grossSell: number,
+    cost: number,
+    config: { mode: 'GROSS' | 'NET'; netHandlingPercent: number },
+  ): number {
+    if (config.mode === 'NET') {
+      return Number((Number(cost || 0) * (1 + config.netHandlingPercent / 100)).toFixed(2));
+    }
+    return Number((Number(grossSell || 0)).toFixed(2));
   }
 
   async getBooking(id: string, actor: AuthenticatedActor) {
@@ -135,15 +173,15 @@ export class AgentService {
     if (!booking) {
       return null;
     }
-    const commissionPercent = await this.resolveAgentCommissionPercent(actor);
-    return this.mapAgentBookingDetail(booking, commissionPercent);
+    const rateConfig = await this.resolveAgentRateConfig(actor);
+    return this.mapAgentBookingDetail(booking, rateConfig);
   }
 
   // Agent Portal — performance analytics across the agent's assigned quotes
   // and bookings: conversion, booking value, commission earned, status mix,
   // and a 6-month trend. Read-only aggregation over existing data.
   async getAnalytics(actor: AuthenticatedActor) {
-    const [quotes, bookings, commissionPercent] = await Promise.all([
+    const [quotes, bookings, rateConfig] = await Promise.all([
       this.prisma.quote.findMany({
         where: this.buildAssignedQuoteWhere(actor),
         select: { id: true, status: true, totalSell: true, createdAt: true },
@@ -152,11 +190,18 @@ export class AgentService {
         where: { quote: this.buildAssignedQuoteWhere(actor) },
         select: { id: true, status: true, createdAt: true, snapshotJson: true, pricingSnapshotJson: true },
       }),
-      this.resolveAgentCommissionPercent(actor),
+      this.resolveAgentRateConfig(actor),
     ]);
 
+    const commissionPercent = rateConfig.commissionPercent;
     const isCancelled = (status: any) => String(status || '').toLowerCase() === 'cancelled';
-    const bookingSell = (booking: any) => Number(booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0);
+    // Net agents see their net buy value; gross agents see the published sell.
+    const bookingSell = (booking: any) =>
+      this.agentDisplaySell(
+        Number(booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0),
+        Number(booking.pricingSnapshotJson?.totalCost || booking.snapshotJson?.totalCost || 0),
+        rateConfig,
+      );
 
     const quoteCount = quotes.length;
     const activeBookings = (bookings as any[]).filter((booking) => !isCancelled(booking.status));
@@ -201,6 +246,7 @@ export class AgentService {
       conversionRate,
       totalBookingValue,
       avgBookingValue,
+      rateMode: rateConfig.mode,
       commissionPercent,
       totalCommission,
       bookingsByStatus,
@@ -451,7 +497,16 @@ export class AgentService {
       }));
   }
 
-  private mapAgentQuoteSummary(quote: any) {
+  private mapAgentQuoteSummary(
+    quote: any,
+    rateConfig: { mode: 'GROSS' | 'NET'; netHandlingPercent: number } = { mode: 'GROSS', netHandlingPercent: 0 },
+  ) {
+    const adults = quote.adults ?? 0;
+    const children = quote.children ?? 0;
+    const pax = adults + children;
+    const displaySell = this.agentDisplaySell(Number(quote.totalSell ?? 0), Number(quote.totalCost ?? 0), rateConfig);
+    const displayPerPax =
+      rateConfig.mode === 'NET' ? (pax > 0 ? Number((displaySell / pax).toFixed(2)) : displaySell) : quote.pricePerPax ?? 0;
     return {
       id: quote.id,
       quoteNumber: quote.quoteNumber ?? null,
@@ -459,11 +514,12 @@ export class AgentService {
       description: quote.description ?? null,
       status: quote.status,
       quoteCurrency: quote.quoteCurrency ?? 'USD',
-      adults: quote.adults ?? 0,
-      children: quote.children ?? 0,
+      adults,
+      children,
       nightCount: quote.nightCount ?? 0,
-      totalSell: quote.totalSell ?? 0,
-      pricePerPax: quote.pricePerPax ?? 0,
+      totalSell: displaySell,
+      pricePerPax: displayPerPax,
+      rateMode: rateConfig.mode,
       travelStartDate: quote.travelStartDate ?? null,
       validUntil: quote.validUntil ?? null,
       publicEnabled: Boolean(quote.publicEnabled && quote.publicToken),
@@ -475,8 +531,11 @@ export class AgentService {
     };
   }
 
-  private mapAgentQuoteDetail(quote: any) {
-    const summary = this.mapAgentQuoteSummary(quote);
+  private mapAgentQuoteDetail(
+    quote: any,
+    rateConfig: { mode: 'GROSS' | 'NET'; netHandlingPercent: number } = { mode: 'GROSS', netHandlingPercent: 0 },
+  ) {
+    const summary = this.mapAgentQuoteSummary(quote, rateConfig);
     const itineraries = Array.isArray(quote.itineraries) ? [...quote.itineraries] : [];
     const quoteItems = Array.isArray(quote.quoteItems) ? [...quote.quoteItems] : [];
 
@@ -521,11 +580,20 @@ export class AgentService {
     };
   }
 
-  private mapAgentBookingSummary(booking: any, commissionPercent: number | null = null) {
-    const sellTotal = Number(
+  private mapAgentBookingSummary(
+    booking: any,
+    rateConfig: { mode: 'GROSS' | 'NET'; netHandlingPercent: number; commissionPercent: number | null } = {
+      mode: 'GROSS',
+      netHandlingPercent: 0,
+      commissionPercent: null,
+    },
+  ) {
+    const grossSell = Number(
       booking.finance?.totalSell || booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0,
     );
-    const commission = this.computeAgentCommission(sellTotal, commissionPercent);
+    const cost = Number(booking.pricingSnapshotJson?.totalCost || booking.snapshotJson?.totalCost || 0);
+    const displaySell = this.agentDisplaySell(grossSell, cost, rateConfig);
+    const commission = this.computeAgentCommission(displaySell, rateConfig.commissionPercent);
     return {
       id: booking.id,
       bookingRef: booking.bookingRef || booking.id,
@@ -542,19 +610,30 @@ export class AgentService {
       nightCount: booking.nightCount ?? 0,
       travelStartDate: booking.snapshotJson?.travelStartDate || null,
       createdAt: booking.createdAt,
+      totalSell: displaySell,
+      rateMode: rateConfig.mode,
       commissionPercent: commission.commissionPercent,
       commissionAmount: commission.commissionAmount,
     };
   }
 
-  private mapAgentBookingDetail(booking: any, commissionPercent: number | null = null) {
-    const summary = this.mapAgentBookingSummary(booking, commissionPercent);
+  private mapAgentBookingDetail(
+    booking: any,
+    rateConfig: { mode: 'GROSS' | 'NET'; netHandlingPercent: number; commissionPercent: number | null } = {
+      mode: 'GROSS',
+      netHandlingPercent: 0,
+      commissionPercent: null,
+    },
+  ) {
+    const summary = this.mapAgentBookingSummary(booking, rateConfig);
     const payments = Array.isArray(booking.payments) ? booking.payments : [];
     const clientPayments = payments.filter((payment: any) => payment.type === 'CLIENT');
     const paid = clientPayments
       .filter((payment: any) => payment.status === 'PAID')
       .reduce((total: number, payment: any) => total + Number(payment.amount || 0), 0);
-    const totalSell = Number(booking.finance?.totalSell || booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0);
+    const grossSell = Number(booking.finance?.totalSell || booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0);
+    const cost = Number(booking.pricingSnapshotJson?.totalCost || booking.snapshotJson?.totalCost || 0);
+    const totalSell = this.agentDisplaySell(grossSell, cost, rateConfig);
     const balance = Math.max(totalSell - paid, 0);
 
     return {
@@ -563,8 +642,9 @@ export class AgentService {
         totalSell,
         depositsReceived: paid,
         remainingBalance: balance,
+        rateMode: rateConfig.mode,
         commissionPercent: summary.commissionPercent,
-        commissionAmount: this.computeAgentCommission(totalSell, commissionPercent).commissionAmount,
+        commissionAmount: this.computeAgentCommission(totalSell, rateConfig.commissionPercent).commissionAmount,
         paymentStatus: balance <= 0 ? 'paid' : paid > 0 ? 'partially_paid' : 'unpaid',
         paymentMethods: this.listPaymentMethods(),
         paymentReferences: clientPayments.map((payment: any) => ({
