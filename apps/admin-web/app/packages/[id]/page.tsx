@@ -11,10 +11,12 @@ import {
   collectPackageTemplateComponents,
   isOperationalPackageService,
   PACKAGE_CATALOG_MODULES,
+  packageComponentMappability,
   packageComponentReferenceLabel,
   packageComponentTypeLabel,
   resolvePackageTemplateDays,
 } from '../package-template-display';
+import { PackageComponentMoveControls } from '../PackageComponentMoveControls';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
 import { PackageDayPlannerActions } from '../PackageDayPlannerActions';
@@ -226,6 +228,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                           <tbody>
                             {day.components.map((component) => {
                               const orderedComponentIds = day.components.map((item) => item.id);
+                              const mappability = packageComponentMappability(component);
 
                               return (
                                 <tr key={component.id} className={!component.active ? 'muted-row' : undefined}>
@@ -240,6 +243,12 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                       {component.active ? 'Active' : 'Inactive'}
                                     </span>
                                     {component.isOptional ? <span className="status-pill status-pill-warning">Optional</span> : null}
+                                    <span
+                                      className={mappability.ready ? 'status-pill status-pill-success' : 'status-pill status-pill-warning'}
+                                      title={mappability.reason}
+                                    >
+                                      {mappability.ready ? 'Ready' : 'Unlinked'}
+                                    </span>
                                   </td>
                                   <td>{component.operationalNotes || 'None'}</td>
                                   <td>
@@ -250,6 +259,13 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                         dayId={day.id}
                                         componentId={component.id}
                                         orderedComponentIds={orderedComponentIds}
+                                      />
+                                      <PackageComponentMoveControls
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        componentId={component.id}
+                                        currentDayNumber={day.dayNumber}
+                                        durationDays={packageDurationDays}
                                       />
                                       <PackageComponentRemoveButton
                                         apiBaseUrl="/api"

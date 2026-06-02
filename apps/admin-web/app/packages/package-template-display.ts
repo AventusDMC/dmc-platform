@@ -50,6 +50,38 @@ export function packageComponentReferenceLabel(component: PackageTemplateCompone
   return component.supplierService?.entranceFee?.siteName || component.supplierService?.entranceFee?.name || component.supplierService?.name || 'Ticketing link';
 }
 
+export type PackageComponentMappability = {
+  ready: boolean;
+  reason: string;
+};
+
+export function packageComponentMappability(component: PackageTemplateComponent): PackageComponentMappability {
+  switch (component.componentType) {
+    case 'EXCURSION_TEMPLATE':
+      return component.excursionTemplate
+        ? { ready: true, reason: 'Linked to an excursion template' }
+        : { ready: false, reason: 'No excursion template linked — will be skipped when applied to a quote' };
+    case 'ACTIVITY':
+      return component.activity
+        ? { ready: true, reason: 'Linked to an activity' }
+        : { ready: false, reason: 'No activity linked — will be skipped when applied to a quote' };
+    case 'HOTEL':
+      return component.hotelContract
+        ? { ready: true, reason: 'Linked to a hotel contract' }
+        : { ready: false, reason: 'No hotel contract linked — will be skipped when applied to a quote' };
+    case 'TRANSPORT':
+      return component.route || component.transportServiceType || component.supplierService
+        ? { ready: true, reason: 'Linked to a transport structure' }
+        : { ready: false, reason: 'No route, service type, or supplier service linked — will be skipped when applied to a quote' };
+    case 'EXTERNAL_PACKAGE':
+      return { ready: true, reason: 'External package placeholder — no operational link required' };
+    default:
+      return component.supplierService
+        ? { ready: true, reason: 'Linked to an operational service' }
+        : { ready: false, reason: 'No supplier service linked — will be skipped when applied to a quote' };
+  }
+}
+
 const OPERATIONAL_SERVICE_CODE_TOKENS = [
   'MEET_ASSIST',
   'MEET_AND_ASSIST',

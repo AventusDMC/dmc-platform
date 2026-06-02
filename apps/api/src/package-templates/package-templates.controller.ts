@@ -19,11 +19,22 @@ type PackageTemplateComponentType =
 type CreatePackageTemplateBody = {
   name: string;
   durationDays: number;
+  code?: string | null;
   targetMarket?: string | null;
   season?: string | null;
   summary?: string | null;
+  destination?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  hotelCategoryNotes?: string | null;
+  guideRules?: string | null;
+  categoryTags?: unknown;
   active?: boolean;
   operationalNotes?: string | null;
+};
+
+type MovePackageComponentBody = {
+  dayNumber: number;
 };
 
 type PackageTemplateComponentBody = {
@@ -136,6 +147,14 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   updateDay(@Param('id') id: string, @Param('dayId') dayId: string, @Body() body: PackageTemplateDayBody) {
     return this.packageTemplatesService.updateDay(id, dayId, body);
+  }
+
+  @Patch(':id/components/:componentId/move')
+  @Roles('admin', 'operations')
+  moveComponent(@Param('id') id: string, @Param('componentId') componentId: string, @Body() body: MovePackageComponentBody) {
+    return this.packageTemplatesService.moveComponent(id, componentId, {
+      dayNumber: body.dayNumber === undefined || body.dayNumber === null ? body.dayNumber : Number(body.dayNumber),
+    });
   }
 
   @Delete(':id/components/:componentId')
