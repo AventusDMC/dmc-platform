@@ -1085,6 +1085,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           nightCount: true,
           snapshotJson: true,
           contactSnapshotJson: true,
+          brandSnapshotJson: true,
           services: {
             orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
             select: {
@@ -1096,7 +1097,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           },
         },
       })
-      .then((booking) => booking || null);
+      .then((booking) => {
+        if (!booking) {
+          return null;
+        }
+        // Surface the DMC's 24/7 emergency line to the traveler — built from
+        // the brand snapshot's branding contact (falling back to top-level
+        // brand fields). brandSnapshotJson is stripped from the response so we
+        // only expose the curated emergency-contact block, not raw brand data.
+        const { brandSnapshotJson, ...rest } = booking as typeof booking & { brandSnapshotJson?: unknown };
+        const brand = (brandSnapshotJson || {}) as { name?: string | null; phone?: string | null; email?: string | null; branding?: { displayName?: string | null; phone?: string | null; email?: string | null; website?: string | null } | null };
+        const branding = brand.branding || {};
+        const phone = branding.phone || brand.phone || null;
+        const email = branding.email || brand.email || null;
+        const name = branding.displayName || brand.name || null;
+        const website = branding.website || null;
+        return {
+          ...rest,
+          emergencyContact: phone || email ? { name, phone, email, website } : null,
+        };
+      });
   }
 
   findSupplierPortalBooking(id: string, token?: string) {

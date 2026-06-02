@@ -92,6 +92,12 @@ type Booking = {
   nightCount: number;
   snapshotJson: QuoteSnapshot;
   contactSnapshotJson: Contact;
+  emergencyContact: {
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+  } | null;
   services: Array<{
     id: string;
     description: string;
@@ -293,6 +299,39 @@ export default async function PortalBookingPage({ params, searchParams }: Portal
             </div>
             <p className="detail-copy">{tripSummary}</p>
           </article>
+
+          {booking.emergencyContact ? (
+            <article className="detail-card">
+              <p className="eyebrow">24/7 Emergency Contact</p>
+              <div className="quote-preview-total-list">
+                {booking.emergencyContact.name ? (
+                  <div>
+                    <span>Operator</span>
+                    <strong>{booking.emergencyContact.name}</strong>
+                  </div>
+                ) : null}
+                {booking.emergencyContact.phone ? (
+                  <div>
+                    <span>Phone</span>
+                    <strong><a href={`tel:${booking.emergencyContact.phone}`}>{booking.emergencyContact.phone}</a></strong>
+                  </div>
+                ) : null}
+                {booking.emergencyContact.email ? (
+                  <div>
+                    <span>Email</span>
+                    <strong><a href={`mailto:${booking.emergencyContact.email}`}>{booking.emergencyContact.email}</a></strong>
+                  </div>
+                ) : null}
+                {booking.emergencyContact.website ? (
+                  <div>
+                    <span>Website</span>
+                    <strong><a href={booking.emergencyContact.website} target="_blank" rel="noreferrer">{booking.emergencyContact.website}</a></strong>
+                  </div>
+                ) : null}
+              </div>
+              <p className="detail-copy">Reach your travel operator any time during your trip for assistance.</p>
+            </article>
+          ) : null}
         </section>
 
         <section className="detail-card">
