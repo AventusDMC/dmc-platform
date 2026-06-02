@@ -254,6 +254,112 @@ export class ReportsService {
     };
   }
 
+  /**
+   * Supplier cost-variance — compares each booking's EXPECTED supplier cost
+   * (quoted service.totalCost) against the COMMITTED payable (service
+   * .supplierPayableAmount, falling back to the quoted cost when the operator
+   * hasn't entered one) and the ACTUAL paid (SUPPLIER payments marked PAID).
+   * Surfaces totals plus the bookings whose committed payable diverges most
+   * from the quote, so finance can catch cost creep before it's paid.
+   */
+  async getSupplierCostVariance(input: BookingSummaryInput, actor?: CompanyScopedActor) {
+    requireActorCompanyId(actor);
+    const dateWhere = this.buildDateWhere(input);
+
+    const bookings = (await (this.prisma.booking as any).findMany({
+      where: {
+        AND: [dateWhere, { amendments: { none: {} } }],
+      },
+      select: {
+        id: true,
+        bookingRef: true,
+        clientSnapshotJson: true,
+        startDate: true,
+        status: true,
+        services: {
+          select: { totalCost: true, supplierPayableAmount: true, status: true },
+        },
+        payments: {
+          select: { type: true, amount: true, status: true },
+        },
+      },
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+    } as any)) as Array<{
+      id: string;
+      bookingRef: string;
+      clientSnapshotJson: { name?: string | null } | null;
+      startDate: Date | null;
+      status: string | null;
+      services: Array<{ totalCost: number | null; supplierPayableAmount: number | null; status?: string | null }>;
+      payments: Array<{ type: string | null; amount: number | null; status: string | null }>;
+    }>;
+
+    const rows = [];
+    let totalExpected = 0;
+    let totalPayable = 0;
+    let totalActual = 0;
+
+    for (const booking of bookings) {
+      if (this.isCancelled(booking.status)) {
+        continue;
+      }
+      const services = (booking.services || []).filter((service) => !this.isCancelled(service.status));
+      const expectedCost = this.roundMoney(services.reduce((total, service) => total + Number(service.totalCost || 0), 0));
+      const payableCost = this.roundMoney(
+        services.reduce((total, service) => total + Number(service.supplierPayableAmount ?? service.totalCost ?? 0), 0),
+      );
+      const actualPaid = this.roundMoney(
+        (booking.payments || [])
+          .filter((payment) => String(payment.type).toUpperCase() === 'SUPPLIER' && String(payment.status).toUpperCase() === 'PAID')
+          .reduce((total, payment) => total + Number(payment.amount || 0), 0),
+      );
+      const variance = this.roundMoney(payableCost - expectedCost);
+      const variancePercent = expectedCost > 0 ? this.roundMoney((variance / expectedCost) * 100) : 0;
+
+      totalExpected += expectedCost;
+      totalPayable += payableCost;
+      totalActual += actualPaid;
+
+      rows.push({
+        bookingId: booking.id,
+        bookingRef: booking.bookingRef,
+        clientName: booking.clientSnapshotJson?.name || 'Client',
+        startDate: booking.startDate,
+        expectedCost,
+        payableCost,
+        actualPaid,
+        variance,
+        variancePercent,
+      });
+    }
+
+    totalExpected = this.roundMoney(totalExpected);
+    totalPayable = this.roundMoney(totalPayable);
+    totalActual = this.roundMoney(totalActual);
+
+    // Flag bookings whose committed payable diverges from the quoted cost by
+    // more than 5% AND at least a token amount — those warrant finance review.
+    const flagged = rows
+      .filter((row) => Math.abs(row.variance) >= 1 && Math.abs(row.variancePercent) >= 5)
+      .sort((left, right) => Math.abs(right.variance) - Math.abs(left.variance))
+      .slice(0, 10);
+
+    return {
+      startDate: input.startDate || null,
+      endDate: input.endDate || null,
+      dateField: 'startDate',
+      totalBookings: rows.length,
+      totalExpectedCost: totalExpected,
+      totalPayableCost: totalPayable,
+      totalActualPaid: totalActual,
+      totalVariance: this.roundMoney(totalPayable - totalExpected),
+      overBudgetCount: rows.filter((row) => row.variance > 0).length,
+      underBudgetCount: rows.filter((row) => row.variance < 0).length,
+      flagged,
+      bookings: [...rows].sort((left, right) => Math.abs(right.variance) - Math.abs(left.variance)),
+    };
+  }
+
   async getSupplierPayables(input: SupplierPayablesInput = {}, actor?: CompanyScopedActor) {
     requireActorCompanyId(actor);
     const where = this.buildSupplierPayablesWhere(input);

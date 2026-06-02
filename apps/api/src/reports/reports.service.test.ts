@@ -304,6 +304,80 @@ test('supplier performance requires auth without actor company filtering', async
   assert.equal(JSON.stringify(seenWheres[0]).includes('dmc-company'), false);
 });
 
+test('supplier cost variance compares expected vs committed payable vs actual paid and flags over-budget bookings', async () => {
+  const { service, seenWheres } = createService([
+    {
+      id: 'booking-1',
+      bookingRef: 'BK-1',
+      amendedFromId: null,
+      clientSnapshotJson: { name: 'Client One' },
+      startDate: new Date('2026-06-01T12:00:00.000Z'),
+      status: 'confirmed',
+      services: [
+        // Expected 100, but committed payable 130 → +30 over budget.
+        { totalCost: 100, supplierPayableAmount: 130, status: 'confirmed' },
+        // Cancelled service is excluded from both expected and payable.
+        { totalCost: 500, supplierPayableAmount: 500, status: 'cancelled' },
+      ],
+      payments: [
+        { type: 'SUPPLIER', amount: 130, status: 'PAID' },
+        { type: 'CLIENT', amount: 999, status: 'PAID' }, // ignored (client payment)
+        { type: 'SUPPLIER', amount: 40, status: 'PENDING' }, // ignored (not paid)
+      ],
+    },
+    {
+      id: 'booking-2',
+      bookingRef: 'BK-2',
+      amendedFromId: null,
+      clientSnapshotJson: { name: 'Client Two' },
+      startDate: new Date('2026-06-02T12:00:00.000Z'),
+      status: 'confirmed',
+      services: [
+        // No explicit payable → falls back to expected cost (no variance).
+        { totalCost: 200, supplierPayableAmount: null, status: 'confirmed' },
+      ],
+      payments: [],
+    },
+    {
+      id: 'booking-3',
+      bookingRef: 'BK-3',
+      amendedFromId: null,
+      clientSnapshotJson: { name: 'Client Three' },
+      startDate: new Date('2026-06-03T12:00:00.000Z'),
+      status: 'cancelled',
+      services: [{ totalCost: 1000, supplierPayableAmount: 1000, status: 'confirmed' }],
+      payments: [],
+    },
+  ]);
+
+  const report = await service.getSupplierCostVariance({}, { companyId: 'dmc-company' });
+
+  // Cancelled booking-3 excluded entirely.
+  assert.equal(report.totalBookings, 2);
+  assert.equal(report.totalExpectedCost, 300); // 100 + 200
+  assert.equal(report.totalPayableCost, 330); // 130 + 200
+  assert.equal(report.totalActualPaid, 130); // only booking-1 SUPPLIER PAID
+  assert.equal(report.totalVariance, 30);
+  assert.equal(report.overBudgetCount, 1);
+  assert.equal(report.underBudgetCount, 0);
+
+  // booking-1 is flagged (+30 = +30% over the 100 quote).
+  assert.equal(report.flagged.length, 1);
+  assert.equal(report.flagged[0].bookingRef, 'BK-1');
+  assert.equal(report.flagged[0].variance, 30);
+  assert.equal(report.flagged[0].variancePercent, 30);
+  assert.equal(report.flagged[0].actualPaid, 130);
+
+  // No actor-company filtering leaks into the where clause.
+  assert.deepEqual(seenWheres[0], { AND: [{}, { amendments: { none: {} } }] });
+  assert.equal(JSON.stringify(seenWheres[0]).includes('dmc-company'), false);
+});
+
+test('supplier cost variance requires authenticated company context', async () => {
+  const { service } = createService([]);
+  await assert.rejects(() => service.getSupplierCostVariance({}, undefined as any), /Company context is required/);
+});
+
 test('supplier payables filters supplier costs by booking date range', async () => {
   const { service, seenWheres } = createSupplierPayablesService([
     supplierPayableService('supplier-1', 'Petra Hotels', '2026-06-01', 100),
