@@ -230,28 +230,18 @@ export default async function ExecutivePage() {
 
       {/* Strategic alerts banner */}
       {data.strategicAlerts.length > 0 ? (
-        <section
-          className="executive-panel"
-          style={{
-            background: '#fef3f2',
-            border: '2px solid #b42318',
-            borderRadius: 12,
-            padding: '0.85rem 1rem',
-            marginBottom: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.4rem',
-          }}
-        >
-          <strong style={{ color: '#7a271a', fontSize: '0.85rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            Strategic Alerts
-          </strong>
-          <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#7a271a' }}>
-            {data.strategicAlerts.map((a, i) => (
-              <li key={i} style={{ marginBottom: '0.2rem' }}>{a}</li>
-            ))}
-          </ul>
-        </section>
+        <AppAlert tone="danger" className="executive-panel" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <strong style={{ color: '#7a271a', fontSize: '0.85rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Strategic Alerts
+            </strong>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#7a271a' }}>
+              {data.strategicAlerts.map((a, i) => (
+                <li key={i} style={{ marginBottom: '0.2rem' }}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        </AppAlert>
       ) : null}
 
       {/* TOP-LINE EXECUTIVE KPIs */}
