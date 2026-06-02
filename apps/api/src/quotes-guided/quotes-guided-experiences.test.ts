@@ -160,6 +160,34 @@ test('enrichActivityForSuggestion: full premium cultural activity card', () => {
   assert.equal(enriched.familyFriendly, true);
 });
 
+test('recommendation score: premium + curated + group-ready experience scores higher than a plain one, with reasons', () => {
+  const premium = enrichActivityForSuggestion({
+    id: 'a1',
+    name: 'Petra by Night',
+    description: 'Signature evening experience',
+    moodCategory: 'CULTURE',
+    premiumExperienceFlag: true,
+    sicPossible: true,
+  });
+  const plain = enrichActivityForSuggestion({
+    id: 'a2',
+    name: 'Neighbourhood stroll',
+    description: null,
+    moodCategory: null,
+    premiumExperienceFlag: false,
+    sicPossible: false,
+  });
+
+  assert.ok(premium.recommendationScore > plain.recommendationScore);
+  // premium(30) + operationally-confident via sicPossible(15) + group-scale(10) + curated mood(5) = 60
+  assert.equal(premium.recommendationScore, 60);
+  assert.ok(premium.recommendationReasons.includes('Premium / signature experience'));
+  assert.ok(premium.recommendationReasons.includes('Operationally confident'));
+  assert.ok(premium.recommendationReasons.includes('Scales for groups'));
+  assert.ok(premium.recommendationReasons.includes('Curated experience metadata'));
+  assert.equal(plain.recommendationScore, 0);
+});
+
 // ---------------------------------------------------------------------------
 // Service integration
 // ---------------------------------------------------------------------------

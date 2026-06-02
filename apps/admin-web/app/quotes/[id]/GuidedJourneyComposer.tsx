@@ -168,6 +168,8 @@ type SuggestedExperience = {
   premiumExperienceFlag: boolean;
   popularWithGroups: boolean;
   operationalConfidenceLabel: string;
+  recommendationScore?: number;
+  recommendationReasons?: string[];
   notes: string[];
 };
 
@@ -1509,6 +1511,11 @@ function ExperienceCard({
           </span>
         ) : null}
       </div>
+      {!compact && exp.recommendationReasons && exp.recommendationReasons.length > 0 ? (
+        <p style={{ margin: 0, color: '#15803d', fontSize: '0.74rem' }}>
+          Why recommended: {exp.recommendationReasons.join(' · ')}
+        </p>
+      ) : null}
       {!compact && exp.notes.length > 0 ? (
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
           {exp.notes.join(' · ')}

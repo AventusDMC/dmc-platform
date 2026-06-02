@@ -176,6 +176,12 @@ export type SuggestedExperience = {
   // group" suggests this scales for group tours.
   popularWithGroups: boolean;
   operationalConfidenceLabel: string;
+  // Activity Recommendation Engine — transparent, deterministic score
+  // (premium flag, operational confidence, group-scalability, curated
+  // metadata) that ranks experiences within each mood group, with a
+  // human-readable "why". Mirrors the hotel recommendation score.
+  recommendationScore: number;
+  recommendationReasons: string[];
   notes: string[];
 };
 
@@ -645,11 +651,10 @@ export class QuotesGuidedService {
       for (const mood of Object.keys(byMood) as MoodCategory[]) {
         byMood[mood] = byMood[mood]!
           .sort((a, b) => {
-            if (a.premiumExperienceFlag !== b.premiumExperienceFlag) {
-              return a.premiumExperienceFlag ? -1 : 1;
-            }
-            if (a.operationalConfidenceLabel !== b.operationalConfidenceLabel) {
-              return a.operationalConfidenceLabel === 'Operationally confident' ? -1 : 1;
+            // Recommendation score is primary (it encodes premium + confidence
+            // + group-fit + curated metadata); ties break alphabetically.
+            if (a.recommendationScore !== b.recommendationScore) {
+              return b.recommendationScore - a.recommendationScore;
             }
             return a.name.localeCompare(b.name);
           })
@@ -682,8 +687,8 @@ export class QuotesGuidedService {
     const highlights = allExperiences
       .filter((e) => e.premiumExperienceFlag || e.operationalConfidenceLabel === 'Operationally confident')
       .sort((a, b) => {
-        if (a.premiumExperienceFlag !== b.premiumExperienceFlag) {
-          return a.premiumExperienceFlag ? -1 : 1;
+        if (a.recommendationScore !== b.recommendationScore) {
+          return b.recommendationScore - a.recommendationScore;
         }
         return a.name.localeCompare(b.name);
       })
@@ -1379,6 +1384,36 @@ export function enrichActivityForSuggestion(activity: {
         category: activity.category,
         description: activity.description,
       });
+  const premiumExperienceFlag = Boolean(activity.premiumExperienceFlag);
+  const popularWithGroups = Boolean(activity.sicPossible) || /group|tour/i.test(activity.name);
+  const operationalConfidenceLabel = deriveExperienceConfidence({
+    sicPossible: activity.sicPossible,
+    guideRequired: activity.guideRequired,
+    difficulty: activity.difficulty,
+  });
+  const hasExplicitMood = (validMoods as string[]).includes(moodFromColumn);
+
+  // Transparent recommendation score — each signal adds points AND a reason
+  // so the card explains why an experience is ranked where it is.
+  const recommendationReasons: string[] = [];
+  let recommendationScore = 0;
+  if (premiumExperienceFlag) {
+    recommendationScore += 30;
+    recommendationReasons.push('Premium / signature experience');
+  }
+  if (operationalConfidenceLabel === 'Operationally confident') {
+    recommendationScore += 15;
+    recommendationReasons.push('Operationally confident');
+  }
+  if (popularWithGroups) {
+    recommendationScore += 10;
+    recommendationReasons.push('Scales for groups');
+  }
+  if (hasExplicitMood) {
+    recommendationScore += 5;
+    recommendationReasons.push('Curated experience metadata');
+  }
+
   return {
     id: activity.id,
     name: activity.name,
@@ -1392,13 +1427,11 @@ export function enrichActivityForSuggestion(activity: {
     operationalIntensity: (activity.operationalIntensity as OperationalIntensity) ?? null,
     familyFriendly: Boolean(activity.familyFriendly),
     religiousSignificance: Boolean(activity.religiousSignificance),
-    premiumExperienceFlag: Boolean(activity.premiumExperienceFlag),
-    popularWithGroups: Boolean(activity.sicPossible) || /group|tour/i.test(activity.name),
-    operationalConfidenceLabel: deriveExperienceConfidence({
-      sicPossible: activity.sicPossible,
-      guideRequired: activity.guideRequired,
-      difficulty: activity.difficulty,
-    }),
+    premiumExperienceFlag,
+    popularWithGroups,
+    operationalConfidenceLabel,
+    recommendationScore,
+    recommendationReasons,
     notes: deriveExperienceNotes({
       name: activity.name,
       sicPossible: activity.sicPossible,
