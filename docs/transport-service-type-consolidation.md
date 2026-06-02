@@ -1,0 +1,102 @@
+# Transport Service-Type Consolidation — Scope
+
+_Status: ✅ COMPLETE — Phases 1–4 done 2026-06-02. Transport service types reduced 24 → 13 active
+(11 soft-deactivated); transport resolution unchanged (26/30); import guard prevents recurrence.
+Remaining is optional ops housekeeping: confirm the final canonical list and decide whether to
+ever hard-delete the soft-deactivated rows._
+
+## Problem
+
+There are **24** `TransportServiceType` rows. **8 are completely dead** (zero references)
+and several more are near-duplicates that accumulated from multiple imports (Alpha fleet,
+contract imports, seeds). This causes real bugs: package components were pointed at an empty
+`Full Day` type while the live rates sat under `Daily Full Day`, so those lines silently failed
+to price. (That specific case is already fixed — 16 components repointed — but the underlying
+taxonomy mess remains.)
+
+## Inventory (dev DB, 2026-06-02)
+
+Reference columns counted: `VehicleRate.serviceTypeId`, `TransportPricingRule.transportServiceTypeId`,
+`TouringRoutePricing.transportServiceTypeId`, `QuoteItem.transportServiceTypeId`,
+`PackageTemplateComponent.transportServiceTypeId`, `ExcursionTemplateComponent.transportServiceTypeId`.
+
+### Canonical — keep (~10)
+
+| Type | code | Evidence |
+|---|---|---|
+| Point-to-Point | POINT_TO_POINT | 380 rates, 368 rules, 31 quote items — intercity workhorse |
+| Private Transfer | PRIVATE_TRANSFER | 240 rates, 240 rules, 12 excursion components |
+| Daily Full Day | DAILY_FULL_DAY | 12 rates, 90 touring, 30 quotes, 16 package (incl. the Daily FD repoint) |
+| Airport Transfer | AIRPORT_TRANSFER | 32 rates/rules, 5 quotes |
+| Border Transfer | BORDER_TRANSFER | 16 rates/rules |
+| Half Day | HALF_DAY | 12 rates, 4 quotes, 4 package |
+| Stationary / Waiting | STATIONARY_WAITING | 12 rates, 3 quotes |
+| Aqaba / Dead Sea / Petra / Wadi Rum Overnight | *_OVERNIGHT | 5 rates each — real surcharges |
+
+### Merge sources → targets (low ref counts to repoint)
+
+| Source (refs) | → Target | Status |
+|---|---|---|
+| `Full Day` (1 rule, 1 excursion) | `Daily Full Day` | ✅ Phase 2 — operational refs repointed; 4 quoteItems preserved as-sold |
+| `Private Transfer Service` (1 rate, 1 rule) | `Private Transfer` | ✅ Phase 2 |
+| `Arrival Transfer` (4 package) | `Airport Transfer` | ✅ Phase 2 |
+| `Stationary` (8 rules) | `Stationary / Waiting` | ✅ Phase 2 |
+| `Day Tour` (2 excursion) | `Daily Full Day` | ✅ Phase 3 — per canonical alias map; 2 excursion components repointed |
+
+> **✅ Phase 2 DONE (2026-06-02).** All 4 classifications matched (no semantic risk). For each merge we
+> repointed only the **operational** references (VehicleRate / TransportPricingRule / TouringRoutePricing /
+> PackageTemplateComponent / ExcursionTemplateComponent) to the canonical type, then soft-deactivated the
+> source. **Historical `QuoteItem` rows were deliberately left as-sold** (don't rewrite finance history — this
+> also makes ops decision #4 moot). Rollback ids captured. Transport resolution unchanged (26/30); active
+> service types 24 → 14.
+
+### Dead — remove (zero references)
+
+8 types had zero refs, but **2 are core seeded add-ons** (`Extra Hour`, `Extra KM`) that
+`TransportServiceTypesService.ensureCorePricingModeServiceTypes()` re-creates on demand — so
+they're intentionally available (just unused) and must be kept. That leaves **6 truly removable**:
+`Departure Transfer` (DEP), `Excursion Transfer` (EXC), `Intercity Transfer` (INT),
+`Per Hour` (PER_HOUR), `Transfer` (TRANSFER), `Transport Add-on / Daily Charge` (TRANSPORT_ADD_ON_DAILY_CHARGE).
+
+> **✅ Phase 1 DONE (2026-06-02).** `TransportServiceType` had no soft-delete column, so we added
+> `isActive Boolean @default(true)` (migration `add_transport_service_type_is_active`), soft-deactivated
+> the 6, and filtered `transport-service-types` `findAll` to `isActive: true` so they drop out of
+> pickers. Reversible (set `isActive` back to true). 18 active / 6 inactive.
+
+## Migration mechanics (per merge)
+
+1. **Dry-run** the source→target repoint; record before-state (`id → old serviceType`) for rollback.
+2. Repoint all 6 reference columns from source to target.
+3. **Dedupe**: merging can create duplicate `VehicleRate` / `TransportPricingRule` rows for the
+   same `(route, vehicle, pax band)`. Detect and drop/merge duplicates before/after repoint.
+4. Remove (per the chosen removal method) the now-orphaned source type.
+5. Verify: zero remaining refs to source; transport resolution unchanged-or-better; existing quote
+   totals unchanged.
+
+## Risks
+
+1. **Unique constraints / duplicate rates** — a blind repoint can collide; needs a dedupe step.
+2. **Historical quote items** — repointing `QuoteItem.transportServiceTypeId` changes the *displayed*
+   service type on past quotes. Stored costs (`totalCost`, etc.) are unaffected, but it touches
+   finance-facing records → **ops sign-off required**.
+3. **`classification` consistency** — each type carries a `TransportServiceClassification`; merges
+   must preserve it (don't merge a `ROUTE_TRANSFER` into a `DAILY` type, etc.).
+4. **Semantic calls** — Day Tour / Excursion Transfer / arrival-vs-departure are judgment, not mechanical.
+
+## Phasing & effort
+
+| Phase | Scope | Effort | Risk |
+|---|---|---|---|
+| 1 | ✅ DONE — soft-deactivated the 6 removable dead types (kept Extra Hour/Extra KM core add-ons) via new `isActive` column | — | low (zero refs) |
+| 2 | ✅ DONE — merged Full Day, Private Transfer Service, Arrival Transfer, Stationary into their canonical types (operational refs only; quote items preserved) | — | resolved with no QuoteItem rewrite |
+| 3 | ✅ DONE — Day Tour → Daily Full Day (per canonical alias map; 2 excursion components, 0 quote items) | — | low |
+| 4 | ✅ DONE — `findOrCreateTransportImportServiceType` (+ matcher) now route through the canonical `normalizeTransportPricingMode` before creating a raw type, so imports reuse canonical types. Locked by `transport-import-service-type-guard.test.ts` | — | low — makes it stick |
+
+## Decisions needed from ops before Phase 2/3
+
+1. Confirm the ~10 canonical types to keep.
+2. ~~`Day Tour` → Half Day or Daily Full Day?~~ → **Resolved**: the canonical alias map already maps
+   `Day Tour → Daily Full Day`. Phase 3 merge can proceed mechanically whenever wanted.
+3. Removal method for dead/merged types: hard-delete vs add `isActive` soft-delete vs rename-prefix.
+4. Sign-off that repointing `QuoteItem.transportServiceTypeId` on historical quotes is acceptable
+   (no price change — label only).

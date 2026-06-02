@@ -19,6 +19,7 @@ export class TransportServiceTypesService {
     await this.ensureCorePricingModeServiceTypes();
 
     return this.prisma.transportServiceType.findMany({
+      where: { isActive: true } as any,
       orderBy: {
         createdAt: 'desc',
       },

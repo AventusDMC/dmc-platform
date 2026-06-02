@@ -50,6 +50,64 @@ export function packageComponentReferenceLabel(component: PackageTemplateCompone
   return component.supplierService?.entranceFee?.siteName || component.supplierService?.entranceFee?.name || component.supplierService?.name || 'Ticketing link';
 }
 
+export type PackageComponentMappabilityState = 'ready' | 'category' | 'unlinked';
+
+export type PackageComponentMappability = {
+  state: PackageComponentMappabilityState;
+  ready: boolean;
+  reason: string;
+};
+
+function baseComponentMappability(component: PackageTemplateComponent): { ready: boolean; reason: string } {
+  switch (component.componentType) {
+    case 'EXCURSION_TEMPLATE':
+      return component.excursionTemplate
+        ? { ready: true, reason: 'Linked to an excursion template' }
+        : { ready: false, reason: 'No excursion template linked — will be skipped when applied to a quote' };
+    case 'ACTIVITY':
+      return component.activity
+        ? { ready: true, reason: 'Linked to an activity' }
+        : { ready: false, reason: 'No activity linked — will be skipped when applied to a quote' };
+    case 'HOTEL':
+      return component.hotelContract
+        ? { ready: true, reason: 'Linked to a hotel contract' }
+        : { ready: false, reason: 'No hotel contract linked — will be skipped when applied to a quote' };
+    case 'TRANSPORT':
+      return component.route || component.transportServiceType || component.supplierService
+        ? { ready: true, reason: 'Linked to a transport structure' }
+        : { ready: false, reason: 'No route, service type, or supplier service linked — will be skipped when applied to a quote' };
+    case 'EXTERNAL_PACKAGE':
+      return { ready: true, reason: 'External package placeholder — no operational link required' };
+    default:
+      return component.supplierService
+        ? { ready: true, reason: 'Linked to an operational service' }
+        : { ready: false, reason: 'No supplier service linked — will be skipped when applied to a quote' };
+  }
+}
+
+// On a category/program template (one that resolves hotels by category at quote time),
+// unlinked components are intentional placeholders rather than configuration errors.
+export function packageComponentMappability(
+  component: PackageTemplateComponent,
+  options: { categoryTemplate?: boolean } = {},
+): PackageComponentMappability {
+  const base = baseComponentMappability(component);
+
+  if (base.ready) {
+    return { state: 'ready', ready: true, reason: base.reason };
+  }
+
+  if (options.categoryTemplate) {
+    const reason =
+      component.componentType === 'HOTEL'
+        ? 'Resolved by the selected hotel category at quote time (program template)'
+        : 'Program-template placeholder — resolved as a draft at quote time';
+    return { state: 'category', ready: false, reason };
+  }
+
+  return { state: 'unlinked', ready: false, reason: base.reason };
+}
+
 const OPERATIONAL_SERVICE_CODE_TOKENS = [
   'MEET_ASSIST',
   'MEET_AND_ASSIST',

@@ -19,9 +19,16 @@ type PackageTemplateComponentType =
 type CreatePackageTemplateInput = {
   name: string;
   durationDays: number;
+  code?: string | null;
   targetMarket?: string | null;
   season?: string | null;
   summary?: string | null;
+  destination?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  hotelCategoryNotes?: string | null;
+  guideRules?: string | null;
+  categoryTags?: unknown;
   active?: boolean;
   operationalNotes?: string | null;
 };
@@ -117,6 +124,180 @@ export class PackageTemplatesService {
     });
   }
 
+  async createFromQuote(quoteId: string, overrides: { name?: string | null } = {}) {
+    if (!String(quoteId || '').trim()) {
+      throw new BadRequestException('quoteId is required');
+    }
+
+    const quote = await (this.prisma as any).quote.findUnique({
+      where: { id: quoteId },
+      include: {
+        itineraryDays: {
+          where: { isActive: true },
+          orderBy: [{ dayNumber: 'asc' }],
+          include: {
+            dayItems: {
+              where: { isActive: true },
+              orderBy: [{ sortOrder: 'asc' }],
+              include: {
+                quoteService: {
+                  include: {
+                    activity: true,
+                    contract: { include: { hotel: true } },
+                    service: { include: { serviceType: true, entranceFee: true } },
+                    touringRoute: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    throwIfNotFound(quote, 'Quote');
+
+    const activeDays = quote.itineraryDays || [];
+    if (activeDays.length === 0) {
+      throw new BadRequestException('This quote has no active itinerary days to convert into a template.');
+    }
+
+    const durationDays = Math.max(...activeDays.map((day: any) => day.dayNumber), activeDays.length, 1);
+    const dayByNumber = new Map<number, any>(activeDays.map((day: any) => [day.dayNumber, day]));
+    const name = requireTrimmedString(overrides.name || `${quote.title} (template)`, 'name');
+
+    const created = await (this.prisma as any).$transaction(async (tx: any) => {
+      const template = await tx.packageTemplate.create({
+        data: {
+          name,
+          durationDays,
+          summary: normalizeOptionalString(quote.description),
+          inclusions: normalizeOptionalString(quote.inclusionsText),
+          exclusions: normalizeOptionalString(quote.exclusionsText),
+          active: false,
+        },
+      });
+
+      for (let dayNumber = 1; dayNumber <= durationDays; dayNumber += 1) {
+        const sourceDay = dayByNumber.get(dayNumber);
+        const day = await tx.packageTemplateDay.create({
+          data: {
+            packageTemplateId: template.id,
+            dayNumber,
+            title: sourceDay?.title || `Day ${dayNumber}`,
+            description: normalizeOptionalString(sourceDay?.notes),
+            active: true,
+          },
+        });
+
+        const dayItems = sourceDay?.dayItems || [];
+        let sortOrder = 0;
+        for (const dayItem of dayItems) {
+          const mapped = this.mapQuoteItemToComponent(dayItem.quoteService);
+          if (!mapped) {
+            continue;
+          }
+          await tx.packageTemplateComponent.create({
+            data: {
+              packageTemplateId: template.id,
+              packageTemplateDayId: day.id,
+              dayNumber,
+              sortOrder: sortOrder++,
+              isOptional: false,
+              active: true,
+              operationalNotes: normalizeOptionalString(dayItem.notes),
+              ...mapped,
+            },
+          });
+        }
+      }
+
+      return template;
+    });
+
+    return this.findOne(created.id);
+  }
+
+  private mapQuoteItemToComponent(item: any) {
+    if (!item) {
+      return null;
+    }
+
+    const base = {
+      label: '',
+      componentType: 'OTHER' as PackageTemplateComponentType,
+      excursionTemplateId: null as string | null,
+      activityId: null as string | null,
+      hotelContractId: null as string | null,
+      routeId: null as string | null,
+      touringRouteId: null as string | null,
+      transportServiceTypeId: null as string | null,
+      pricingMode: null as string | null,
+      supplierServiceId: null as string | null,
+    };
+
+    if (item.excursionTemplateId) {
+      return { ...base, componentType: 'EXCURSION_TEMPLATE', excursionTemplateId: item.excursionTemplateId, label: item.pricingDescription || 'Excursion' };
+    }
+    if (item.activityId) {
+      return { ...base, componentType: 'ACTIVITY', activityId: item.activityId, label: item.activity?.name || item.pricingDescription || 'Activity' };
+    }
+    if (item.contractId) {
+      const hotelLabel = [item.contract?.hotel?.name, item.contract?.name].filter(Boolean).join(' - ');
+      return { ...base, componentType: 'HOTEL', hotelContractId: item.contractId, label: hotelLabel || item.pricingDescription || 'Hotel' };
+    }
+    if (item.touringRouteId) {
+      return {
+        ...base,
+        componentType: 'TRANSPORT',
+        touringRouteId: item.touringRouteId,
+        transportServiceTypeId: item.transportServiceTypeId || null,
+        label: item.touringRoute?.name || item.pricingDescription || 'Transport',
+      };
+    }
+    if (item.routeId) {
+      return {
+        ...base,
+        componentType: 'TRANSPORT',
+        routeId: item.routeId,
+        transportServiceTypeId: item.transportServiceTypeId || null,
+        label: item.pricingDescription || 'Transport',
+      };
+    }
+    if (item.serviceId) {
+      const componentType = this.classifyServiceComponentType(item);
+      return { ...base, componentType, supplierServiceId: item.serviceId, label: item.service?.name || item.pricingDescription || 'Service' };
+    }
+    if (item.externalPackageName) {
+      return { ...base, componentType: 'EXTERNAL_PACKAGE', label: item.externalPackageName };
+    }
+
+    return { ...base, label: item.pricingDescription || 'Service' };
+  }
+
+  private classifyServiceComponentType(item: any): PackageTemplateComponentType {
+    if (item.entranceFeeId || item.service?.entranceFee) {
+      return 'ENTRANCE';
+    }
+    if (item.ticketRateVariantId) {
+      return 'TICKET';
+    }
+    const typeText = `${item.service?.serviceType?.code || ''} ${item.service?.serviceType?.name || ''} ${item.service?.category || ''}`.toUpperCase();
+    if (typeText.includes('GUIDE')) {
+      return 'GUIDE';
+    }
+    if (typeText.includes('MEAL')) {
+      return 'MEAL';
+    }
+    if (typeText.includes('DINING') || typeText.includes('RESTAURANT') || typeText.includes('LUNCH') || typeText.includes('DINNER')) {
+      return 'DINING';
+    }
+    if (typeText.includes('TICKET') || typeText.includes('ENTRANCE')) {
+      return 'TICKET';
+    }
+    return 'SERVICE';
+  }
+
   async update(id: string, data: UpdatePackageTemplateInput) {
     await this.findOne(id);
 
@@ -127,7 +308,7 @@ export class PackageTemplatesService {
     });
 
     if (data.durationDays !== undefined) {
-      await this.ensurePackageDays(id, template.durationDays);
+      await this.syncPackageDays(id, template.durationDays);
       return this.findOne(id);
     }
 
@@ -140,11 +321,18 @@ export class PackageTemplatesService {
     const duplicate = await (this.prisma as any).$transaction(async (tx: any) => {
       const copiedTemplate = await tx.packageTemplate.create({
         data: {
+          // `code` is intentionally not copied — it is unique per template.
           name: `${sourceTemplate.name} Copy`,
           durationDays: sourceTemplate.durationDays,
           targetMarket: sourceTemplate.targetMarket,
           season: sourceTemplate.season,
           summary: sourceTemplate.summary,
+          destination: sourceTemplate.destination,
+          inclusions: sourceTemplate.inclusions,
+          exclusions: sourceTemplate.exclusions,
+          hotelCategoryNotes: sourceTemplate.hotelCategoryNotes,
+          guideRules: sourceTemplate.guideRules,
+          ...(sourceTemplate.categoryTags == null ? {} : { categoryTags: sourceTemplate.categoryTags }),
           active: false,
           operationalNotes: sourceTemplate.operationalNotes,
         },
@@ -439,6 +627,24 @@ export class PackageTemplatesService {
     });
   }
 
+  async updateComponent(packageTemplateId: string, componentId: string, data: PackageTemplateComponentInput) {
+    await this.findOne(packageTemplateId);
+    const existing = await (this.prisma as any).packageTemplateComponent.findFirst({
+      where: { id: componentId, packageTemplateId },
+    });
+
+    throwIfNotFound(existing, 'Package template component');
+
+    // Editing keeps the component on its current day; day placement is managed by reorder/move.
+    const componentData = this.buildComponentData(packageTemplateId, existing.packageTemplateDayId, data, existing.dayNumber);
+
+    return (this.prisma as any).packageTemplateComponent.update({
+      where: { id: componentId },
+      data: componentData,
+      include: this.componentInclude(),
+    });
+  }
+
   async removeComponent(packageTemplateId: string, componentId: string) {
     await this.findOne(packageTemplateId);
     const component = await (this.prisma as any).packageTemplateComponent.findFirst({
@@ -452,17 +658,82 @@ export class PackageTemplatesService {
     return { id: componentId, deleted: true };
   }
 
+  async moveComponent(packageTemplateId: string, componentId: string, data: { dayNumber: number }) {
+    const template = await this.findOne(packageTemplateId);
+    const targetDayNumber = this.normalizePositiveInteger(data.dayNumber, 'dayNumber');
+
+    if (targetDayNumber > template.durationDays) {
+      throw new BadRequestException(`dayNumber must be between 1 and ${template.durationDays}`);
+    }
+
+    const component = await (this.prisma as any).packageTemplateComponent.findFirst({
+      where: { id: componentId, packageTemplateId },
+    });
+    throwIfNotFound(component, 'Package template component');
+
+    if (component.dayNumber === targetDayNumber) {
+      return this.findOne(packageTemplateId);
+    }
+
+    const targetDay = await this.ensurePackageDay(packageTemplateId, targetDayNumber);
+    const lastInTargetDay = await (this.prisma as any).packageTemplateComponent.findFirst({
+      where: { packageTemplateId, packageTemplateDayId: targetDay.id },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+    const nextSortOrder = lastInTargetDay ? (lastInTargetDay.sortOrder ?? 0) + 1 : 0;
+
+    await (this.prisma as any).packageTemplateComponent.update({
+      where: { id: componentId },
+      data: {
+        packageTemplateDayId: targetDay.id,
+        dayNumber: targetDayNumber,
+        sortOrder: nextSortOrder,
+      },
+    });
+
+    return this.findOne(packageTemplateId);
+  }
+
   private buildTemplateData(data: UpdatePackageTemplateInput, partial: boolean) {
     return {
       name: data.name === undefined && partial ? undefined : requireTrimmedString(data.name || '', 'name'),
       durationDays:
         data.durationDays === undefined && partial ? undefined : this.normalizePositiveInteger(data.durationDays, 'durationDays'),
+      code: data.code === undefined ? undefined : normalizeOptionalString(data.code),
       targetMarket: data.targetMarket === undefined ? undefined : normalizeOptionalString(data.targetMarket),
       season: data.season === undefined ? undefined : normalizeOptionalString(data.season),
       summary: data.summary === undefined ? undefined : normalizeOptionalString(data.summary),
+      destination: data.destination === undefined ? undefined : normalizeOptionalString(data.destination),
+      inclusions: data.inclusions === undefined ? undefined : normalizeOptionalString(data.inclusions),
+      exclusions: data.exclusions === undefined ? undefined : normalizeOptionalString(data.exclusions),
+      hotelCategoryNotes: data.hotelCategoryNotes === undefined ? undefined : normalizeOptionalString(data.hotelCategoryNotes),
+      guideRules: data.guideRules === undefined ? undefined : normalizeOptionalString(data.guideRules),
+      categoryTags: this.normalizeCategoryTags(data.categoryTags),
       active: data.active === undefined ? undefined : Boolean(data.active),
       operationalNotes: data.operationalNotes === undefined ? undefined : normalizeOptionalString(data.operationalNotes),
     };
+  }
+
+  private normalizeCategoryTags(value: unknown) {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      const tags = value.map((tag) => String(tag).trim()).filter((tag) => tag.length > 0);
+      return tags.length > 0 ? tags : null;
+    }
+    if (typeof value === 'string') {
+      const tags = value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+      return tags.length > 0 ? tags : null;
+    }
+    return value as any;
   }
 
   private buildComponentData(packageTemplateId: string, packageTemplateDayId: string, data: PackageTemplateComponentInput, dayNumber: number) {
@@ -578,6 +849,40 @@ export class PackageTemplatesService {
       title: `Day ${index + 1}`,
       active: true,
     }));
+  }
+
+  private async syncPackageDays(packageTemplateId: string, durationDays: number) {
+    await this.ensurePackageDays(packageTemplateId, durationDays);
+    await this.pruneDaysBeyond(packageTemplateId, durationDays);
+  }
+
+  private async pruneDaysBeyond(packageTemplateId: string, durationDays: number) {
+    const staleDays = await (this.prisma as any).packageTemplateDay.findMany({
+      where: { packageTemplateId, dayNumber: { gt: durationDays } },
+      select: { id: true, dayNumber: true },
+    });
+
+    if (staleDays.length === 0) {
+      return;
+    }
+
+    const staleDayIds = staleDays.map((day: any) => day.id);
+    const staleDayNumbers = staleDays.map((day: any) => day.dayNumber);
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.packageTemplateComponent.deleteMany({
+        where: {
+          packageTemplateId,
+          OR: [
+            { packageTemplateDayId: { in: staleDayIds } },
+            { packageTemplateDayId: null, dayNumber: { in: staleDayNumbers } },
+          ],
+        },
+      });
+      await tx.packageTemplateDay.deleteMany({
+        where: { id: { in: staleDayIds } },
+      });
+    });
   }
 
   private async ensurePackageDays(packageTemplateId: string, durationDays: number) {

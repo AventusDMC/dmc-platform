@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Roles } from '../auth/auth.decorators';
+import { PackageTemplatePricingService } from './package-template-pricing.service';
 import { PackageTemplatesService } from './package-templates.service';
 
 type PackageTemplateComponentType =
@@ -19,11 +20,27 @@ type PackageTemplateComponentType =
 type CreatePackageTemplateBody = {
   name: string;
   durationDays: number;
+  code?: string | null;
   targetMarket?: string | null;
   season?: string | null;
   summary?: string | null;
+  destination?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  hotelCategoryNotes?: string | null;
+  guideRules?: string | null;
+  categoryTags?: unknown;
   active?: boolean;
   operationalNotes?: string | null;
+};
+
+type MovePackageComponentBody = {
+  dayNumber: number;
+};
+
+type CreateFromQuoteBody = {
+  quoteId: string;
+  name?: string | null;
 };
 
 type PackageTemplateComponentBody = {
@@ -64,11 +81,21 @@ type ReorderPackageDayComponentsBody = {
 
 @Controller('package-templates')
 export class PackageTemplatesController {
-  constructor(private readonly packageTemplatesService: PackageTemplatesService) {}
+  constructor(
+    private readonly packageTemplatesService: PackageTemplatesService,
+    private readonly packageTemplatePricingService: PackageTemplatePricingService,
+  ) {}
 
   @Get()
   findAll() {
     return this.packageTemplatesService.findAll();
+  }
+
+  @Get(':id/cost-estimate')
+  costEstimate(@Param('id') id: string, @Query('pax') pax?: string) {
+    return this.packageTemplatePricingService.estimate(id, {
+      pax: pax === undefined ? undefined : Number(pax),
+    });
   }
 
   @Get(':id')
@@ -80,6 +107,12 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   create(@Body() body: CreatePackageTemplateBody) {
     return this.packageTemplatesService.create(this.normalizeTemplateBody(body));
+  }
+
+  @Post('from-quote')
+  @Roles('admin', 'operations')
+  createFromQuote(@Body() body: CreateFromQuoteBody) {
+    return this.packageTemplatesService.createFromQuote(body.quoteId, { name: body.name });
   }
 
   @Patch(':id')
@@ -136,6 +169,20 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   updateDay(@Param('id') id: string, @Param('dayId') dayId: string, @Body() body: PackageTemplateDayBody) {
     return this.packageTemplatesService.updateDay(id, dayId, body);
+  }
+
+  @Patch(':id/components/:componentId/move')
+  @Roles('admin', 'operations')
+  moveComponent(@Param('id') id: string, @Param('componentId') componentId: string, @Body() body: MovePackageComponentBody) {
+    return this.packageTemplatesService.moveComponent(id, componentId, {
+      dayNumber: body.dayNumber === undefined || body.dayNumber === null ? body.dayNumber : Number(body.dayNumber),
+    });
+  }
+
+  @Patch(':id/components/:componentId')
+  @Roles('admin', 'operations')
+  updateComponent(@Param('id') id: string, @Param('componentId') componentId: string, @Body() body: PackageTemplateComponentBody) {
+    return this.packageTemplatesService.updateComponent(id, componentId, this.normalizeComponentBody(body));
   }
 
   @Delete(':id/components/:componentId')

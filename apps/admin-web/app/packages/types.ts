@@ -51,9 +51,16 @@ export type PackageTemplate = {
   id: string;
   name: string;
   durationDays: number;
+  code: string | null;
   targetMarket: string | null;
   season: string | null;
   summary: string | null;
+  destination: string | null;
+  inclusions: string | null;
+  exclusions: string | null;
+  hotelCategoryNotes: string | null;
+  guideRules: string | null;
+  categoryTags: string[] | null;
   active: boolean;
   operationalNotes: string | null;
   components: PackageTemplateComponent[];

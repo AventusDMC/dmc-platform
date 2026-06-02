@@ -18,7 +18,12 @@ async function getPackageTemplates() {
   });
 }
 
-export default async function PackageTemplatesPage() {
+type PackageTemplatesPageProps = {
+  searchParams: Promise<{ q?: string; market?: string; season?: string; status?: string }>;
+};
+
+export default async function PackageTemplatesPage({ searchParams }: PackageTemplatesPageProps) {
+  const { q = '', market = '', season = '', status = '' } = await searchParams;
   let packages: PackageTemplate[] = [];
   let loadError = false;
 
@@ -33,6 +38,31 @@ export default async function PackageTemplatesPage() {
     loadError = true;
   }
 
+  const query = q.trim().toLowerCase();
+  const marketOptions = [...new Set(packages.map((template) => template.targetMarket).filter((value): value is string => Boolean(value)))].sort();
+  const seasonOptions = [...new Set(packages.map((template) => template.season).filter((value): value is string => Boolean(value)))].sort();
+  const hasFilters = Boolean(query || market || season || status);
+
+  const filteredPackages = packages.filter((template) => {
+    if (query && !`${template.name} ${template.code || ''} ${template.summary || ''} ${template.destination || ''}`.toLowerCase().includes(query)) {
+      return false;
+    }
+    if (market && template.targetMarket !== market) {
+      return false;
+    }
+    if (season && template.season !== season) {
+      return false;
+    }
+    if (status === 'active' && !template.active) {
+      return false;
+    }
+    if (status === 'inactive' && template.active) {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredIds = new Set(filteredPackages.map((template) => template.id));
   const activeCount = packages.filter((template) => template.active).length;
   const packageRows = packages.map((template) => {
     const days = resolvePackageTemplateDays(template.days, template.components || [], template.durationDays);
@@ -40,6 +70,7 @@ export default async function PackageTemplatesPage() {
     const durationDays = Math.max(template.durationDays, days.length, ...days.map((day) => day.dayNumber));
     return { template, days, components, durationDays };
   });
+  const filteredRows = packageRows.filter((row) => filteredIds.has(row.template.id));
   const componentCount = packageRows.reduce((sum, row) => sum + row.components.length, 0);
   const totalDays = packageRows.reduce((sum, row) => sum + row.durationDays, 0);
 
@@ -66,7 +97,43 @@ export default async function PackageTemplatesPage() {
             <TableSectionShell
               title="Package templates"
               description="Phase 1 stores package structure and operational links only. Pricing, proposals, and bookings remain outside this layer."
-              context={<p>{packages.length} templates in scope</p>}
+              context={
+                <form method="get" className="filter-bar table-action-group">
+                  <input type="search" name="q" defaultValue={q} placeholder="Search name, code, destination" aria-label="Search package templates" />
+                  <select name="market" defaultValue={market} aria-label="Filter by market">
+                    <option value="">All markets</option>
+                    {marketOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select name="season" defaultValue={season} aria-label="Filter by season">
+                    <option value="">All seasons</option>
+                    {seasonOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select name="status" defaultValue={status} aria-label="Filter by status">
+                    <option value="">All statuses</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                  <button type="submit" className="secondary-button">
+                    Apply
+                  </button>
+                  {hasFilters ? (
+                    <Link href="/packages" className="secondary-button">
+                      Clear
+                    </Link>
+                  ) : null}
+                  <span className="table-cell-copy">
+                    {filteredPackages.length} of {packages.length} templates
+                  </span>
+                </form>
+              }
               createPanel={
                 <CollapsibleCreatePanel
                   title="Create package template"
@@ -77,19 +144,27 @@ export default async function PackageTemplatesPage() {
                 </CollapsibleCreatePanel>
               }
               emptyState={
-                packages.length === 0 ? (
+                filteredRows.length === 0 ? (
                   <div className="empty-state ui-empty-state">
-                    <strong>{loadError ? 'Package templates are temporarily unavailable.' : 'No package templates yet.'}</strong>
+                    <strong>
+                      {loadError
+                        ? 'Package templates are temporarily unavailable.'
+                        : packages.length === 0
+                          ? 'No package templates yet.'
+                          : 'No templates match your filters.'}
+                    </strong>
                     <p>
                       {loadError
                         ? 'The package template API route is available, but the list could not be loaded right now.'
-                        : 'Create the first template to define duration, market, season, and reusable operational links.'}
+                        : packages.length === 0
+                          ? 'Create the first template to define duration, market, season, and reusable operational links.'
+                          : 'Adjust or clear the filters to see more package templates.'}
                     </p>
                   </div>
                 ) : undefined
               }
             >
-              {packages.length > 0 ? (
+              {filteredRows.length > 0 ? (
                 <div className="table-scroll">
                   <table>
                     <thead>
@@ -104,7 +179,7 @@ export default async function PackageTemplatesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {packageRows.map(({ template, components, durationDays }) => (
+                      {filteredRows.map(({ template, components, durationDays }) => (
                         <tr key={template.id} className={!template.active ? 'muted-row' : undefined}>
                           <td>
                             <strong>{template.name}</strong>

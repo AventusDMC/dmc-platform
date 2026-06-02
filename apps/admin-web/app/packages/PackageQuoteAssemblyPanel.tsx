@@ -136,6 +136,18 @@ export function PackageQuoteAssemblyPanel({ apiBaseUrl, packageTemplateId }: Pac
 
       {preview ? (
         <div className="section-stack">
+          {(() => {
+            const skippedRequired = preview.days.flatMap((day) => day.components).filter((component) => !component.optional && !component.insertable);
+            if (skippedRequired.length === 0) {
+              return null;
+            }
+            return (
+              <p className="form-error">
+                ⚠ {skippedRequired.length} required component{skippedRequired.length === 1 ? '' : 's'} will be skipped (not linked or not priceable) and will not
+                be added to the quote. Link them on the package template first to avoid silently dropping them.
+              </p>
+            );
+          })()}
           {preview.days.map((day) => (
             <section key={`${day.id || 'day'}-${day.dayNumber}`} className="section-stack">
               <div className="section-header">

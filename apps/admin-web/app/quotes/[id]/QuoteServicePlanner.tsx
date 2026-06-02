@@ -20,6 +20,7 @@ import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
 import { ProgramTemplateImportPanel } from './ProgramTemplateImportPanel';
+import { SaveQuoteAsTemplateButton } from './SaveQuoteAsTemplateButton';
 import { TouringRouteJourneyFlowStrip } from './TouringRouteJourneyFlowStrip';
 import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';
 import laneStyles from './QuoteServiceLaneBoard.module.css';
@@ -4714,6 +4715,9 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           defaultPax={props.totalPax}
           defaultStartDate={props.quote.travelStartDate}
         />
+        <div className="table-action-group" style={{ margin: '0.5rem 0' }}>
+          <SaveQuoteAsTemplateButton apiBaseUrl={props.apiBaseUrl} quoteId={props.quote.id} />
+        </div>
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <button
             type="button"

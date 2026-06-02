@@ -11,10 +11,15 @@ import {
   collectPackageTemplateComponents,
   isOperationalPackageService,
   PACKAGE_CATALOG_MODULES,
+  packageComponentMappability,
   packageComponentReferenceLabel,
   packageComponentTypeLabel,
   resolvePackageTemplateDays,
 } from '../package-template-display';
+import { PackageCostEstimatePanel } from '../PackageCostEstimatePanel';
+import { ComponentDragRow, DayDragHandle, DayDragZone, ItineraryDnDProvider } from '../PackageItineraryDnD';
+import { PackageComponentLinkControls } from '../PackageComponentLinkControls';
+import { PackageComponentMoveControls } from '../PackageComponentMoveControls';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
 import { PackageDayPlannerActions } from '../PackageDayPlannerActions';
@@ -122,6 +127,11 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
   const packageSummary = buildPackagePlannerSummary(packageDays, currentComponents, packageDurationDays);
   const activeComponentCount = currentComponents.filter((component) => component.active).length;
   const optionalComponentCount = currentComponents.filter((component) => component.isOptional).length;
+  const isCategoryTemplate = Boolean(template.hotelCategoryNotes && template.hotelCategoryNotes.trim());
+  const unlinkedComponents = currentComponents.filter(
+    (component) => packageComponentMappability(component, { categoryTemplate: isCategoryTemplate }).state === 'unlinked',
+  );
+  const unlinkedHotelCount = unlinkedComponents.filter((component) => component.componentType === 'HOTEL').length;
   const orderedDayIds = packageDays.map((day) => day.id);
 
   return (
@@ -160,6 +170,21 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
 
             <PackageQuoteAssemblyPanel apiBaseUrl="/api" packageTemplateId={template.id} />
 
+            <PackageCostEstimatePanel apiBaseUrl="/api" packageTemplateId={template.id} />
+
+            {unlinkedComponents.length > 0 ? (
+              <div className="ui-empty-state" style={{ borderLeft: '3px solid var(--warning, #b45309)', background: 'rgba(180, 83, 9, 0.06)' }}>
+                <strong>
+                  {unlinkedComponents.length} component{unlinkedComponents.length === 1 ? '' : 's'} {unlinkedComponents.length === 1 ? 'is' : 'are'} not linked to a
+                  catalog record{unlinkedHotelCount > 0 ? `, including ${unlinkedHotelCount} accommodation row${unlinkedHotelCount === 1 ? '' : 's'}` : ''}.
+                </strong>
+                <p>
+                  Unlinked components cannot be priced and are <strong>silently skipped</strong> when this template is added to a quote. Use <em>Link</em> on each row
+                  below to attach the operational record.
+                </p>
+              </div>
+            ) : null}
+
             <TableSectionShell
               title="Linked itinerary structure"
               description="Package days hold reusable itinerary titles, notes, and linked operational components without duplicating inventory."
@@ -189,12 +214,16 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                 </CollapsibleCreatePanel>
               }
             >
+              <ItineraryDnDProvider apiBaseUrl="/api" packageTemplateId={template.id} orderedDayIds={orderedDayIds}>
               <div className="section-stack">
                 {packageDays.map((day) => (
-                  <details key={day.id} className="detail-card" open={day.active || day.components.length > 0}>
+                  <DayDragZone key={day.id} dayId={day.id} dayNumber={day.dayNumber}>
+                  <details className="detail-card" open={day.active || day.components.length > 0}>
                     <summary className="section-header">
                       <span>
-                        <span className="eyebrow">Day {day.dayNumber}</span>
+                        <span className="eyebrow">
+                          <DayDragHandle dayId={day.id} /> Day {day.dayNumber}
+                        </span>
                         <strong>{day.title}</strong>
                         {day.description ? <p className="table-cell-copy">{day.description}</p> : null}
                       </span>
@@ -226,9 +255,34 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                           <tbody>
                             {day.components.map((component) => {
                               const orderedComponentIds = day.components.map((item) => item.id);
+                              const mappability = packageComponentMappability(component, { categoryTemplate: isCategoryTemplate });
+                              const linkOptions =
+                                component.componentType === 'HOTEL'
+                                  ? catalogs.hotelContracts.map((item) => ({ id: item.id, label: `${item.hotel?.name || 'Hotel'} - ${item.name}` }))
+                                  : component.componentType === 'ACTIVITY'
+                                    ? catalogs.activities.map((item) => ({ id: item.id, label: item.name }))
+                                    : component.componentType === 'EXCURSION_TEMPLATE'
+                                      ? catalogs.excursionTemplates.map((item) => ({ id: item.id, label: item.name }))
+                                      : component.componentType === 'TRANSPORT'
+                                        ? catalogs.routes.map((item) => ({ id: item.id, label: item.name }))
+                                        : component.componentType === 'TICKET'
+                                          ? catalogs.ticketServices.map((item) => ({
+                                              id: item.id,
+                                              label: item.entranceFee?.siteName || item.entranceFee?.name || item.name,
+                                            }))
+                                          : component.componentType === 'SERVICE'
+                                            ? catalogs.serviceRecords.map((item) => ({ id: item.id, label: item.name }))
+                                            : [];
 
                               return (
-                                <tr key={component.id} className={!component.active ? 'muted-row' : undefined}>
+                                <ComponentDragRow
+                                  key={component.id}
+                                  componentId={component.id}
+                                  dayId={day.id}
+                                  dayNumber={day.dayNumber}
+                                  orderedComponentIds={orderedComponentIds}
+                                  className={!component.active ? 'muted-row' : undefined}
+                                >
                                   <td>
                                     <strong>{component.label}</strong>
                                     <p className="table-cell-copy">Position {orderedComponentIds.indexOf(component.id) + 1}</p>
@@ -240,6 +294,24 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                       {component.active ? 'Active' : 'Inactive'}
                                     </span>
                                     {component.isOptional ? <span className="status-pill status-pill-warning">Optional</span> : null}
+                                    <span
+                                      className={
+                                        mappability.state === 'ready'
+                                          ? 'status-pill status-pill-success'
+                                          : mappability.state === 'category'
+                                            ? 'status-pill status-pill-muted'
+                                            : 'status-pill status-pill-warning'
+                                      }
+                                      title={mappability.reason}
+                                    >
+                                      {mappability.state === 'ready'
+                                        ? 'Ready'
+                                        : mappability.state === 'category'
+                                          ? component.componentType === 'HOTEL'
+                                            ? 'Category'
+                                            : 'Placeholder'
+                                          : 'Unlinked'}
+                                    </span>
                                   </td>
                                   <td>{component.operationalNotes || 'None'}</td>
                                   <td>
@@ -251,6 +323,19 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                         componentId={component.id}
                                         orderedComponentIds={orderedComponentIds}
                                       />
+                                      <PackageComponentMoveControls
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        componentId={component.id}
+                                        currentDayNumber={day.dayNumber}
+                                        durationDays={packageDurationDays}
+                                      />
+                                      <PackageComponentLinkControls
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        component={component}
+                                        options={linkOptions}
+                                      />
                                       <PackageComponentRemoveButton
                                         apiBaseUrl="/api"
                                         packageTemplateId={template.id}
@@ -259,7 +344,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                       />
                                     </span>
                                   </td>
-                                </tr>
+                                </ComponentDragRow>
                               );
                             })}
                           </tbody>
@@ -272,8 +357,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                       </div>
                     )}
                   </details>
+                  </DayDragZone>
                 ))}
               </div>
+              </ItineraryDnDProvider>
             </TableSectionShell>
           </section>
         </WorkspaceShell>

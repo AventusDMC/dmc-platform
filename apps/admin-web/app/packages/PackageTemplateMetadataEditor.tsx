@@ -16,9 +16,16 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(template.name);
   const [durationDays, setDurationDays] = useState(String(template.durationDays));
+  const [code, setCode] = useState(template.code || '');
   const [targetMarket, setTargetMarket] = useState(template.targetMarket || '');
   const [season, setSeason] = useState(template.season || '');
+  const [destination, setDestination] = useState(template.destination || '');
   const [summary, setSummary] = useState(template.summary || '');
+  const [inclusions, setInclusions] = useState(template.inclusions || '');
+  const [exclusions, setExclusions] = useState(template.exclusions || '');
+  const [hotelCategoryNotes, setHotelCategoryNotes] = useState(template.hotelCategoryNotes || '');
+  const [guideRules, setGuideRules] = useState(template.guideRules || '');
+  const [categoryTags, setCategoryTags] = useState((template.categoryTags || []).join(', '));
   const [operationalNotes, setOperationalNotes] = useState(template.operationalNotes || '');
   const [active, setActive] = useState(template.active);
   const [error, setError] = useState('');
@@ -27,9 +34,16 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
   function resetForm() {
     setName(template.name);
     setDurationDays(String(template.durationDays));
+    setCode(template.code || '');
     setTargetMarket(template.targetMarket || '');
     setSeason(template.season || '');
+    setDestination(template.destination || '');
     setSummary(template.summary || '');
+    setInclusions(template.inclusions || '');
+    setExclusions(template.exclusions || '');
+    setHotelCategoryNotes(template.hotelCategoryNotes || '');
+    setGuideRules(template.guideRules || '');
+    setCategoryTags((template.categoryTags || []).join(', '));
     setOperationalNotes(template.operationalNotes || '');
     setActive(template.active);
     setError('');
@@ -59,9 +73,19 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
         body: JSON.stringify({
           name: name.trim(),
           durationDays: normalizedDuration,
+          code: code.trim() || null,
           targetMarket: targetMarket.trim() || null,
           season: season.trim() || null,
+          destination: destination.trim() || null,
           summary: summary.trim() || null,
+          inclusions: inclusions.trim() || null,
+          exclusions: exclusions.trim() || null,
+          hotelCategoryNotes: hotelCategoryNotes.trim() || null,
+          guideRules: guideRules.trim() || null,
+          categoryTags: categoryTags
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0),
           active,
           operationalNotes: operationalNotes.trim() || null,
         }),
@@ -91,6 +115,12 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
         </div>
         <div className="detail-fields">
           <p>
+            <strong>Code:</strong> {template.code || 'Not set'}
+          </p>
+          <p>
+            <strong>Destination:</strong> {template.destination || 'Not set'}
+          </p>
+          <p>
             <strong>Target market:</strong> {template.targetMarket || 'Not set'}
           </p>
           <p>
@@ -103,7 +133,36 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
             <strong>Duration:</strong> {template.durationDays} days
           </p>
         </div>
+        {template.categoryTags?.length ? (
+          <div className="table-action-group">
+            {template.categoryTags.map((tag) => (
+              <span key={tag} className="status-pill status-pill-muted">
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {template.summary ? <p className="detail-copy">{template.summary}</p> : null}
+        {template.inclusions ? (
+          <p className="detail-copy">
+            <strong>Inclusions:</strong> {template.inclusions}
+          </p>
+        ) : null}
+        {template.exclusions ? (
+          <p className="detail-copy">
+            <strong>Exclusions:</strong> {template.exclusions}
+          </p>
+        ) : null}
+        {template.hotelCategoryNotes ? (
+          <p className="detail-copy">
+            <strong>Hotel category notes:</strong> {template.hotelCategoryNotes}
+          </p>
+        ) : null}
+        {template.guideRules ? (
+          <p className="detail-copy">
+            <strong>Guide rules:</strong> {template.guideRules}
+          </p>
+        ) : null}
         {template.operationalNotes ? <p className="detail-copy">{template.operationalNotes}</p> : null}
       </article>
     );
@@ -136,10 +195,48 @@ export function PackageTemplateMetadataEditor({ apiBaseUrl, template }: PackageT
             <input value={season} onChange={(event) => setSeason(event.target.value)} />
           </label>
         </div>
+        <div className="form-row form-row-2">
+          <label>
+            Package code
+            <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="e.g. JOR-CLASSIC-8D" />
+          </label>
+          <label>
+            Destination
+            <input value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="e.g. Jordan" />
+          </label>
+        </div>
+        <label>
+          Category tags
+          <input
+            value={categoryTags}
+            onChange={(event) => setCategoryTags(event.target.value)}
+            placeholder="Comma-separated, e.g. Cultural, Family, Luxury"
+          />
+        </label>
         <label>
           Package summary
           <textarea rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} />
         </label>
+        <div className="form-row form-row-2">
+          <label>
+            Inclusions
+            <textarea rows={3} value={inclusions} onChange={(event) => setInclusions(event.target.value)} />
+          </label>
+          <label>
+            Exclusions
+            <textarea rows={3} value={exclusions} onChange={(event) => setExclusions(event.target.value)} />
+          </label>
+        </div>
+        <div className="form-row form-row-2">
+          <label>
+            Hotel category notes
+            <textarea rows={3} value={hotelCategoryNotes} onChange={(event) => setHotelCategoryNotes(event.target.value)} />
+          </label>
+          <label>
+            Guide rules
+            <textarea rows={3} value={guideRules} onChange={(event) => setGuideRules(event.target.value)} />
+          </label>
+        </div>
         <label>
           Operational notes
           <textarea rows={3} value={operationalNotes} onChange={(event) => setOperationalNotes(event.target.value)} />
