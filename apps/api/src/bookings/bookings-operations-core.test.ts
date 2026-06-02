@@ -1535,6 +1535,103 @@ test('rooming reassignment moves a passenger from the previous room assignment',
   assert.deepEqual(auditActions, ['booking_rooming_assignment_moved']);
 });
 
+test('rooming auto-assign pairs unassigned passengers into twins with an odd single', async () => {
+  const createdRoomingEntries: any[] = [];
+  const createdAssignments: any[] = [];
+  const auditActions: string[] = [];
+  let roomSeq = 0;
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async ({ where }: any) => {
+            // assertLatestBookingAmendment probes by amendedFromId — no newer amendment.
+            if (where?.amendedFromId !== undefined) return null;
+            return {
+              id: 'booking-1',
+              passengers: [
+                { id: 'p1', firstName: 'Lead', lastName: 'A', title: null, isLead: true, roomingAssignments: [{ id: 'a1' }] },
+                { id: 'p2', firstName: 'Solo', lastName: 'B', title: null, isLead: false, roomingAssignments: [] },
+                { id: 'p3', firstName: 'Solo', lastName: 'C', title: null, isLead: false, roomingAssignments: [] },
+                { id: 'p4', firstName: 'Solo', lastName: 'D', title: null, isLead: false, roomingAssignments: [] },
+              ],
+              roomingEntries: [{ sortOrder: 2 }],
+            };
+          },
+        },
+        bookingRoomingEntry: {
+          create: async ({ data }: any) => {
+            createdRoomingEntries.push(data);
+            roomSeq += 1;
+            return { id: `room-${roomSeq}`, ...data };
+          },
+        },
+        bookingRoomingAssignment: {
+          create: async ({ data }: any) => {
+            createdAssignments.push(data);
+            return { id: `assignment-${createdAssignments.length}`, ...data };
+          },
+        },
+        bookingAuditLog: {
+          create: async ({ data }: any) => {
+            auditActions.push(data.action);
+            return {};
+          },
+        },
+      }),
+  });
+
+  const result = await service.autoAssignRooming('booking-1', { companyActor: { companyId: 'company-1' } });
+
+  assert.equal(result.roomsCreated, 2);
+  assert.equal(result.passengersAssigned, 3);
+  // First room is a twin (two solos), second is a single (odd one out).
+  assert.equal(createdRoomingEntries[0].roomType, 'TWN');
+  assert.equal(createdRoomingEntries[0].occupancy, 'double');
+  assert.equal(createdRoomingEntries[1].roomType, 'SGL');
+  assert.equal(createdRoomingEntries[1].occupancy, 'single');
+  // Sort order continues from the existing max (2 → 3, 4).
+  assert.equal(createdRoomingEntries[0].sortOrder, 3);
+  assert.equal(createdRoomingEntries[1].sortOrder, 4);
+  // The already-assigned lead passenger (p1) is never reassigned.
+  assert.deepEqual(createdAssignments.map((a) => a.bookingPassengerId), ['p2', 'p3', 'p4']);
+  assert.deepEqual(auditActions, ['booking_rooming_auto_assigned']);
+});
+
+test('rooming auto-assign is a no-op when every passenger already has a room', async () => {
+  const createdRoomingEntries: any[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async ({ where }: any) => {
+            if (where?.amendedFromId !== undefined) return null;
+            return {
+              id: 'booking-1',
+              passengers: [
+                { id: 'p1', firstName: 'A', lastName: 'A', title: null, isLead: true, roomingAssignments: [{ id: 'a1' }] },
+              ],
+              roomingEntries: [{ sortOrder: 1 }],
+            };
+          },
+        },
+        bookingRoomingEntry: {
+          create: async ({ data }: any) => {
+            createdRoomingEntries.push(data);
+            return { id: 'x', ...data };
+          },
+        },
+        bookingRoomingAssignment: { create: async () => ({}) },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  const result = await service.autoAssignRooming('booking-1', { companyActor: { companyId: 'company-1' } });
+  assert.equal(result.roomsCreated, 0);
+  assert.equal(result.passengersAssigned, 0);
+  assert.equal(createdRoomingEntries.length, 0);
+});
+
 test('rooming unassignment removes the passenger assignment', async () => {
   const deletedAssignments: string[] = [];
   const service = createService({

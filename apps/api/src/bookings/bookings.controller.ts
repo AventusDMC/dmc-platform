@@ -987,6 +987,15 @@ export class BookingsController {
     });
   }
 
+  @Post(':id/rooming/auto-assign')
+  @Roles('admin', 'operations')
+  autoAssignRooming(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.autoAssignRooming(id, {
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Patch(':id/rooming/:roomingEntryId')
   @Roles('admin', 'operations')
   updateRoomingEntry(
