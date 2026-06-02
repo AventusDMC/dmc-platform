@@ -536,8 +536,21 @@ export class ProposalV3Service {
       `;
     }
 
+    // Only group the itinerary by country when the trip genuinely spans 2+
+    // resolved countries — single-country (or unresolved) proposals render
+    // exactly as before, so this is a no-op for the common case.
+    const resolvedDayCountries = Array.from(
+      new Set(viewModel.days.map((day) => (day.country || '').trim()).filter(Boolean)),
+    );
+    const showCountryGroups = resolvedDayCountries.length >= 2;
+
     return viewModel.days
-      .map((day) => {
+      .map((day, index, allDays) => {
+        const previousCountry = index > 0 ? allDays[index - 1].country : null;
+        const countryHeading =
+          showCountryGroups && day.country && day.country !== previousCountry
+            ? `<h2 class="proposal-country-heading" style="margin:1.6rem 0 0.4rem;font-size:0.95rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${this.escapeHtml(viewModel.accentColor)};border-bottom:2px solid ${this.escapeHtml(viewModel.accentColor)};padding-bottom:0.3rem;">${this.escapeHtml(day.country as string)}</h2>`
+            : '';
         const groupsHtml = day.groups
           .map(
             (group) => `
@@ -560,6 +573,7 @@ export class ProposalV3Service {
           .join('');
 
         return `
+          ${countryHeading}
           <section class="proposal-day-card">
             <div class="proposal-day-intro">
               <header class="proposal-day-heading">

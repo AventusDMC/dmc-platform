@@ -1658,3 +1658,64 @@ test('quote PDF renderer exposes premium client-ready sections without internal 
   assert.match(rendererSource, /Pricing Summary/);
   assert.doesNotMatch(rendererSource, /supplierCost|gross profit|PDF total cost|PDF margin/i);
 });
+
+test('proposal derives a per-day country from the hotel city and groups a multi-country itinerary', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Jordan & Egypt Discovery',
+      description: null,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2', description: null },
+      ],
+      quoteItems: [
+        createHotelPdfItem({
+          itineraryId: 'day-1',
+          hotel: { name: 'Amman Grand', city: 'Amman', cityRecord: { country: 'Jordan' } },
+        }),
+        createHotelPdfItem({
+          id: 'item-2',
+          itineraryId: 'day-2',
+          hotel: { name: 'Cairo Nile', city: 'Cairo', cityRecord: { country: 'Egypt' } },
+        }),
+      ],
+    }),
+  );
+
+  // Derivation: each day's country comes from its hotel's resolved city country.
+  assert.equal(proposal.days[0].country, 'Jordan');
+  assert.equal(proposal.days[1].country, 'Egypt');
+
+  // Renderer: a multi-country trip shows a country heading per segment.
+  const service = new ProposalV3Service({} as any);
+  const html = (service as any).renderItineraryDays(proposal);
+  assert.match(html, /proposal-country-heading/);
+  assert.match(html, />Jordan</);
+  assert.match(html, />Egypt</);
+});
+
+test('proposal does NOT show country headings for a single-country itinerary', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2', description: null },
+      ],
+      quoteItems: [
+        createHotelPdfItem({
+          itineraryId: 'day-1',
+          hotel: { name: 'Amman Grand', city: 'Amman', cityRecord: { country: 'Jordan' } },
+        }),
+        createHotelPdfItem({
+          id: 'item-2',
+          itineraryId: 'day-2',
+          hotel: { name: 'Petra Lodge', city: 'Petra', cityRecord: { country: 'Jordan' } },
+        }),
+      ],
+    }),
+  );
+
+  const service = new ProposalV3Service({} as any);
+  const html = (service as any).renderItineraryDays(proposal);
+  assert.doesNotMatch(html, /proposal-country-heading/);
+});

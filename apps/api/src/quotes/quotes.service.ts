@@ -10707,7 +10707,7 @@ export class QuotesService {
           activityRateVariant: true,
           ticketRateVariant: true,
           itinerary: true,
-          hotel: true,
+          hotel: { include: { cityRecord: true } },
           contract: true,
           roomCategory: true,
           appliedVehicleRate: {
@@ -10773,7 +10773,7 @@ export class QuotesService {
                   activityRateVariant: true,
                   ticketRateVariant: true,
                   itinerary: true,
-                  hotel: true,
+                  hotel: { include: { cityRecord: true } },
                   contract: true,
                   roomCategory: true,
                   appliedVehicleRate: {

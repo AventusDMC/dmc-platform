@@ -12,6 +12,7 @@ import {
   ProposalV3ViewModel,
 } from './proposal-v3.types';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
+import { deriveDayCountry } from './quote-day-country';
 
 const INVALID_TEXT_PATTERNS = [
   /\bimported itinerary\b/i,
@@ -927,6 +928,12 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
       summary: isPlaceholderText(summary) ? null : summary || null,
       overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
+      country: deriveDayCountry({
+        items: dayItems.map((item) => ({
+          hotelCountry: item.hotel?.cityRecord?.country ?? null,
+          externalPackageCountry: item.externalPackageCountry ?? null,
+        })),
+      }),
       groups: buildDayGroups(day, dayItems, quote.quoteCurrency || 'USD'),
     };
   });
@@ -964,6 +971,9 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
           if (!existingDay.overnightLocation) {
             existingDay.overnightLocation = cleanText(item.externalPackageCountry || '') || null;
           }
+          if (!existingDay.country) {
+            existingDay.country = cleanText(item.externalPackageCountry || '') || null;
+          }
           continue;
         }
 
@@ -972,6 +982,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
           title: `Day ${dayNumber}: ${country}`,
           summary: null,
           overnightLocation: cleanText(item.externalPackageCountry || '') || null,
+          country: cleanText(item.externalPackageCountry || '') || null,
           groups,
         });
       }
