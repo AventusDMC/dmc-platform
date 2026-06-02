@@ -182,6 +182,7 @@ type QuoteItem = {
   currency: string;
   pricingDescription: string | null;
   transportLabel?: string | null;
+  standaloneTransfer?: boolean | null;
   externalPackageCountry?: string | null;
   externalPackageName?: string | null;
   externalSupplierName?: string | null;
@@ -669,6 +670,7 @@ export function QuoteItemCard({
       vehicleRateId: currentItem.appliedVehicleRate?.id || '',
       transportVehicleId: currentItem.vehicleId || currentItem.appliedVehicleRate?.vehicle?.id || '',
       transportSupplierId: currentItem.appliedVehicleRate?.supplier?.id || '',
+      standaloneTransfer: Boolean(currentItem.standaloneTransfer),
       routeId: currentItem.routeId || currentItem.appliedVehicleRate?.routeId || '',
       touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || '',
       touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',

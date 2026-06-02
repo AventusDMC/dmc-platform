@@ -177,6 +177,7 @@ type CreateQuoteItemBody = {
   normalizedKey?: string;
   routeName?: string;
   transportLabel?: string | null;
+  standaloneTransfer?: boolean;
   transportAddOns?: Array<{ rateId?: string; quantity?: number }>;
 };
 
@@ -1077,6 +1078,7 @@ export class QuotesController {
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
+      standaloneTransfer: body.standaloneTransfer === undefined ? undefined : Boolean(body.standaloneTransfer),
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1271,6 +1273,7 @@ export class QuotesController {
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
+      standaloneTransfer: body.standaloneTransfer === undefined ? undefined : Boolean(body.standaloneTransfer),
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1579,6 +1582,7 @@ export class QuotesController {
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
+      standaloneTransfer: body.standaloneTransfer === undefined ? undefined : Boolean(body.standaloneTransfer),
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
@@ -1679,6 +1683,7 @@ export class QuotesController {
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
+      standaloneTransfer: body.standaloneTransfer === undefined ? undefined : Boolean(body.standaloneTransfer),
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,

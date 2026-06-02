@@ -1184,6 +1184,7 @@ model QuoteItem {
   quoteCurrency                      String                  @default("USD")
   pricingDescription                 String?
   transportLabel                     String?
+  standaloneTransfer                 Boolean                 @default(false)
   itineraryId                        String?                 @db.Uuid
   serviceDate                        DateTime?
   startTime                          String?
@@ -2496,6 +2497,7 @@ model VehicleRate {
   maxPax        Int
   price         Float
   currency      String
+  standaloneDeductionAmount Float?
   notes         String?
   active        Boolean              @default(true)
   validFrom     DateTime

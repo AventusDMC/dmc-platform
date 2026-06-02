@@ -349,6 +349,7 @@ type QuoteItemInitialValues = {
   vehicleRateId?: string | null;
   transportVehicleId?: string | null;
   transportSupplierId?: string | null;
+  standaloneTransfer?: boolean | null;
   touringRouteId?: string;
   touringRoutePricingId?: string;
   touringRoute?: {
@@ -1179,6 +1180,7 @@ export function QuoteItemsForm({
     initialRouteId,
   );
   const [routeName, setRouteName] = useState(initialRouteName);
+  const [standaloneTransfer, setStandaloneTransfer] = useState<boolean>(Boolean(initialValues?.standaloneTransfer));
   const [hotelId, setHotelId] = useState(initialValues?.hotelId || preferredHotelId || '');
   const [contractId, setContractId] = useState(initialValues?.contractId || preferredContractId || '');
   const [seasonId, setSeasonId] = useState(initialValues?.seasonId || '');
@@ -2857,6 +2859,7 @@ export function QuoteItemsForm({
             ? resolvedTransportPricing?.vehicleRateId || (transportSelectionMatchesSavedItem ? savedTransportVehicleRateId || undefined : undefined)
             : undefined,
         transportVehicleId: isTransportService && !isTouringTransportEdit ? selectedTransportVehicleId : undefined,
+        standaloneTransfer: isTransportService && !isTouringTransportEdit ? standaloneTransfer : undefined,
         routeId: isTransportService && !isTouringTransportEdit ? routeId || undefined : undefined,
         routeName: isTransportService && !isTouringTransportEdit ? routeName.trim() : undefined,
         touringRouteId: isTouringTransportEdit ? touringRouteId || initialValues?.touringRoute?.id || undefined : undefined,
@@ -5002,6 +5005,20 @@ export function QuoteItemsForm({
                   />
                 </label>
               </div>
+
+              <label className="checkbox-row" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={standaloneTransfer}
+                  onChange={(event) => setStandaloneTransfer(event.target.checked)}
+                />
+                <span>
+                  Standalone transfer (not part of a programme)
+                  <small style={{ display: 'block', color: 'var(--muted, #667085)' }}>
+                    Applies the supplier&apos;s per-vehicle standalone deduction to the transfer cost.
+                  </small>
+                </span>
+              </label>
 
               {transportAddOnRows.length > 0 ? (
                 <div className="quote-selected-transport-card">
