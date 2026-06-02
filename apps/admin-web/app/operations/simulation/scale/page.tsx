@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
 import { AppAlert } from '../../../components/ui';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../../lib/admin-server';
+import { STATUS_TONE } from '../../../lib/status-tone';
 
 export const dynamic = 'force-dynamic';
 
@@ -348,13 +349,7 @@ function Pill({ href, label }: { href: string; label: string }) {
 }
 
 function Stat({ label, value, tone, sub }: { label: string; value: number | string; tone: 'info' | 'action' | 'critical' | 'ready'; sub?: string }) {
-  const palette: Record<string, { bg: string; border: string; text: string }> = {
-    info: { bg: '#eff8ff', border: '#84caff', text: '#175cd3' },
-    action: { bg: '#fff8eb', border: '#f79009', text: '#b54708' },
-    critical: { bg: '#fef3f2', border: '#f04438', text: '#b42318' },
-    ready: { bg: '#f0fdf4', border: '#12b76a', text: '#067647' },
-  };
-  const p = palette[tone];
+  const p = STATUS_TONE[tone];
   return (
     <div
       style={{
