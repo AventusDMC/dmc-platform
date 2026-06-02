@@ -179,6 +179,12 @@ export class PackageTemplatesController {
     });
   }
 
+  @Patch(':id/components/:componentId')
+  @Roles('admin', 'operations')
+  updateComponent(@Param('id') id: string, @Param('componentId') componentId: string, @Body() body: PackageTemplateComponentBody) {
+    return this.packageTemplatesService.updateComponent(id, componentId, this.normalizeComponentBody(body));
+  }
+
   @Delete(':id/components/:componentId')
   @Roles('admin', 'operations')
   removeComponent(@Param('id') id: string, @Param('componentId') componentId: string) {

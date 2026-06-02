@@ -18,6 +18,7 @@ import {
 } from '../package-template-display';
 import { PackageCostEstimatePanel } from '../PackageCostEstimatePanel';
 import { ComponentDragRow, DayDragHandle, DayDragZone, ItineraryDnDProvider } from '../PackageItineraryDnD';
+import { PackageComponentLinkControls } from '../PackageComponentLinkControls';
 import { PackageComponentMoveControls } from '../PackageComponentMoveControls';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
@@ -126,6 +127,8 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
   const packageSummary = buildPackagePlannerSummary(packageDays, currentComponents, packageDurationDays);
   const activeComponentCount = currentComponents.filter((component) => component.active).length;
   const optionalComponentCount = currentComponents.filter((component) => component.isOptional).length;
+  const unlinkedComponents = currentComponents.filter((component) => !packageComponentMappability(component).ready);
+  const unlinkedHotelCount = unlinkedComponents.filter((component) => component.componentType === 'HOTEL').length;
   const orderedDayIds = packageDays.map((day) => day.id);
 
   return (
@@ -165,6 +168,19 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
             <PackageQuoteAssemblyPanel apiBaseUrl="/api" packageTemplateId={template.id} />
 
             <PackageCostEstimatePanel apiBaseUrl="/api" packageTemplateId={template.id} />
+
+            {unlinkedComponents.length > 0 ? (
+              <div className="ui-empty-state" style={{ borderLeft: '3px solid var(--warning, #b45309)', background: 'rgba(180, 83, 9, 0.06)' }}>
+                <strong>
+                  {unlinkedComponents.length} component{unlinkedComponents.length === 1 ? '' : 's'} {unlinkedComponents.length === 1 ? 'is' : 'are'} not linked to a
+                  catalog record{unlinkedHotelCount > 0 ? `, including ${unlinkedHotelCount} accommodation row${unlinkedHotelCount === 1 ? '' : 's'}` : ''}.
+                </strong>
+                <p>
+                  Unlinked components cannot be priced and are <strong>silently skipped</strong> when this template is added to a quote. Use <em>Link</em> on each row
+                  below to attach the operational record.
+                </p>
+              </div>
+            ) : null}
 
             <TableSectionShell
               title="Linked itinerary structure"
@@ -237,6 +253,23 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                             {day.components.map((component) => {
                               const orderedComponentIds = day.components.map((item) => item.id);
                               const mappability = packageComponentMappability(component);
+                              const linkOptions =
+                                component.componentType === 'HOTEL'
+                                  ? catalogs.hotelContracts.map((item) => ({ id: item.id, label: `${item.hotel?.name || 'Hotel'} - ${item.name}` }))
+                                  : component.componentType === 'ACTIVITY'
+                                    ? catalogs.activities.map((item) => ({ id: item.id, label: item.name }))
+                                    : component.componentType === 'EXCURSION_TEMPLATE'
+                                      ? catalogs.excursionTemplates.map((item) => ({ id: item.id, label: item.name }))
+                                      : component.componentType === 'TRANSPORT'
+                                        ? catalogs.routes.map((item) => ({ id: item.id, label: item.name }))
+                                        : component.componentType === 'TICKET'
+                                          ? catalogs.ticketServices.map((item) => ({
+                                              id: item.id,
+                                              label: item.entranceFee?.siteName || item.entranceFee?.name || item.name,
+                                            }))
+                                          : component.componentType === 'SERVICE'
+                                            ? catalogs.serviceRecords.map((item) => ({ id: item.id, label: item.name }))
+                                            : [];
 
                               return (
                                 <ComponentDragRow
@@ -281,6 +314,12 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                                         componentId={component.id}
                                         currentDayNumber={day.dayNumber}
                                         durationDays={packageDurationDays}
+                                      />
+                                      <PackageComponentLinkControls
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        component={component}
+                                        options={linkOptions}
                                       />
                                       <PackageComponentRemoveButton
                                         apiBaseUrl="/api"

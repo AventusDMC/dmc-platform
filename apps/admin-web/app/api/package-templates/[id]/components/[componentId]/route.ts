@@ -11,6 +11,15 @@ type RouteContext = {
   params: Promise<{ id: string; componentId: string }>;
 };
 
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const { id, componentId } = await context.params;
+  return proxyRequest(
+    request,
+    `${API_BASE_URL}/package-templates/${encodeURIComponent(id)}/components/${encodeURIComponent(componentId)}`,
+    'PATCH',
+  );
+}
+
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const { id, componentId } = await context.params;
   return proxyRequest(

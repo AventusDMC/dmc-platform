@@ -627,6 +627,24 @@ export class PackageTemplatesService {
     });
   }
 
+  async updateComponent(packageTemplateId: string, componentId: string, data: PackageTemplateComponentInput) {
+    await this.findOne(packageTemplateId);
+    const existing = await (this.prisma as any).packageTemplateComponent.findFirst({
+      where: { id: componentId, packageTemplateId },
+    });
+
+    throwIfNotFound(existing, 'Package template component');
+
+    // Editing keeps the component on its current day; day placement is managed by reorder/move.
+    const componentData = this.buildComponentData(packageTemplateId, existing.packageTemplateDayId, data, existing.dayNumber);
+
+    return (this.prisma as any).packageTemplateComponent.update({
+      where: { id: componentId },
+      data: componentData,
+      include: this.componentInclude(),
+    });
+  }
+
   async removeComponent(packageTemplateId: string, componentId: string) {
     await this.findOne(packageTemplateId);
     const component = await (this.prisma as any).packageTemplateComponent.findFirst({
