@@ -15,6 +15,8 @@ import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { BookingsController } from './bookings/bookings.controller';
 import { BookingsService } from './bookings/bookings.service';
+import { BookingSingleSupplementController } from './bookings/booking-single-supplement.controller';
+import { BookingSingleSupplementService } from './bookings/booking-single-supplement.service';
 import { OperationsDashboardController } from './bookings/operations-dashboard.controller';
 import { VouchersController } from './bookings/vouchers.controller';
 import { OperationalVouchersService } from './operational-documents/operational-vouchers.service';
@@ -162,6 +164,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ActivitiesController,
     AuthController,
     BookingsController,
+    BookingSingleSupplementController,
     OperationsDashboardController,
     PackageTemplatesController,
     VouchersController,
@@ -246,6 +249,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
       useClass: RolesGuard,
     },
     BookingsService,
+    BookingSingleSupplementService,
     OperationalVouchersService,
     PackageTemplatesService,
     CitiesService,
