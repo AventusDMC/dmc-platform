@@ -72,7 +72,7 @@ export class PackageTemplatePricingService {
         case 'ACTIVITY':
           return this.finalize(component, pax, await this.estimateActivity(component));
         case 'TRANSPORT':
-          return this.finalize(component, pax, await this.estimateTransport(component));
+          return this.finalize(component, pax, await this.estimateTransport(component, pax));
         case 'EXCURSION_TEMPLATE':
           return this.finalize(component, pax, await this.estimateExcursionTemplate(component, pax), true);
         case 'EXTERNAL_PACKAGE':
@@ -132,7 +132,7 @@ export class PackageTemplatePricingService {
     };
   }
 
-  private async estimateTransport(component: any): Promise<RateResult | null> {
+  private async estimateTransport(component: any, pax: number): Promise<RateResult | null> {
     if (component.touringRouteId) {
       const pricing = await (this.prisma as any).touringRoutePricing.findFirst({
         where: { touringRouteId: component.touringRouteId, active: true },
@@ -147,6 +147,28 @@ export class PackageTemplatePricingService {
         };
       }
     }
+    // The quote engine prices route transport from VehicleRate (TransportPricingService.findMatchingRate):
+    // match by service type + party-size band, cheapest fitting vehicle.
+    if (component.transportServiceTypeId) {
+      const vehicleRate = await (this.prisma as any).vehicleRate.findFirst({
+        where: {
+          serviceTypeId: component.transportServiceTypeId,
+          active: true,
+          minPax: { lte: pax },
+          maxPax: { gte: pax },
+        },
+        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }],
+      });
+      if (vehicleRate) {
+        return {
+          unitCost: vehicleRate.price,
+          currency: vehicleRate.currency,
+          perPerson: false,
+          note: 'Cheapest active vehicle rate for this service type at this party size (full vehicle).',
+        };
+      }
+    }
+    // Legacy route-rule fallback.
     if (component.routeId) {
       const rule = await (this.prisma as any).transportPricingRule.findFirst({
         where: {
@@ -188,7 +210,7 @@ export class PackageTemplatePricingService {
     let mixedCurrency = false;
 
     for (const sub of subComponents) {
-      const rate = await this.estimateExcursionSubComponent(sub);
+      const rate = await this.estimateExcursionSubComponent(sub, pax);
       if (!rate || rate.currency == null) {
         continue;
       }
@@ -216,12 +238,12 @@ export class PackageTemplatePricingService {
     };
   }
 
-  private async estimateExcursionSubComponent(sub: any): Promise<RateResult | null> {
+  private async estimateExcursionSubComponent(sub: any, pax: number): Promise<RateResult | null> {
     if (sub.componentType === 'ACTIVITY') {
       return this.estimateActivity(sub);
     }
     if (sub.componentType === 'TRANSPORT') {
-      return this.estimateTransport(sub);
+      return this.estimateTransport(sub, pax);
     }
     return this.estimateSupplierService(sub.supplierServiceId);
   }
