@@ -2881,6 +2881,7 @@ enum VoucherType {
   EXTERNAL_PACKAGE
   TICKET
   SERVICE
+  RESTAURANT
 }
 
 enum VoucherStatus {

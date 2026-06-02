@@ -3297,6 +3297,64 @@ test('DMC booking operations assign activity service and generate supplier vouch
   assert.ok(seenWheres.every((where) => where.booking?.quote?.clientCompanyId === undefined));
 });
 
+test('dining operation rows generate a RESTAURANT voucher (not a generic SERVICE voucher)', async () => {
+  const vouchers: any[] = [];
+  const service = createService({
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-dining',
+        bookingId: 'booking-1',
+        bookingDayId: 'day-1',
+        serviceType: 'DINING',
+        operationType: 'DINING',
+        operationStatus: 'CONFIRMED',
+        serviceDate: new Date('2026-10-02T00:00:00.000Z'),
+        supplierId: 'restaurant-supplier-1',
+        supplierName: 'Haret Jdoudna',
+        restaurantId: 'restaurant-1',
+        mealTiming: '19:30',
+        mealSeatingNotes: 'Garden terrace',
+        mealDietaryRequirements: ['2 vegetarian'],
+        participantCount: 4,
+        confirmationNumber: 'RES-9001',
+        description: 'Dinner at Haret Jdoudna',
+        bookingDay: { id: 'day-1', dayNumber: 2, title: 'Madaba', date: new Date('2026-10-02T00:00:00.000Z') },
+        supplier: { id: 'restaurant-supplier-1', name: 'Haret Jdoudna' },
+        restaurant: { id: 'restaurant-1', name: 'Haret Jdoudna', cuisineType: 'Jordanian', city: 'Madaba', phone: '+962790000000' },
+        vehicle: null,
+      }),
+    },
+    supplier: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: 'Haret Jdoudna' }),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        voucher: {
+          create: async ({ data }: any) => {
+            const voucher = {
+              id: 'voucher-dining',
+              ...data,
+              supplier: { id: data.supplierId, name: 'Haret Jdoudna' },
+              bookingService: { id: data.bookingServiceId, bookingDay: { id: 'day-1' }, vehicle: null },
+            };
+            vouchers.push(voucher);
+            return voucher;
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const voucher = await service.createServiceVoucher('booking-1', 'service-dining', {
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+
+  assert.equal(voucher.type, 'RESTAURANT');
+  assert.equal(vouchers.length, 1);
+});
+
 test('hotel confirmation and external package operations services persist constrained fields', async () => {
   const createdRows: any[] = [];
   const service = createService({

@@ -7647,17 +7647,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (normalized === 'ACTIVITY') return 'ACTIVITY' as VoucherType;
+    if (normalized === 'DINING' || normalized === 'RESTAURANT' || normalized === 'MEAL') return 'RESTAURANT' as VoucherType;
     if (normalized === VoucherType.EXTERNAL_PACKAGE) return VoucherType.EXTERNAL_PACKAGE;
+
+    if (service?.restaurantId) {
+      return 'RESTAURANT' as VoucherType;
+    }
 
     const text = [service?.serviceType, service?.description].filter(Boolean).join(' ').toLowerCase();
     if (text.includes('transport') || text.includes('transfer') || text.includes('vehicle')) return VoucherType.TRANSPORT;
     if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
     if (text.includes('guide') || text.includes('escort')) return VoucherType.GUIDE;
     if (text.includes('excursion')) return 'EXCURSION' as VoucherType;
+    if (text.includes('restaurant') || text.includes('dining') || text.includes('meal') || text.includes('lunch') || text.includes('dinner')) return 'RESTAURANT' as VoucherType;
     if (text.includes('activity') || text.includes('tour') || text.includes('experience')) return 'ACTIVITY' as VoucherType;
     if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
 
-    throw new BadRequestException('Only transport, excursion, hotel, guide, activity, and external package services can generate vouchers');
+    throw new BadRequestException('Only transport, excursion, hotel, guide, activity, restaurant, and external package services can generate vouchers');
   }
 
   private normalizeVoucherStatus(status: string | null | undefined): VoucherLifecycleStatusValue {
@@ -7693,6 +7699,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (String(type) === 'EXCURSION' || String(type) === 'ACTIVITY') {
       if (!service.serviceDate && !service.bookingDay?.date) throw new BadRequestException('Activity voucher requires a service date');
+      return;
+    }
+
+    if (String(type) === 'RESTAURANT') {
+      if (!service.restaurantId && !this.normalizeOptionalText(service.assignedSupplierName) && !this.normalizeOptionalText(service.supplierName)) {
+        throw new BadRequestException('Restaurant voucher requires a restaurant or supplier');
+      }
       return;
     }
 
@@ -10868,10 +10881,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (normalized === 'GUIDE' || normalized === 'GUIDING') return VoucherType.GUIDE;
     if (normalized === 'ACTIVITY') return 'ACTIVITY' as VoucherType;
     if (normalized === 'TICKET' || normalized === 'TICKETING') return 'TICKET' as VoucherType;
+    if (normalized === 'DINING' || normalized === 'RESTAURANT' || normalized === 'MEAL') return 'RESTAURANT' as VoucherType;
     if (normalized === 'SERVICE') return 'SERVICE' as VoucherType;
     if (normalized === 'EXCURSION') return 'EXCURSION' as VoucherType;
     if (normalized === 'EXTERNAL_PACKAGE') return VoucherType.EXTERNAL_PACKAGE;
 
+    if (service?.restaurantId) {
+      return 'RESTAURANT' as VoucherType;
+    }
     if (service?.touringRouteId || service?.touringRoutePricingId || service?.touringRoute) {
       return 'EXCURSION' as VoucherType;
     }
@@ -10881,6 +10898,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
     if (text.includes('guide')) return VoucherType.GUIDE;
     if (text.includes('ticket') || text.includes('museum') || text.includes('site')) return 'TICKET' as VoucherType;
+    if (text.includes('restaurant') || text.includes('dining') || text.includes('meal') || text.includes('lunch') || text.includes('dinner')) return 'RESTAURANT' as VoucherType;
     if (text.includes('activity') || text.includes('tour') || text.includes('experience')) return 'ACTIVITY' as VoucherType;
     if (text.includes('excursion')) return 'EXCURSION' as VoucherType;
     if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
@@ -10935,6 +10953,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const isHotel = vtype === 'HOTEL';
     const isActivity = vtype === 'ACTIVITY' || vtype === 'EXCURSION';
     const isGuide = vtype === 'GUIDE';
+    const isDining = vtype === 'RESTAURANT';
     const roomingEntries = booking.roomingEntries || [];
     const assignedPax = roomingEntries.reduce(
       (total: number, room: any) => total + (Array.isArray(room.assignments) ? room.assignments.length : 0),
@@ -11150,6 +11169,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             email: service.guide?.email || null,
           }
         : null,
+      dining: isDining
+        ? {
+            restaurantName: service.restaurant?.name || service.assignedSupplierName || service.supplierName || service.description || null,
+            cuisine: service.restaurant?.cuisineType || null,
+            location: [service.restaurant?.city, service.restaurant?.region].filter(Boolean).join(', ') || service.meetingPoint || null,
+            phone: service.restaurant?.phone || null,
+            reservationTime: service.mealTiming || service.startTime || operationalTime || null,
+            partySize: service.participantCount ?? booking.pax ?? null,
+            seatingNotes: service.mealSeatingNotes || null,
+            dietaryRequirements: Array.isArray(service.mealDietaryRequirements) ? service.mealDietaryRequirements : null,
+            confirmationNumber: service.confirmationNumber || service.confirmationReference || null,
+            operationalNotes: service.operationalNotes || null,
+          }
+        : null,
       warnings,
     };
   }
@@ -11185,6 +11218,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         assignedSupplier: true,
         guide: true,
         activity: true,
+        restaurant: true,
         touringRoute: true,
         touringRoutePricing: { include: { supplier: true, vehicle: true, touringRoute: true } },
       },
@@ -11202,7 +11236,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const supplierId =
       this.normalizeOptionalText(bookingService.assignedSupplierId) ||
       this.normalizeOptionalText(bookingService.supplierId);
-    if (!supplierId) {
+    // Dining rows carry a restaurant rather than a generic supplier — the
+    // restaurant IS the supplier, so a restaurantId satisfies the requirement.
+    const hasRestaurantSupplier = Boolean(this.normalizeOptionalText(bookingService.restaurantId));
+    if (!supplierId && !hasRestaurantSupplier) {
       throw new BadRequestException('Cannot generate voucher: no supplier is assigned to this operation row.');
     }
 
@@ -12832,6 +12869,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             bookingDay: true,
             vehicle: true,
             supplier: true,
+            restaurant: true,
             touringRoute: true,
             touringRoutePricing: {
               include: {
@@ -12938,6 +12976,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         this.writeKeyValue(doc, 'Pickup', pickup);
         this.writeKeyValue(doc, 'Supplier', supplierName);
         this.writeKeyValue(doc, 'Pax', String(service.participantCount || pax));
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
+        this.writeKeyValue(doc, 'Notes', notes);
+      } else if (String(voucher.type) === 'RESTAURANT') {
+        const dietary = Array.isArray(service.mealDietaryRequirements) && service.mealDietaryRequirements.length
+          ? service.mealDietaryRequirements.join(', ')
+          : '-';
+        this.writeSectionTitle(doc, 'Restaurant Voucher');
+        this.writeKeyValue(doc, 'Restaurant', service.restaurant?.name || supplierName || service.description || '-');
+        this.writeKeyValue(doc, 'Client / group', clientName);
+        this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
+        this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
+        this.writeKeyValue(doc, 'Reservation time', service.mealTiming || service.startTime || '-');
+        this.writeKeyValue(doc, 'Party size', String(service.participantCount || pax));
+        this.writeKeyValue(doc, 'Seating', service.mealSeatingNotes || '-');
+        this.writeKeyValue(doc, 'Dietary requirements', dietary);
+        this.writeKeyValue(doc, 'Confirmation number', service.confirmationNumber || service.confirmationReference || '-');
         this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
         this.writeKeyValue(doc, 'Notes', notes);
       } else {
