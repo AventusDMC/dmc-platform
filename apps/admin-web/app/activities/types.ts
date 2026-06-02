@@ -37,6 +37,11 @@ export type Activity = {
   sellPrice: number;
   durationMinutes: number | null;
   currency?: string | null;
+  moodCategory?: string | null;
+  experienceType?: string | null;
+  operationalIntensity?: string | null;
+  religiousSignificance?: boolean | null;
+  premiumExperienceFlag?: boolean | null;
   active: boolean;
   rateVariants?: ActivityRateVariant[];
 };

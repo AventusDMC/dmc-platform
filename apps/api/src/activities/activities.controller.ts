@@ -75,6 +75,11 @@ type CreateActivityBody = {
   operationalNotes?: string | null;
   categoryTags?: string[] | null;
   reviewNotes?: string | null;
+  moodCategory?: string | null;
+  experienceType?: string | null;
+  operationalIntensity?: string | null;
+  religiousSignificance?: boolean | null;
+  premiumExperienceFlag?: boolean | null;
   rateVariants?: ActivityRateVariantBody[];
 };
 
