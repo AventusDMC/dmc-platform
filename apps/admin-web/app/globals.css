@@ -17126,19 +17126,10 @@ select option:checked {
 
 /* Premium SaaS admin system */
 :root {
-  /* Core palette (--background/--foreground/--text/--border/--accent) redefinitions
-     removed — dead, overridden by the later --ds-sourced authoritative blocks. Phase 1b. */
-  --surface: #FFFFFF;
-  --surface-muted: #F4FAFD;
-  --muted-foreground: #6B7280;
-  --accent-strong: #1C7FB8;
-  --accent-soft: #E8F6FB;
-  --success: #1F9ACF;
-  --warning: #D97706;
-  --danger: #DC2626;
-  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
-  --shadow-md: 0 18px 42px rgba(17, 24, 39, 0.09);
-  --shadow-lg: 0 26px 70px rgba(17, 24, 39, 0.13);
+  /* Core palette + surface/accent-strong/accent-soft/success/warning/danger + shadows
+     redefinitions removed — all dead, overridden by the later --ds-sourced authoritative
+     blocks (warning/danger win in the "AXIS brand identity overrides" block below). This
+     block now solely owns the legacy --radius-* scale. Phase 1b consolidation. */
   --radius-sm: 0.75rem;
   --radius-md: 1rem;
   --radius-lg: 1.25rem;
@@ -21523,14 +21514,9 @@ body {
 }
 /* AXIS brand identity overrides */
 :root {
-  /* Core palette (--background/--foreground/--text/--border/--accent) redefinitions
-     removed — dead, overridden by the later --ds-sourced authoritative blocks. Phase 1b. */
-  --surface: #FFFFFF;
-  --surface-muted: #F4FAFD;
-  --muted-foreground: #6B7280;
-  --accent-strong: #1C7FB8;
-  --accent-soft: #E8F6FB;
-  --success: #1F9ACF;
+  /* Core palette + surface/accent-strong/accent-soft/success redefinitions removed —
+     dead, overridden by the later --ds-sourced authoritative blocks. --warning/--danger
+     are kept: this block holds their last (winning) definition. Phase 1b consolidation. */
   --warning: #D97706;
   --danger: #DC2626;
 }
