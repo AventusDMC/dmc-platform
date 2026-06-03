@@ -688,3 +688,13 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   background: color-mix(in srgb, var(--lane-accent, #1F9ACF) 15%, #FFFFFF) !important;
   color: var(--lane-accent, #1C7FB8) !important;
 }
+
+/* ---------- Quote builder: eyebrow contrast (WCAG AA) ----------
+   The small-caps "kicker" eyebrows in the quote builder's main content were
+   rgb(138,144,155) on white ≈ 3.3:1 — below WCAG AA (4.5:1) for small text.
+   Darken to #667085 (≈5:1, passes AA) while staying a quiet muted kicker (not
+   body ink). Scoped to .quote-builder-main so the gradient command-bar header
+   (white-on-cyan eyebrows) and the dark sidebar are untouched — darkening those
+   would REDUCE their contrast. Verified live: main-content eyebrows -> #667085,
+   command-bar eyebrows unchanged at rgba(255,255,255,0.74). */
+.quote-builder-main .eyebrow { color: #667085 !important; }
