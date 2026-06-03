@@ -719,3 +719,52 @@ function matchesBookingServiceWhere(service: any, where: any): boolean {
 
   return true;
 }
+
+test('destination profitability attributes service profit to country (override/derived) with an Unattributed bucket', async () => {
+  const bookings = [
+    {
+      status: 'confirmed',
+      services: [
+        { status: 'confirmed', totalCost: 100, totalSell: 150, sourceQuoteItemId: 'qi-jordan' },
+        { status: 'confirmed', totalCost: 200, totalSell: 260, sourceQuoteItemId: 'qi-egypt' },
+        { status: 'confirmed', totalCost: 50, totalSell: 60, sourceQuoteItemId: 'qi-none' },
+        // cancelled service must be skipped
+        { status: 'cancelled', totalCost: 999, totalSell: 999, sourceQuoteItemId: 'qi-jordan' },
+      ],
+    },
+  ];
+
+  // qi-jordan: derived from the day's hotel city country; qi-egypt: manual day
+  // override; qi-none: no itinerary-day link -> Unattributed.
+  const dayItemByService: Record<string, any> = {
+    'qi-jordan': {
+      quoteServiceId: 'qi-jordan',
+      day: { country: null, dayItems: [{ quoteService: { hotel: { cityRecord: { country: 'Jordan' } } } }] },
+    },
+    'qi-egypt': { quoteServiceId: 'qi-egypt', day: { country: 'Egypt', dayItems: [] } },
+  };
+
+  const service = new ReportsService({
+    booking: { findMany: async () => bookings },
+    quoteItineraryDayItem: {
+      findMany: async ({ where }: any) =>
+        (where.quoteServiceId.in as string[]).filter((id) => dayItemByService[id]).map((id) => dayItemByService[id]),
+    },
+  } as any);
+
+  const result = await service.getDestinationProfitability({}, { companyId: 'dmc-company' } as any);
+  const byCountry = Object.fromEntries(result.countries.map((row: any) => [row.country, row]));
+
+  assert.equal(byCountry['Jordan'].totalProfit, 50); // 150 - 100, derived
+  assert.equal(byCountry['Egypt'].totalProfit, 60); // 260 - 200, override
+  assert.equal(byCountry['Unattributed'].totalProfit, 10); // 60 - 50
+  assert.equal(byCountry['Jordan'].serviceCount, 1); // cancelled one excluded
+  assert.equal(result.unattributedServiceCount, 1);
+  // Sorted by profit desc: Egypt (60) > Jordan (50) > Unattributed (10)
+  assert.deepEqual(result.countries.map((row: any) => row.country), ['Egypt', 'Jordan', 'Unattributed']);
+
+  await assert.rejects(
+    () => service.getDestinationProfitability({}, undefined as any),
+    /Company context is required/,
+  );
+});

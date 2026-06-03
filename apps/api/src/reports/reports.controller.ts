@@ -41,6 +41,16 @@ export class ReportsController {
     return this.reportsService.getSupplierPerformance({ startDate, endDate }, actor);
   }
 
+  @Get('destination-profitability')
+  @Roles('admin', 'finance', 'operations')
+  getDestinationProfitability(
+    @Query('startDate') startDate: string | undefined,
+    @Query('endDate') endDate: string | undefined,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.reportsService.getDestinationProfitability({ startDate, endDate }, actor);
+  }
+
   @Get('supplier-cost-variance')
   @Roles('admin', 'finance', 'operations')
   getSupplierCostVariance(
