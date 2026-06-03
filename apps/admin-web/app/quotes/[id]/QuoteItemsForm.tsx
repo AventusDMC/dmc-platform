@@ -3435,6 +3435,64 @@ export function QuoteItemsForm({
               <p>Contract, room, season, and pricing controls will appear after this step.</p>
             </div>
           ) : null}
+
+          {hasPrimarySelection && isExternalPackageService
+            ? (() => {
+                const summaryPax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
+                const basisLabel =
+                  EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS.find((option) => option.value === externalPackage.pricingBasis)?.label ||
+                  externalPackage.pricingBasis;
+                const sellTotal = finalSellPrice !== null && Number.isFinite(finalSellPrice) ? finalSellPrice : null;
+                const costTotal = finalCost !== null && Number.isFinite(finalCost) ? finalCost : null;
+                const perPax = sellTotal !== null ? sellTotal / summaryPax : null;
+                const markupLabel = markupAmount.trim()
+                  ? `${displayCurrency} ${Number(markupAmount || 0).toFixed(2)} flat`
+                  : `${Number(markupPercent || 0)}%`;
+                const money = (value: number | null) => (value !== null ? `${displayCurrency} ${value.toFixed(2)}` : '—');
+                const stat = (label: string, value: string) => (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ds-color-muted, #475569)' }}>
+                      {label}
+                    </span>
+                    <strong style={{ fontSize: '0.9rem', color: 'var(--ds-color-text, #0F172A)' }}>{value}</strong>
+                  </div>
+                );
+                return (
+                  <section
+                    className="quote-external-package-summary"
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'flex-end',
+                      gap: '1rem 1.5rem',
+                      padding: '0.9rem 1.1rem',
+                      marginBottom: '0.85rem',
+                      borderRadius: 'var(--ds-radius-md, 12px)',
+                      border: '1px solid var(--ds-color-accent-border, rgba(31,154,207,0.24))',
+                      borderLeft: '4px solid var(--ds-color-accent, #1F9ACF)',
+                      background: 'var(--ds-color-accent-soft, rgba(31,154,207,0.08))',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', marginRight: 'auto' }}>
+                      <span style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ds-color-accent-strong, #1C7FB8)' }}>
+                        Partner package · {externalPackage.country?.trim() || 'Country TBC'}
+                      </span>
+                      <strong style={{ fontSize: '1.7rem', lineHeight: 1.1, fontWeight: 800, color: 'var(--ds-color-text, #0F172A)' }}>
+                        {money(sellTotal)}
+                      </strong>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--ds-color-muted, #475569)' }}>
+                        Client price{sellTotal !== null ? ` · ${money(perPax)}/pax` : ' — enter cost or matrix to price'}
+                      </span>
+                    </div>
+                    {stat('Net cost', money(costTotal))}
+                    {stat('Markup', markupLabel)}
+                    {stat('Basis', String(basisLabel))}
+                    {stat('Pax', String(summaryPax))}
+                  </section>
+                );
+              })()
+            : null}
+
           {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService && !isTicketingService ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
@@ -3728,6 +3786,10 @@ export function QuoteItemsForm({
 
               {externalPackageSection === 'pricing' ? (
                 <div className="quote-external-package-section">
+                  <p className="form-helper" style={{ marginTop: 0 }}>
+                    The pricing matrix sets the cost per person by group size — the row whose pax band covers
+                    this quote&rsquo;s pax count is used. The fallback net cost applies only when no matrix row matches.
+                  </p>
                   <div className="form-row form-row-4">
                     <label>
                       Pricing basis
