@@ -38,9 +38,7 @@ a {
 .admin-shell {
   min-height: 100vh;
   display: grid;
-  background:
-    radial-gradient(circle at top left, rgba(31, 154, 207, 0.1), transparent 30rem),
-    linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+  /* canvas background owned by redesign.css (--rd-canvas); dead gradient removed. Phase 1b */
 }
 
 .admin-header {
@@ -6123,9 +6121,7 @@ select option:checked {
   --admin-page-padding: 32px;
 }
 
-.admin-shell {
-  background: #f6f8fb;
-}
+/* (dead .admin-shell background removed — redesign.css owns the canvas. Phase 1b) */
 
 .admin-sidebar {
   gap: 1.5rem;
@@ -6592,9 +6588,7 @@ body,
 .admin-shell,
 .admin-main-shell,
 .admin-content-shell {
-  background:
-    radial-gradient(circle at 22% 0%, rgba(31, 154, 207, 0.08), transparent 34rem),
-    linear-gradient(180deg, #f8fbff 0%, var(--saas-bg) 42%, #eef3f9 100%);
+  /* canvas background owned by redesign.css (--rd-canvas); dead gradient removed. Phase 1b */
   color: var(--saas-muted);
 }
 
@@ -14206,9 +14200,7 @@ th.money-cell {
 }
 
 /* Admin-wide modern facelift */
-.admin-main-shell {
-  background: transparent;
-}
+/* (dead .admin-main-shell background:transparent removed — redesign.css owns the canvas. Phase 1b) */
 
 .admin-content-shell {
   width: 100%;
@@ -14558,9 +14550,7 @@ a {
   color: var(--axis-blue);
 }
 
-.admin-shell {
-  background: #F9FAFB;
-}
+/* (dead .admin-shell background removed — redesign.css owns the canvas. Phase 1b) */
 
 .admin-sidebar {
   display: flex;
@@ -14831,7 +14821,7 @@ a {
 body,
 .admin-main-shell,
 .admin-content-shell {
-  background: var(--axis-section-background);
+  /* canvas background owned by redesign.css (--rd-canvas); dead value removed. Phase 1b */
   color: var(--axis-text-soft);
 }
 
@@ -17142,7 +17132,7 @@ select option:checked {
 .app-shell {
   min-height: 100vh;
   grid-template-columns: minmax(260px, 18vw) minmax(0, 1fr);
-  background: transparent;
+  /* canvas background owned by redesign.css (--rd-canvas); dead transparent removed. Phase 1b */
 }
 
 .admin-sidebar {
@@ -21946,7 +21936,7 @@ body,
 .admin-main-shell,
 .admin-content-shell {
   color: #0F172A;
-  background: #F8FAFC;
+  /* canvas background owned by redesign.css (--rd-canvas); dead value removed. Phase 1b */
 }
 
 .admin-shell,
