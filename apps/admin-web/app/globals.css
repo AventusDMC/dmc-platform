@@ -6575,11 +6575,12 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   --saas-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.035), 0 10px 28px rgba(15, 23, 42, 0.045);
   --saas-radius: var(--ds-radius-lg);
   --saas-radius-sm: var(--ds-radius-md);
-  --background: var(--saas-bg);
-  --foreground: var(--saas-muted);
-  --text: var(--saas-text);
-  --border: var(--saas-border);
-  --accent: #1F9ACF;
+  /* Core palette (--background/--foreground/--text/--border/--accent) is NOT
+     redefined here: its authoritative source is the "Correct Axis brand identity"
+     block (--background/--accent) and the "Visual clarity pass" block
+     (--foreground/--text/--border), both later in this file and both sourced from
+     design-tokens.css --ds-*. These redefinitions were dead (always overridden);
+     removed in the design-system core-token consolidation (Phase 1b). */
   --admin-card-radius: var(--saas-radius);
   --admin-card-padding: 28px;
   --admin-field-height: 48px;
@@ -14821,11 +14822,8 @@ a {
   --axis-background: #FFFFFF;
   --axis-section-background: #F9FAFB;
   --axis-border: #E5E7EB;
-  --background: var(--axis-background);
-  --foreground: var(--axis-text-soft);
-  --text: var(--axis-text);
-  --border: var(--axis-border);
-  --accent: var(--axis-blue);
+  /* Core palette redefinitions removed (dead — overridden by the later
+     --ds-sourced "brand identity" / "Visual clarity pass" blocks). Phase 1b. */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
   --shadow-md: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
@@ -17128,14 +17126,11 @@ select option:checked {
 
 /* Premium SaaS admin system */
 :root {
-  --background: #F9FAFB;
-  --foreground: #111827;
-  --text: #111827;
+  /* Core palette (--background/--foreground/--text/--border/--accent) redefinitions
+     removed — dead, overridden by the later --ds-sourced authoritative blocks. Phase 1b. */
   --surface: #FFFFFF;
   --surface-muted: #F4FAFD;
-  --border: #E5E7EB;
   --muted-foreground: #6B7280;
-  --accent: #1F9ACF;
   --accent-strong: #1C7FB8;
   --accent-soft: #E8F6FB;
   --success: #1F9ACF;
@@ -21528,14 +21523,11 @@ body {
 }
 /* AXIS brand identity overrides */
 :root {
-  --background: #F9FAFB;
-  --foreground: #111827;
-  --text: #111827;
+  /* Core palette (--background/--foreground/--text/--border/--accent) redefinitions
+     removed — dead, overridden by the later --ds-sourced authoritative blocks. Phase 1b. */
   --surface: #FFFFFF;
   --surface-muted: #F4FAFD;
-  --border: #E5E7EB;
   --muted-foreground: #6B7280;
-  --accent: #1F9ACF;
   --accent-strong: #1C7FB8;
   --accent-soft: #E8F6FB;
   --success: #1F9ACF;
