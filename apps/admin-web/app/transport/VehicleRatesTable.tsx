@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteOption } from '../lib/routes';
 import { DuplicateVehicleRateButton } from '../vehicle-rates/DuplicateVehicleRateButton';
@@ -1138,6 +1138,38 @@ export function VehicleRatesTable({
     return detail;
   }
 
+  // Detail fetches are deduped per card id so a prefetch-on-hover followed by a
+  // click (or two rapid hovers) reuses a single in-flight request instead of
+  // firing the ~500ms round-trip twice. The promise clears once settled; on
+  // success the detail is merged into preparedRateCards (see loadRateCardDetail),
+  // so subsequent opens skip the network entirely.
+  const detailFetchPromises = useRef<Map<string, Promise<unknown>>>(new Map());
+
+  function fetchRateCardDetailOnce(rateCardId: string) {
+    const existing = detailFetchPromises.current.get(rateCardId);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = loadRateCardDetail(rateCardId).finally(() => {
+      detailFetchPromises.current.delete(rateCardId);
+    });
+    detailFetchPromises.current.set(rateCardId, promise);
+    return promise;
+  }
+
+  // Warm a card's detail into the cache when the user hovers/focuses its toggle,
+  // so the actual click feels instant. Best-effort: errors are swallowed here and
+  // surfaced only if the user then clicks (handleToggleRateCardDetails). No-ops
+  // for manual cards, already-loaded cards, and devices without hover.
+  function prefetchRateCardDetail(rateCardId: string) {
+    const rateCard = preparedRateCards.find((card) => card.id === rateCardId);
+    if (!rateCard || rateCard.isManual || rateCard.rates.length > 0) {
+      return;
+    }
+    void fetchRateCardDetailOnce(rateCardId).catch(() => {});
+  }
+
   async function handleToggleRateCardDetails(rateCardId: string) {
     if (expandedRateCardId === rateCardId) {
       setExpandedRateCardId(null);
@@ -1151,7 +1183,7 @@ export function VehicleRatesTable({
       setError('');
 
       try {
-        await loadRateCardDetail(rateCardId);
+        await fetchRateCardDetailOnce(rateCardId);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : 'Could not load supplier rate-card details.');
         setLoadingRateCardDetailId(null);
@@ -2040,7 +2072,13 @@ export function VehicleRatesTable({
                     </div>
                   </div>
                   <div className="table-action-row">
-                    <button type="button" className="compact-button" onClick={() => handleToggleRateCardDetails(rateCard.id)}>
+                    <button
+                      type="button"
+                      className="compact-button"
+                      onClick={() => handleToggleRateCardDetails(rateCard.id)}
+                      onMouseEnter={() => prefetchRateCardDetail(rateCard.id)}
+                      onFocus={() => prefetchRateCardDetail(rateCard.id)}
+                    >
                       {loadingRateCardDetailId === rateCard.id ? 'Loading details...' : isExpanded ? 'Hide details' : 'View details'}
                     </button>
                     {rateCard.rates[0] ? (
