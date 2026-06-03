@@ -668,3 +668,23 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 }
 .admin-shell .workspace-shell-header > .workspace-shell-copy { flex: 0 0 auto; }
 .admin-shell .workspace-shell-header > .workspace-shell-switcher { flex: 0 0 auto; width: 100%; }
+
+/* ---------- Quote day-planner: status & type color cues ----------
+   (1) Day-coverage tiles ("what this day still needs"): a covered item now reads
+   success-GREEN and a pending one AMBER, so each day's readiness scans green-vs-amber
+   at a glance. Previously "complete" used a brand-cyan tint that was ambiguous against
+   the accent. (2) Service-row type chips inherit their lane's per-type --lane-accent
+   instead of a uniform cyan, so the Hotel / Transport / Meal / Activity / … chip matches
+   its colour-coded lane (the lane board's CSS module sets --lane-accent; it inherits to
+   the chip). CSS-only — no markup change. Verified live on prod (real lane-module
+   --lane-accent + real planner DOM): coverage tiles green/amber, chips per-type. */
+.quote-service-check-complete {
+  border-color: rgba(5, 118, 71, 0.22) !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+}
+.quote-service-check-complete strong { color: #067647 !important; }
+.quote-service-check-missing strong { color: #B54708 !important; }
+.quote-service-lane .quote-service-type-icon {
+  background: color-mix(in srgb, var(--lane-accent, #1F9ACF) 15%, #FFFFFF) !important;
+  color: var(--lane-accent, #1C7FB8) !important;
+}
