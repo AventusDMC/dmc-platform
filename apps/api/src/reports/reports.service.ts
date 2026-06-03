@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { calculateProfitSummary } from '../finance/profit';
+import { deriveDayCountry } from '../quotes/quote-day-country';
 
 type BookingSummaryInput = {
   startDate?: string;
@@ -47,6 +48,7 @@ type ReportBookingServiceRecord = {
   status?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
+  sourceQuoteItemId?: string | null;
   supplier?: { id: string; name: string | null } | null;
 };
 
@@ -252,6 +254,150 @@ export class ReportsService {
         })
         .sort((left, right) => right.totalCost - left.totalCost || left.supplierName.localeCompare(right.supplierName)),
     };
+  }
+
+  /**
+   * Destination profitability — attributes each booked service's profit to a
+   * destination COUNTRY and aggregates. The country is resolved (read-time, no
+   * stored dimension) by following BookingService.sourceQuoteItemId back to its
+   * quote itinerary day, then taking the day's manual country override or the
+   * value derived from the day's services (deriveDayCountry). Services whose
+   * originating quote item can't be mapped to a day group under "Unattributed",
+   * which is surfaced explicitly so the number isn't silently hidden.
+   */
+  async getDestinationProfitability(input: BookingSummaryInput, actor?: CompanyScopedActor) {
+    requireActorCompanyId(actor);
+
+    const bookings = await this.findLatestBookings(input);
+
+    const quoteItemIds = new Set<string>();
+    for (const booking of bookings) {
+      if (this.isCancelled(booking.status)) {
+        continue;
+      }
+      for (const service of booking.services || []) {
+        if (this.isCancelled(service.status)) {
+          continue;
+        }
+        if (service.sourceQuoteItemId) {
+          quoteItemIds.add(service.sourceQuoteItemId);
+        }
+      }
+    }
+
+    const countryByQuoteItemId = await this.resolveQuoteItemCountries([...quoteItemIds]);
+    const UNATTRIBUTED = 'Unattributed';
+
+    const rowsByCountry = new Map<
+      string,
+      { country: string; serviceCount: number; totalCost: number; totalSell: number }
+    >();
+    let unattributedServiceCount = 0;
+
+    for (const booking of bookings) {
+      if (this.isCancelled(booking.status)) {
+        continue;
+      }
+      for (const service of booking.services || []) {
+        if (this.isCancelled(service.status)) {
+          continue;
+        }
+        const resolved =
+          (service.sourceQuoteItemId && countryByQuoteItemId.get(service.sourceQuoteItemId)) || null;
+        const country = resolved || UNATTRIBUTED;
+        if (!resolved) {
+          unattributedServiceCount += 1;
+        }
+        const row = rowsByCountry.get(country) || {
+          country,
+          serviceCount: 0,
+          totalCost: 0,
+          totalSell: 0,
+        };
+        row.serviceCount += 1;
+        row.totalCost += Number(service.totalCost || 0);
+        row.totalSell += Number(service.totalSell || 0);
+        rowsByCountry.set(country, row);
+      }
+    }
+
+    return {
+      startDate: input.startDate || null,
+      endDate: input.endDate || null,
+      dateField: 'startDate',
+      unattributedServiceCount,
+      countries: [...rowsByCountry.values()]
+        .map((row) => {
+          const profit = calculateProfitSummary({
+            totalCost: this.roundMoney(row.totalCost),
+            totalSell: this.roundMoney(row.totalSell),
+          });
+          return {
+            country: row.country,
+            serviceCount: row.serviceCount,
+            totalCost: profit.totalCost,
+            totalSell: profit.totalSell,
+            totalProfit: profit.grossProfit,
+            marginPercent: profit.marginPercent,
+          };
+        })
+        .sort((left, right) => right.totalProfit - left.totalProfit || left.country.localeCompare(right.country)),
+    };
+  }
+
+  /**
+   * Maps quote-item ids → destination country via the itinerary-day join, in a
+   * single batched query (no N+1). Stored day override wins; else derive from
+   * the day's services. First day wins if an item is linked to several.
+   */
+  private async resolveQuoteItemCountries(quoteItemIds: string[]): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (quoteItemIds.length === 0) {
+      return result;
+    }
+
+    const dayItems = await (this.prisma as any).quoteItineraryDayItem.findMany({
+      where: { quoteServiceId: { in: quoteItemIds }, isActive: true },
+      select: {
+        quoteServiceId: true,
+        day: {
+          select: {
+            country: true,
+            dayItems: {
+              where: { isActive: true },
+              select: {
+                quoteService: {
+                  select: {
+                    externalPackageCountry: true,
+                    hotel: { select: { cityRecord: { select: { country: true } } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const dayItem of dayItems) {
+      if (result.has(dayItem.quoteServiceId) || !dayItem.day) {
+        continue;
+      }
+      const day = dayItem.day;
+      const country =
+        (typeof day.country === 'string' && day.country.trim()) ||
+        deriveDayCountry({
+          items: (day.dayItems || []).map((entry: any) => ({
+            hotelCountry: entry.quoteService?.hotel?.cityRecord?.country ?? null,
+            externalPackageCountry: entry.quoteService?.externalPackageCountry ?? null,
+          })),
+        });
+      if (country) {
+        result.set(dayItem.quoteServiceId, country);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -614,6 +760,7 @@ export class ReportsService {
             status: true,
             supplierId: true,
             supplierName: true,
+            sourceQuoteItemId: true,
             supplier: {
               select: {
                 id: true,

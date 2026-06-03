@@ -280,6 +280,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 { id: 'overdue-suppliers', label: 'Overdue Suppliers', href: buildFinanceHref('overdue-suppliers'), helper: 'Late payables' },
                 { id: 'margin-report', label: 'Margin Report', href: '/finance/margin-report', helper: 'Supplier margin' },
                 { id: 'cost-variance', label: 'Cost Variance', href: '/finance/cost-variance', helper: 'Expected vs actual' },
+                { id: 'destination-profitability', label: 'Destination Profit', href: '/finance/destination-profitability', helper: 'Profit by country' },
                 { id: 'supplier-payables', label: 'Supplier Payables', href: '/finance/supplier-payables', helper: 'Supplier totals' },
                 { id: 'sales-intelligence', label: 'Sales Intelligence', href: '/executive/sales', helper: 'Revenue + top suppliers' },
                 { id: 'reconciliation', label: 'Reconciliation', href: '/finance/reconciliation', helper: 'Proof review queue' },
