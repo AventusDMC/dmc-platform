@@ -285,10 +285,10 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                       <div className="table-action-row">
                         {quoteId ? (
                           <>
-                            <Link href={`/quotes/${quoteId}`} className="compact-button">
+                            <Link href={`/quotes/${quoteId}`} prefetch={false} className="compact-button">
                               View
                             </Link>
-                            <Link href={`/quotes/${quoteId}?tab=overview`} className="compact-button">
+                            <Link href={`/quotes/${quoteId}?tab=overview`} prefetch={false} className="compact-button">
                               Edit
                             </Link>
                           </>
@@ -302,14 +302,14 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                           {deletingId === quoteId ? 'Deleting...' : 'Delete'}
                         </button>
                         {quote.invoice ? (
-                          <Link href={`/invoices/${quote.invoice.id}`} className="compact-button">
+                          <Link href={`/invoices/${quote.invoice.id}`} prefetch={false} className="compact-button">
                             Invoice
                           </Link>
                         ) : (
                           <span className="table-subcopy">Invoice pending</span>
                         )}
                         {quote.booking ? (
-                          <Link href={`/bookings/${quote.booking.id}`} className="compact-button">
+                          <Link href={`/bookings/${quote.booking.id}`} prefetch={false} className="compact-button">
                             Booking
                           </Link>
                         ) : quoteId && (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') ? (

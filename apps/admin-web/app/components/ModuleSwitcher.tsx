@@ -112,6 +112,10 @@ export function ModuleSwitcher({ ariaLabel, activeId, items }: ModuleSwitcherPro
           <Link
             key={item.id}
             href={item.href}
+            // These nav targets are force-dynamic pages — prefetching them fires a
+            // full SSR round-trip per link on every page render, which piles up on
+            // higher-latency connections. Load on click instead (loading.tsx covers it).
+            prefetch={false}
             aria-current={isActive ? 'page' : undefined}
             className={`module-switcher-link${isActive ? ' module-switcher-link-active' : ''}`}
           >
