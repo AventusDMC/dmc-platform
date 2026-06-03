@@ -39,6 +39,7 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
             <Link
               key={group.label}
               href={group.href}
+              prefetch={false}
               className={`admin-top-nav-link${active ? ' admin-top-nav-link-active' : ''}`}
               aria-current={active ? 'page' : undefined}
               title={group.label}
@@ -93,6 +94,7 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
             {showSection ? <span className="admin-subnav-section">{child.section}</span> : null}
             <Link
               href={child.href}
+              prefetch={false}
               aria-current={isActiveChild ? 'page' : undefined}
               className={`admin-subnav-link${isActiveChild ? ' admin-subnav-link-active' : ''}`}
             >

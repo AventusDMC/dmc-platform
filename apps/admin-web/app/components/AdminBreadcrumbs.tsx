@@ -19,7 +19,7 @@ export function AdminBreadcrumbs({ items }: AdminBreadcrumbsProps) {
           return (
             <li key={`${item.label}-${index}`}>
               {item.href ? (
-                <Link href={item.href} aria-current={isCurrent ? 'page' : undefined}>{item.label}</Link>
+                <Link href={item.href} prefetch={false} aria-current={isCurrent ? 'page' : undefined}>{item.label}</Link>
               ) : (
                 <span aria-current={isCurrent ? 'page' : undefined}>{item.label}</span>
               )}

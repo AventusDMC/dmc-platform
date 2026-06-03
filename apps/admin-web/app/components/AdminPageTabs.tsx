@@ -19,7 +19,7 @@ export function AdminPageTabs({ ariaLabel, tabs, activeTab }: AdminPageTabsProps
   return (
     <nav className="page-tabs" aria-label={ariaLabel}>
       {tabs.map((tab) => (
-        <Link key={tab.id} href={tab.href} className={`page-tab-link${activeTab === tab.id ? ' page-tab-link-active' : ''}`}>
+        <Link key={tab.id} href={tab.href} prefetch={false} className={`page-tab-link${activeTab === tab.id ? ' page-tab-link-active' : ''}`}>
           <span>{tab.label}</span>
           {tab.badge && tab.badge > 0 ? (
             <span
