@@ -27366,3 +27366,42 @@ video {
 tr.dnd-row-over > td {
   box-shadow: inset 0 2px 0 var(--accent, #2563eb);
 }
+
+/*
+ * PERF: transport rate-card view "Page Unresponsive" freeze.
+ *
+ * The rate-card view nests many single-column `display: grid` stacks — both the
+ * design-system layout wrappers (.app-page-content, .app-workspace-shell,
+ * .workspace-shell-content, .app-section-stack, .table-section-shell,
+ * .table-section-body) and the transport rate-card containers — each declared
+ * with `display: grid` but NO explicit `grid-template-columns`, so each gets an
+ * implicit `auto` track. An `auto` grid track is sized from the `max-content`
+ * width of its contents, which recurses through the entire subtree; nested this
+ * deep over the rate-card tree it becomes super-linear and a single layout pass
+ * takes ~13s (the browser-confirmed root cause: 12.96s "Layout", 890 dirty
+ * nodes, rooted at #document, on every render/filter change).
+ *
+ * Giving each stack an explicit `minmax(0, 1fr)` track (available-width based,
+ * no max-content scan) makes them behave exactly as the single-column stacks
+ * they already are, and collapses the layout cost. Measured on the live page:
+ * Load Rate Cards went from ~25s (20.6s longest task) to ~0.7s (61ms longest
+ * task). The design-system wrappers are scoped to `.transport-contracts-page`
+ * so no other page's layout is affected; the `.transport-*` classes are
+ * transport-only. The 2-column workspace (`-with-panel`) is preserved below.
+ */
+.transport-rate-card-list,
+.transport-contract-supplier-group,
+.transport-rate-card-workspace,
+.supplier-rate-card-safe-loader,
+.transport-contracts-page .app-page-content,
+.transport-contracts-page .app-workspace-shell,
+.transport-contracts-page .workspace-shell-content,
+.transport-contracts-page .app-section-stack,
+.transport-contracts-page .table-section-shell,
+.transport-contracts-page .table-section-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.transport-rate-card-workspace-with-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+}
