@@ -3809,7 +3809,7 @@ function ScopePlanner({
               </div>
             </div>
 
-            <details className="quote-operational-collapsible quote-operational-collapsible-excursions" open>
+            <details className="quote-operational-collapsible quote-operational-collapsible-excursions">
               <summary>
                 <div>
                   <span className="eyebrow">Excursion Templates</span>
@@ -3954,7 +3954,7 @@ function ScopePlanner({
                   {dayCountryError ? <p className="form-error">{dayCountryError}</p> : null}
                 </section>
 
-                <details className="quote-operational-collapsible quote-operational-collapsible-intelligence" open>
+                <details className="quote-operational-collapsible quote-operational-collapsible-intelligence">
                   <summary>
                     <div>
                       <span className="eyebrow">Operational Intelligence</span>
