@@ -3795,13 +3795,13 @@ export class QuotesService {
     });
   }
 
-  // Large-vehicle excursion transport prices off Alpha's Full-Day card: the cheapest
-  // Alpha "Daily Full Day" rate for the same vehicle CLASS (canonical type) that fits
-  // pax, plus distance-based extra-km (route km − 200 incl) at the vehicle's Extra-KM
-  // rate, minus the supplier's negotiated discount. Free mileage (no extra-km) when the
-  // quote's package toggle is on. Almushtari has no large vehicles, so the canonical
-  // match resolves to Alpha. Returns null when no Alpha class match exists.
-  private async resolveAlphaFullDayExcursionCost(values: {
+  // Full-Day-card cost for excursion transport: the cheapest "Daily Full Day" rate for
+  // the same vehicle CLASS (canonical type) that fits pax, plus distance-based extra-km
+  // (route km − 200 incl) at the vehicle's Extra-KM rate, minus that supplier's negotiated
+  // discount. Free mileage (no extra-km) when freeMileage is true. Resolves to Alpha for
+  // large classes (only Alpha has them) and Almushtari for small classes (cheaper daily
+  // rate, 0% discount). Returns null when no class match exists.
+  private async resolveFullDayExcursionCost(values: {
     vehicle: { id?: string | null; name?: string | null; vehicleType?: string | null };
     paxCount: number;
     routeKm: number;
@@ -5641,19 +5641,24 @@ export class QuotesService {
           throw new BadRequestException('Selected touring route variant has no active pricing row');
         }
 
-        // Large vehicles (Coaster 17+ — capacity >= 13) price off Alpha's Full-Day card:
-        // cheapest Alpha vehicle of the same class fitting pax + distance-based extra-km,
-        // minus Alpha's supplier discount, with free mileage when the package toggle is on.
-        // Almushtari has no large vehicles, so the canonical match resolves to Alpha.
-        // Small vehicles keep the touring-route per-route rate (Almushtari, <3-day rate).
+        // Full-Day-card pricing (cheapest Daily Full Day rate of the same vehicle CLASS
+        // fitting pax, + extra-km unless free mileage, − that supplier's discount):
+        //  - LARGE vehicles (Coaster 17+, capacity >= 13): ALWAYS use it. Only Alpha has
+        //    large vehicles, so the canonical match resolves to Alpha; extra-km applies
+        //    off the toggle (free mileage when on).
+        //  - SMALL vehicles: only when the package toggle is ON (3+ day program), where it
+        //    resolves to Almushtari's cheaper daily full-day rate (free mileage, 0% disc).
+        //    With the toggle OFF, small vehicles keep the per-route (<3-day) rate below.
         const excursionVehicleCapacity = Number(selectedPricing.maxPax ?? 0) || 0;
-        const largeVehicleAlpha =
-          excursionVehicleCapacity >= 13 && selectedPricing.vehicle
-            ? await this.resolveAlphaFullDayExcursionCost({
+        const excursionFreeMileage = Boolean((quote as any).excursionPackageRate);
+        const useFullDayCard = excursionVehicleCapacity >= 13 || excursionFreeMileage;
+        const fullDayCardCost =
+          useFullDayCard && selectedPricing.vehicle
+            ? await this.resolveFullDayExcursionCost({
                 vehicle: selectedPricing.vehicle,
                 paxCount,
                 routeKm: Number((touringRoute as any).estimatedDistanceKm ?? 0) || 0,
-                freeMileage: Boolean((quote as any).excursionPackageRate),
+                freeMileage: excursionFreeMileage,
               })
             : null;
 
@@ -5662,8 +5667,8 @@ export class QuotesService {
         const stopNames = (touringRoute.stops || []).map((stop: any) => stop.location || stop.city).filter(Boolean);
         const routePath = destinations.length > 0 ? destinations : stopNames;
         const routeDisplay = routePath.length > 0 ? `${touringRoute.startCity} -> ${routePath.join(' -> ')} -> ${touringRoute.startCity}` : touringRoute.name;
-        baseCost = largeVehicleAlpha ? largeVehicleAlpha.overrideCost : Number(selectedPricing.baseCost || 0);
-        currency = largeVehicleAlpha ? largeVehicleAlpha.currency : selectedPricing.currency || currency || 'USD';
+        baseCost = fullDayCardCost ? fullDayCardCost.overrideCost : Number(selectedPricing.baseCost || 0);
+        currency = fullDayCardCost ? fullDayCardCost.currency : selectedPricing.currency || currency || 'USD';
         supplierCostBaseAmount = baseCost;
         supplierCostCurrency = currency;
         transportServiceTypeId = selectedPricing.transportServiceTypeId || data.transportServiceTypeId;
@@ -5673,9 +5678,9 @@ export class QuotesService {
           routeDisplay,
           serviceType.name,
           selectedPricing.vehicle?.name,
-          largeVehicleAlpha ? largeVehicleAlpha.description : selectedPricing.pricingBasis,
-          largeVehicleAlpha ? null : selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
-          largeVehicleAlpha ? null : selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
+          fullDayCardCost ? fullDayCardCost.description : selectedPricing.pricingBasis,
+          fullDayCardCost ? null : selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
+          fullDayCardCost ? null : selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
         ].filter(Boolean).join(' | ');
       } else {
       const routeNormalizedKey = data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined);

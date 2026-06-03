@@ -2967,8 +2967,8 @@ function ExcursionPackageRateToggle({
           <p className="eyebrow">Excursion transport</p>
           <h3>Use package rates</h3>
           <p className="detail-copy">
-            On = 3+ full-day program: large-vehicle (bus/coach) excursion transport gets free mileage (extra-km waived).
-            Off = day-tour rates (full-day + extra-km). Small vehicles are unaffected.
+            On = 3+ full-day program: large vehicles (bus/coach) get free mileage (extra-km waived); small vehicles
+            switch to the daily package rate. Off = day-tour rates (per-route for small, full-day + extra-km for large).
           </p>
         </div>
         <label className="toggle-control">
