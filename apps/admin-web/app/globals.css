@@ -3781,6 +3781,9 @@ select option:checked {
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 16px 40px rgba(30, 27, 24, 0.06);
+  /* Each card is its own layout context too, so one card's layout never forces
+     a relayout of its siblings or the list. */
+  contain: layout;
 }
 
 .transport-contract-supplier-head {
@@ -4108,6 +4111,13 @@ select option:checked {
   display: grid;
   gap: 1rem;
   min-width: 0;
+  /* Isolate the rate-card list's layout into its own context. Without this,
+     the list participates in the whole-page layout, so every card render and
+     every forced reflow (e.g. closing a native filter dropdown) recomputes an
+     expensive entangled layout and hangs the main thread ("Page Unresponsive").
+     The same cards laid out in isolation are ~instant; layout containment gives
+     them that isolation in-page. */
+  contain: layout;
 }
 
 .transport-rate-card-form-panel {
