@@ -206,13 +206,12 @@ type AutoFillAddOnsSummary = {
   skippedExisting: number;
 };
 
-// Each rendered rate card is a heavy DOM block, and the assembled transport
-// page has an expensive layout pass that any forced reflow (e.g. closing a
-// native filter dropdown) recomputes synchronously. That cost scales with how
-// many cards are mounted, so we render a small page at a time ("Load more"
-// fetches the next batch) to keep each layout/reflow cheap and avoid the
-// "Page Unresponsive" freeze on a long list.
-const RATE_CARD_PAGE_SIZE = 8;
+// Render a page of rate cards at a time ("Load more" fetches the next batch)
+// to keep the initial payload reasonable. (The layout cost that used to make
+// long lists freeze was fixed in CSS — explicit grid-template-columns on the
+// design-system stack wrappers, see globals.css — so this is now just a
+// pagination size, not a freeze workaround.)
+const RATE_CARD_PAGE_SIZE = 25;
 const RATE_LINE_PAGE_SIZE = 30;
 const RATE_CARD_PREP_CHUNK_SIZE = 200;
 const DEFAULT_RATE_CARD_FILTERS = {};
