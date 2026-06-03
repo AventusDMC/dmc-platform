@@ -139,7 +139,7 @@ export default async function QuotesPage() {
   const accepted = quotes.filter((quote) => quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED').length;
 
   return (
-    <main className="page">
+    <main className="page quotes-list-page">
       <section className="panel workspace-panel">
         <WorkspaceShell
           eyebrow="Sales"

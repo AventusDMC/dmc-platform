@@ -27405,3 +27405,24 @@ tr.dnd-row-over > td {
 .transport-rate-card-workspace-with-panel {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
 }
+
+/*
+ * PERF: same implicit-`auto`-grid-column issue as the transport rate cards
+ * (see note above), on the QUOTES LIST page. Its layout chain (entity-list ->
+ * table-section-body -> table-section-shell -> section-stack ->
+ * workspace-shell-content/app-section-stack -> app-page-content) is the same
+ * stack of single-column `display: grid` wrappers with implicit `auto` tracks,
+ * each sizing from the max-content of the quotes table -> ~2s layout on load.
+ * Give them an explicit minmax(0, 1fr) track. Scoped to `.quotes-list-page`
+ * (added to the page's <main>) so nothing else is affected.
+ */
+.quotes-list-page .app-page-content,
+.quotes-list-page .app-workspace-shell,
+.quotes-list-page .workspace-shell-content,
+.quotes-list-page .app-section-stack,
+.quotes-list-page .section-stack,
+.quotes-list-page .table-section-shell,
+.quotes-list-page .table-section-body,
+.quotes-list-page .entity-list {
+  grid-template-columns: minmax(0, 1fr);
+}
