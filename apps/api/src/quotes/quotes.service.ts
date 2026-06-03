@@ -545,40 +545,45 @@ export class QuotesService {
 
   findAll(actor?: CompanyScopedActor) {
     requireActorCompanyId(actor);
-    return this.prisma.quote.findMany({
-      include: {
-        clientCompany: {
-          include: {
-            branding: true,
-          },
+    // List-only projection: the quotes list page renders name/client/dates/
+    // status/invoice — it shows NO pricing. The old query eagerly loaded
+    // company branding (logos), brand company, agent, and full pricing slabs,
+    // then ran the pricing engine (computePriceResult) for EVERY quote via
+    // attachResolvedQuoteFields — ~86KB and ~2s+ for 19 quotes. None of that is
+    // displayed in the list. Select just what the list needs and skip the
+    // per-quote pricing compute. (Detail pages still use findOne/loadQuoteState
+    // for the full resolved shape.)
+    return this.prisma.quote
+      .findMany({
+        select: {
+          id: true,
+          clientCompanyId: true,
+          quoteNumber: true,
+          title: true,
+          description: true,
+          bookingType: true,
+          status: true,
+          travelStartDate: true,
+          validUntil: true,
+          nightCount: true,
+          adults: true,
+          children: true,
+          createdAt: true,
+          clientCompany: { select: { id: true, name: true } },
+          contact: { select: { id: true, firstName: true, lastName: true } },
+          invoice: { select: { id: true, status: true } },
         },
-        brandCompany: {
-          include: {
-            branding: true,
-          },
+        orderBy: {
+          createdAt: 'desc',
         },
-        contact: true,
-        agent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        invoice: true,
-        pricingSlabs: {
-          orderBy: [
-            { minPax: 'asc' },
-            { maxPax: 'asc' },
-            { createdAt: 'asc' },
-          ],
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    }).then((quotes) => quotes.map((quote) => this.attachResolvedQuoteFields(quote)));
+      })
+      .then((quotes) =>
+        quotes.map((quote) => {
+          const { clientCompany, ...rest } = quote as any;
+          // The list reads quote.company.{id,name}; keep that shape.
+          return { ...rest, company: clientCompany ?? null };
+        }),
+      );
   }
 
   findOne(id: string, actor?: CompanyScopedActor) {
