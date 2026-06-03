@@ -3769,6 +3769,32 @@ export class QuotesService {
     };
   }
 
+  // "Use package rates" toggle. Sets the quote flag, then reprices touring-route
+  // (excursion) transport — large-vehicle lines pick up / drop the 3+-day free-mileage
+  // (extra-km waiver); small-vehicle per-route lines recompute unchanged.
+  async setExcursionPackageRate(quoteId: string, value: boolean, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor, { select: { id: true } });
+    await this.prisma.quote.update({
+      where: { id: quote.id },
+      data: { excursionPackageRate: Boolean(value) } as any,
+    });
+
+    const touringTransportItems = await this.prisma.quoteItem.findMany({
+      where: { quoteId: quote.id, touringRouteId: { not: null } },
+      select: { id: true },
+    });
+    for (const item of touringTransportItems) {
+      // Re-resolve with the updated toggle (resolveQuoteItemValues reads the quote fresh).
+      await this.updateItem(item.id, {}, actor);
+    }
+    await this.recalculateQuoteTotals(quote.id);
+
+    return (this.prisma as any).quote.findUnique({
+      where: { id: quote.id },
+      select: { id: true, excursionPackageRate: true },
+    });
+  }
+
   // Large-vehicle excursion transport prices off Alpha's Full-Day card: the cheapest
   // Alpha "Daily Full Day" rate for the same vehicle CLASS (canonical type) that fits
   // pax, plus distance-based extra-km (route km − 200 incl) at the vehicle's Extra-KM

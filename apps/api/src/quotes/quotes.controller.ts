@@ -1178,6 +1178,16 @@ export class QuotesController {
     }, actor);
   }
 
+  @Patch(':id/excursion-package-rate')
+  @Roles('admin', 'viewer', 'finance')
+  setExcursionPackageRate(
+    @Param('id') id: string,
+    @Body() body: { value?: boolean },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.quotesService.setExcursionPackageRate(id, Boolean(body?.value), actor);
+  }
+
   @Patch(':id/items/:itemId')
   @Roles('admin', 'viewer', 'finance')
   async updateItem(
