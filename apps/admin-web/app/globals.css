@@ -27426,3 +27426,28 @@ tr.dnd-row-over > td {
 .quotes-list-page .entity-list {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/*
+ * PERF (systemic): the design-system layout STACK wrappers below are
+ * single-column `display: grid` containers used on every page. Several declare
+ * `display: grid` with no explicit `grid-template-columns`, so they fall back
+ * to an implicit `auto` track that is sized from the max-content of their whole
+ * subtree. Nested over heavy content (transport rate cards, the quotes table,
+ * the quote builder, etc.) that recurses and becomes super-linear -> multi-
+ * second "Page Unresponsive" layouts. Pinning them to an explicit
+ * `minmax(0, 1fr)` track (available-width based, no max-content scan) fixes it
+ * everywhere at once. These are single-column stacks by design, so this is
+ * visually identical; any genuine multi-column usage of these classes is set
+ * via higher-specificity compound selectors (e.g. `.quote-workspace-page.
+ * app-page-content`) which still override this rule. This generalises the
+ * page-scoped fixes in #295 (transport) and #296 (quotes list).
+ */
+.app-page-content,
+.app-workspace-shell,
+.workspace-shell-content,
+.app-section-stack,
+.section-stack,
+.table-section-shell,
+.table-section-body {
+  grid-template-columns: minmax(0, 1fr);
+}
