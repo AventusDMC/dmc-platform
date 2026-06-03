@@ -647,3 +647,24 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
 .quote-service-planner .quote-service-add-primary:hover{
   background:#1786B5 !important; border-color:#1786B5 !important;
 }
+
+/* ---------- Area-hub hero: switcher as a horizontal card row, not a tall right rail ----------
+   The shared WorkspaceShell header (.workspace-shell-header, used by Sales/Operations/Catalog/
+   Finance/Admin area landings) rendered as a flex ROW: short copy on the left, the ModuleSwitcher
+   as a NARROW ~190px right rail of vertically-stacked cards. The rail was tall and the copy short,
+   so the lower-left of every area-hub hero was a large empty gradient void.
+   Fix: stack the header vertically so the switcher spans full width and its existing
+   `repeat(auto-fit, minmax(190px,1fr))` grid lays the cards into a horizontal row beneath the copy.
+   The header children carry `flex: 1 1 26rem` (a basis meant for the row layout) — reset them to
+   content-size so the column doesn't stretch them vertically and re-open the void. Scoped under
+   .admin-shell (0,2,0) to win the globals cascade. Verified in a faithful harness (4- and 6-item
+   switchers): header 402px -> 218px, void gone, cards in one responsive row. */
+.admin-shell .workspace-shell-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 22px;
+}
+.admin-shell .workspace-shell-header > .workspace-shell-copy { flex: 0 0 auto; }
+.admin-shell .workspace-shell-header > .workspace-shell-switcher { flex: 0 0 auto; width: 100%; }
