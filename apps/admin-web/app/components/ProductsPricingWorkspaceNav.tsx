@@ -21,6 +21,7 @@ export function ProductsPricingWorkspaceNav({ className = 'admin-subnav', ariaLa
           <Link
             key={workspace.href}
             href={workspace.href}
+            prefetch={false}
             aria-current={isActiveWorkspace ? 'page' : undefined}
             className={`admin-subnav-link${isActiveWorkspace ? ' admin-subnav-link-active' : ''}`}
           >
