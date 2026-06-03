@@ -2919,6 +2919,79 @@ function TimelineItemDrawer({
   );
 }
 
+function ExcursionPackageRateToggle({
+  apiBaseUrl,
+  quoteId,
+  initialValue,
+  fullDayTourCount,
+}: {
+  apiBaseUrl: string;
+  quoteId: string;
+  initialValue: boolean;
+  fullDayTourCount: number;
+}) {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState(Boolean(initialValue));
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function toggle(next: boolean) {
+    setIsSaving(true);
+    setError('');
+    setEnabled(next);
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/excursion-package-rate`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ value: next }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not update package-rate setting.'));
+      }
+      window.dispatchEvent(new CustomEvent('dmc:quote-services-stale', { detail: { quoteId } }));
+      router.refresh();
+    } catch (caughtError) {
+      setEnabled(!next);
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not update package-rate setting.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const showHint = !enabled && fullDayTourCount >= 3;
+
+  return (
+    <article className="planner-smart-panel excursion-package-rate-toggle">
+      <div className="workspace-section-head">
+        <div>
+          <p className="eyebrow">Excursion transport</p>
+          <h3>Use package rates</h3>
+          <p className="detail-copy">
+            On = 3+ full-day program: large vehicles (bus/coach) get free mileage (extra-km waived); small vehicles
+            switch to the daily package rate. Off = day-tour rates (per-route for small, full-day + extra-km for large).
+          </p>
+        </div>
+        <label className="toggle-control">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={isSaving}
+            onChange={(event) => toggle(event.target.checked)}
+            aria-label="Use package rates for excursion transport"
+          />
+          <span>{enabled ? 'Package rates' : 'Day-tour rates'}</span>
+        </label>
+      </div>
+      {showHint ? (
+        <p className="form-helper">
+          {fullDayTourCount} full-day tours detected — this looks like a 3+ day program. Consider turning on package rates.
+        </p>
+      ) : null}
+      {error ? <p className="form-error">{error}</p> : null}
+    </article>
+  );
+}
+
 function ScopePlanner({
   scope,
   plannerProps,
@@ -3636,6 +3709,13 @@ function ScopePlanner({
           scopeLabel={scope.label}
         />
       </details>
+
+      <ExcursionPackageRateToggle
+        apiBaseUrl={plannerProps.apiBaseUrl}
+        quoteId={plannerProps.quote.id}
+        initialValue={Boolean((plannerProps.quote as { excursionPackageRate?: boolean }).excursionPackageRate)}
+        fullDayTourCount={localItems.filter((item) => Boolean(item.touringRouteId)).length}
+      />
 
       {daySummaries.length === 0 ? (
         <article className="workspace-day-card quote-service-day-card">

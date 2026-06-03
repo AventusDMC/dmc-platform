@@ -23,6 +23,7 @@ import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { blockDelete, normalizeOptionalString, requireSupportedCurrency, requireTrimmedString } from '../common/crud.helpers';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
+import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import {
   resolveServiceTaxonomyGroup,
   getServiceTaxonomySource,
@@ -3768,6 +3769,113 @@ export class QuotesService {
     };
   }
 
+  // "Use package rates" toggle. Sets the quote flag, then reprices touring-route
+  // (excursion) transport — large-vehicle lines pick up / drop the 3+-day free-mileage
+  // (extra-km waiver); small-vehicle per-route lines recompute unchanged.
+  async setExcursionPackageRate(quoteId: string, value: boolean, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor, { select: { id: true } });
+    await this.prisma.quote.update({
+      where: { id: quote.id },
+      data: { excursionPackageRate: Boolean(value) } as any,
+    });
+
+    const touringTransportItems = await this.prisma.quoteItem.findMany({
+      where: { quoteId: quote.id, touringRouteId: { not: null } },
+      select: { id: true },
+    });
+    for (const item of touringTransportItems) {
+      // Re-resolve with the updated toggle (resolveQuoteItemValues reads the quote fresh).
+      await this.updateItem(item.id, {}, actor);
+    }
+    await this.recalculateQuoteTotals(quote.id);
+
+    return (this.prisma as any).quote.findUnique({
+      where: { id: quote.id },
+      select: { id: true, excursionPackageRate: true },
+    });
+  }
+
+  // Full-Day-card cost for excursion transport: the cheapest "Daily Full Day" rate for
+  // the same vehicle CLASS (canonical type) that fits pax, plus distance-based extra-km
+  // (route km − 200 incl) at the vehicle's Extra-KM rate, minus that supplier's negotiated
+  // discount. Free mileage (no extra-km) when freeMileage is true. Resolves to Alpha for
+  // large classes (only Alpha has them) and Almushtari for small classes (cheaper daily
+  // rate, 0% discount). Returns null when no class match exists.
+  private async resolveFullDayExcursionCost(values: {
+    vehicle: { id?: string | null; name?: string | null; vehicleType?: string | null };
+    paxCount: number;
+    routeKm: number;
+    freeMileage: boolean;
+  }): Promise<{ overrideCost: number; currency: string; description: string } | null> {
+    const canonical =
+      normalizeVehicleTypeLabel(values.vehicle.vehicleType) || normalizeVehicleTypeLabel(values.vehicle.name);
+    if (!canonical) {
+      return null;
+    }
+    const fullDayType = await (this.prisma as any).transportServiceType.findFirst({
+      where: { name: 'Daily Full Day' },
+      select: { id: true },
+    });
+    if (!fullDayType) {
+      return null;
+    }
+    const candidates = await (this.prisma as any).vehicleRate.findMany({
+      where: {
+        serviceTypeId: fullDayType.id,
+        active: true,
+        minPax: { lte: values.paxCount },
+        maxPax: { gte: values.paxCount },
+      },
+      include: { vehicle: true, supplier: true },
+    });
+    const fullDay = candidates
+      .filter(
+        (rate: any) =>
+          (normalizeVehicleTypeLabel(rate.vehicle?.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle?.name)) ===
+          canonical,
+      )
+      .sort((a: any, b: any) => a.price - b.price)[0];
+    if (!fullDay) {
+      return null;
+    }
+    const discountPct = Number((fullDay.supplier as any)?.transportDiscountPercent ?? 0) || 0;
+    let extraKmCost = 0;
+    let mileageNote = 'free mileage (3+ day package)';
+    if (!values.freeMileage) {
+      const includedKm = 200; // Full Day allowance
+      const extraKm = Math.max(0, Math.round(values.routeKm) - includedKm);
+      if (extraKm > 0) {
+        const extraKmType = await (this.prisma as any).transportServiceType.findFirst({
+          where: { name: 'Extra KM' },
+          select: { id: true },
+        });
+        const extraKmRate = extraKmType
+          ? await (this.prisma as any).vehicleRate.findFirst({
+              where: { vehicleId: fullDay.vehicleId, serviceTypeId: extraKmType.id, active: true, currency: fullDay.currency },
+              select: { price: true },
+            })
+          : null;
+        const perKm = Number((extraKmRate as any)?.price ?? 0) || 0;
+        extraKmCost = extraKm * perKm;
+        mileageNote = `extra ${extraKm}km @ ${fullDay.currency} ${perKm}/km`;
+      } else {
+        mileageNote = 'within 200km';
+      }
+    }
+    const gross = fullDay.price + extraKmCost;
+    const overrideCost = Number((gross * (1 - discountPct / 100)).toFixed(2));
+    const description = [
+      `${(fullDay.supplier as any)?.name || 'Supplier'} Full Day`,
+      fullDay.vehicle?.name,
+      `${fullDay.currency} ${fullDay.price}`,
+      mileageNote,
+      discountPct > 0 ? `-${discountPct}% discount` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    return { overrideCost, currency: fullDay.currency, description };
+  }
+
   private async buildExcursionTemplateQuoteItemPayload(values: {
     quote: { id: string; adults?: number | null; children?: number | null };
     template: { id: string; name?: string | null };
@@ -5533,13 +5641,34 @@ export class QuotesService {
           throw new BadRequestException('Selected touring route variant has no active pricing row');
         }
 
+        // Full-Day-card pricing (cheapest Daily Full Day rate of the same vehicle CLASS
+        // fitting pax, + extra-km unless free mileage, − that supplier's discount):
+        //  - LARGE vehicles (Coaster 17+, capacity >= 13): ALWAYS use it. Only Alpha has
+        //    large vehicles, so the canonical match resolves to Alpha; extra-km applies
+        //    off the toggle (free mileage when on).
+        //  - SMALL vehicles: only when the package toggle is ON (3+ day program), where it
+        //    resolves to Almushtari's cheaper daily full-day rate (free mileage, 0% disc).
+        //    With the toggle OFF, small vehicles keep the per-route (<3-day) rate below.
+        const excursionVehicleCapacity = Number(selectedPricing.maxPax ?? 0) || 0;
+        const excursionFreeMileage = Boolean((quote as any).excursionPackageRate);
+        const useFullDayCard = excursionVehicleCapacity >= 13 || excursionFreeMileage;
+        const fullDayCardCost =
+          useFullDayCard && selectedPricing.vehicle
+            ? await this.resolveFullDayExcursionCost({
+                vehicle: selectedPricing.vehicle,
+                paxCount,
+                routeKm: Number((touringRoute as any).estimatedDistanceKm ?? 0) || 0,
+                freeMileage: excursionFreeMileage,
+              })
+            : null;
+
         const serviceType = selectedPricing.transportServiceType || { id: data.transportServiceTypeId, name: 'Touring route', code: 'TOURING_ROUTE' };
         const destinations = Array.isArray(touringRoute.mainDestinations) ? touringRoute.mainDestinations.filter(Boolean) : [];
         const stopNames = (touringRoute.stops || []).map((stop: any) => stop.location || stop.city).filter(Boolean);
         const routePath = destinations.length > 0 ? destinations : stopNames;
         const routeDisplay = routePath.length > 0 ? `${touringRoute.startCity} -> ${routePath.join(' -> ')} -> ${touringRoute.startCity}` : touringRoute.name;
-        baseCost = Number(selectedPricing.baseCost || 0);
-        currency = selectedPricing.currency || currency || 'USD';
+        baseCost = fullDayCardCost ? fullDayCardCost.overrideCost : Number(selectedPricing.baseCost || 0);
+        currency = fullDayCardCost ? fullDayCardCost.currency : selectedPricing.currency || currency || 'USD';
         supplierCostBaseAmount = baseCost;
         supplierCostCurrency = currency;
         transportServiceTypeId = selectedPricing.transportServiceTypeId || data.transportServiceTypeId;
@@ -5549,9 +5678,9 @@ export class QuotesService {
           routeDisplay,
           serviceType.name,
           selectedPricing.vehicle?.name,
-          selectedPricing.pricingBasis,
-          selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
-          selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
+          fullDayCardCost ? fullDayCardCost.description : selectedPricing.pricingBasis,
+          fullDayCardCost ? null : selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
+          fullDayCardCost ? null : selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
         ].filter(Boolean).join(' | ');
       } else {
       const routeNormalizedKey = data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined);
