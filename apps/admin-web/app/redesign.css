@@ -638,3 +638,12 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   background:var(--lane-accent,#94A3B8) !important; pointer-events:none;
 }
 .quote-service-lane-head > div > span{ color:var(--lane-accent,#475569) !important; font-weight:700 !important; }
+
+/* Stage 3 calm-down: recolor the planner's leftover blue "Add service" primary
+   button (#1C7FB8) to the brand cyan so it matches the redesign v2 theme. */
+.quote-service-planner .quote-service-add-primary{
+  background:#1F9ACF !important; border-color:#1F9ACF !important; color:#fff !important;
+}
+.quote-service-planner .quote-service-add-primary:hover{
+  background:#1786B5 !important; border-color:#1786B5 !important;
+}
