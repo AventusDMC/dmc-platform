@@ -3781,6 +3781,14 @@ select option:checked {
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 16px 40px rgba(30, 27, 24, 0.06);
+  /* Supplier rate-card lists can grow long (25+/page via "Load more"), and
+     rendering the full list triggers a very expensive synchronous style-recalc
+     + layout pass that hangs the main thread ("Page Unresponsive"). Skipping
+     render work for off-screen cards bounds that cost to the ~handful actually
+     in the viewport. contain-intrinsic-size keeps the scrollbar stable while a
+     card is culled; `auto` remembers each card's last-rendered height. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .transport-contract-supplier-head {
