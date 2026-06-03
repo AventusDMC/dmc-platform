@@ -698,3 +698,8 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
    would REDUCE their contrast. Verified live: main-content eyebrows -> #667085,
    command-bar eyebrows unchanged at rgba(255,255,255,0.74). */
 .quote-builder-main .eyebrow { color: #667085 !important; }
+/* Same AA fix for the quote-builder right sidebar's white cards (Status / Actions /
+   Secondary actions). The dominant financial card's "Internal" eyebrow keeps its
+   deliberate accent — its rule (.quote-pricing-summary-card-dominant.app-financial-panel
+   .eyebrow, ~L535) is higher-specificity + !important, so it wins over this one. */
+.quote-builder-sidebar .eyebrow { color: #667085 !important; }
