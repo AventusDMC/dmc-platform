@@ -2104,6 +2104,7 @@ model PointOfInterest {
   activity             Activity?        @relation(fields: [activityId], references: [id], onDelete: SetNull)
   entranceFee          EntranceFee?     @relation(fields: [entranceFeeId], references: [id], onDelete: SetNull)
   translations         PointOfInterestTranslation[]
+  touringRouteStops    TouringRouteStop[]
 
   @@index([isActive, sortOrder])
   @@index([cityId])
@@ -2489,12 +2490,17 @@ model TouringRouteStop {
   city           String
   location       String?
   notes          String?
+  // Optional link to the reusable POI content master (Phase 2). The free-text
+  // city/location stay as the fallback; poiId enables auto itinerary narrative.
+  poiId          String?      @db.Uuid
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  touringRoute   TouringRoute @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+  touringRoute    TouringRoute     @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+  pointOfInterest PointOfInterest? @relation(fields: [poiId], references: [id], onDelete: SetNull)
 
   @@unique([touringRouteId, order])
   @@index([touringRouteId])
+  @@index([poiId])
   @@map("touring_route_stops")
 }
 

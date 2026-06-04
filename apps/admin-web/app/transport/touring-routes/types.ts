@@ -19,7 +19,15 @@ export type TouringRouteDetail = {
   overnightRisk?: boolean | null;
   reviewNotes?: string | null;
   active?: boolean;
-  stops?: Array<{ id: string; order: number; city: string; location?: string | null; notes?: string | null }>;
+  stops?: Array<{
+    id: string;
+    order: number;
+    city: string;
+    location?: string | null;
+    notes?: string | null;
+    poiId?: string | null;
+    pointOfInterest?: { id: string; name: string; code?: string | null } | null;
+  }>;
   pricings?: TouringRoutePricingDetail[];
 };
 
@@ -51,4 +59,5 @@ export type TouringRouteCatalogs = {
   suppliers: Array<{ id: string; name: string; active?: boolean | null; type?: string | null }>;
   vehicles: Array<{ id: string; name: string; vehicleType?: string | null; maxPax?: number | null }>;
   transportServiceTypes: Array<{ id: string; name: string; code?: string | null; classification?: string | null }>;
+  pois: Array<{ id: string; name: string; code?: string | null }>;
 };

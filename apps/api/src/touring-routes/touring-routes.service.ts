@@ -13,6 +13,7 @@ type TouringRouteStopInput = {
   city: string;
   location?: string | null;
   notes?: string | null;
+  poiId?: string | null;
 };
 
 type TouringRoutePricingInput = {
@@ -716,6 +717,7 @@ export class TouringRoutesService {
             city: stop.city,
             location: stop.location || null,
             notes: stop.notes || null,
+            poiId: stop.poiId || null,
           })),
         },
       },
@@ -4441,7 +4443,10 @@ export class TouringRoutesService {
 
   private include() {
     return {
-      stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+      stops: {
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        include: { pointOfInterest: { select: { id: true, name: true, code: true } } },
+      },
       pricings: {
         include: {
           supplier: true,
@@ -5243,6 +5248,7 @@ export class TouringRoutesService {
           city: requireTrimmedString(stop.city, `stops[${index}].city`),
           location: normalizeOptionalString(stop.location),
           notes: normalizeOptionalString(stop.notes),
+          poiId: normalizeOptionalString(stop.poiId),
         }),
         partial,
       ),
