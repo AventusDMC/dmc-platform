@@ -12110,7 +12110,6 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         assignedSupplier: { select: { id: true, name: true, phone: true } },
         guide: { select: { id: true, fullName: true, phone: true, languages: true } },
         touringRoute: { select: { id: true, name: true, code: true } },
-        sourceQuoteItemId: true,
         vouchers: { select: { id: true, status: true, generatedAt: true, type: true } },
       },
       orderBy: [{ serviceDate: 'asc' }, { operationalTime: 'asc' }, { startTime: 'asc' }],
