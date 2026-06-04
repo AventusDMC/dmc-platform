@@ -1790,3 +1790,70 @@ test('Phase 3A: explicit language overrides the quote stored proposalLanguage', 
   const stored = mapQuoteToProposalV3(createPdfQuote({ proposalLanguage: 'es' }));
   assert.equal(stored.language, 'es');
 });
+
+// ---- Phase 3A.1: free-form prose localization (intros / summaries / signature) ----
+
+// A quote whose description is blank so the generated (boilerplate) journey
+// summary + cover intro prose are exercised instead of the client-supplied copy.
+function createProseQuote(overrides: Record<string, any> = {}) {
+  return createPdfQuote({
+    description: '',
+    title: 'Jordan Family Journey',
+    nightCount: 4,
+    itineraries: [
+      { id: 'day-1', dayNumber: 1, title: 'Day 1: Amman', description: '' },
+      { id: 'day-2', dayNumber: 2, title: 'Day 2: Petra', description: '' },
+    ],
+    ...overrides,
+  });
+}
+
+test('Phase 3A.1: English prose is unchanged between default and explicit en (regression)', () => {
+  const def = mapQuoteToProposalV3(createProseQuote());
+  const en = mapQuoteToProposalV3(createProseQuote(), 'en');
+  assert.equal(en.coverIntro, def.coverIntro);
+  assert.equal(en.journeySummary, def.journeySummary);
+  assert.equal(en.dayByDayIntro, def.dayByDayIntro);
+  assert.equal(en.coverSignature, def.coverSignature);
+});
+
+test('Phase 3A.1: generated English prose matches the prior hardcoded copy', () => {
+  const en = mapQuoteToProposalV3(createProseQuote(), 'en');
+  // Stable English signatures of each boilerplate sentence (destination-agnostic).
+  assert.match(en.coverIntro, /^A destination-aware proposal/);
+  assert.match(en.coverIntro, /sequenced around the itinerary\.$/);
+  assert.match(en.journeySummary, /journey .* shaped around /);
+  assert.match(en.dayByDayIntro, /outline/);
+});
+
+test('Phase 3A.1: prose is localized for pt/es/ar and never leaves an unfilled {placeholder}', () => {
+  for (const locale of ['pt', 'es', 'ar'] as const) {
+    const proposal = mapQuoteToProposalV3(createProseQuote(), locale);
+    for (const field of [proposal.coverIntro, proposal.journeySummary, proposal.dayByDayIntro, proposal.coverSignature]) {
+      assert.ok(typeof field === 'string', `prose field missing for ${locale}`);
+      assert.doesNotMatch(field, /\{[a-zA-Z]+\}/, `leftover placeholder for ${locale}: ${field}`);
+    }
+  }
+  // The localized cover intro must differ from English (proves it was translated).
+  const en = mapQuoteToProposalV3(createProseQuote(), 'en');
+  const pt = mapQuoteToProposalV3(createProseQuote(), 'pt');
+  assert.notEqual(pt.coverIntro, en.coverIntro);
+});
+
+test('Phase 3A.1: localized fallback service titles render in the active locale', () => {
+  // A bare transport item with no client-safe service name falls back to the
+  // generated title; in Portuguese it should not read "Private Transfer".
+  const ptProposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      description: '',
+      quoteItems: [
+        createTransportPdfItem({
+          service: { name: '', category: 'Transport', serviceType: { name: 'Transfer', code: 'TRANSFER' } },
+        }),
+      ],
+    }),
+    'pt',
+  );
+  const text = JSON.stringify(ptProposal);
+  assert.doesNotMatch(text, /\{location\}/);
+});

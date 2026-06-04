@@ -108,3 +108,172 @@ export function proposalLabel(locale: ProposalLocale, key: keyof typeof LABELS):
 }
 
 export type ProposalLabelKey = keyof typeof LABELS;
+
+// ---------------------------------------------------------------------------
+// Phase 3A.1 — free-form proposal PROSE (intros, summaries, helper sentences).
+// English values reproduce the prior hardcoded strings EXACTLY (so English
+// output stays unchanged); pt/es/ar are human-authored translations. These are
+// STATIC boilerplate sentences only — no POI narrative composition (that is
+// Phase 3B). Templates use {token} placeholders filled at render time.
+// ---------------------------------------------------------------------------
+
+// Locale-aware list joiner. English preserves the prior Oxford-comma behavior
+// (`a, b, and c`) byte-for-byte; other locales use a natural connector word.
+const LIST_AND: Record<ProposalLocale, string> = { en: 'and', pt: 'e', es: 'y', ar: 'و' };
+
+export function joinProseList(locale: ProposalLocale, items: Array<string | null | undefined>): string {
+  const list = items.map((value) => String(value || '')).filter(Boolean);
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+  if (locale === 'en') {
+    // Exactly reproduces the previous `arr.join(', ').replace(/, ([^,]*)$/, ', and $1')`.
+    return list.join(', ').replace(/, ([^,]*)$/, ', and $1');
+  }
+  const connector = LIST_AND[locale] || LIST_AND.en;
+  const last = list[list.length - 1];
+  const head = list.slice(0, -1).join(', ');
+  return `${head} ${connector} ${last}`;
+}
+
+// Short reusable phrase fragments composed into the sentences above.
+const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
+  // Cover-intro program parts
+  programStays: { en: 'stays', pt: 'estadias', es: 'estancias', ar: 'الإقامات' },
+  programTransfers: { en: 'transfers', pt: 'traslados', es: 'traslados', ar: 'التنقلات' },
+  programExperiences: { en: 'experiences', pt: 'experiências', es: 'experiencias', ar: 'التجارب' },
+  programPartner: { en: 'partner arrangements', pt: 'serviços de parceiros', es: 'servicios de socios', ar: 'ترتيبات الشركاء' },
+  programFallback: { en: 'travel arrangements', pt: 'serviços de viagem', es: 'servicios de viaje', ar: 'ترتيبات السفر' },
+  // Journey-summary pillars
+  pillarStays: { en: 'selected stays', pt: 'estadias selecionadas', es: 'estancias seleccionadas', ar: 'إقامات مختارة' },
+  pillarTransport: { en: 'private ground arrangements', pt: 'transporte terrestre privado', es: 'transporte terrestre privado', ar: 'ترتيبات نقل بري خاصة' },
+  pillarExperiences: { en: 'included experiences', pt: 'experiências incluídas', es: 'experiencias incluidas', ar: 'تجارب مشمولة' },
+  pillarPartner: { en: 'partner DMC services', pt: 'serviços do DMC parceiro', es: 'servicios del DMC asociado', ar: 'خدمات شريك الـ DMC' },
+  pillarFallback: { en: 'the confirmed services', pt: 'os serviços confirmados', es: 'los servicios confirmados', ar: 'الخدمات المؤكدة' },
+  // Cover-signature focus parts
+  focusExperiences: { en: 'destination experiences', pt: 'experiências no destino', es: 'experiencias en el destino', ar: 'تجارب الوجهة' },
+  focusTransfers: { en: 'smooth transfers', pt: 'traslados sem complicações', es: 'traslados sin contratiempos', ar: 'تنقلات سلسة' },
+  focusStays: { en: 'well-placed stays', pt: 'estadias bem localizadas', es: 'estancias bien ubicadas', ar: 'إقامات في مواقع مميزة' },
+  focusFallback: { en: 'the confirmed journey flow', pt: 'o fluxo confirmado da viagem', es: 'el flujo confirmado del viaje', ar: 'تسلسل الرحلة المؤكد' },
+};
+
+export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRASES): string {
+  const entry = PROSE_PHRASES[key];
+  if (!entry) return '';
+  return entry[locale] || entry.en;
+}
+
+// Sentence templates. {token} placeholders are substituted at render time.
+const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
+  // Cover intro
+  coverIntroWithDest: {
+    en: 'A destination-aware proposal for {dest}, with {program} sequenced around the itinerary.',
+    pt: 'Uma proposta adaptada ao destino {dest}, com {program} organizados em torno do itinerário.',
+    es: 'Una propuesta adaptada al destino {dest}, con {program} organizados en torno al itinerario.',
+    ar: 'عرض مصمم حسب وجهة {dest}، مع {program} منظّمة وفق البرنامج.',
+  },
+  coverIntroNoDest: {
+    en: 'A destination-aware proposal with {program} sequenced around the itinerary.',
+    pt: 'Uma proposta adaptada ao destino, com {program} organizados em torno do itinerário.',
+    es: 'Una propuesta adaptada al destino, con {program} organizados en torno al itinerario.',
+    ar: 'عرض مصمم حسب الوجهة، مع {program} منظّمة وفق البرنامج.',
+  },
+  // Journey summary
+  journeyWithDest: {
+    en: 'A {dayCount}-day journey through {dest} for {guests}, shaped around {arrangement}.',
+    pt: 'Uma viagem de {dayCount} dias por {dest} para {guests}, estruturada em torno de {arrangement}.',
+    es: 'Un viaje de {dayCount} días por {dest} para {guests}, organizado en torno a {arrangement}.',
+    ar: 'رحلة مدتها {dayCount} يومًا عبر {dest} لـ {guests}، مصمَّمة حول {arrangement}.',
+  },
+  journeyNoDest: {
+    en: 'A {dayCount}-day private journey for {guests}, shaped around {arrangement}.',
+    pt: 'Uma viagem privada de {dayCount} dias para {guests}, estruturada em torno de {arrangement}.',
+    es: 'Un viaje privado de {dayCount} días para {guests}, organizado en torno a {arrangement}.',
+    ar: 'رحلة خاصة مدتها {dayCount} يومًا لـ {guests}، مصمَّمة حول {arrangement}.',
+  },
+  // Day-by-day intro
+  dayByDayWithDestOvernight: {
+    en: 'A {dayCount}-day outline following the route through {dest}, with overnight stays noted as the program develops.',
+    pt: 'Um resumo de {dayCount} dias seguindo a rota por {dest}, com as pernoitas indicadas à medida que o programa avança.',
+    es: 'Un esquema de {dayCount} días siguiendo la ruta por {dest}, con las pernoctaciones indicadas a medida que avanza el programa.',
+    ar: 'مخطط مدته {dayCount} يومًا يتتبع المسار عبر {dest}، مع الإشارة إلى ليالي المبيت مع تطور البرنامج.',
+  },
+  dayByDayWithDestServices: {
+    en: 'A {dayCount}-day outline following the route through {dest}, with services grouped by day.',
+    pt: 'Um resumo de {dayCount} dias seguindo a rota por {dest}, com os serviços agrupados por dia.',
+    es: 'Un esquema de {dayCount} días siguiendo la ruta por {dest}, con los servicios agrupados por día.',
+    ar: 'مخطط مدته {dayCount} يومًا يتتبع المسار عبر {dest}، مع تجميع الخدمات حسب اليوم.',
+  },
+  dayByDayWithDestPlain: {
+    en: 'A {dayCount}-day outline following the route through {dest}.',
+    pt: 'Um resumo de {dayCount} dias seguindo a rota por {dest}.',
+    es: 'Un esquema de {dayCount} días siguiendo la ruta por {dest}.',
+    ar: 'مخطط مدته {dayCount} يومًا يتتبع المسار عبر {dest}.',
+  },
+  dayByDayNoDestServices: {
+    en: 'A {dayCount}-day outline with confirmed services grouped by day.',
+    pt: 'Um resumo de {dayCount} dias com os serviços confirmados agrupados por dia.',
+    es: 'Un esquema de {dayCount} días con los servicios confirmados agrupados por día.',
+    ar: 'مخطط مدته {dayCount} يومًا مع تجميع الخدمات المؤكدة حسب اليوم.',
+  },
+  dayByDayFinalizing: {
+    en: 'The itinerary structure is being finalized and will be shared in the confirmed proposal.',
+    pt: 'A estrutura do itinerário está a ser finalizada e será partilhada na proposta confirmada.',
+    es: 'La estructura del itinerario se está finalizando y se compartirá en la propuesta confirmada.',
+    ar: 'يجري وضع اللمسات الأخيرة على هيكل البرنامج وستتم مشاركته في العرض المؤكد.',
+  },
+  // Cover signature
+  signatureWithDest: {
+    en: 'Tailored around {dest}, with {focus} coordinated into one proposal.',
+    pt: 'Personalizado em torno de {dest}, com {focus} coordenados numa única proposta.',
+    es: 'Personalizado en torno a {dest}, con {focus} coordinados en una sola propuesta.',
+    ar: 'مصمَّم حول {dest}، مع تنسيق {focus} في عرض واحد.',
+  },
+  signatureNoDest: {
+    en: 'Tailored with {focus} coordinated into one proposal.',
+    pt: 'Personalizado com {focus} coordenados numa única proposta.',
+    es: 'Personalizado con {focus} coordinados en una sola propuesta.',
+    ar: 'مصمَّم مع تنسيق {focus} في عرض واحد.',
+  },
+  // Accommodation story
+  accomByLocation: {
+    en: 'Accommodation options are organized by stay location across {cities}.',
+    pt: 'As opções de alojamento estão organizadas por local de estadia em {cities}.',
+    es: 'Las opciones de alojamiento están organizadas por lugar de estancia en {cities}.',
+    ar: 'خيارات الإقامة منظَّمة حسب موقع الإقامة عبر {cities}.',
+  },
+  accomRouting: {
+    en: 'Accommodation options are aligned to the {dest} routing.',
+    pt: 'As opções de alojamento estão alinhadas com o percurso de {dest}.',
+    es: 'Las opciones de alojamiento están alineadas con el recorrido de {dest}.',
+    ar: 'خيارات الإقامة متوائمة مع مسار {dest}.',
+  },
+  // Fallback service titles
+  svcStayIn: { en: 'Stay in {location}', pt: 'Estadia em {location}', es: 'Estancia en {location}', ar: 'الإقامة في {location}' },
+  svcStayArrangements: { en: 'Stay arrangements', pt: 'Detalhes de alojamento', es: 'Detalles de alojamiento', ar: 'ترتيبات الإقامة' },
+  svcTransferTo: { en: 'Private Transfer to {location}', pt: 'Traslado privado para {location}', es: 'Traslado privado a {location}', ar: 'تنقّل خاص إلى {location}' },
+  svcTransferArrangements: { en: 'Transfer arrangements', pt: 'Detalhes do traslado', es: 'Detalles del traslado', ar: 'ترتيبات التنقل' },
+  svcVisit: { en: 'Visit {location}', pt: 'Visita a {location}', es: 'Visita a {location}', ar: 'زيارة {location}' },
+  svcExperienceDetails: { en: 'Experience details', pt: 'Detalhes da experiência', es: 'Detalles de la experiencia', ar: 'تفاصيل التجربة' },
+  svcDiningIn: { en: 'Dining in {location}', pt: 'Refeição em {location}', es: 'Comida en {location}', ar: 'تناول الطعام في {location}' },
+  svcDiningArrangements: { en: 'Dining arrangements', pt: 'Detalhes das refeições', es: 'Detalles de las comidas', ar: 'ترتيبات الطعام' },
+  svcGuidedTourOf: { en: 'Guided Tour of {location}', pt: 'Visita guiada a {location}', es: 'Visita guiada de {location}', ar: 'جولة بصحبة مرشد في {location}' },
+  svcGuideArrangements: { en: 'Guide arrangements', pt: 'Detalhes do guia', es: 'Detalles del guía', ar: 'ترتيبات الإرشاد' },
+  svcProgramDetails: { en: 'Program details', pt: 'Detalhes do programa', es: 'Detalles del programa', ar: 'تفاصيل البرنامج' },
+};
+
+export function proseTemplate(
+  locale: ProposalLocale,
+  key: keyof typeof PROSE_TEMPLATES,
+  vars: Record<string, string | number> = {},
+): string {
+  const entry = PROSE_TEMPLATES[key];
+  if (!entry) return '';
+  let text = entry[locale] || entry.en;
+  for (const [token, value] of Object.entries(vars)) {
+    text = text.split(`{${token}}`).join(String(value));
+  }
+  return text;
+}
+
+export type ProsePhraseKey = keyof typeof PROSE_PHRASES;
+export type ProseTemplateKey = keyof typeof PROSE_TEMPLATES;

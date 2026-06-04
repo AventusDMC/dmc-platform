@@ -15,8 +15,11 @@ import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
 import {
   intlLocale,
+  joinProseList,
+  prosePhrase,
   proposalLabel,
   proposalTextDirection,
+  proseTemplate,
   resolveProposalLanguage,
   unitLabel,
   type ProposalLocale,
@@ -535,22 +538,23 @@ function getGroupLabel(item: ProposalV3QuoteItem) {
 }
 
 function getFallbackServiceTitle(groupLabel: string, location: string | null) {
+  const loc = activeProposalLocale;
   if (groupLabel === 'Stay') {
-    return location ? `Stay in ${location}` : 'Stay arrangements';
+    return location ? proseTemplate(loc, 'svcStayIn', { location }) : proseTemplate(loc, 'svcStayArrangements');
   }
   if (groupLabel === 'Transfer') {
-    return location ? `Private Transfer to ${location}` : 'Transfer arrangements';
+    return location ? proseTemplate(loc, 'svcTransferTo', { location }) : proseTemplate(loc, 'svcTransferArrangements');
   }
   if (groupLabel === 'Experience') {
-    return location ? `Visit ${location}` : 'Experience details';
+    return location ? proseTemplate(loc, 'svcVisit', { location }) : proseTemplate(loc, 'svcExperienceDetails');
   }
   if (groupLabel === 'Meal') {
-    return location ? `Dining in ${location}` : 'Dining arrangements';
+    return location ? proseTemplate(loc, 'svcDiningIn', { location }) : proseTemplate(loc, 'svcDiningArrangements');
   }
   if (groupLabel === 'Guide') {
-    return location ? `Guided Tour of ${location}` : 'Guide arrangements';
+    return location ? proseTemplate(loc, 'svcGuidedTourOf', { location }) : proseTemplate(loc, 'svcGuideArrangements');
   }
-  return 'Program details';
+  return proseTemplate(loc, 'svcProgramDetails');
 }
 
 function buildOperationalMeta(item: ProposalV3QuoteItem) {
@@ -1063,10 +1067,10 @@ export function buildAccommodationStory(hotelOptionSets: ProposalV3HotelOptionSe
   const cityLine = summarizeDestinations(primaryCities);
 
   if (cityLine) {
-    return `Accommodation options are organized by stay location across ${cityLine}.`;
+    return proseTemplate(activeProposalLocale, 'accomByLocation', { cities: cityLine });
   }
 
-  return destinationLine ? `Accommodation options are aligned to the ${destinationLine} routing.` : '';
+  return destinationLine ? proseTemplate(activeProposalLocale, 'accomRouting', { dest: destinationLine }) : '';
 }
 
 export function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string, dayCount: number, totalPax: number, hotelOptionSets: ProposalV3HotelOptionSet[]) {
@@ -1075,19 +1079,20 @@ export function buildJourneySummary(quote: ProposalV3Quote, destinationLine: str
     return quoteDescription;
   }
 
+  const loc = activeProposalLocale;
   const mix = getServiceMix(quote);
   const guestLabel = formatGuestCountLabel(totalPax);
   const pillars = [
-    mix.hasHotels || hotelOptionSets.length > 0 ? 'selected stays' : null,
-    mix.hasTransport ? 'private ground arrangements' : null,
-    mix.hasExperiences ? 'included experiences' : null,
-    mix.hasExternalPackages ? 'partner DMC services' : null,
+    mix.hasHotels || hotelOptionSets.length > 0 ? prosePhrase(loc, 'pillarStays') : null,
+    mix.hasTransport ? prosePhrase(loc, 'pillarTransport') : null,
+    mix.hasExperiences ? prosePhrase(loc, 'pillarExperiences') : null,
+    mix.hasExternalPackages ? prosePhrase(loc, 'pillarPartner') : null,
   ].filter(Boolean);
-  const arrangementLine = pillars.length > 0 ? pillars.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'the confirmed services';
+  const arrangementLine = pillars.length > 0 ? joinProseList(loc, pillars) : prosePhrase(loc, 'pillarFallback');
 
   return destinationLine
-    ? `A ${dayCount}-day journey through ${destinationLine} for ${guestLabel}, shaped around ${arrangementLine}.`
-    : `A ${dayCount}-day private journey for ${guestLabel}, shaped around ${arrangementLine}.`;
+    ? proseTemplate(loc, 'journeyWithDest', { dayCount, dest: destinationLine, guests: guestLabel, arrangement: arrangementLine })
+    : proseTemplate(loc, 'journeyNoDest', { dayCount, guests: guestLabel, arrangement: arrangementLine });
 }
 
 function buildCoverIntro(quote: ProposalV3Quote, destinationLine: string) {
@@ -1096,36 +1101,40 @@ function buildCoverIntro(quote: ProposalV3Quote, destinationLine: string) {
     return brandSubtitle;
   }
 
+  const loc = activeProposalLocale;
   const mix = getServiceMix(quote);
   const programParts = [
-    mix.hasHotels ? 'stays' : null,
-    mix.hasTransport ? 'transfers' : null,
-    mix.hasExperiences ? 'experiences' : null,
-    mix.hasExternalPackages ? 'partner arrangements' : null,
+    mix.hasHotels ? prosePhrase(loc, 'programStays') : null,
+    mix.hasTransport ? prosePhrase(loc, 'programTransfers') : null,
+    mix.hasExperiences ? prosePhrase(loc, 'programExperiences') : null,
+    mix.hasExternalPackages ? prosePhrase(loc, 'programPartner') : null,
   ].filter(Boolean);
-  const programLine = programParts.length > 0 ? programParts.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'travel arrangements';
+  const programLine = programParts.length > 0 ? joinProseList(loc, programParts) : prosePhrase(loc, 'programFallback');
 
   return destinationLine
-    ? `A destination-aware proposal for ${destinationLine}, with ${programLine} sequenced around the itinerary.`
-    : `A destination-aware proposal with ${programLine} sequenced around the itinerary.`;
+    ? proseTemplate(loc, 'coverIntroWithDest', { dest: destinationLine, program: programLine })
+    : proseTemplate(loc, 'coverIntroNoDest', { program: programLine });
 }
 
 export function buildDayByDayIntro(days: ProposalV3Day[], destinationLine: string) {
+  const loc = activeProposalLocale;
   const dayCount = Math.max(days.length, 1);
   const overnightStops = Array.from(new Set(days.map((day) => cleanText(day.overnightLocation || '')).filter(Boolean)));
   const hasDailyServices = days.some((day) => day.groups.length > 0);
 
   if (destinationLine && overnightStops.length > 0) {
-    return `A ${dayCount}-day outline following the route through ${destinationLine}, with overnight stays noted as the program develops.`;
+    return proseTemplate(loc, 'dayByDayWithDestOvernight', { dayCount, dest: destinationLine });
   }
 
   if (destinationLine) {
-    return `A ${dayCount}-day outline following the route through ${destinationLine}${hasDailyServices ? ', with services grouped by day.' : '.'}`;
+    return hasDailyServices
+      ? proseTemplate(loc, 'dayByDayWithDestServices', { dayCount, dest: destinationLine })
+      : proseTemplate(loc, 'dayByDayWithDestPlain', { dayCount, dest: destinationLine });
   }
 
   return hasDailyServices
-    ? `A ${dayCount}-day outline with confirmed services grouped by day.`
-    : 'The itinerary structure is being finalized and will be shared in the confirmed proposal.';
+    ? proseTemplate(loc, 'dayByDayNoDestServices', { dayCount })
+    : proseTemplate(loc, 'dayByDayFinalizing');
 }
 
 export function buildDestinationAwareCoverSignature(quote: ProposalV3Quote, destinationLine: string, hotelOptionSets: ProposalV3HotelOptionSet[]) {
@@ -1134,17 +1143,18 @@ export function buildDestinationAwareCoverSignature(quote: ProposalV3Quote, dest
     return accommodationStory;
   }
 
+  const loc = activeProposalLocale;
   const mix = getServiceMix(quote);
   const focus = [
-    mix.hasExperiences ? 'destination experiences' : null,
-    mix.hasTransport ? 'smooth transfers' : null,
-    mix.hasHotels ? 'well-placed stays' : null,
+    mix.hasExperiences ? prosePhrase(loc, 'focusExperiences') : null,
+    mix.hasTransport ? prosePhrase(loc, 'focusTransfers') : null,
+    mix.hasHotels ? prosePhrase(loc, 'focusStays') : null,
   ].filter(Boolean);
-  const focusLine = focus.length > 0 ? focus.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'the confirmed journey flow';
+  const focusLine = focus.length > 0 ? joinProseList(loc, focus) : prosePhrase(loc, 'focusFallback');
 
   return destinationLine
-    ? `Tailored around ${destinationLine}, with ${focusLine} coordinated into one proposal.`
-    : `Tailored with ${focusLine} coordinated into one proposal.`;
+    ? proseTemplate(loc, 'signatureWithDest', { dest: destinationLine, focus: focusLine })
+    : proseTemplate(loc, 'signatureNoDest', { focus: focusLine });
 }
 
 export function buildDeterministicHighlights(
