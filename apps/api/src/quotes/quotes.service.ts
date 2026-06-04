@@ -38,6 +38,7 @@ import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
+import { resolveProposalLanguage } from './proposal-i18n';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
 import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
@@ -175,6 +176,7 @@ type CreateQuoteInput = {
   travelStartDate?: Date | null;
   validUntil?: Date | null;
   quoteCurrency?: string;
+  proposalLanguage?: string;
 };
 
 type UpdateQuoteInput = Partial<CreateQuoteInput> & {
@@ -1133,6 +1135,7 @@ export class QuotesService {
               title: data.title,
               description: data.description || null,
               quoteCurrency: this.validateInputCurrencyCode(data.quoteCurrency, 'quoteCurrency'),
+              proposalLanguage: resolveProposalLanguage(data.proposalLanguage),
               inclusionsText: this.normalizeSupportText(data.inclusionsText),
               exclusionsText: this.normalizeSupportText(data.exclusionsText),
               termsNotesText: this.normalizeSupportText(data.termsNotesText),
@@ -1588,6 +1591,7 @@ export class QuotesService {
           title: data.title === undefined ? undefined : data.title.trim(),
           description: data.description === undefined ? undefined : data.description || null,
           quoteCurrency,
+          proposalLanguage: data.proposalLanguage === undefined ? undefined : resolveProposalLanguage(data.proposalLanguage),
           inclusionsText: data.inclusionsText === undefined ? undefined : this.normalizeSupportText(data.inclusionsText),
           exclusionsText: data.exclusionsText === undefined ? undefined : this.normalizeSupportText(data.exclusionsText),
           termsNotesText: data.termsNotesText === undefined ? undefined : this.normalizeSupportText(data.termsNotesText),

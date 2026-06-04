@@ -13,6 +13,37 @@ import {
 } from './proposal-v3.types';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
+import {
+  intlLocale,
+  proposalLabel,
+  proposalTextDirection,
+  resolveProposalLanguage,
+  unitLabel,
+  type ProposalLocale,
+} from './proposal-i18n';
+
+// Phase 3A: the proposal renders in one of en/pt/es/ar. The mapper runs fully
+// synchronously (no awaits), so a module-scoped active locale set at the start
+// of mapQuoteToProposalV3 is safe and avoids threading `language` through every
+// formatter call site. Defaults to 'en' → English output is unchanged.
+let activeProposalLocale: ProposalLocale = 'en';
+
+// Service group keys are INTERNAL (used for grouping/order/fallback switches in
+// English); only the displayed label is localized at emit time.
+const GROUP_LABEL_KEY: Record<string, Parameters<typeof proposalLabel>[1]> = {
+  Stay: 'groupStay',
+  Transfer: 'groupTransfer',
+  Experience: 'groupExperience',
+  Meal: 'groupMeal',
+  Guide: 'groupGuide',
+  'Partner Package': 'groupPartnerPackage',
+  Other: 'groupOther',
+};
+
+function localizeGroupLabel(internalLabel: string): string {
+  const key = GROUP_LABEL_KEY[internalLabel];
+  return key ? proposalLabel(activeProposalLocale, key) : internalLabel;
+}
 
 const INVALID_TEXT_PATTERNS = [
   /\bimported itinerary\b/i,
@@ -78,8 +109,10 @@ function formatProposalMoney(amount: number, currency = 'USD') {
     return currency === 'JOD' ? '0.000 JD' : currency === 'EUR' ? 'EUR 0.00' : '$0.00';
   }
 
+  const locale = intlLocale(activeProposalLocale);
+
   if (currency === 'USD') {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -88,7 +121,7 @@ function formatProposalMoney(amount: number, currency = 'USD') {
   }
 
   if (currency === 'EUR') {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 2,
@@ -97,13 +130,13 @@ function formatProposalMoney(amount: number, currency = 'USD') {
   }
 
   if (currency === 'JOD') {
-    return `${new Intl.NumberFormat('en-US', {
+    return `${new Intl.NumberFormat(locale, {
       minimumFractionDigits: 3,
       maximumFractionDigits: 3,
     }).format(amount)} JD`;
   }
 
-  return `${currency} ${new Intl.NumberFormat('en-US', {
+  return `${currency} ${new Intl.NumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)}`;
@@ -292,17 +325,17 @@ function formatDate(value: Date | string | null | undefined) {
     return null;
   }
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(intlLocale(activeProposalLocale), {
     dateStyle: 'medium',
   }).format(date);
 }
 
 function formatNightCountLabel(value: number) {
-  return `${value} night${value === 1 ? '' : 's'}`;
+  return `${value} ${unitLabel(activeProposalLocale, 'night', value)}`;
 }
 
 function formatGuestCountLabel(value: number) {
-  return `${value} guest${value === 1 ? '' : 's'}`;
+  return `${value} ${unitLabel(activeProposalLocale, 'guest', value)}`;
 }
 
 function getServiceMix(quote: ProposalV3Quote) {
@@ -761,7 +794,7 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
   return order
     .filter((label) => grouped.has(label))
     .map((label) => ({
-      label,
+      label: localizeGroupLabel(label),
       items: grouped.get(label) || [],
     }));
 }
@@ -1365,19 +1398,19 @@ function buildDefaultInclusions(quote: ProposalV3Quote) {
   const lines = new Set<string>();
 
   if (quote.quoteItems.some((item) => isHotelItem(item))) {
-    lines.add('Accommodation as outlined in the itinerary.');
+    lines.add(proposalLabel(activeProposalLocale, 'inclAccommodation'));
   }
   if (quote.quoteItems.some((item) => isTransportItem(item))) {
-    lines.add('Private transport and transfers as scheduled.');
+    lines.add(proposalLabel(activeProposalLocale, 'inclTransport'));
   }
   if (quote.quoteItems.some((item) => isActivityItem(item))) {
-    lines.add('Experiences and touring specifically mentioned in the program.');
+    lines.add(proposalLabel(activeProposalLocale, 'inclExperiences'));
   }
   if (quote.quoteItems.some((item) => isGuideItem(item))) {
-    lines.add('Guiding services where indicated.');
+    lines.add(proposalLabel(activeProposalLocale, 'inclGuiding'));
   }
   if (quote.quoteItems.some((item) => isExternalPackageItem(item))) {
-    lines.add('Partner DMC package services as described in the program.');
+    lines.add(proposalLabel(activeProposalLocale, 'inclPartner'));
   }
 
   return Array.from(lines);
@@ -1407,12 +1440,17 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
       }),
     ),
   );
-  const notes = [
-    'Prices are subject to availability and final confirmation at the time of booking.',
+  // Phase 3A localizes the three always-present fixed notes. The conditional
+  // "N additional options" suffix and the computed tax/service/tourism pricing
+  // notes remain English for now (dynamic copy — a later copy pass).
+  const altNote =
     quote.quoteOptions.length > 0
-      ? `Alternative arrangements can be prepared on request. ${quote.quoteOptions.length} additional option${quote.quoteOptions.length === 1 ? '' : 's'} can be shared if preferred.`
-      : 'Alternative arrangements can be prepared on request.',
-    'Any government taxes, entrance rules, or local regulations remain subject to change without prior notice.',
+      ? `${proposalLabel(activeProposalLocale, 'noteAltSimple')} ${quote.quoteOptions.length} additional option${quote.quoteOptions.length === 1 ? '' : 's'} can be shared if preferred.`
+      : proposalLabel(activeProposalLocale, 'noteAltSimple');
+  const notes = [
+    proposalLabel(activeProposalLocale, 'noteAvailability'),
+    altNote,
+    proposalLabel(activeProposalLocale, 'noteRegulations'),
     ...pricingNotes,
   ];
 
@@ -1442,10 +1480,18 @@ function buildClientFacingTitle(quote: ProposalV3Quote, destinationLine: string)
 }
 
 function formatDurationLabel(dayCount: number, nightCount: number) {
-  return `${dayCount} Day${dayCount === 1 ? '' : 's'} / ${nightCount} Night${nightCount === 1 ? '' : 's'}`;
+  const dayWord = unitLabel(activeProposalLocale, 'day', dayCount);
+  const nightWord = activeProposalLocale === 'en'
+    ? (nightCount === 1 ? 'Night' : 'Nights')
+    : unitLabel(activeProposalLocale, 'night', nightCount);
+  return `${dayCount} ${dayWord} / ${nightCount} ${nightWord}`;
 }
 
-export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
+export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string | null): ProposalV3ViewModel {
+  // Resolve + set the active proposal locale for this (synchronous) render.
+  // Explicit `language` (render-time override) wins over the quote's stored
+  // proposalLanguage; invalid values fall back to English.
+  activeProposalLocale = resolveProposalLanguage(language ?? (quote as { proposalLanguage?: string }).proposalLanguage);
   quote = withSanitizedQuoteItems(quote);
   const sortedDays = getProposalDaySources(quote);
   const days = buildDays(quote);
@@ -1476,6 +1522,8 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
       : 'To be confirmed';
 
   return {
+    language: activeProposalLocale,
+    textDirection: proposalTextDirection(activeProposalLocale),
     documentTitle,
     metaTitle: `${documentTitle || 'Travel Proposal'} | ${brandName}`,
     brandName,
@@ -1495,8 +1543,8 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     subtitle: `${formatNightCountLabel(quote.nightCount)} · ${formatGuestCountLabel(totalPax)}${destinationLine ? ` · ${destinationLine}` : ''}`,
     proposalDateLabel: formatDate(quote.createdAt) || formatDate(new Date()) || '',
     travelerCountLabel: formatGuestCountLabel(totalPax),
-    servicesCountLabel: `${quote.quoteItems.length} service${quote.quoteItems.length === 1 ? '' : 's'}`,
-    totalDaysLabel: `${dayCount} itinerary day${dayCount === 1 ? '' : 's'}`,
+    servicesCountLabel: `${quote.quoteItems.length} ${unitLabel(activeProposalLocale, 'service', quote.quoteItems.length)}`,
+    totalDaysLabel: `${dayCount} ${unitLabel(activeProposalLocale, 'itineraryDay', dayCount)}`,
     pricingHighlightTotal: totalValue,
     pricingHighlightPerPax: perPersonValue,
     pricingHighlightCurrency: currency,

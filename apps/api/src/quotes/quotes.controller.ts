@@ -64,6 +64,7 @@ type CreateQuoteBody = {
   travelStartDate?: string | null;
   validUntil?: string | null;
   quoteCurrency?: string;
+  proposalLanguage?: string;
 };
 
 type UpdateQuoteBody = Partial<CreateQuoteBody> & {
@@ -421,9 +422,10 @@ export class QuotesController {
     @Param('quoteId') quoteId: string,
     @Res({ passthrough: true }) response: any,
     @Actor() actor: AuthenticatedActor,
+    @Query('language') language?: string,
   ) {
-    console.info('[proposal-v3] controller:html-request', { quoteId });
-    const html = await this.proposalV3Service.getProposalHtml(quoteId, actor);
+    console.info('[proposal-v3] controller:html-request', { quoteId, language });
+    const html = await this.proposalV3Service.getProposalHtml(quoteId, actor, language);
 
     if (!html) {
       throw new NotFoundException('Quote not found');
@@ -439,6 +441,7 @@ export class QuotesController {
     @Param('quoteId') quoteId: string,
     @Res({ passthrough: true }) response: any,
     @Actor() actor: AuthenticatedActor,
+    @Query('language') language?: string,
   ) {
     const quote = await this.quotesService.findOne(quoteId, actor);
 
@@ -446,7 +449,7 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
-    const pdfBuffer = await this.proposalV3Service.getProposalPdf(quoteId, actor);
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(quoteId, actor, language);
 
     if (!pdfBuffer) {
       throw new NotFoundException('Quote not found');
@@ -550,6 +553,7 @@ export class QuotesController {
         body.travelStartDate === undefined ? undefined : body.travelStartDate ? new Date(body.travelStartDate) : null,
       validUntil: body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
       quoteCurrency: body.quoteCurrency,
+      proposalLanguage: body.proposalLanguage,
     }, actor);
   }
 
@@ -603,6 +607,7 @@ export class QuotesController {
         body.travelStartDate === undefined ? undefined : body.travelStartDate ? new Date(body.travelStartDate) : null,
       validUntil: body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
       quoteCurrency: body.quoteCurrency,
+      proposalLanguage: body.proposalLanguage,
       status: body.status,
     }, actor);
   }

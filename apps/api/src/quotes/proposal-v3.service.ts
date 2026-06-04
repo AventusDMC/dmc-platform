@@ -5,6 +5,7 @@ import { resolve } from 'path';
 import { QuotesService } from './quotes.service';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3ViewModel } from './proposal-v3.types';
+import { proposalLabel, resolveProposalLanguage } from './proposal-i18n';
 import { AuthenticatedActor } from '../auth/auth.types';
 
 type TemplateTokens = Record<string, string>;
@@ -25,7 +26,7 @@ type PuppeteerModule = {
 export class ProposalV3Service {
   constructor(private readonly quotesService: QuotesService) {}
 
-  async getProposalHtml(quoteId: string, actor?: AuthenticatedActor) {
+  async getProposalHtml(quoteId: string, actor?: AuthenticatedActor, language?: string) {
     console.info('[proposal-v3] getProposalHtml:start', { quoteId });
     const quote = await this.quotesService.findOne(quoteId, actor);
 
@@ -35,7 +36,7 @@ export class ProposalV3Service {
     }
 
     try {
-      const html = await this.renderProposalHtml(quote, 'quoteId', quoteId);
+      const html = await this.renderProposalHtml(quote, 'quoteId', quoteId, language);
       console.info('[proposal-v3] getProposalHtml:success', {
         quoteId,
         htmlLength: html.length,
@@ -75,7 +76,7 @@ export class ProposalV3Service {
     }
   }
 
-  async getProposalPdf(quoteId: string, actor?: AuthenticatedActor) {
+  async getProposalPdf(quoteId: string, actor?: AuthenticatedActor, language?: string) {
     console.info('[proposal-v3] getProposalPdf:start', { quoteId });
     const quote = await this.quotesService.findOne(quoteId, actor);
 
@@ -84,7 +85,7 @@ export class ProposalV3Service {
       return null;
     }
 
-    const viewModel = mapQuoteToProposalV3(quote as any);
+    const viewModel = mapQuoteToProposalV3(quote as any, language);
     const html = await this.renderHtml(viewModel);
     return this.renderPdfFromHtml(html, 'quoteId', quoteId, viewModel.footerLine);
   }
@@ -103,8 +104,8 @@ export class ProposalV3Service {
     return this.renderPdfFromHtml(html, 'token', token, viewModel.footerLine);
   }
 
-  private async renderProposalHtml(quote: unknown, contextKey: 'quoteId' | 'token', contextValue: string) {
-    const viewModel = mapQuoteToProposalV3(quote as any);
+  private async renderProposalHtml(quote: unknown, contextKey: 'quoteId' | 'token', contextValue: string, language?: string) {
+    const viewModel = mapQuoteToProposalV3(quote as any, language);
     console.info('[proposal-v3] renderProposalHtml:view-model', {
       [contextKey]: contextValue,
       title: viewModel.documentTitle,
@@ -221,10 +222,45 @@ export class ProposalV3Service {
       containsVersionMarker: template.includes('2026-04-24-final-v2'),
     });
 
+    const loc = resolveProposalLanguage(viewModel.language);
+    const L = (key: Parameters<typeof proposalLabel>[1]) => this.escapeHtml(proposalLabel(loc, key));
+
     // TODO: Replace this token renderer with full Handlebars runtime if/when the API workspace adds handlebars as a direct dependency.
     return this.renderTemplate(template, {
       metaTitle: this.escapeHtml(viewModel.metaTitle),
       styles: css,
+      documentLanguage: this.escapeHtml(viewModel.language),
+      textDirection: this.escapeHtml(viewModel.textDirection),
+      labelReference: L('reference'),
+      labelPrepared: L('prepared'),
+      labelPreparedFor: L('preparedFor'),
+      labelTravelDates: L('travelDates'),
+      labelDuration: L('duration'),
+      labelGuests: L('guests'),
+      labelPricingSummary: L('pricingSummary'),
+      labelTotalPackagePrice: L('totalPackagePrice'),
+      labelPricePerPerson: L('pricePerPerson'),
+      labelQuoteCurrency: L('quoteCurrency'),
+      labelJourneyOverview: L('journeyOverview'),
+      labelTravelers: L('travelers'),
+      labelServices: L('services'),
+      labelItinerary: L('itinerary'),
+      labelHighlights: L('highlights'),
+      labelKeyMoments: L('keyMoments'),
+      labelAccommodation: L('accommodation'),
+      labelStayOverview: L('stayOverview'),
+      labelTableDay: L('tableDay'),
+      labelTableHotel: L('tableHotel'),
+      labelTableLocation: L('tableLocation'),
+      labelTableRoom: L('tableRoom'),
+      labelTableNotes: L('tableNotes'),
+      labelDayByDay: L('dayByDay'),
+      labelFinalDetails: L('finalDetails'),
+      labelInclusionsAndPricing: L('inclusionsAndPricing'),
+      labelIncluded: L('included'),
+      labelInclusions: L('inclusions'),
+      labelPricingNotesEyebrow: L('pricingNotesEyebrow'),
+      labelNotes: L('notes'),
       documentTitle: this.escapeHtml(viewModel.documentTitle),
       brandName: this.escapeHtml(viewModel.brandName),
       logoUrl: this.escapeHtml(viewModel.logoUrl),

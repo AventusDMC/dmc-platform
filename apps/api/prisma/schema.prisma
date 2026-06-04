@@ -1520,6 +1520,10 @@ model Quote {
   description                String?
   totalPrice                 Float                    @default(0)
   quoteCurrency              String                   @default("USD")
+  // Client-proposal render language (en|pt|es|ar). Additive; default keeps
+  // every existing quote rendering in English. A ?language= query param can
+  // override per-render. Phase 3A — language foundation only (no POI composition).
+  proposalLanguage           String                   @default("en")
   status                     QuoteStatus              @default(DRAFT)
   createdAt                  DateTime                 @default(now())
   updatedAt                  DateTime                 @updatedAt

@@ -1,6 +1,6 @@
 <!-- proposal-v3-template-version: 2026-04-25-redesign -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{documentLanguage}}" dir="{{textDirection}}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -18,15 +18,15 @@
                 <img class="proposal-brand-logo" src="{{logoUrl}}" alt="{{brandName}}" />
               </div>
               <p class="proposal-eyebrow">{{brandName}}</p>
-              <p class="proposal-reference">Reference {{quoteReference}}</p>
+              <p class="proposal-reference">{{labelReference}} {{quoteReference}}</p>
             </div>
             <div class="proposal-meta-list">
               <article>
-                <span>Prepared</span>
+                <span>{{labelPrepared}}</span>
                 <strong>{{proposalDateLabel}}</strong>
               </article>
               <article>
-                <span>Prepared for</span>
+                <span>{{labelPreparedFor}}</span>
                 <strong>{{travelerName}}</strong>
               </article>
             </div>
@@ -41,33 +41,33 @@
 
               <div class="proposal-cover-facts avoid-break">
                 <article>
-                  <span>Travel dates</span>
+                  <span>{{labelTravelDates}}</span>
                   <strong>{{travelDatesLabel}}</strong>
                 </article>
                 <article>
-                  <span>Duration</span>
+                  <span>{{labelDuration}}</span>
                   <strong>{{durationLabel}}</strong>
                 </article>
                 <article>
-                  <span>Guests</span>
+                  <span>{{labelGuests}}</span>
                   <strong>{{travelerCountLabel}}</strong>
                 </article>
               </div>
             </div>
 
             <aside class="proposal-cover-panel avoid-break">
-              <p class="proposal-card-label">Pricing summary</p>
+              <p class="proposal-card-label">{{labelPricingSummary}}</p>
               <div class="proposal-pricing-highlight">
                 <article class="proposal-pricing-highlight-card proposal-pricing-highlight-card-primary">
-                  <span>Total Package Price</span>
+                  <span>{{labelTotalPackagePrice}}</span>
                   <strong>{{pricingHighlightTotal}}</strong>
                 </article>
                 <article class="proposal-pricing-highlight-card">
-                  <span>Price per Person</span>
+                  <span>{{labelPricePerPerson}}</span>
                   <strong>{{pricingHighlightPerPax}}</strong>
                 </article>
                 <article class="proposal-pricing-highlight-card">
-                  <span>Quote Currency</span>
+                  <span>{{labelQuoteCurrency}}</span>
                   <strong>{{pricingHighlightCurrency}}</strong>
                 </article>
               </div>
@@ -80,7 +80,7 @@
 
       <section class="proposal-section overview-section">
         <header class="proposal-section-header">
-          <p class="proposal-eyebrow">Journey overview</p>
+          <p class="proposal-eyebrow">{{labelJourneyOverview}}</p>
           <h2>{{destinationLine}}</h2>
         </header>
 
@@ -90,45 +90,45 @@
 
             <div class="proposal-summary-grid" aria-label="Journey metrics">
               <article>
-                <span>Duration</span>
+                <span>{{labelDuration}}</span>
                 <strong>{{durationLabel}}</strong>
               </article>
               <article>
-                <span>Travelers</span>
+                <span>{{labelTravelers}}</span>
                 <strong>{{travelerCountLabel}}</strong>
               </article>
               <article>
-                <span>Services</span>
+                <span>{{labelServices}}</span>
                 <strong>{{servicesCountLabel}}</strong>
               </article>
               <article>
-                <span>Itinerary</span>
+                <span>{{labelItinerary}}</span>
                 <strong>{{totalDaysLabel}}</strong>
               </article>
             </div>
           </div>
 
           <aside class="proposal-card proposal-card-accent highlights">
-            <p class="proposal-card-label">Highlights</p>
-            <h3>Key moments</h3>
+            <p class="proposal-card-label">{{labelHighlights}}</p>
+            <h3>{{labelKeyMoments}}</h3>
             <ul class="proposal-list">{{highlightsHtml}}</ul>
           </aside>
         </div>
 
         <div class="proposal-stay-block stay-overview">
           <header class="proposal-subsection-header">
-            <p class="proposal-eyebrow">Accommodation</p>
-            <h3>Stay Overview</h3>
+            <p class="proposal-eyebrow">{{labelAccommodation}}</p>
+            <h3>{{labelStayOverview}}</h3>
           </header>
           <div class="proposal-table-shell">
             <table class="proposal-table proposal-table-accommodation">
               <thead>
                 <tr>
-                  <th>Day</th>
-                  <th>Hotel</th>
-                  <th>Location</th>
-                  <th>Room</th>
-                  <th>Notes</th>
+                  <th>{{labelTableDay}}</th>
+                  <th>{{labelTableHotel}}</th>
+                  <th>{{labelTableLocation}}</th>
+                  <th>{{labelTableRoom}}</th>
+                  <th>{{labelTableNotes}}</th>
                 </tr>
               </thead>
               <tbody>{{accommodationRowsHtml}}</tbody>
@@ -141,8 +141,8 @@
 
       <section class="proposal-section itinerary-section">
         <header class="proposal-section-header">
-          <p class="proposal-eyebrow">Itinerary</p>
-          <h2>Day by Day</h2>
+          <p class="proposal-eyebrow">{{labelItinerary}}</p>
+          <h2>{{labelDayByDay}}</h2>
         </header>
         <p class="proposal-section-intro">{{dayByDayIntro}}</p>
         <div class="proposal-days">{{itineraryDaysHtml}}</div>
@@ -150,8 +150,8 @@
 
       <section class="proposal-section proposal-section-closing final-section">
         <header class="proposal-section-header">
-          <p class="proposal-eyebrow">Final details</p>
-          <h2>Inclusions and Pricing Notes</h2>
+          <p class="proposal-eyebrow">{{labelFinalDetails}}</p>
+          <h2>{{labelInclusionsAndPricing}}</h2>
         </header>
 
         <div class="proposal-closing-layout">
@@ -160,16 +160,16 @@
           <div class="proposal-section-columns">
             <article class="proposal-card">
               <header class="proposal-subsection-header">
-                <p class="proposal-eyebrow">Included</p>
-                <h3>Inclusions</h3>
+                <p class="proposal-eyebrow">{{labelIncluded}}</p>
+                <h3>{{labelInclusions}}</h3>
               </header>
               <ul class="proposal-list">{{inclusionsHtml}}</ul>
             </article>
 
             <article class="proposal-card">
               <header class="proposal-subsection-header">
-                <p class="proposal-eyebrow">Pricing notes</p>
-                <h3>Notes</h3>
+                <p class="proposal-eyebrow">{{labelPricingNotesEyebrow}}</p>
+                <h3>{{labelNotes}}</h3>
               </header>
               <ul class="proposal-list">{{notesHtml}}</ul>
             </article>
