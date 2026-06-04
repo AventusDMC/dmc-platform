@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../lib/global-css-source';
 import { describe, it } from 'node:test';
 import { filterCanonicalGeographicPlaces, formatPlaceSelectorLabel, getCanonicalPlaceDisplayName, getCanonicalPlaceSecondaryText } from '../lib/places';
 import { filterCanonicalFleetVehicles, isCanonicalFleetVehicle } from '../lib/transport-vehicles';
@@ -208,7 +209,7 @@ describe('transport catalog supplier rate-card UX', () => {
   });
 
   it('renders the transportation tariff workbook as a local spreadsheet-style grid with CSV actions', () => {
-    const cssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+    const cssSource = globalCssSource;
 
     expectSourceContains(tariffWorkbookGridSource, [
       'Transportation Tariff Workbook',

@@ -1,0 +1,3260 @@
+/* Platform-wide SaaS scale contracts */
+:root {
+  --admin-workspace-max: none;
+  --admin-workspace-padding-x: clamp(1rem, 1.8vw, 2rem);
+  --admin-workspace-padding-y: clamp(1rem, 1.6vw, 1.75rem);
+  --admin-section-gap: clamp(1rem, 1.4vw, 1.5rem);
+  --admin-major-gap: clamp(1.35rem, 2vw, 2.25rem);
+  --admin-table-row-height: 56px;
+  --admin-summary-width: 360px;
+  --admin-nav-width: 280px;
+}
+
+.admin-shell,
+.app-shell {
+  display: grid;
+}
+
+.admin-content-shell {
+  min-width: 0;
+  width: 100%;
+  padding: 0 var(--admin-workspace-padding-x) 2rem;
+}
+
+.page,
+.panel.quote-workspace-page,
+.quote-workspace-page.app-page-content,
+.app-page-content,
+.workspace-shell-card {
+  width: 100%;
+  max-width: var(--admin-workspace-max);
+}
+
+.page {
+  margin-inline: 0;
+  padding-block: var(--admin-workspace-padding-y) 2.4rem;
+}
+
+.panel,
+.workspace-panel,
+.workspace-shell-card {
+  margin-inline: 0;
+}
+
+.workspace-shell-card.app-workspace-shell {
+  display: grid;
+  gap: var(--admin-major-gap);
+  padding: clamp(1.25rem, 1.8vw, 2rem);
+}
+
+.workspace-shell-header,
+.app-page-header,
+.app-workspace-header,
+.app-entity-detail-header {
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.workspace-shell-header h1,
+.app-page-header h1,
+.app-workspace-header h1,
+.app-entity-detail-header h1 {
+  max-width: 980px;
+  font-size: clamp(1.9rem, 2.6vw, 3rem);
+  letter-spacing: 0;
+}
+
+.workspace-shell-content,
+.section-stack,
+.app-section-stack {
+  gap: var(--admin-section-gap);
+}
+
+.app-workspace-layout {
+  display: grid;
+  gap: var(--admin-section-gap);
+  align-items: start;
+  min-width: 0;
+}
+
+.app-workspace-layout-default {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-workspace-layout-summary {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, var(--admin-summary-width));
+}
+
+.app-workspace-layout-three-column {
+  grid-template-columns: var(--admin-nav-width) minmax(0, 1fr) minmax(320px, var(--admin-summary-width));
+}
+
+.app-workspace-sidebar,
+.app-workspace-main,
+.app-workspace-summary {
+  min-width: 0;
+}
+
+.app-workspace-summary {
+  width: 100%;
+}
+
+.app-card,
+.workspace-section,
+.detail-card,
+.dashboard-panel,
+.dashboard-section-card,
+.table-section-shell,
+.summary-panel,
+.app-summary-panel,
+.form-section,
+.app-form-section {
+  border-width: 0;
+  box-shadow: 0 12px 34px rgba(17, 24, 39, 0.055);
+}
+
+.app-card:hover,
+.workspace-section:hover,
+.detail-card:hover,
+.dashboard-card:hover,
+.table-section-shell:hover {
+  box-shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
+}
+
+.app-table-section,
+.table-section-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.table-wrap,
+.data-table-wrapper,
+.dashboard-table-wrapper,
+.table-scroll {
+  border-width: 0;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.05);
+}
+
+.data-table th,
+.data-table td,
+.app-table th,
+.app-table td {
+  height: var(--admin-table-row-height);
+  vertical-align: middle;
+}
+
+.data-table tbody tr,
+.app-table tbody tr {
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.data-table tbody tr:hover td,
+.app-table tbody tr:hover td {
+  background: #F4FAFD;
+}
+
+.app-filter-bar,
+.compact-filter-bar,
+.reports-filter-bar,
+.quote-services-filter-bar {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1rem;
+  border-width: 0;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.045);
+}
+
+.app-form-section,
+.entity-form,
+.compact-form {
+  border-width: 0;
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.045);
+}
+
+.app-action-bar,
+.page-action-bar,
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-width: 0;
+}
+
+.app-financial-panel,
+.financial-panel {
+  border-width: 0;
+  border-radius: 1.55rem;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(31, 154, 207, 0.24), transparent 12rem),
+    linear-gradient(180deg, #111827 0%, #1C7FB8 50%, #1F9ACF 100%);
+  box-shadow: 0 30px 80px rgba(17, 24, 39, 0.32);
+}
+
+.app-summary-panel,
+.summary-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.app-drawer-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  pointer-events: none;
+}
+
+.app-drawer-backdrop,
+.catalog-edit-drawer-backdrop,
+.contract-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 15, 33, 0.34);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.app-drawer-panel,
+.catalog-edit-drawer-panel,
+.contract-drawer {
+  position: relative;
+  justify-self: end;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(100%, 560px);
+  height: 100vh;
+  background: #FFFFFF;
+  box-shadow: -24px 0 70px rgba(17, 24, 39, 0.22);
+  pointer-events: auto;
+}
+
+.app-drawer-header,
+.catalog-edit-drawer-header,
+.contract-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.app-drawer-header h2,
+.catalog-edit-drawer-header h3,
+.contract-drawer-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.35rem;
+}
+
+.app-drawer-header p,
+.catalog-edit-drawer-header p,
+.contract-drawer-header p {
+  margin: 0.35rem 0 0;
+  color: var(--muted-foreground);
+}
+
+.app-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.app-drawer-body,
+.catalog-edit-drawer-body,
+.contract-drawer-body {
+  min-width: 0;
+  overflow: auto;
+  padding: 1.25rem;
+}
+
+.app-entity-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(1.15rem, 1.7vw, 1.75rem);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 244, 255, 0.88)),
+    #FFFFFF;
+  box-shadow: 0 16px 42px rgba(17, 24, 39, 0.065);
+}
+
+.app-entity-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.app-entity-detail-title-row h1 {
+  margin: 0;
+}
+
+.app-entity-detail-meta,
+.app-entity-detail-actions,
+.app-workspace-header-actions,
+.app-workspace-header-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.app-day-navigation,
+.day-navigation {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.app-day-navigation-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.app-day-navigation-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.app-day-navigation-card {
+  display: grid;
+  gap: 0.28rem;
+  width: 100%;
+  padding: 0.85rem;
+  border: 0;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: #6B7280;
+  text-align: left;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.035);
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.app-day-navigation-card:hover {
+  transform: translateY(-1px);
+  background: #FFFFFF;
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.075);
+}
+
+.app-day-navigation-card-active {
+  background:
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.24), transparent 8rem),
+    #FFFFFF;
+  box-shadow:
+    0 20px 46px rgba(28, 127, 184, 0.14),
+    inset 4px 0 0 #1F9ACF;
+}
+
+.app-day-navigation-card span {
+  color: #111827;
+  font-weight: 900;
+}
+
+.app-day-navigation-card em,
+.app-day-navigation-card small {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.app-day-navigation-card strong {
+  color: #111827;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 1180px) {
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-workspace-sidebar,
+  .app-workspace-summary {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-content-shell {
+    padding-inline: 0.85rem;
+  }
+
+  .workspace-shell-card.app-workspace-shell,
+  .app-entity-detail-header {
+    padding: 1rem;
+  }
+
+  .app-drawer-panel {
+    width: 100%;
+  }
+}
+
+/* Shared UI premium refinement */
+:root {
+  --admin-section-gap: clamp(1.15rem, 1.65vw, 1.85rem);
+  --admin-major-gap: clamp(1.65rem, 2.45vw, 2.85rem);
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.045);
+  --shadow-md: 0 18px 46px rgba(17, 24, 39, 0.085);
+  --shadow-lg: 0 34px 92px rgba(17, 24, 39, 0.15);
+}
+
+.admin-content-shell {
+  padding-bottom: 2.6rem;
+}
+
+.page {
+  padding-block: clamp(1.15rem, 1.7vw, 2rem) 2.8rem;
+}
+
+.workspace-shell-card.app-workspace-shell {
+  gap: var(--admin-major-gap);
+  padding: clamp(1.35rem, 2vw, 2.25rem);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(253, 252, 255, 0.9)),
+    #FFFFFF;
+}
+
+.workspace-shell-header,
+.app-page-header,
+.app-workspace-header,
+.app-entity-detail-header {
+  gap: clamp(1rem, 1.6vw, 1.6rem);
+}
+
+.workspace-shell-header h1,
+.app-page-header h1,
+.app-workspace-header h1,
+.app-entity-detail-header h1,
+.quote-dashboard-title-row h1 {
+  max-width: 1120px;
+  color: #111827;
+  font-size: clamp(2.25rem, 3.4vw, 4rem);
+  line-height: 0.98;
+  font-weight: 920;
+}
+
+.workspace-subheader-title,
+.section-title,
+.workspace-section h2,
+.dashboard-panel-header h2,
+.detail-card h2,
+.executive-dashboard-section-head h2,
+.app-form-section-head h3 {
+  color: #111827;
+  font-weight: 880;
+}
+
+.detail-copy,
+.copy,
+.section-copy,
+.admin-subnav-copy,
+.workspace-shell-copy .section-copy,
+.dashboard-panel-header p,
+.executive-dashboard-section-head p,
+.app-day-navigation-card em,
+.app-day-navigation-card small,
+.quote-service-card-supplier {
+  color: #6B7280;
+}
+
+.eyebrow {
+  color: #1F9ACF;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.section-stack,
+.workspace-shell-content,
+.app-section-stack {
+  gap: var(--admin-section-gap);
+}
+
+.app-workspace-layout {
+  gap: clamp(1.25rem, 1.8vw, 2rem);
+}
+
+.app-card,
+.workspace-section,
+.detail-card,
+.dashboard-panel,
+.dashboard-section-card,
+.table-section-shell,
+.summary-panel,
+.app-summary-panel,
+.form-section,
+.app-form-section {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 251, 255, 0.94)),
+    #FFFFFF;
+  box-shadow:
+    0 12px 30px rgba(17, 24, 39, 0.048),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.app-card:hover,
+.workspace-section:hover,
+.detail-card:hover,
+.dashboard-card:hover,
+.table-section-shell:hover,
+.summary-panel:hover,
+.app-summary-panel:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 22px 58px rgba(17, 24, 39, 0.085),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.app-card-muted,
+.app-filter-bar,
+.compact-filter-bar,
+.reports-filter-bar,
+.quote-services-filter-bar,
+.app-form-section,
+.entity-form,
+.compact-form {
+  box-shadow:
+    0 8px 24px rgba(17, 24, 39, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.app-table-section,
+.table-section-shell {
+  gap: 1.15rem;
+}
+
+.table-wrap,
+.data-table-wrapper,
+.dashboard-table-wrapper,
+.table-scroll {
+  box-shadow:
+    0 12px 34px rgba(17, 24, 39, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.data-table th,
+.app-table th {
+  color: #6B7280;
+  background: #F4FAFD;
+}
+
+.data-table tbody tr:hover td,
+.app-table tbody tr:hover td {
+  background: #E8F6FB;
+}
+
+.primary-button,
+.app-button-primary,
+.entity-form button:not(.secondary-button):not(.compact-button):not(.ghost-button),
+.quote-transport-add-button,
+.dashboard-toolbar-link,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions button[type='submit'] {
+  min-height: 48px;
+  border-width: 0;
+  background:
+    linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 48%, #1C7FB8 100%);
+  box-shadow:
+    0 18px 40px rgba(28, 127, 184, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.primary-button:hover,
+.app-button-primary:hover,
+.entity-form button:not(.secondary-button):not(.compact-button):not(.ghost-button):hover,
+.quote-transport-add-button:hover,
+.dashboard-toolbar-link:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions button[type='submit']:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08);
+  box-shadow:
+    0 26px 58px rgba(28, 127, 184, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+.secondary-button,
+.app-button-secondary,
+.compact-button,
+.ghost-button {
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.secondary-button:hover,
+.app-button-secondary:hover,
+.compact-button:hover,
+.ghost-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(28, 127, 184, 0.09);
+}
+
+.app-financial-panel,
+.financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  background:
+    radial-gradient(circle at 88% 0%, rgba(31, 154, 207, 0.28), transparent 13rem),
+    linear-gradient(180deg, #111827 0%, #1C7FB8 48%, #1F9ACF 100%);
+  box-shadow:
+    0 42px 110px rgba(17, 24, 39, 0.44),
+    0 18px 46px rgba(28, 127, 184, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.app-financial-panel strong,
+.app-financial-panel .financial-value,
+.financial-panel strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row strong {
+  font-size: clamp(1.45rem, 2.2vw, 2.15rem);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+.app-financial-panel .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(3rem, 4.8vw, 4.35rem);
+}
+
+.app-financial-panel .quote-pricing-summary-row,
+.financial-panel .quote-pricing-summary-row,
+.app-financial-panel .booking-ops-sidebar-list > div {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.summary-strip-card,
+.app-metric-card,
+.metric-card {
+  min-width: 0;
+  width: 100%;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.summary-strip-card:hover,
+.app-metric-card:hover,
+.metric-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 44px rgba(17, 24, 39, 0.08);
+}
+
+.summary-strip-value,
+.app-metric-card strong,
+.metric-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(1.45rem, 2vw, 2.1rem);
+  line-height: 1;
+  font-weight: 920;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge,
+.status-pill,
+.page-tab-badge,
+.app-badge,
+.margin-badge,
+.quote-ui-badge {
+  font-weight: 880;
+}
+
+.app-day-navigation {
+  gap: 1rem;
+}
+
+.app-day-navigation-list {
+  gap: 0.78rem;
+}
+
+.app-day-navigation-card,
+.quote-service-day-nav-card {
+  padding: 0.95rem;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.035);
+}
+
+.app-day-navigation-card:hover,
+.quote-service-day-nav-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.08);
+}
+
+.app-day-navigation-card-active,
+.quote-service-day-nav-card-active {
+  background:
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.3), transparent 9rem),
+    linear-gradient(180deg, #FFFFFF, #E8F6FB);
+  box-shadow:
+    0 24px 56px rgba(28, 127, 184, 0.17),
+    inset 5px 0 0 #1F9ACF,
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.quote-service-day-card-active {
+  box-shadow:
+    0 34px 86px rgba(28, 127, 184, 0.16),
+    0 12px 32px rgba(17, 24, 39, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.quote-service-day-card-active .quote-service-day-panel-body {
+  padding: clamp(1.35rem, 2vw, 2rem);
+}
+
+.app-service-card,
+.service-card,
+.quote-service-mini-card,
+.quote-service-card {
+  transition:
+    transform 170ms ease,
+    box-shadow 170ms ease,
+    background 170ms ease;
+}
+
+.app-service-card:hover,
+.service-card:hover,
+.quote-service-mini-card:hover,
+.quote-service-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 58px rgba(17, 24, 39, 0.11);
+}
+
+.app-service-card-selected,
+.quote-selected-transport-card-active,
+.quote-transport-suggestion-option-active,
+.quote-transport-suggestion-option-selected,
+.quote-hotel-choice-card-active {
+  box-shadow:
+    0 22px 52px rgba(28, 127, 184, 0.16),
+    inset 0 0 0 1px rgba(31, 154, 207, 0.18);
+}
+
+@media (max-width: 760px) {
+  .workspace-shell-header h1,
+  .app-page-header h1,
+  .app-workspace-header h1,
+  .app-entity-detail-header h1,
+  .quote-dashboard-title-row h1 {
+    font-size: clamp(1.85rem, 9vw, 2.7rem);
+  }
+
+  .app-card:hover,
+  .workspace-section:hover,
+  .detail-card:hover,
+  .dashboard-card:hover,
+  .table-section-shell:hover,
+  .summary-panel:hover,
+  .app-summary-panel:hover,
+  .primary-button:hover,
+  .app-button-primary:hover,
+  .secondary-button:hover,
+  .app-button-secondary:hover,
+  .compact-button:hover,
+  .ghost-button:hover,
+  .app-day-navigation-card:hover,
+  .quote-service-day-nav-card:hover,
+  .app-service-card:hover,
+  .service-card:hover,
+  .quote-service-mini-card:hover,
+  .quote-service-card:hover {
+    transform: none;
+  }
+}
+
+/* Quote service drawer editing model */
+.quote-service-add-primary {
+  min-height: 40px;
+  padding-inline: 0.95rem;
+  white-space: nowrap;
+}
+
+.quote-service-editor-drawer {
+  width: min(100%, 720px);
+  overflow: hidden;
+}
+
+.quote-service-editor-panel-drawer {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quote-service-editor-drawer .app-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  align-items: center;
+  padding: 1rem 1.15rem 0.9rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.94)),
+    #FFFFFF;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.05);
+}
+
+.quote-service-editor-drawer .app-drawer-header > div:first-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.quote-service-editor-drawer .app-drawer-header > div:first-child::before {
+  content: "S";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.85rem;
+  background: #E8F6FB;
+  color: #1C7FB8;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.quote-service-editor-drawer .app-drawer-header h2 {
+  font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+  line-height: 1.08;
+}
+
+.quote-service-editor-drawer .app-drawer-header p {
+  margin-top: 0.25rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.quote-service-editor-drawer .app-drawer-body {
+  padding: 0.95rem 1.05rem 5.75rem;
+}
+
+.quote-service-editor-drawer .app-drawer-actions {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 18;
+  padding: 0.55rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 44px rgba(17, 24, 39, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.quote-service-editor-drawer .app-drawer-actions .secondary-button {
+  min-height: 44px;
+  padding-inline: 1.05rem;
+}
+
+.quote-drawer-section {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 1.1rem;
+  background: #FFFFFF;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.045);
+}
+
+.quote-drawer-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quote-drawer-section-head h3 {
+  margin: 0.12rem 0 0;
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.quote-drawer-section-pricing {
+  background:
+    radial-gradient(circle at 95% 0%, rgba(31, 154, 207, 0.12), transparent 11rem),
+    #FFFFFF;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel {
+  position: static;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 0;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  box-shadow: 0 20px 46px rgba(17, 24, 39, 0.16);
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel .eyebrow,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel .quote-live-pricing-row span,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel em {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel h3,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel strong {
+  color: #FFFFFF;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-list {
+  gap: 0.45rem;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-row {
+  padding-block: 0.42rem;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.quote-drawer-financial-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border-radius: 1.1rem;
+  background: transparent;
+}
+
+.quote-drawer-financial-summary div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(31, 154, 207, 0.14);
+  border-radius: 0.9rem;
+  background: #F4FAFD;
+}
+
+.quote-drawer-financial-summary span {
+  color: #6B7280;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.quote-drawer-financial-summary strong {
+  display: block;
+  min-width: 0;
+  color: #111827;
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+  font-weight: 920;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-service-editor-panel-drawer .quote-service-editor-tabs {
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: #F9FAFB;
+}
+
+.quote-service-editor-panel-drawer .quote-service-editor-tab {
+  min-height: 32px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.quote-service-editor-panel-drawer .quote-service-editor-tab-active {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  box-shadow: 0 8px 18px rgba(28, 127, 184, 0.1);
+}
+
+.quote-service-editor-panel-drawer .quote-service-catalog-link {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.9rem;
+  background: #F9FAFB;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form-head {
+  min-height: auto;
+  padding: 0.15rem 0 0.35rem;
+  border: 0;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form-head p {
+  margin-top: 0.1rem;
+  color: #6B7280;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-panel,
+.quote-service-editor-panel-drawer .quote-transport-step-panel,
+.quote-service-editor-panel-drawer .quote-advanced-settings {
+  padding: 0.85rem;
+  border-color: #E5E7EB;
+  border-radius: 1rem;
+  background: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.035);
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head {
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head h3 {
+  font-size: 1rem;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head .detail-copy {
+  font-size: 0.84rem;
+}
+
+.quote-service-editor-panel-drawer .quote-transport-step-fields,
+.quote-service-editor-panel-drawer .form-row,
+.quote-service-editor-panel-drawer .form-row-2,
+.quote-service-editor-panel-drawer .form-row-3,
+.quote-service-editor-panel-drawer .form-row-4 {
+  gap: 0.65rem;
+}
+
+.quote-service-editor-panel-drawer label {
+  color: #6B7280;
+  font-size: 0.8rem;
+}
+
+.quote-service-editor-panel-drawer label input,
+.quote-service-editor-panel-drawer label select,
+.quote-service-editor-panel-drawer label textarea {
+  margin-top: 0.28rem;
+}
+
+.quote-service-editor-panel-drawer .quote-advanced-settings > summary {
+  padding: 0;
+  color: #111827;
+}
+
+.quote-service-editor-panel-drawer .quote-advanced-settings > summary::before {
+  content: "Notes, supplier, and overrides";
+  display: block;
+  margin-bottom: 0.18rem;
+  color: #1C7FB8;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quote-service-editor-panel-drawer .quote-transport-add-button,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+  position: sticky;
+  bottom: 0.95rem;
+  z-index: 16;
+  width: min(100%, calc(100% - 6.5rem));
+  min-height: 48px;
+  margin-top: 0.35rem;
+  border: 0;
+  border-radius: 0.95rem;
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  box-shadow: 0 18px 42px rgba(28, 127, 184, 0.24);
+}
+
+.quote-service-editor-panel-drawer .quote-transport-add-button:hover,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
+}
+
+.quote-service-day-card-active .quote-service-current-services {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .quote-drawer-financial-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-editor-drawer .app-drawer-actions {
+    left: 1rem;
+    right: 1rem;
+    justify-content: flex-end;
+  }
+
+  .quote-service-editor-panel-drawer .quote-transport-add-button,
+  .quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+    width: 100%;
+  }
+}
+/* AXIS brand identity overrides */
+:root {
+  /* Core palette + surface/accent-strong/accent-soft/success redefinitions removed —
+     dead, overridden by the later --ds-sourced authoritative blocks. --warning/--danger
+     are kept: this block holds their last (winning) definition. Phase 1b consolidation. */
+  --warning: #D97706;
+  --danger: #DC2626;
+}
+
+/* (dead body background/color removed — redesign.css owns the canvas. Phase 1b) */
+
+.admin-sidebar {
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
+  color: rgba(255, 255, 255, 0.9);
+  border-right-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 18px 0 60px rgba(17, 24, 39, 0.16);
+}
+
+.admin-sidebar-brand {
+  padding: 0.75rem 0 1rem;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.admin-sidebar .admin-brand-row {
+  align-items: center;
+}
+
+.admin-brand-logo-wrapper {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.admin-brand-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.admin-top-nav-link-active {
+  background: rgba(31, 154, 207, 0.22);
+  border-color: rgba(230, 244, 243, 0.32);
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 0 #1F9ACF;
+}
+
+.admin-top-nav-link-active span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.primary-button,
+.app-button-primary,
+.invoice-portal-primary-button,
+.quote-dashboard-actions .primary-button,
+.booking-dashboard-actions .primary-button,
+.executive-dashboard-header-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button {
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(28, 127, 184, 0.2);
+  box-shadow: 0 18px 40px rgba(28, 127, 184, 0.24);
+}
+
+.primary-button:hover,
+.app-button-primary:hover,
+.invoice-portal-primary-button:hover,
+.quote-dashboard-actions .primary-button:hover,
+.booking-dashboard-actions .primary-button:hover,
+.executive-dashboard-header-actions .primary-button:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover {
+  background: linear-gradient(135deg, #1C7FB8 0%, #1F9ACF 100%);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
+}
+
+.secondary-button:hover,
+.app-button-secondary:hover,
+a:hover,
+.interactive-link:hover {
+  color: #1C7FB8;
+}
+
+.app-tabs button[aria-selected='true'],
+.app-tabs .active,
+.tab-active,
+.segmented-control-active {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: #1F9ACF;
+}
+
+.app-badge-primary,
+.badge-primary,
+.status-badge-active,
+.margin-badge-positive {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: rgba(31, 154, 207, 0.24);
+}
+
+.app-card,
+.workspace-card,
+.summary-panel,
+.financial-panel,
+.app-financial-panel {
+  background-color: #FFFFFF;
+  border-color: #E5E7EB;
+}
+
+.app-input:focus,
+.app-select:focus,
+.app-textarea:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #1F9ACF;
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
+}
+
+.app-financial-panel,
+.financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(230, 244, 243, 0.18);
+  box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
+}
+/* Correct Axis brand identity overrides — surface/accent now sourced from the
+   canonical design tokens (app/design-tokens.css). Values unchanged. The text/
+   border vars below are overridden later by the "Visual clarity pass" block, so
+   they stay literal here. */
+:root {
+  --background: var(--ds-color-surface-soft);
+  --foreground: #111827;
+  --text: #111827;
+  --surface: var(--ds-color-surface);
+  --surface-muted: #F4FAFD;
+  --border: #E5E7EB;
+  --muted-foreground: #6B7280;
+  --accent: var(--ds-color-accent);
+  --accent-strong: var(--ds-color-accent-strong);
+  --accent-soft: #E8F6FB;
+  --success: #1F9ACF;
+}
+
+/* (dead body background/color removed — redesign.css owns the canvas. Phase 1b) */
+
+.admin-sidebar {
+  background: #0B1F2A;
+  color: rgba(255, 255, 255, 0.9);
+  border-right-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 18px 0 60px rgba(11, 31, 42, 0.18);
+}
+
+.admin-brand-logo-wrapper {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.admin-brand-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.admin-top-nav-link-active {
+  background: rgba(31, 154, 207, 0.2);
+  border-color: rgba(31, 154, 207, 0.38);
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 0 #1F9ACF;
+}
+
+.primary-button,
+.app-button-primary,
+.invoice-portal-primary-button,
+.quote-dashboard-actions .primary-button,
+.booking-dashboard-actions .primary-button,
+.executive-dashboard-header-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
+.quote-service-editor-panel-drawer .quote-transport-add-button,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(28, 127, 184, 0.2);
+  box-shadow: 0 18px 40px rgba(28, 127, 184, 0.24);
+}
+
+.primary-button:hover,
+.app-button-primary:hover,
+.invoice-portal-primary-button:hover,
+.quote-dashboard-actions .primary-button:hover,
+.booking-dashboard-actions .primary-button:hover,
+.executive-dashboard-header-actions .primary-button:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover,
+.quote-service-editor-panel-drawer .quote-transport-add-button:hover,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"]:hover {
+  background: linear-gradient(135deg, #1C7FB8 0%, #1F9ACF 100%);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
+}
+
+.secondary-button:hover,
+.app-button-secondary:hover,
+a:hover,
+.interactive-link:hover {
+  color: #1C7FB8;
+}
+
+.app-tabs button[aria-selected='true'],
+.app-tabs .active,
+.tab-active,
+.segmented-control-active,
+.quote-service-editor-panel-drawer .quote-service-editor-tab-active {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: #1F9ACF;
+}
+
+.app-badge-primary,
+.badge-primary,
+.status-badge-active,
+.margin-badge-positive {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: rgba(31, 154, 207, 0.24);
+}
+
+.app-input:focus,
+.app-select:focus,
+.app-textarea:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #1F9ACF;
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
+}
+
+.app-financial-panel,
+.financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel {
+  background: linear-gradient(180deg, #0B1F2A 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(232, 246, 251, 0.18);
+  box-shadow: 0 24px 60px rgba(11, 31, 42, 0.2);
+}
+
+.quote-day-narrative-panel {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.quote-day-description-textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.quote-day-description-copy {
+  margin: 0;
+  color: #0F172A;
+  font-size: 0.98rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.quote-day-empty-content {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px dashed rgba(15, 23, 42, 0.22);
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: #475569;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-day-empty-content:hover,
+.quote-day-empty-content:focus-visible {
+  border-color: rgba(31, 154, 207, 0.38);
+  background: #FFFFFF;
+  color: #0F172A;
+}
+
+.quote-day-timeline-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.quote-day-timeline-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quote-day-timeline-head h4,
+.quote-day-timeline-head p {
+  margin: 0;
+}
+
+.quote-day-timeline-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quote-day-timeline-item {
+  display: grid;
+  grid-template-columns: minmax(4rem, auto) minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-day-timeline-item:hover,
+.quote-day-timeline-item:focus-visible {
+  border-color: rgba(31, 154, 207, 0.34);
+  background: #FFFFFF;
+}
+
+.quote-day-timeline-item span {
+  color: #1C7FB8;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.quote-day-timeline-item strong {
+  min-width: 0;
+  color: #0F172A;
+}
+
+.quote-day-timeline-item em {
+  grid-column: 2;
+  color: #475569;
+  font-size: 0.9rem;
+  font-style: normal;
+}
+
+.quote-timeline-drawer {
+  width: min(100%, 420px);
+}
+
+.quote-timeline-drawer-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-timeline-drawer-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: #475569;
+  font-weight: 700;
+}
+
+.quote-timeline-drawer-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Sidebar logo must render directly on the Axis sidebar. */
+.admin-sidebar {
+  background: #0B1F2A;
+}
+
+.admin-sidebar .admin-brand-row {
+  align-items: center;
+  justify-content: flex-start;
+  padding: 12px 16px;
+}
+
+.admin-sidebar .admin-brand-logo-wrapper {
+  display: contents;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.admin-sidebar .admin-brand-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Visual clarity pass — now sourced from the canonical design tokens
+   (app/design-tokens.css). Values are unchanged; this is the cascade tip
+   that defines the final core neutrals, so pointing it at --ds-* makes the
+   tokens load-bearing for the real rendered palette (Phase 1b). */
+:root {
+  --foreground: var(--ds-color-text);
+  --text: var(--ds-color-text);
+  --muted-foreground: var(--ds-color-text-muted);
+  --axis-text: var(--ds-color-text);
+  --axis-text-soft: var(--ds-color-text-muted);
+  --axis-border: var(--ds-color-border);
+  --border: var(--ds-color-border);
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
+}
+
+body,
+.admin-main-shell,
+.admin-content-shell {
+  color: #0F172A;
+  /* canvas background owned by redesign.css (--rd-canvas); dead value removed. Phase 1b */
+}
+
+.admin-shell,
+.login-page {
+  background: #F8FAFC;
+}
+
+.admin-sidebar {
+  background: #0B1F2A;
+  color: #F8FAFC;
+  border-right-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 14px 0 34px rgba(11, 31, 42, 0.22);
+}
+
+.admin-sidebar .admin-brand-logo {
+  height: 32px;
+  max-width: 220px;
+  image-rendering: auto;
+  filter: contrast(1.08) brightness(1.08);
+}
+
+.admin-sidebar-copy,
+.admin-sidebar .eyebrow,
+.admin-sidebar .admin-account-copy span,
+.admin-sidebar-powered,
+.admin-top-nav-link span,
+.admin-top-nav-link {
+  color: rgba(248, 250, 252, 0.82);
+}
+
+.admin-sidebar .admin-account-copy strong,
+.admin-top-nav-link strong {
+  color: #FFFFFF;
+}
+
+.admin-top-nav-link {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.admin-top-nav-link:hover,
+.admin-top-nav-link:focus-visible {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.admin-top-nav-link-active {
+  border-color: rgba(31, 154, 207, 0.58);
+  background: rgba(31, 154, 207, 0.28);
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 0 #1F9ACF, 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.admin-top-nav-link-active span {
+  color: rgba(248, 250, 252, 0.88);
+}
+
+.page-header,
+.section-title,
+.admin-subnav-title,
+.detail-card h2,
+.lead-card h2,
+.entity-card h2,
+.workspace-day-card h3,
+.workspace-sidebar-card h3,
+.quote-item-row h4,
+.costing-card strong,
+.workspace-summary-card strong {
+  color: #0F172A;
+}
+
+.copy,
+.detail-copy,
+.admin-subnav-copy,
+.workspace-summary-card p,
+.costing-card p,
+.workspace-sidebar-card p,
+.quote-item-row p,
+.lead-card p,
+.entity-card p,
+.form-helper,
+.search-combobox-selected {
+  color: #475569;
+}
+
+.detail-card,
+.lead-card,
+.entity-card,
+.workspace-sidebar-card,
+.costing-card,
+.quote-item-row,
+.workspace-day-card,
+.gallery-card,
+.import-itinerary-day-card,
+.import-itinerary-item-card,
+.admin-topbar,
+.admin-subnav-shell,
+.dashboard-card,
+.quote-hotel-step-panel,
+.quote-transport-suggestion-option,
+.quote-selected-transport-summary div,
+.quote-selected-transport-explanation,
+.quote-live-pricing-panel {
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+input,
+select,
+textarea,
+.search-combobox-shell input {
+  color: #0F172A;
+  border-color: rgba(15, 23, 42, 0.18);
+  background-color: #FFFFFF;
+}
+
+/* Mobile shell guardrails */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.admin-shell,
+.admin-main-shell,
+.admin-content-shell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-main-shell,
+.admin-content-shell {
+  overflow-x: clip;
+}
+
+.page,
+.panel,
+.workspace-shell-card,
+.executive-dashboard-page,
+.booking-ops-workspace-page,
+.panel.quote-workspace-page,
+.quote-workspace-page,
+.quote-builder-page,
+.quote-builder-shell,
+.quote-builder-layout,
+.quote-builder-main,
+.quote-builder-main-content,
+.quote-builder-sidebar,
+.quote-dashboard-header,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-step-shell,
+.quote-builder-health-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+@media (max-width: 979px) {
+  .admin-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .admin-sidebar {
+    display: none;
+  }
+
+  .admin-main-shell {
+    min-height: 100dvh;
+  }
+
+  .site-header.admin-header {
+    padding: 0.85rem;
+  }
+
+  .admin-mobile-nav {
+    display: block;
+    position: relative;
+    z-index: 30;
+    margin-bottom: 0.75rem;
+  }
+
+  .admin-mobile-nav summary {
+    width: fit-content;
+    margin-bottom: 0.65rem;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .admin-mobile-nav summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .admin-mobile-nav .admin-sidebar-nav {
+    display: grid;
+    gap: 0.55rem;
+    max-height: min(72dvh, 620px);
+    overflow-y: auto;
+    padding: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    background: #0B1F2A;
+    box-shadow: 0 18px 42px rgba(11, 31, 42, 0.2);
+  }
+
+  .admin-mobile-nav .admin-top-nav-link {
+    min-height: 52px;
+  }
+
+  .admin-topbar,
+  .admin-account,
+  .admin-subnav-shell,
+  .page-header,
+  .panel-header,
+  .workspace-section-head,
+  .dashboard-panel-header,
+  .quote-dashboard-header,
+  .quote-builder-header,
+  .quote-dashboard-title-row,
+  .quote-dashboard-actions {
+    min-width: 0;
+  }
+
+  .admin-topbar,
+  .quote-dashboard-header,
+  .quote-builder-header {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .admin-content-shell {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .page,
+  .panel,
+  .page.admin-dashboard-shell,
+  .panel.quote-workspace-page {
+    width: 100%;
+    max-width: 100%;
+    padding: var(--admin-page-padding);
+  }
+
+  .quote-builder-layout,
+  .quote-dashboard-header,
+  .quote-dashboard-workflow,
+  .quote-dashboard-tabs,
+  .quote-builder-stat-grid,
+  .dashboard-grid,
+  .dashboard-main-grid,
+  .reports-list-grid,
+  .detail-grid,
+  .workspace-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-builder-sidebar {
+    position: static;
+    width: 100%;
+  }
+
+  .quote-dashboard-actions,
+  .quote-dashboard-actions > *,
+  .quote-dashboard-actions form,
+  .quote-version-actions,
+  .quote-share-actions,
+  .quote-send-actions {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-drawer-panel,
+  .quote-service-editor-drawer {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+  }
+
+  .app-drawer-header,
+  .quote-service-editor-drawer .app-drawer-header {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .quote-service-editor-drawer .app-drawer-header > div:first-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-drawer-actions,
+  .quote-service-editor-drawer .app-drawer-actions {
+    position: static;
+    justify-content: stretch;
+    width: 100%;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .app-drawer-actions > *,
+  .quote-service-editor-drawer .app-drawer-actions > * {
+    width: 100%;
+  }
+
+  .app-drawer-body,
+  .quote-service-editor-drawer .app-drawer-body {
+    min-width: 0;
+    padding: 1rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .quote-drawer-financial-summary,
+  .quote-selected-transport-summary,
+  .quote-hotel-rate-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-editor-panel-drawer .quote-transport-add-button,
+  .quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --admin-page-padding: 0.85rem;
+  }
+
+  .admin-topbar,
+  .admin-subnav-shell,
+  .detail-card,
+  .workspace-section,
+  .workspace-sidebar-card,
+  .dashboard-card,
+  .quote-builder-step-shell,
+  .quote-builder-health-card,
+  .quote-dashboard-header,
+  .quote-dashboard-workflow,
+  .quote-dashboard-tabs {
+    padding: 1rem;
+  }
+
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4,
+  .quote-dashboard-meta-grid,
+  .quote-dashboard-workflow,
+  .quote-builder-stat-grid,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-account,
+  .quote-dashboard-actions,
+  .quote-version-actions,
+  .quote-share-actions,
+  .quote-send-actions {
+    display: grid;
+  }
+
+  .admin-account form,
+  .admin-account button,
+  .quote-dashboard-actions button,
+  .quote-dashboard-actions .secondary-button,
+  .quote-dashboard-actions .primary-button {
+    width: 100%;
+  }
+}
+
+.quote-money,
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.quote-pricing-summary-row p,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-service-card-financials .quote-money,
+.quote-service-card-pricing-summary .quote-money,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong,
+.money-cell {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-preview-total-list strong,
+.quote-pricing-summary-row > div,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-service-card-financials p,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong {
+  text-align: right;
+}
+
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong {
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+/* Final quote builder UX pass: keep the builder dense, scannable, and price-aligned. */
+.quote-pricing-workspace {
+  gap: 1.35rem;
+}
+
+.quote-pricing-hero {
+  border: 1px solid rgba(31, 154, 207, 0.12);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 253, 0.9)),
+    #FFFFFF;
+  box-shadow: 0 14px 34px rgba(17, 24, 39, 0.055);
+}
+
+.quote-pricing-hero .workspace-section-head {
+  align-items: center;
+}
+
+.quote-pricing-hero .detail-copy {
+  max-width: 62ch;
+}
+
+.quote-pricing-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.quote-pricing-hero-actions .primary-button,
+.quote-pricing-hero-actions .secondary-button {
+  min-height: 40px;
+  border-radius: 0.8rem;
+}
+
+.quote-pricing-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.quote-pricing-review-main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quote-pricing-review-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quote-pricing-context-panel.app-financial-panel {
+  box-shadow:
+    0 24px 60px rgba(17, 24, 39, 0.24),
+    0 10px 30px rgba(28, 127, 184, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.quote-pricing-context-panel .quote-pricing-summary-row {
+  grid-template-columns: minmax(0, 1fr) minmax(8.5rem, auto);
+}
+
+.quote-pricing-context-panel .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(2rem, 3vw, 2.55rem);
+}
+
+.quote-builder-main-content {
+  background: rgba(31, 154, 207, 0.035);
+}
+
+.quote-builder-main .workspace-section,
+.quote-builder-main .detail-card,
+.quote-builder-main .tab-panel-card,
+.quote-pricing-summary-card {
+  border-radius: 1rem;
+}
+
+.quote-builder-sidebar {
+  gap: 0.95rem;
+}
+
+.quote-pricing-summary-card {
+  gap: 0.95rem;
+  padding: 1.1rem;
+}
+
+.quote-pricing-summary-head {
+  padding-bottom: 0.2rem;
+}
+
+.quote-pricing-summary-head h3 {
+  font-size: 1.05rem;
+}
+
+.quote-pricing-summary-list {
+  gap: 0;
+}
+
+.quote-pricing-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, auto);
+  gap: 0.85rem;
+  align-items: start;
+  padding: 0.72rem 0;
+  border-top: 1px solid rgba(229, 231, 235, 0.72);
+}
+
+.quote-pricing-summary-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.quote-pricing-summary-row:last-child {
+  padding-bottom: 0;
+}
+
+.quote-pricing-summary-row > span {
+  line-height: 1.25;
+}
+
+.quote-pricing-summary-row strong,
+.quote-pricing-summary-row p,
+.quote-table-number-cell strong,
+.quote-service-card-pricing-summary .quote-service-card-price {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  box-shadow:
+    0 24px 58px rgba(17, 24, 39, 0.28),
+    0 10px 28px rgba(28, 127, 184, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+.app-financial-panel .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(2.15rem, 3.2vw, 2.75rem);
+}
+
+.quote-pricing-summary-card-actions .quote-pricing-summary-row {
+  grid-template-columns: minmax(0, 1fr) minmax(7.25rem, auto);
+}
+
+.quote-builder-sidebar-actions {
+  gap: 0.6rem;
+}
+
+.quote-builder-sidebar .secondary-button,
+.quote-builder-sidebar .primary-button,
+.quote-builder-sidebar button {
+  min-height: 40px;
+  border-radius: 0.8rem;
+}
+
+.quote-service-mini-card {
+  min-height: 0;
+  gap: 0.7rem;
+  padding: 0.95rem;
+}
+
+.quote-service-mini-card h5 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.24;
+}
+
+.quote-service-card-supplier {
+  margin: 0;
+}
+
+.quote-service-card-pricing-summary {
+  gap: 0.38rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(229, 231, 235, 0.86);
+  background: rgba(244, 250, 253, 0.78);
+}
+
+.quote-service-card-pricing-summary .quote-service-card-price {
+  display: block;
+  color: #1C7FB8;
+  font-size: 1.18rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.quote-service-card-pricing-summary span {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.quote-service-card-pricing-summary .quote-money {
+  margin-left: auto;
+  text-align: right;
+}
+
+.quote-service-mini-card-actions {
+  grid-template-columns: minmax(0, 1fr) minmax(5.75rem, auto);
+}
+
+.quote-table-number-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.quote-table-number-cell strong {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.quote-service-mini-card {
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 1rem;
+}
+
+.quote-service-mini-card-head {
+  min-height: 2rem;
+}
+
+.quote-service-mini-card-main {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.quote-service-mini-card-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, auto);
+  gap: 0.85rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.quote-service-mini-card-title-copy {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.quote-service-mini-card-title-copy > span {
+  color: #6B7280;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.quote-service-mini-card h5 {
+  margin: 0;
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 750;
+  line-height: 1.28;
+}
+
+.quote-service-mini-card-title-row > .quote-service-card-price {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #1C7FB8;
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 920;
+  line-height: 1.05;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-service-card-supplier {
+  margin: 0;
+  color: #6B7280;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.quote-service-card-pricing-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(229, 231, 235, 0.88);
+  border-radius: 0.85rem;
+  background: rgba(244, 250, 253, 0.72);
+}
+
+.quote-service-card-pricing-summary span {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  color: #6B7280;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.quote-service-card-pricing-summary .quote-money {
+  display: block;
+  min-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  color: #374151;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-service-card-pricing-summary .quote-ui-badge {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 0.05rem;
+}
+
+.quote-service-card-details {
+  margin-top: 0.1rem;
+}
+
+.quote-service-mini-card-actions {
+  margin-top: 0.05rem;
+}
+
+@media (max-width: 720px) {
+  .quote-service-mini-card-title-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-mini-card-title-row > .quote-service-card-price {
+    text-align: left;
+  }
+
+  .quote-service-card-pricing-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.quote-pricing-component-row td {
+  border-bottom-color: rgba(229, 231, 235, 0.86);
+}
+
+.quote-pricing-component-row:hover td {
+  background: rgba(244, 250, 253, 0.62);
+}
+
+.quote-pricing-component-cell {
+  min-width: 16rem;
+}
+
+.quote-pricing-component-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.quote-pricing-component-title strong {
+  color: #111827;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.quote-pricing-money-cell {
+  min-width: 9.5rem;
+  padding-inline: 0.9rem;
+}
+
+.quote-pricing-money-cell span {
+  display: none;
+}
+
+.quote-pricing-money-cell strong {
+  font-size: 0.98rem;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.quote-pricing-money-cell-cost strong {
+  color: #6B7280;
+  font-weight: 750;
+}
+
+.quote-pricing-money-cell-sell {
+  background: rgba(31, 154, 207, 0.045);
+}
+
+.quote-pricing-money-cell-sell strong {
+  color: #1C7FB8;
+  font-size: 1.04rem;
+}
+
+.quote-pricing-money-cell-margin {
+  background: rgba(2, 122, 72, 0.045);
+}
+
+.quote-pricing-money-cell-margin strong {
+  font-size: 1.04rem;
+}
+
+.quote-pricing-margin-percent {
+  margin-top: 0.18rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.quote-pricing-issue-cell {
+  min-width: 10rem;
+}
+
+.quote-pricing-issue-cell .quote-ui-badge {
+  max-width: 12rem;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-pricing-details-cell {
+  width: 1%;
+}
+
+.quote-pricing-details-cell .operations-row-details {
+  min-width: 10rem;
+}
+
+@media (max-width: 920px) {
+  .quote-pricing-component-cell,
+  .quote-pricing-money-cell,
+  .quote-pricing-issue-cell {
+    min-width: 0;
+  }
+
+  .quote-pricing-money-cell span {
+    display: block;
+    margin-bottom: 0.18rem;
+    color: #6B7280;
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
+@media (max-width: 1180px) {
+  .quote-pricing-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-pricing-review-sidebar {
+    position: static;
+    order: -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-pricing-hero .workspace-section-head,
+  .quote-pricing-hero-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .quote-pricing-hero-actions .primary-button,
+  .quote-pricing-hero-actions .secondary-button {
+    width: 100%;
+  }
+
+  .quote-pricing-context-panel .quote-pricing-summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Quote Builder spacing system: p-4 cards, p-6 page-level panels, consistent headings. */
+.quote-builder-page {
+  --quote-card-padding: 1rem;
+  --quote-panel-padding: 1.5rem;
+  --quote-card-radius: 1rem;
+  --quote-card-border: rgba(229, 231, 235, 0.9);
+  --quote-card-shadow: 0 14px 34px rgba(17, 24, 39, 0.055);
+}
+
+.quote-builder-shell {
+  gap: 1.25rem;
+}
+
+.quote-dashboard-header,
+.quote-step-shell,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-main-content,
+.quote-builder-sidebar,
+.quote-pricing-review-layout {
+  align-items: start;
+}
+
+.quote-dashboard-header,
+.quote-builder-step-shell {
+  padding: var(--quote-panel-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: var(--quote-card-shadow);
+}
+
+.quote-dashboard-workflow,
+.quote-dashboard-tabs {
+  padding: var(--quote-card-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
+}
+
+.quote-dashboard-workflow,
+.quote-step-nav {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(12rem, max-content);
+  grid-template-columns: none;
+  justify-content: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.quote-dashboard-workflow-step,
+.quote-step-link {
+  min-width: 12rem;
+  max-width: 17rem;
+  min-height: 2.6rem;
+  justify-content: flex-start;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-align: left;
+}
+
+.quote-dashboard-workflow-step span,
+.quote-step-link > span:not(.quote-step-index):not(.page-tab-badge),
+.quote-dashboard-tab-copy strong,
+.quote-dashboard-tab-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.quote-step-index {
+  flex: 0 0 auto;
+}
+
+.quote-builder-main-content {
+  padding: 0;
+  background: transparent;
+}
+
+.quote-builder-main,
+.quote-builder-main .section-stack,
+.quote-pricing-review-main,
+.quote-builder-sidebar,
+.quote-pricing-review-sidebar {
+  gap: 1rem;
+}
+
+.quote-builder-main .workspace-section,
+.quote-builder-main .detail-card,
+.quote-builder-main .tab-panel-card,
+.quote-pricing-hero,
+.quote-pricing-summary-card,
+.quote-service-mini-card,
+.quote-service-lane,
+.quote-service-current-services,
+.quote-service-side-section {
+  padding: var(--quote-card-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: var(--quote-card-shadow);
+}
+
+.quote-pricing-summary-card,
+.quote-pricing-context-panel.app-financial-panel {
+  padding: var(--quote-card-padding);
+}
+
+.quote-pricing-context-panel.app-financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  border-radius: var(--quote-card-radius);
+}
+
+.quote-dashboard-title-row h1,
+.quote-builder-main .workspace-section-head h2,
+.quote-builder-main .workspace-section-head h3,
+.quote-pricing-summary-head h3,
+.quote-service-mini-card h5 {
+  letter-spacing: 0;
+}
+
+.quote-dashboard-title-row h1 {
+  font-size: clamp(1.85rem, 2.4vw, 2.55rem);
+  line-height: 1.08;
+}
+
+.quote-builder-main .workspace-section-head h2 {
+  margin: 0.12rem 0 0;
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.quote-builder-main .workspace-section-head h3,
+.quote-pricing-summary-head h3 {
+  margin: 0.12rem 0 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.quote-builder-main .detail-copy,
+.quote-builder-main .table-subcopy,
+.quote-pricing-summary-row p,
+.quote-service-card-supplier {
+  color: #6B7280;
+}
+
+.quote-dashboard-meta-grid div,
+.summary-strip-card,
+.quote-preview-total-list > div,
+.quote-pricing-summary-row,
+.quote-service-card-pricing-summary {
+  border-radius: 0.75rem;
+}
+
+.quote-builder-sidebar {
+  align-content: start;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-card {
+  width: 100%;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-card:not(.app-financial-panel) {
+  background: #FFFFFF;
+}
+
+.quote-pricing-summary-row {
+  min-height: 3.25rem;
+}
+
+@media (max-width: 720px) {
+  .quote-dashboard-header,
+  .quote-builder-step-shell {
+    padding: var(--quote-card-padding);
+  }
+}
+
+/* Itinerary Builder visual hierarchy and finance value safeguards. */
+.quote-service-planner .quote-service-day-column {
+  gap: 1.5rem;
+}
+
+.quote-service-planner .quote-service-day-card-active {
+  width: 100%;
+  padding: 1.5rem;
+  border: 1px solid rgba(207, 216, 227, 0.95);
+  border-radius: 1.1rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.07);
+}
+
+.quote-service-planner .quote-service-day-panel-body {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.quote-service-planner .workspace-day-header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.quote-service-day-kicker {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.quote-service-day-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.28rem 0.58rem;
+  border-radius: 0.6rem;
+  background: #111827;
+  color: #FFFFFF;
+  font-size: 0.76rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  margin-top: 0.45rem;
+  color: #111827;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.15;
+}
+
+.quote-service-planner .workspace-day-copy {
+  max-width: 62rem;
+  margin-top: 0.45rem;
+  color: #5B6472;
+  line-height: 1.55;
+}
+
+.quote-service-planner .quote-service-day-meta {
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 15rem;
+}
+
+.quote-service-planner .quote-service-add-primary {
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.7rem;
+  font-size: 0.82rem;
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-day-layout-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.28fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.quote-service-planner .quote-service-current-services,
+.quote-service-planner .quote-service-side-section {
+  min-width: 0;
+  border-radius: 1rem;
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-current-services {
+  display: grid;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.quote-service-planner .quote-service-card-price,
+.quote-service-planner .quote-money,
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.financial-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-pricing-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9.5rem, max-content);
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+
+.quote-pricing-summary-row > span,
+.quote-pricing-summary-row > div,
+.financial-value-shell {
+  min-width: 0;
+}
+
+.financial-value-shell {
+  justify-self: end;
+  max-width: 100%;
+  text-align: right;
+}
+
+.quote-pricing-summary-row strong,
+.financial-value {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  color: #111827;
+  font-weight: 850;
+  line-height: 1.16;
+  text-align: right;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row,
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row {
+  grid-template-columns: minmax(0, 1fr) minmax(10.5rem, max-content);
+}
+
+.quote-pricing-context-panel.app-financial-panel .financial-value,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value {
+  font-size: clamp(1rem, 1.3vw, 1.28rem);
+}
+
+@media (max-width: 980px) {
+  .quote-service-planner .workspace-day-header,
+  .quote-service-planner .quote-service-day-layout-visual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-planner .workspace-day-header {
+    display: grid;
+  }
+
+  .quote-service-planner .quote-service-day-meta {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-day-card-active {
+    padding: 1rem;
+  }
+
+  .quote-service-planner .quote-service-mini-card-title-row,
+  .quote-service-planner .quote-service-card-pricing-summary,
+  .quote-pricing-summary-row,
+  .quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row,
+  .quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-planner .quote-service-card-price,
+  .financial-value-shell,
+  .quote-pricing-summary-row strong,
+  .financial-value {
+    justify-self: start;
+    text-align: left;
+  }
+}
+
+/* Final Itinerary Builder hierarchy pass. */
+.quote-service-planner {
+  gap: 1.5rem;
+}
+
+.quote-service-planner > .workspace-tab-header {
+  padding: 1.5rem;
+  border: 1px solid rgba(207, 216, 227, 0.95);
+  border-radius: 1.15rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6F8FB 100%);
+  box-shadow: 0 16px 38px rgba(17, 24, 39, 0.055);
+}
+
+.quote-service-planner > .workspace-tab-header .workspace-section-head h2 {
+  color: #111827;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  font-weight: 850;
+  line-height: 1.16;
+}
+
+.quote-service-planner > .workspace-tab-header > .detail-copy {
+  max-width: 66rem;
+  margin-top: 0.55rem;
+  color: #5B6472;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.quote-service-planner .quote-base-program-panel-open,
+.quote-service-planner .workspace-tab-panels {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.quote-service-planner .section-stack {
+  gap: 1.35rem;
+}
+
+.quote-service-workflow-summary {
+  padding: 1.5rem;
+  border: 1px solid rgba(28, 127, 184, 0.22);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(180deg, rgba(239, 248, 252, 0.88) 0%, rgba(255, 255, 255, 0.96) 100%);
+  box-shadow: 0 16px 36px rgba(17, 24, 39, 0.055);
+}
+
+.quote-service-workflow-summary .workspace-section-head h3 {
+  color: #0F172A;
+  font-size: clamp(1.25rem, 1.75vw, 1.65rem);
+  font-weight: 850;
+  line-height: 1.18;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list {
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  align-items: start;
+  justify-content: stretch;
+  gap: 0.45rem;
+  min-height: 92px;
+  min-width: 0;
+  padding: 0.85rem 0.95rem;
+  border-color: rgba(203, 213, 225, 0.84);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > span,
+.quote-service-workflow-summary .quote-preview-total-list > div > strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > span {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > strong {
+  align-self: end;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.quote-service-planner-shell.quote-service-planner-saas-grid {
+  grid-template-columns: minmax(13rem, 0.24fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 0.25rem;
+}
+
+.quote-service-day-nav {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  padding: 0.9rem;
+  border-color: rgba(226, 232, 240, 0.95);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.04);
+}
+
+.quote-service-day-nav-head {
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.quote-service-day-nav-card {
+  padding: 0.75rem;
+  border-color: rgba(226, 232, 240, 0.88);
+  background: rgba(248, 250, 252, 0.72);
+  box-shadow: none;
+}
+
+.quote-service-day-nav-card-active {
+  border-color: rgba(28, 127, 184, 0.42);
+  background: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(28, 127, 184, 0.08);
+}
+
+.quote-service-planner .quote-service-day-column {
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+.quote-service-planner .quote-service-day-card-active {
+  padding: 1.75rem;
+  border-color: rgba(148, 163, 184, 0.58);
+  border-radius: 1.2rem;
+  background:
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 22px 48px rgba(17, 24, 39, 0.08);
+}
+
+.quote-service-planner .quote-service-day-card-focused,
+.quote-service-planner .quote-service-day-card-active.quote-service-day-card-focused {
+  border-color: rgba(28, 127, 184, 0.48);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.11);
+}
+
+.quote-service-planner .quote-service-day-panel-body {
+  gap: 1.35rem;
+}
+
+.quote-service-planner .workspace-day-header {
+  gap: 1.25rem;
+  padding-bottom: 1.2rem;
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  font-size: clamp(1.55rem, 2.25vw, 2.05rem);
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.quote-service-day-label {
+  min-height: 2rem;
+  padding: 0.35rem 0.68rem;
+  border-radius: 0.68rem;
+  font-size: 0.8rem;
+}
+
+.quote-service-planner .quote-service-day-meta .page-tab-badge {
+  border-color: rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.86);
+  color: #475467;
+}
+
+.quote-service-planner .quote-service-add-primary {
+  background: #1C7FB8;
+}
+
+.quote-service-planner .quote-service-current-services,
+.quote-service-planner .quote-service-side-section {
+  padding: 1.1rem;
+}
+
+.quote-service-planner .quote-service-side-section {
+  border-color: rgba(226, 232, 240, 0.88);
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.quote-service-planner .quote-service-side-section .workspace-section-head h4 {
+  font-size: 0.95rem;
+}
+
+.quote-service-planner input,
+.quote-service-planner select,
+.quote-service-planner textarea {
+  min-height: 2.45rem;
+}
+
+.quote-service-planner textarea {
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(11rem, 0.28fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-day-nav {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner > .workspace-tab-header,
+  .quote-service-workflow-summary,
+  .quote-service-planner .quote-service-day-card-active {
+    padding: 1rem;
+  }
+
+  .quote-service-planner .workspace-day-header h3 {
+    font-size: 1.35rem;
+  }
+}
+
+/* Itinerary Builder main-content service layout. */
+.quote-service-planner .quote-service-day-layout-visual {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.quote-service-planner .quote-service-current-services {
+  width: 100%;
+  padding: 1.25rem;
+  border-color: rgba(203, 213, 225, 0.9);
+  background: #FFFFFF;
+}
+
+.quote-service-planner .quote-service-current-services > .workspace-section-head {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+}
+
+.quote-service-planner .quote-service-current-services > .workspace-section-head h4 {
+  color: #111827;
+  font-size: 1.08rem;
+  font-weight: 850;
+}
+
+.quote-service-planner .quote-service-empty-add {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.quote-dashboard-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.quote-dashboard-tab {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.55rem;
+  min-height: 4.25rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+.quote-dashboard-tab-index {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: #EEF2F7;
+  color: #344054;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.quote-dashboard-tab-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.quote-dashboard-tab-copy strong {
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.quote-dashboard-tab-copy small {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.quote-dashboard-tab-active {
+  border-color: #1F9ACF;
+  background: #E8F6FB;
+  color: #145F83;
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.26), 0 8px 18px rgba(31, 154, 207, 0.12);
+}
+
+.quote-dashboard-tab-active .quote-dashboard-tab-index {
+  background: #1F9ACF;
+  color: #FFFFFF;
+}
+
+.quote-dashboard-tab-active .quote-dashboard-tab-copy small {
+  color: #145F83;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(2) strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(3) strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(4) strong {
+  font-size: 1.08rem;
+}
+
+.quote-service-empty-state-collapsed {
+  padding: 0;
+  border-style: dashed;
+  background: #F8FAFC;
+}
+
+.quote-service-empty-state-collapsed summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.72rem 0.82rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.quote-service-empty-state-collapsed summary::-webkit-details-marker {
+  display: none;
+}
+
+.quote-service-empty-state-collapsed summary span {
+  min-width: 0;
+  color: #667085;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.quote-service-empty-state-collapsed summary strong {
+  color: #1C7FB8;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.quote-service-empty-state-collapsed[open] {
+  padding-bottom: 0.75rem;
+}
+
+.quote-service-empty-state-collapsed[open] > :not(summary) {
+  margin: 0 0.82rem;
+}
+
+.quote-service-planner .quote-service-lane-head strong {
+  width: auto;
+  min-width: 3.1rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.quote-service-editor-drawer .quote-drawer-section {
+  border-radius: 8px;
+}
+
+.quote-service-editor-drawer .quote-drawer-section-head h3 {
+  font-size: 1rem;
+}
+
+.quote-service-editor-drawer .primary-button,
+.quote-service-editor-drawer .quote-transport-add-button,
+.quote-service-editor-drawer .service-entry-form > button[type="submit"] {
+  min-height: 2.65rem;
+  font-weight: 900;
+}
+
+@media (max-width: 1180px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

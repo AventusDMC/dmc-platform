@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../../lib/global-css-source';
 import { describe, it } from 'node:test';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
@@ -18,7 +19,7 @@ const serviceUpdateRouteSource = readFileSync(new URL('../../api/bookings/[id]/d
 const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
 const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
 const invoiceGenerationRouteSource = readFileSync(new URL('../../api/bookings/[id]/invoice/route.ts', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
+const cssSource = globalCssSource;
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {

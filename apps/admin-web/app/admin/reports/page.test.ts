@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../../lib/global-css-source';
 import test from 'node:test';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
+const cssSource = globalCssSource;
 
 test('reports page renders KPI cards for booking summary metrics', () => {
   assert.match(pageSource, /Total Revenue/);

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../lib/global-css-source';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 const source = readFileSync(join(process.cwd(), 'app/operations/page.tsx'), 'utf8');
-const cssSource = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
+const cssSource = globalCssSource;
 
 describe('operations dashboard department workspace', () => {
   it('renders the hotel reservation workflow states', () => {

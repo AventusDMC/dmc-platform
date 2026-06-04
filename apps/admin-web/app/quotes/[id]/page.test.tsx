@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../../lib/global-css-source';
 import { describe, it } from 'node:test';
 import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal-paths';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
@@ -38,7 +39,7 @@ const quoteDetailApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/ro
 const quoteExcursionExpandApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/excursion-templates/[templateId]/expand/route.ts', import.meta.url), 'utf8');
 const quoteCancelApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/cancel/route.ts', import.meta.url), 'utf8');
 const transportPricingModesSource = readFileSync(new URL('../../lib/transport-pricing-modes.ts', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
+const cssSource = globalCssSource;
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
