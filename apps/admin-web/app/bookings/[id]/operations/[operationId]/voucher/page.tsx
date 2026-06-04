@@ -220,7 +220,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
     <div
       style={{
         background: 'var(--ds-color-surface-soft, #F9FAFB)',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.75rem 0.9rem',
         marginBottom: '0.85rem',
@@ -294,7 +294,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
             color: 'var(--ds-color-text-muted, #475569)',
             fontSize: '0.85rem',
             lineHeight: 1.45,
-            borderTop: '1px dashed #e4e7ec',
+            borderTop: '1px dashed var(--ds-color-border-subtle, #E4E7EC)',
             paddingTop: '0.4rem',
           }}
         >

@@ -417,7 +417,7 @@ export function GuidedJourneyComposer({
     <section
       style={{
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 12,
         padding: '1.25rem',
         display: 'grid',
@@ -545,7 +545,7 @@ function JourneyFlowSection({ destinations, quote }: { destinations: string[]; q
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -618,7 +618,7 @@ function PacingSection({ pacing, notes }: { pacing: GuidedSuggestionsResponse['p
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -676,7 +676,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -729,7 +729,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
                     gap: '0.6rem',
                     padding: '0.45rem 0.65rem',
                     background: 'var(--ds-color-canvas, #F8FAFC)',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
                     borderRadius: 8,
                   }}
                 >
@@ -841,7 +841,7 @@ function ReadinessSection({ readiness }: { readiness: ReturnType<typeof computeQ
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -901,7 +901,7 @@ function SuggestedHotelsSection({
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -1066,7 +1066,7 @@ function HotelCard({
     <div
       style={{
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.55rem 0.7rem',
         display: 'grid',
@@ -1184,7 +1184,7 @@ function SuggestedExperiencesSection({
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -1414,7 +1414,7 @@ function ExperienceCard({
     <div
       style={{
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.55rem 0.7rem',
         display: 'grid',
@@ -1544,7 +1544,7 @@ function SuggestedTransportSection({
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '1rem 1.1rem',
       }}
@@ -1663,7 +1663,7 @@ function TransportRecommendationCard({
     <div
       style={{
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '0.85rem 1rem',
       }}
@@ -1783,7 +1783,7 @@ function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
     <div
       style={{
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.5rem 0.7rem',
       }}

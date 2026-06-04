@@ -98,7 +98,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
 
       <RouteStandardBuilderPanel />
 
-      <section style={{ background: '#ffffff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#ffffff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>
           {activeCount} active / {standards.length} total
         </h2>
@@ -111,22 +111,22 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>From → To</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec', textAlign: 'right' }}>Distance</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec', textAlign: 'right' }}>Duration</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec', textAlign: 'right' }}>Buffer</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Confidence</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Active</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}></th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Code</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Name</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>From → To</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)', textAlign: 'right' }}>Distance</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)', textAlign: 'right' }}>Duration</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)', textAlign: 'right' }}>Buffer</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Confidence</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Active</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}></th>
                 </tr>
               </thead>
               <tbody>
                 {standards.map((s) => {
                   const confidence = computeTimingConfidenceLabel(s);
                   return (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                       <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>
                         <strong>{s.routeCode}</strong>
                         {/* Cleanup Phase v1 — canonical FROM_TO code chip
@@ -276,7 +276,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                       <td style={{ padding: '0.5rem' }}>
                         <span
                           style={{
-                            background: s.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
+                            background: s.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : 'var(--ds-color-surface-soft, #F9FAFB)',
                             color: s.isActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,

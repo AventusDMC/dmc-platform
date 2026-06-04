@@ -28,6 +28,7 @@
   --ds-color-surface: #FFFFFF;       /* cards / panels */
   --ds-color-surface-soft: #F9FAFB;  /* muted section background */
   --ds-color-border: #D5DCE6;
+  --ds-color-border-subtle: #E4E7EC; /* lighter hairline — inner dividers, nested cards (Phase 3 border-tier consolidation) */
 
   /* Text */
   --ds-color-text: #0F172A;          /* default body ink */

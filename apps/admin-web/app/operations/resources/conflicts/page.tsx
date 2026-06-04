@@ -302,7 +302,7 @@ function ConflictSection({
       <section
         style={{
           background: '#ffffff',
-          border: `1px solid #e4e7ec`,
+          border: `1px solid var(--ds-color-border-subtle, #E4E7EC)`,
           borderLeft: `4px solid ${accent}`,
           borderRadius: 10,
           padding: '0.75rem 1rem',
@@ -399,7 +399,7 @@ function ConflictCard({
               gap: '0.55rem',
               padding: '0.4rem 0.55rem',
               background: '#fafbfc',
-              border: '1px solid #e4e7ec',
+              border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
               borderRadius: 6,
               alignItems: 'center',
               fontSize: '0.85rem',
@@ -421,7 +421,7 @@ function ConflictCard({
             </span>
             <span
               style={{
-                background: '#f2f4f7',
+                background: 'var(--ds-color-surface-soft, #F9FAFB)',
                 color: 'var(--ds-color-text-muted, #475569)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,
@@ -433,7 +433,7 @@ function ConflictCard({
             </span>
             <span
               style={{
-                background: s.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
+                background: s.executionStatus === 'READY' ? 'var(--ds-color-surface-soft, #F9FAFB)' : 'var(--ds-color-info-surface, #EFF8FF)',
                 color: s.executionStatus === 'READY' ? 'var(--ds-color-text-muted, #475569)' : 'var(--ds-color-info, #175CD3)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,

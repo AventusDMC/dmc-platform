@@ -464,7 +464,7 @@ function StatusPill({ label, value, ok }: { label: string; value: string; ok: bo
   return (
     <span
       style={{
-        background: ok ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
+        background: ok ? 'var(--ds-color-success-surface, #ECFDF3)' : 'var(--ds-color-surface-soft, #F9FAFB)',
         color: ok ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
         padding: '0.1rem 0.4rem',
         borderRadius: 6,
@@ -499,7 +499,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
     <article
       style={{
         background: isCritical ? tone.bg : '#ffffff',
-        border: isCritical ? `2px solid ${tone.border}` : '1px solid #e4e7ec',
+        border: isCritical ? `2px solid ${tone.border}` : '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: isCritical ? `8px solid ${tone.border}` : `4px solid ${tone.border}`,
         borderRadius: 10,
         padding: isCritical ? '0.9rem 1rem' : '0.7rem 0.9rem',
@@ -709,7 +709,7 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
       open={startOpen}
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '0.75rem 1rem',
       }}
@@ -855,7 +855,7 @@ function renderDispatchBody({
             </p>
           </div>
           <div className="admin-heading-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: '0.25rem', background: '#f2f4f7', padding: '0.2rem', borderRadius: 8 }}>
+            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--ds-color-surface-soft, #F9FAFB)', padding: '0.2rem', borderRadius: 8 }}>
               {VIEW_OPTIONS.map((opt) => (
                 <Link
                   key={opt.value}
@@ -1102,7 +1102,7 @@ function renderDispatchBody({
             flexDirection: 'column',
             gap: '0.5rem',
             background: '#ffffff',
-            border: '1px solid #e4e7ec',
+            border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
             borderRadius: 10,
             padding: '0.85rem 1rem',
           }}
@@ -1475,7 +1475,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
                 top: '0.5rem',
                 background: '#ffffff',
                 padding: '0.5rem 0 0.5rem 0',
-                borderRight: '2px solid #e4e7ec',
+                borderRight: '2px solid var(--ds-color-border-subtle, #E4E7EC)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.2rem',
@@ -1579,7 +1579,7 @@ function LanesView({ data, returnTo }: { data: DispatchResponse; returnTo: strin
 
 function SidebarStat({ label, value, accent, sub }: { label: string; value: number | string; accent: string; sub?: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid #f2f4f7' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
       <div>
         <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>{label}</div>
         {sub ? <div style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.7rem' }}>{sub}</div> : null}

@@ -173,7 +173,7 @@ export default async function SimulationPage({
           <section
             style={{
               background: '#ffffff',
-              border: '1px solid #e4e7ec',
+              border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
               borderRadius: 10,
               padding: '1rem',
               display: 'flex',
@@ -218,7 +218,7 @@ export default async function SimulationPage({
           <section
             style={{
               background: '#ffffff',
-              border: '1px solid #e4e7ec',
+              border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
               borderRadius: 10,
               padding: '1rem',
               display: 'flex',
@@ -297,7 +297,7 @@ export default async function SimulationPage({
         <aside
           style={{
             background: '#ffffff',
-            border: '1px solid #e4e7ec',
+            border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
             borderRadius: 10,
             padding: '0.85rem 1rem',
             display: 'flex',
@@ -385,7 +385,7 @@ function ScenarioCard({
       action={`/api/operations/simulation/scenarios/${scenario.key}`}
       style={{
         background: '#fafbfc',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.75rem',
         display: 'flex',

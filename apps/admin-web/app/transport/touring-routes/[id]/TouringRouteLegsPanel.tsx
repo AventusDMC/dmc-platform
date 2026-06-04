@@ -404,7 +404,7 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
       <div
         style={{
           background: 'var(--ds-color-surface-soft, #F9FAFB)',
-          border: '1px solid #e4e7ec',
+          border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
           borderRadius: 10,
           padding: '0.85rem 1rem',
         }}
@@ -619,7 +619,7 @@ function LegRow({
         gap: '0.65rem',
         padding: '0.55rem 0.7rem',
         background: '#fff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         alignItems: 'center',
       }}

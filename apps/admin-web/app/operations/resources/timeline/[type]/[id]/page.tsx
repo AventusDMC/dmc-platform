@@ -126,7 +126,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                 key={dateKey}
                 style={{
                   background: '#ffffff',
-                  border: '1px solid #e4e7ec',
+                  border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
                   borderRadius: 10,
                   padding: '0.85rem 1rem',
                   display: 'flex',
@@ -151,7 +151,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                           gap: '0.6rem',
                           padding: '0.55rem 0.75rem',
                           background: tone?.bg || '#fafbfc',
-                          border: `1px solid ${tone?.border || '#e4e7ec'}`,
+                          border: `1px solid ${tone?.border || 'var(--ds-color-border-subtle, #E4E7EC)'}`,
                           borderRadius: 6,
                           alignItems: 'center',
                           fontSize: '0.88rem',
@@ -172,7 +172,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         </span>
                         <span
                           style={{
-                            background: '#f2f4f7',
+                            background: 'var(--ds-color-surface-soft, #F9FAFB)',
                             color: 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,
@@ -184,7 +184,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         </span>
                         <span
                           style={{
-                            background: item.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
+                            background: item.executionStatus === 'READY' ? 'var(--ds-color-surface-soft, #F9FAFB)' : 'var(--ds-color-info-surface, #EFF8FF)',
                             color: item.executionStatus === 'READY' ? 'var(--ds-color-text-muted, #475569)' : 'var(--ds-color-info, #175CD3)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,

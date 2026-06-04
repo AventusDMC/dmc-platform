@@ -158,7 +158,7 @@ function CheckSection({ title, accent, checks }: { title: string; accent: string
     <section
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: `6px solid ${accent}`,
         borderRadius: 10,
         padding: '0.85rem 1rem',

@@ -288,7 +288,7 @@ export default async function RehearsalPage({
                 </thead>
                 <tbody>
                   {scorecard.actorStats.map((a) => (
-                    <tr key={a.actor} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                    <tr key={a.actor} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                       <td style={{ padding: '0.4rem', fontWeight: 600 }}>{a.actor}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: 700 }}>{a.totalActions}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right' }}>{a.dispatches}</td>
@@ -334,7 +334,7 @@ export default async function RehearsalPage({
                     gap: '0.5rem',
                     padding: '0.4rem 0.6rem',
                     background: '#ffffff',
-                    border: '1px solid #e4e7ec',
+                    border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
                     borderRadius: 6,
                     alignItems: 'center',
                     fontSize: '0.8rem',
@@ -377,7 +377,7 @@ function ScenarioCard({ scenario, sessionStartIso }: { scenario: Scenario; sessi
     <div
       style={{
         background: '#fafbfc',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         padding: '0.75rem',
         display: 'flex',
@@ -425,7 +425,7 @@ function Panel({ title, accent, children }: { title: string; accent: string; chi
     <section
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: `6px solid ${accent}`,
         borderRadius: 10,
         padding: '0.85rem 1rem',

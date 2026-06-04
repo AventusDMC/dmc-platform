@@ -218,7 +218,7 @@ export default async function FinancialIntelligencePage() {
                   <span style={{ minWidth: '6rem', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: c.color }}>
                     {money(c.amount)}
                   </span>
-                  <span style={{ flex: 1, background: '#f2f4f7', borderRadius: 999, height: 10, position: 'relative', overflow: 'hidden' }}>
+                  <span style={{ flex: 1, background: 'var(--ds-color-surface-soft, #F9FAFB)', borderRadius: 999, height: 10, position: 'relative', overflow: 'hidden' }}>
                     <span
                       style={{
                         background: c.color,
@@ -265,7 +265,7 @@ export default async function FinancialIntelligencePage() {
             </thead>
             <tbody>
               {data.topCostRows.map((r) => (
-                <tr key={r.bookingServiceId} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                <tr key={r.bookingServiceId} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                   <td style={{ padding: '0.5rem', fontWeight: 600 }}>{r.bookingRef || r.bookingServiceId.slice(0, 8)}</td>
                   <td style={{ padding: '0.5rem' }}>{r.operationType}</td>
                   <td style={{ padding: '0.5rem' }}>{r.supplierName || '—'}</td>
@@ -330,7 +330,7 @@ function Panel({ title, accent, children }: { title: string; accent: string; chi
     <section
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: `6px solid ${accent}`,
         borderRadius: 10,
         padding: '0.85rem 1rem',
@@ -387,7 +387,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
         {suppliers.map((s) => {
           const tone = reliabilityTone(s.reliabilityScore);
           return (
-            <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
+            <tr key={s.id} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
               <td style={{ padding: '0.4rem', fontWeight: 600 }}>{s.name}</td>
               <td style={{ padding: '0.4rem', textAlign: 'center' }}>
                 <span

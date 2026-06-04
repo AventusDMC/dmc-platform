@@ -409,7 +409,7 @@ function SuggestionRow({
         gridTemplateColumns: 'minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(160px, 1.2fr) auto',
         gap: '0.55rem',
         padding: '0.5rem 0.85rem',
-        borderTop: '1px solid #f2f4f7',
+        borderTop: '1px solid var(--ds-color-surface-soft, #F9FAFB)',
         alignItems: 'baseline',
       }}
     >
