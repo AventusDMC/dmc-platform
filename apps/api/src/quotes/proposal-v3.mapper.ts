@@ -449,6 +449,8 @@ function getFooterLine(quote: ProposalV3Quote, brandName: string) {
 }
 
 type NullableProposalV3QuoteItem = ProposalV3QuoteItem | null | undefined;
+type ProposalV3DayPoiAssignment = NonNullable<ProposalV3QuotePlannerDay['poiAssignments']>[number];
+
 type ProposalV3DaySource = {
   id: string;
   dayNumber: number;
@@ -457,6 +459,8 @@ type ProposalV3DaySource = {
   /** Stored manual country override for the day (planner days only); null = derive. */
   country?: string | null;
   items: ProposalV3QuoteItem[];
+  /** Phase 3B.2 — ordered POI assignments (planner days only); legacy days have none. */
+  poiAssignments?: ProposalV3DayPoiAssignment[];
 };
 
 function isPresentQuoteItem(item: NullableProposalV3QuoteItem): item is ProposalV3QuoteItem {
@@ -832,6 +836,7 @@ function buildActivePlannerDaySources(quote: ProposalV3Quote): ProposalV3DaySour
       title: day.title,
       description: day.notes || null,
       country: (day as any).country ?? null,
+      poiAssignments: Array.isArray(day.poiAssignments) ? day.poiAssignments : [],
       items: (day.dayItems || [])
         .filter((dayItem) => dayItem?.isActive !== false && isPresentQuoteItem(dayItem?.quoteService))
         .sort(sortPlannerDayItems)
@@ -953,6 +958,100 @@ function appendDayGroups(target: ProposalV3Day, groups: ProposalV3DayGroup[]) {
   }
 }
 
+// Phase 3B.2 — resolve one POI assignment's display text via the approved
+// fallback chain. Never invents content; only reads POI translations + the
+// snapshot stored on the assignment row.
+function resolvePoiAssignmentDisplay(assignment: ProposalV3DayPoiAssignment, locale: ProposalLocale) {
+  const poi = assignment.pointOfInterest || null;
+  const translations = poi && Array.isArray(poi.translations) ? poi.translations : [];
+  const pick = (loc: string, field: 'title' | 'shortDescription') => {
+    const entry = translations.find((t) => String(t?.locale || '').toLowerCase() === loc);
+    return cleanText((entry as { title?: string | null; shortDescription?: string | null } | undefined)?.[field] || '');
+  };
+
+  // Title: selected-locale translation → English translation → internal POI
+  // name → stored fallbackTitle (covers the deleted-POI case where poi is null).
+  const title =
+    pick(locale, 'title') ||
+    pick('en', 'title') ||
+    (poi ? cleanText(poi.name || '') : '') ||
+    cleanText(assignment.fallbackTitle || '');
+
+  // Optional short description: selected locale → English. Never falls back to
+  // a snapshot (there is none for descriptions).
+  const short = conciseCopy(pick(locale, 'shortDescription') || pick('en', 'shortDescription'), 160);
+
+  // City: linked POI city → stored fallbackCity snapshot.
+  const city = (poi && poi.city?.name ? cleanText(poi.city.name) : '') || cleanText(assignment.fallbackCity || '');
+
+  return { title, short, city };
+}
+
+// Client-safety gate that is script-aware. isClientSafeCopy normalizes to ASCII
+// and treats non-Latin text (e.g. Arabic) as "weak/placeholder" because it has
+// no a-z characters — which would wrongly discard curated Arabic POI content.
+// So only apply the full filter when there is Latin script to validate; trust
+// non-Latin curated translations otherwise.
+function isComposedCopyClientSafe(value: string | null | undefined): boolean {
+  const cleaned = cleanText(value);
+  if (!cleaned) {
+    return false;
+  }
+  if (/[a-z]/i.test(cleaned)) {
+    return isClientSafeCopy(cleaned);
+  }
+  return true;
+}
+
+// Compose a conservative, client-safe day summary from ordered POI assignments
+// in the active locale. Returns null when there is nothing usable (so the caller
+// falls back to day.notes). No breakfast/overnight/departure invention.
+function composeDayNarrativeFromPois(
+  assignments: ProposalV3DayPoiAssignment[] | undefined,
+  locale: ProposalLocale,
+): string | null {
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    return null;
+  }
+
+  const ordered = [...assignments].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const sentences: string[] = [];
+
+  for (const assignment of ordered) {
+    const display = resolvePoiAssignmentDisplay(assignment, locale);
+    // The visit target: title, else city. Skip only when a row has no usable
+    // POI, no fallbackTitle, and no fallbackCity (a true operational/empty row).
+    const label = display.title || display.city;
+    if (!label) {
+      continue;
+    }
+
+    let sentence = proseTemplate(locale, 'svcVisit', { location: label });
+    if (display.short && isComposedCopyClientSafe(display.short)) {
+      sentence = `${sentence} — ${display.short}`;
+    }
+    sentence = sentence.trim();
+    if (sentence && !/[.!?…]$/.test(sentence)) {
+      sentence = `${sentence}.`;
+    }
+    if (sentence) {
+      sentences.push(sentence);
+    }
+  }
+
+  if (sentences.length === 0) {
+    return null;
+  }
+
+  const composed = cleanText(sentences.join(' '));
+  // Final client-safety gate: a composed paragraph that fails validation is
+  // discarded so the day falls back to its existing notes.
+  if (!isComposedCopyClientSafe(composed)) {
+    return null;
+  }
+  return composed;
+}
+
 function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const daySources = getProposalDaySources(quote);
   const usingActivePlannerDays = buildActivePlannerDaySources(quote).length > 0;
@@ -961,12 +1060,20 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const days = daySources.map((day) => {
     const location = extractDayLocation(day.title, day.dayNumber);
     const dayItems = day.items.filter((item) => !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)));
-    const summary = cleanText(day.description || '');
+    // Phase 3B.2 — day-summary precedence:
+    //   1) composed POI narrative (when the day has usable POI assignments)
+    //   2) existing day.notes (unchanged when there are no POI rows or the
+    //      composer produced nothing client-safe)
+    //   3) none (item-derived fallback happens downstream as today)
+    const notesSummary = cleanText(day.description || '');
+    const cleanNotes = isPlaceholderText(notesSummary) ? null : notesSummary || null;
+    const composedNarrative = composeDayNarrativeFromPois(day.poiAssignments, activeProposalLocale);
+    const summary = composedNarrative ?? cleanNotes;
 
     return {
       dayNumber: day.dayNumber,
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
-      summary: isPlaceholderText(summary) ? null : summary || null,
+      summary: summary || null,
       overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
       // A stored manual override (day.country) wins; otherwise derive from services.
       country:

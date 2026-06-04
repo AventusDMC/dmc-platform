@@ -1857,3 +1857,139 @@ test('Phase 3A.1: localized fallback service titles render in the active locale'
   const text = JSON.stringify(ptProposal);
   assert.doesNotMatch(text, /\{location\}/);
 });
+
+// ---- Phase 3B.2: per-locale day narrative composer from ordered POI rows ----
+
+// Builds a quote whose day 1 is an active planner day carrying the given POI
+// assignments (so the composer runs). day.notes is the fallback under test.
+function createComposerQuote(poiAssignments: any[], dayNotes: string | null = 'Stored day notes.', overrides: Record<string, any> = {}) {
+  return createPdfQuote({
+    quoteItineraryDays: [
+      {
+        id: 'day-1',
+        dayNumber: 1,
+        title: 'Day 1: Amman',
+        notes: dayNotes,
+        isActive: true,
+        dayItems: [],
+        poiAssignments,
+      },
+    ],
+    ...overrides,
+  });
+}
+
+function poiRow(overrides: Record<string, any> = {}) {
+  return {
+    id: `assign-${overrides.poiId ?? 'x'}-${overrides.sortOrder ?? 0}`,
+    poiId: 'poi-a',
+    sortOrder: 0,
+    fallbackTitle: null,
+    fallbackCity: null,
+    pointOfInterest: {
+      id: 'poi-a',
+      name: 'Internal A',
+      translations: [{ locale: 'en', title: 'Amman Citadel', shortDescription: null }],
+      city: { id: 'c-amman', name: 'Amman', country: 'Jordan' },
+    },
+    ...overrides,
+  };
+}
+
+function day1Summary(quote: any, language?: string) {
+  const vm = mapQuoteToProposalV3(quote, language);
+  return (vm.days.find((d: any) => d.dayNumber === 1) || {}).summary as string | null;
+}
+
+test('Phase 3B.2: composes ordered POI visits in order (English)', () => {
+  const quote = createComposerQuote([
+    poiRow({ poiId: 'poi-b', sortOrder: 1, pointOfInterest: { id: 'poi-b', name: 'B', translations: [{ locale: 'en', title: 'Roman Theatre' }], city: null } }),
+    poiRow({ poiId: 'poi-a', sortOrder: 0, pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: null } }),
+  ]);
+  const summary = day1Summary(quote, 'en') || '';
+  assert.match(summary, /Visit Amman Citadel/);
+  assert.match(summary, /Visit Roman Theatre/);
+  assert.ok(summary.indexOf('Amman Citadel') < summary.indexOf('Roman Theatre'), 'sortOrder must drive order');
+});
+
+test('Phase 3B.2: appends a client-safe short description', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel', shortDescription: 'A hilltop archaeological site.' }], city: null } }),
+  ]);
+  assert.match(day1Summary(quote, 'en') || '', /Visit Amman Citadel — A hilltop archaeological site\./);
+});
+
+test('Phase 3B.2: uses the selected-locale POI translation + localized boilerplate', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'pt', title: 'Cidadela de Amã' }, { locale: 'en', title: 'Amman Citadel' }], city: null } }),
+  ]);
+  // pt svcVisit = "Visita a {location}"
+  assert.match(day1Summary(quote, 'pt') || '', /Visita a Cidadela de Amã/);
+});
+
+test('Phase 3B.2: falls back to the English translation when the selected locale is missing', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: null } }),
+  ]);
+  // es boilerplate + English POI title (acceptable until human translations exist)
+  assert.match(day1Summary(quote, 'es') || '', /Visita a Amman Citadel/);
+});
+
+test('Phase 3B.2: falls back to the internal POI name when no translation title exists', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'Madaba Mosaic Map', translations: [], city: null } }),
+  ]);
+  assert.match(day1Summary(quote, 'en') || '', /Visit Madaba Mosaic Map/);
+});
+
+test('Phase 3B.2: a deleted POI row (poiId null) uses fallbackTitle/fallbackCity, not skipped', () => {
+  const quote = createComposerQuote([
+    { id: 'a1', poiId: null, sortOrder: 0, fallbackTitle: 'Snapshot Citadel', fallbackCity: 'Amman', pointOfInterest: null },
+  ]);
+  assert.match(day1Summary(quote, 'en') || '', /Visit Snapshot Citadel/);
+});
+
+test('Phase 3B.2: skips a truly empty row but keeps usable siblings', () => {
+  const quote = createComposerQuote([
+    { id: 'empty', poiId: null, sortOrder: 0, fallbackTitle: null, fallbackCity: null, pointOfInterest: null },
+    poiRow({ poiId: 'poi-a', sortOrder: 1, pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: null } }),
+  ]);
+  const summary = day1Summary(quote, 'en') || '';
+  assert.match(summary, /Visit Amman Citadel/);
+  // Only one visit sentence — the empty row contributed nothing.
+  assert.equal((summary.match(/Visit /g) || []).length, 1);
+});
+
+test('Phase 3B.2: a day whose rows are all unusable falls back to day.notes', () => {
+  const quote = createComposerQuote(
+    [{ id: 'empty', poiId: null, sortOrder: 0, fallbackTitle: null, fallbackCity: null, pointOfInterest: null }],
+    'Arrival and overnight in Amman.',
+  );
+  assert.equal(day1Summary(quote, 'en'), 'Arrival and overnight in Amman.');
+});
+
+test('Phase 3B.2: a day with no POI rows is unchanged — summary stays day.notes (English regression)', () => {
+  const withEmptyArray = createComposerQuote([], 'Arrival and overnight in Amman.');
+  assert.equal(day1Summary(withEmptyArray, 'en'), 'Arrival and overnight in Amman.');
+  // Explicit-en === default (no language) for the no-POI day.
+  assert.equal(day1Summary(withEmptyArray), day1Summary(withEmptyArray, 'en'));
+});
+
+test('Phase 3B.2: an unsafe short description is dropped while the title is kept', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel', shortDescription: 'Internal Use Only' }], city: null } }),
+  ]);
+  const summary = day1Summary(quote, 'en') || '';
+  assert.match(summary, /Visit Amman Citadel/);
+  assert.doesNotMatch(summary, /Internal Use Only/);
+});
+
+test('Phase 3B.2: Arabic composes with RTL document direction preserved', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'ar', title: 'جبل القلعة' }, { locale: 'en', title: 'Amman Citadel' }], city: null } }),
+  ]);
+  const vm = mapQuoteToProposalV3(quote, 'ar');
+  assert.equal(vm.textDirection, 'rtl');
+  const summary = (vm.days.find((d: any) => d.dayNumber === 1) || {}).summary || '';
+  assert.match(summary, /زيارة جبل القلعة/); // ar svcVisit = "زيارة {location}"
+});

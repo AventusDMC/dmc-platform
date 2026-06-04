@@ -10941,6 +10941,20 @@ export class QuotesService {
             },
             orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] as any,
           },
+          // Phase 3B.2 — ordered POI assignments feed the per-locale proposal day
+          // narrative composer (render-time only; never stored). POI + translations
+          // + city are read-only content; commerce/routing stays on linked entities.
+          poiAssignments: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] as any,
+            include: {
+              pointOfInterest: {
+                include: {
+                  translations: true,
+                  city: { select: { id: true, name: true, country: true } },
+                },
+              },
+            },
+          },
         },
         orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }, { createdAt: 'asc' }] as any,
       }), [] as any[]),
