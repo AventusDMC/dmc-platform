@@ -67,7 +67,7 @@ export default function DispatchError({ error, reset }: DispatchErrorProps) {
             style={{
               background: '#ffffff',
               color: 'var(--ds-color-info, #175CD3)',
-              border: '1px solid #84caff',
+              border: '1px solid var(--ds-color-info-border, #84CAFF)',
               padding: '0.5rem 1rem',
               borderRadius: 8,
               fontWeight: 600,

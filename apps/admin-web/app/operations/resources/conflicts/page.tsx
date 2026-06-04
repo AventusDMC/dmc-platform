@@ -433,7 +433,7 @@ function ConflictCard({
             </span>
             <span
               style={{
-                background: s.executionStatus === 'READY' ? '#f2f4f7' : '#eff8ff',
+                background: s.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
                 color: s.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,
@@ -452,7 +452,7 @@ function ConflictCard({
           style={{
             background: '#ffffff',
             color: 'var(--ds-color-info, #175CD3)',
-            border: '1px solid #84caff',
+            border: '1px solid var(--ds-color-info-border, #84CAFF)',
             padding: '0.4rem 0.75rem',
             borderRadius: 6,
             fontSize: '0.82rem',
@@ -466,7 +466,7 @@ function ConflictCard({
           href="/operations/recovery"
           style={{
             background: '#ffffff',
-            color: '#b54708',
+            color: 'var(--ds-color-warning, #B54708)',
             border: '1px solid #f79009',
             padding: '0.4rem 0.75rem',
             borderRadius: 6,

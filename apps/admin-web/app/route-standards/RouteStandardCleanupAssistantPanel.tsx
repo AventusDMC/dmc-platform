@@ -401,9 +401,9 @@ export function RouteStandardCleanupAssistantPanel() {
         <p
           style={{
             margin: '0.5rem 0 0',
-            background: '#ecfdf3',
+            background: 'var(--ds-color-success-surface, #ECFDF3)',
             color: 'var(--ds-color-success, #067647)',
-            border: '1px solid #abefc6',
+            border: '1px solid var(--ds-color-success-border, #ABEFC6)',
             borderRadius: 6,
             padding: '0.5rem 0.7rem',
             fontSize: '0.85rem',
@@ -432,7 +432,7 @@ export function RouteStandardCleanupAssistantPanel() {
       <div style={{ overflowX: 'auto', marginTop: '0.5rem' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+            <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
               <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
               <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
               <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Classification</th>

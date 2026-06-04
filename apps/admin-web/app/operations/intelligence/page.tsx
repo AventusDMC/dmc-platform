@@ -172,7 +172,7 @@ export default async function IntelligencePage() {
             <Link
               href="/operations/intelligence/financial"
               style={{
-                background: '#b54708',
+                background: 'var(--ds-color-warning, #B54708)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,
@@ -322,7 +322,7 @@ export default async function IntelligencePage() {
       <Panel title="Weekly Trends · last 4 weeks" accent="#067647">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+            <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
               <th style={{ padding: '0.5rem' }}>Week starting</th>
               <th style={{ padding: '0.5rem', textAlign: 'right' }}>Dispatched</th>
               <th style={{ padding: '0.5rem', textAlign: 'right' }}>Completed</th>
@@ -336,7 +336,7 @@ export default async function IntelligencePage() {
                 <td style={{ padding: '0.5rem', fontWeight: 600 }}>{t.weekLabel}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
-                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.delayedCount > 0 ? '#b54708' : '#475467' }}>{t.delayedCount}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.delayedCount > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467' }}>{t.delayedCount}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467', fontWeight: 700 }}>
                   {t.incidentCount}
                 </td>
@@ -366,7 +366,7 @@ export default async function IntelligencePage() {
               >
                 <span
                   style={{
-                    background: '#fef3f2',
+                    background: 'var(--ds-color-danger-surface, #FEF3F2)',
                     color: '#b42318',
                     padding: '0.1rem 0.45rem',
                     borderRadius: 4,
@@ -445,7 +445,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+            <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
               <th style={{ padding: '0.4rem' }}>Name</th>
               <th style={{ padding: '0.4rem', textAlign: 'right' }}>Svcs</th>
               <th style={{ padding: '0.4rem', textAlign: 'right' }}>Incident %</th>
@@ -462,7 +462,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.incidentRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.incidentRatePct > 0 ? '#b54708' : '#475467',
+                    color: p.incidentRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.incidentRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
                     fontWeight: 600,
                   }}
                 >
@@ -472,7 +472,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.delayedRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.delayedRatePct > 0 ? '#b54708' : '#475467',
+                    color: p.delayedRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.delayedRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
                   }}
                 >
                   {p.delayedRatePct}%{p.avgDelayMinutes > 0 ? ` · ${p.avgDelayMinutes}m` : ''}

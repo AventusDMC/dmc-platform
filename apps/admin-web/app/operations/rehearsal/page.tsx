@@ -198,8 +198,8 @@ export default async function RehearsalPage({
       {/* Session banner */}
       <section
         style={{
-          background: sessionActive ? '#ecfdf3' : '#eff8ff',
-          border: `1px solid ${sessionActive ? '#12b76a' : '#84caff'}`,
+          background: sessionActive ? 'var(--ds-color-success-surface, #ECFDF3)' : 'var(--ds-color-info-surface, #EFF8FF)',
+          border: `1px solid ${sessionActive ? '#12b76a' : 'var(--ds-color-info-border, #84CAFF)'}`,
           borderRadius: 10,
           padding: '0.75rem 1rem',
           marginBottom: '1rem',
@@ -277,7 +277,7 @@ export default async function RehearsalPage({
             <Panel title="Operator Workload" accent="#7e22ce">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
                 <thead>
-                  <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+                  <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
                     <th style={{ padding: '0.4rem' }}>Operator</th>
                     <th style={{ padding: '0.4rem', textAlign: 'right' }}>Total</th>
                     <th style={{ padding: '0.4rem', textAlign: 'right' }}>Dispatches</th>
@@ -389,7 +389,7 @@ function ScenarioCard({ scenario, sessionStartIso }: { scenario: Scenario; sessi
         <strong style={{ fontSize: '0.95rem' }}>{scenario.label}</strong>
         <span
           style={{
-            background: '#eff8ff',
+            background: 'var(--ds-color-info-surface, #EFF8FF)',
             color: 'var(--ds-color-info, #175CD3)',
             padding: '0.1rem 0.45rem',
             borderRadius: 999,

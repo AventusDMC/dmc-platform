@@ -260,7 +260,7 @@ export default async function SimulationPage({
           <section
             style={{
               background: 'linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)',
-              border: '1px solid #84caff',
+              border: '1px solid var(--ds-color-info-border, #84CAFF)',
               borderRadius: 10,
               padding: '0.85rem 1rem',
               display: 'flex',

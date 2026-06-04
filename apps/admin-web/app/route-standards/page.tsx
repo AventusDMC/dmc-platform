@@ -110,7 +110,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+                <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>From → To</th>
@@ -192,7 +192,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                           <span
                             style={{
                               marginLeft: '0.4rem',
-                              background: '#ecfdf3',
+                              background: 'var(--ds-color-success-surface, #ECFDF3)',
                               color: 'var(--ds-color-success, #067647)',
                               padding: '0.05rem 0.4rem',
                               borderRadius: 999,
@@ -276,7 +276,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                       <td style={{ padding: '0.5rem' }}>
                         <span
                           style={{
-                            background: s.isActive ? '#ecfdf3' : '#f2f4f7',
+                            background: s.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
                             color: s.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,

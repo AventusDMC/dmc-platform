@@ -31,7 +31,7 @@ export default function GuidedQuoteBuilderPage() {
               borderRadius: 8,
               fontWeight: 600,
               textDecoration: 'none',
-              border: '1px solid #84caff',
+              border: '1px solid var(--ds-color-info-border, #84CAFF)',
               whiteSpace: 'nowrap',
             }}
           >

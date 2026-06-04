@@ -440,9 +440,9 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
           {success ? (
             <p
               style={{
-                background: '#ecfdf3',
+                background: 'var(--ds-color-success-surface, #ECFDF3)',
                 color: 'var(--ds-color-success, #067647)',
-                border: '1px solid #abefc6',
+                border: '1px solid var(--ds-color-success-border, #ABEFC6)',
                 borderRadius: 6,
                 padding: '0.5rem 0.7rem',
                 fontSize: '0.88rem',
@@ -528,7 +528,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+                <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
                   <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Type</th>
@@ -570,7 +570,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                       <td style={{ padding: '0.5rem' }}>
                         <span
                           style={{
-                            background: a.isActive ? '#ecfdf3' : '#f2f4f7',
+                            background: a.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
                             color: a.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,

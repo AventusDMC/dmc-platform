@@ -366,7 +366,7 @@ function IncidentCard({ row }: { row: DispatchRow }) {
           {row.delayMinutes && row.delayMinutes > 0 ? (
             <span
               style={{
-                background: '#fef3f2',
+                background: 'var(--ds-color-danger-surface, #FEF3F2)',
                 color: 'var(--ds-color-danger, #B42318)',
                 border: '1px solid #f04438',
                 padding: '0.1rem 0.5rem',

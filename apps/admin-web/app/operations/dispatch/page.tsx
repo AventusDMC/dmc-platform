@@ -464,7 +464,7 @@ function StatusPill({ label, value, ok }: { label: string; value: string; ok: bo
   return (
     <span
       style={{
-        background: ok ? '#ecfdf3' : '#f2f4f7',
+        background: ok ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
         color: ok ? 'var(--ds-color-success, #067647)' : '#475467',
         padding: '0.1rem 0.4rem',
         borderRadius: 6,
@@ -555,7 +555,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
       </div>
 
       {Array.isArray(row.reasons) && row.reasons.length > 0 ? (
-        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: isCritical ? '#7a271a' : '#b54708', fontSize: '0.88rem', fontWeight: 500 }}>
+        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: isCritical ? '#7a271a' : 'var(--ds-color-warning, #B54708)', fontSize: '0.88rem', fontWeight: 500 }}>
           {row.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
@@ -581,7 +581,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
               fontWeight: 600,
               fontSize: '0.85rem',
               textDecoration: 'none',
-              border: '1px solid #84caff',
+              border: '1px solid var(--ds-color-info-border, #84CAFF)',
             }}
           >
             {primaryAction.label}
@@ -630,7 +630,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
               fontWeight: 600,
               fontSize: '0.85rem',
               textDecoration: 'none',
-              border: '1px solid #abefc6',
+              border: '1px solid var(--ds-color-success-border, #ABEFC6)',
             }}
           >
             Call driver
@@ -647,7 +647,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
               fontWeight: 600,
               fontSize: '0.85rem',
               textDecoration: 'none',
-              border: '1px solid #abefc6',
+              border: '1px solid var(--ds-color-success-border, #ABEFC6)',
             }}
           >
             Call supplier
@@ -720,17 +720,17 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <span style={{ color: '#667085', fontSize: '0.85rem' }}>{lane.total} total</span>
             {lane.critical > 0 ? (
-              <span style={{ background: '#fef3f2', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+              <span style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.critical} critical
               </span>
             ) : null}
             {lane.actionRequired > 0 ? (
-              <span style={{ background: '#fff8eb', color: '#b54708', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+              <span style={{ background: '#fff8eb', color: 'var(--ds-color-warning, #B54708)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.actionRequired} action
               </span>
             ) : null}
             {lane.ready > 0 ? (
-              <span style={{ background: '#ecfdf3', color: 'var(--ds-color-success, #067647)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+              <span style={{ background: 'var(--ds-color-success-surface, #ECFDF3)', color: 'var(--ds-color-success, #067647)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.ready} ready
               </span>
             ) : null}
@@ -1227,7 +1227,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
     <section
       style={{
         background: 'linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)',
-        border: '1px solid #84caff',
+        border: '1px solid var(--ds-color-info-border, #84CAFF)',
         borderRadius: 12,
         padding: '0.85rem 1rem',
         display: 'flex',
@@ -1330,7 +1330,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
       {anyDelayed ? (
         <div
           style={{
-            background: '#fef3f2',
+            background: 'var(--ds-color-danger-surface, #FEF3F2)',
             border: '1px solid #f04438',
             borderRadius: 10,
             padding: '0.75rem 0.85rem',
@@ -1373,7 +1373,7 @@ function CompletedTodaySummary({ data }: { data: DispatchResponse }) {
   return (
     <section
       style={{
-        background: '#ecfdf3',
+        background: 'var(--ds-color-success-surface, #ECFDF3)',
         border: '1px solid #12b76a',
         borderRadius: 10,
         padding: '0.65rem 0.9rem',
@@ -1487,7 +1487,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
               <strong
                 style={{
                   fontSize: '1.6rem',
-                  color: critical > 0 ? 'var(--ds-color-danger, #B42318)' : action > 0 ? '#b54708' : '#101828',
+                  color: critical > 0 ? 'var(--ds-color-danger, #B42318)' : action > 0 ? 'var(--ds-color-warning, #B54708)' : '#101828',
                   fontVariantNumeric: 'tabular-nums',
                   lineHeight: 1,
                 }}
@@ -1498,7 +1498,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
                 {rows.length} svc{rows.length === 1 ? '' : 's'}
               </span>
               {critical > 0 ? (
-                <span style={{ background: '#fef3f2', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.4rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
+                <span style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.4rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
                   ⚠ {critical}
                 </span>
               ) : null}

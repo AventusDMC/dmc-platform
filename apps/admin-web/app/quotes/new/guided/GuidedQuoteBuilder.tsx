@@ -468,7 +468,7 @@ function Step3Hotels({ journey }: { journey: JourneyCity[] }) {
 
   if (error) {
     return (
-      <div style={{ background: '#fef3f2', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: 'var(--ds-color-danger, #B42318)' }}>
+      <div style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: 'var(--ds-color-danger, #B42318)' }}>
         Could not load hotel catalogue: {error}
       </div>
     );
@@ -586,7 +586,7 @@ function Step4Experiences({ journey }: { journey: JourneyCity[] }) {
 
   if (error) {
     return (
-      <div style={{ background: '#fef3f2', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: 'var(--ds-color-danger, #B42318)' }}>
+      <div style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', border: '1px solid #f04438', borderRadius: 10, padding: '1rem', color: 'var(--ds-color-danger, #B42318)' }}>
         Could not load activity catalogue: {error}
       </div>
     );
@@ -658,7 +658,7 @@ function Step5Transport({ journey }: { journey: JourneyCity[] }) {
   // where the operator picks vehicles + suppliers.
   if (journey.length === 0) {
     return (
-      <div style={{ background: '#eff8ff', border: '1px dashed #84caff', borderRadius: 10, padding: '1.25rem 1.5rem', textAlign: 'center', color: 'var(--ds-color-info, #175CD3)' }}>
+      <div style={{ background: 'var(--ds-color-info-surface, #EFF8FF)', border: '1px dashed var(--ds-color-info-border, #84CAFF)', borderRadius: 10, padding: '1.25rem 1.5rem', textAlign: 'center', color: 'var(--ds-color-info, #175CD3)' }}>
         <strong>Add cities in Step 2 first</strong>
         <p style={{ margin: '0.4rem 0 0', fontSize: '0.88rem' }}>Transfer legs are derived from the journey sequence.</p>
       </div>
@@ -685,8 +685,8 @@ function Step5Transport({ journey }: { journey: JourneyCity[] }) {
           <li
             key={idx}
             style={{
-              background: '#eff8ff',
-              border: '1px solid #84caff',
+              background: 'var(--ds-color-info-surface, #EFF8FF)',
+              border: '1px solid var(--ds-color-info-border, #84CAFF)',
               borderRadius: 8,
               padding: '0.55rem 0.85rem',
               display: 'flex',
@@ -698,7 +698,7 @@ function Step5Transport({ journey }: { journey: JourneyCity[] }) {
           >
             <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: '1.5rem' }}>Leg {idx + 1}</span>
             <strong>{leg.from}</strong>
-            <span aria-hidden style={{ color: '#84caff', fontWeight: 700 }}>→</span>
+            <span aria-hidden style={{ color: 'var(--ds-color-info-border, #84CAFF)', fontWeight: 700 }}>→</span>
             <strong>{leg.to}</strong>
             {leg.note ? <span style={{ color: 'var(--ds-color-info, #175CD3)', opacity: 0.7, fontSize: '0.8rem', marginLeft: 'auto' }}>{leg.note}</span> : null}
           </li>
@@ -767,7 +767,7 @@ function Step7Generate({ handoffHref, totalPax, totalNights, journey }: { handof
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', alignItems: 'flex-start' }}>
       <div
         style={{
-          background: '#ecfdf3',
+          background: 'var(--ds-color-success-surface, #ECFDF3)',
           border: '1px solid #12b76a',
           borderRadius: 10,
           padding: '1rem 1.25rem',
