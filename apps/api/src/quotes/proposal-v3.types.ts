@@ -104,6 +104,22 @@ export type ProposalV3QuotePlannerDay = {
     isActive?: boolean | null;
     quoteService?: ProposalV3QuoteItem | null;
   }>;
+  // Phase 3B.2 — ordered POI assignments feeding the render-time day-narrative
+  // composer. Read-only content; never stored composed text.
+  poiAssignments?: Array<{
+    id: string;
+    poiId?: string | null;
+    sourceTouringRouteStopId?: string | null;
+    fallbackTitle?: string | null;
+    fallbackCity?: string | null;
+    sortOrder?: number | null;
+    pointOfInterest?: {
+      id: string;
+      name: string;
+      translations?: Array<{ locale?: string | null; title?: string | null; shortDescription?: string | null }> | null;
+      city?: { id: string; name: string; country?: string | null } | null;
+    } | null;
+  }>;
 };
 
 export type ProposalV3Quote = {
