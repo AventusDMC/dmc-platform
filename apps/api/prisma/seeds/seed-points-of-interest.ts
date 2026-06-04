@@ -86,6 +86,23 @@ const POI_SEED: PoiSeed[] = [
     en: { title: 'Azraq Wetland Reserve', shortDescription: 'A desert oasis and vital bird migration stopover.', longDescription: 'Spring-fed pools and marshes in the eastern desert, an important refuge for migratory birds, managed by the RSCN.' } },
   { code: 'SHAUMARI_WILDLIFE_RESERVE', name: 'Shaumari Wildlife Reserve', region: 'Eastern Desert', stopType: 'Wildlife reserve', visitDurationMinutes: 90, photoStop: true, lunchOpportunity: true, linkCities: ['Shaumari', 'Shawmari'],
     en: { title: 'Shaumari Wildlife Reserve', shortDescription: 'Jordan’s first reserve — home to the reintroduced Arabian oryx.', longDescription: 'A breeding reserve credited with restoring the Arabian oryx and other desert species, with safari-style game drives.' } },
+
+  // ---- Phase 2.6 expansion ----
+  // Amman city sights (unlock the flagship Amman City Tour route).
+  { code: 'AMMAN_CITADEL', name: 'Amman Citadel', region: 'Central', stopType: 'Archaeological site', visitDurationMinutes: 75, viewpoint: true, photoStop: true, guideRecommended: true, linkCities: ['Amman Citadel'],
+    en: { title: 'Amman Citadel', shortDescription: 'Ancient hilltop core of Amman (Jabal Al-Qal’a).', longDescription: 'Layered ruins on one of Amman’s seven hills — the Temple of Hercules, the Umayyad Palace and the Byzantine church — with panoramic views over the city and the Roman Theatre below.' } },
+  { code: 'ROMAN_THEATRE', name: 'Roman Theatre', region: 'Central', stopType: 'Archaeological site', visitDurationMinutes: 45, photoStop: true, linkCities: ['Roman Theater', 'Roman Theatre', 'Amman Roman Theater'],
+    en: { title: 'Roman Theatre', shortDescription: 'Restored 2nd-century Roman amphitheatre in downtown Amman.', longDescription: 'A remarkably preserved theatre built into the hillside that once seated about 6,000 spectators, today a landmark of downtown Amman and home to two small folklore museums.' } },
+  { code: 'DOWNTOWN_AMMAN', name: 'Downtown Amman', region: 'Central', stopType: 'City quarter', visitDurationMinutes: 60, lunchOpportunity: true, photoStop: true, linkCities: ['Downtown Amman', 'Down Town Amman'],
+    en: { title: 'Downtown Amman', shortDescription: 'The lively old heart of the capital (Al-Balad).', longDescription: 'Bustling souks, the Grand Husseini Mosque, traditional coffee houses and street food — the historic commercial centre of Amman.' } },
+  { code: 'WADI_MUJIB', name: 'Wadi Mujib', region: 'Central', stopType: 'Nature reserve / canyon', visitDurationMinutes: 150, photoStop: true, viewpoint: true, linkCities: ['Wadi Mujib', 'Mujib'],
+    en: { title: 'Wadi Mujib', shortDescription: 'Dramatic canyon reserve descending to the Dead Sea.', longDescription: 'The lowest-altitude nature reserve on earth, famous for the adventurous Siq water trail through a sandstone gorge (seasonal), managed by the RSCN.' } },
+  { code: 'SALT_AL_SALT', name: 'Salt / Al-Salt', region: 'North', stopType: 'Heritage town', visitDurationMinutes: 90, photoStop: true, guideRecommended: true, linkCities: ['Salt', 'Al-Salt', 'As-Salt'],
+    en: { title: 'Salt / Al-Salt', shortDescription: 'Ottoman-era hill town of yellow-stone houses (UNESCO).', longDescription: 'As-Salt’s harmonious yellow limestone buildings, staircases and historic souk reflect a tradition of tolerance and hospitality recognised as a UNESCO World Heritage Site.' } },
+  { code: 'IRAQ_AL_AMIR', name: 'Iraq Al-Amir', region: 'Central', stopType: 'Archaeological site', visitDurationMinutes: 60, photoStop: true, linkCities: ['Iraq Al-Amir', 'Iraq al Amir', 'Araq Al-Amir'],
+    en: { title: 'Iraq Al-Amir', shortDescription: 'The Hellenistic palace Qasr Al-Abd and ancient caves.', longDescription: 'A scenic valley west of Amman with the 2nd-century-BC Qasr Al-Abd (“Palace of the Slave”), carved caves and a women’s handicraft cooperative.' } },
+  { code: 'AQABA_MARINE_PARK', name: 'Aqaba Marine Park', region: 'South', stopType: 'Marine / dive site', visitDurationMinutes: 180, photoStop: true, lunchOpportunity: true, linkCities: ['Aqaba Marine Park', 'Aqaba Marine', 'Aqaba Dive', 'Ayla'],
+    en: { title: 'Aqaba Marine Park', shortDescription: 'Red Sea coral reefs for diving and snorkelling.', longDescription: 'A protected stretch of the Gulf of Aqaba with accessible coral gardens, abundant marine life and wreck dives — the centre of Jordan’s Red Sea diving and snorkelling.' } },
 ];
 
 // Phase 2.5 links only a small, controlled SAMPLE of existing routes (matched
@@ -98,6 +115,11 @@ const SAMPLE_ROUTE_NAME_HINTS = [
   'Amman -> Dana -> Petra',
   'Petra -> Wadi Rum',
   'Desert Castles',
+  // Phase 2.6: flagship Amman city tour. The route carrying the Amman city-sight
+  // stops (Citadel / Roman Theatre / Downtown) is "Amman -> Amman City Sites ->
+  // Amman RT". Use that specific fragment — a loose "Amman City Tour" over-matches
+  // unrelated routes.
+  'Amman City Sites',
 ];
 
 // Bare POIs created during Phase 2 verification that are superseded by the
