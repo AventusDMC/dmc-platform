@@ -2021,6 +2021,21 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     activeTab === 'transport' ||
     activeTab === 'services' ||
     resolvedSearchParams?.addCategory === 'activity';
+  // Transport catalog (routes/vehicles/supplier rate cards/standards/service
+  // types) is consumed ONLY by QuoteServicePlanner, which renders only on the
+  // itinerary/hotels/transport/services tabs. The pricing, proposal, review and
+  // versions tabs never read it — yet these are the heaviest/slowest fetches
+  // (routes ~700 rows; routes + rate cards carry 20s timeouts + retries). Gate
+  // them like hotel data so opening the Pricing tab doesn't pay that cost.
+  // Mirrors shouldLoadActivityCatalogData (+ the transport deep-link params that
+  // can pre-open the planner's route picker).
+  const shouldLoadTransportPlanningData =
+    activeTab === 'itinerary' ||
+    activeTab === 'hotels' ||
+    activeTab === 'transport' ||
+    activeTab === 'services' ||
+    resolvedSearchParams?.addCategory === 'transport' ||
+    Boolean(resolvedSearchParams?.catalogRouteId);
   const shouldLoadHotelCategories = activeTab === 'pricing';
   const [
     quoteSettled,
@@ -2054,11 +2069,21 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     shouldLoadActivityCatalogData
       ? safeQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[], getExcursionTemplates)
       : skippedQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[]),
-    safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
-    safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
-    safeQuoteDetailFetch('route standards', [] as RouteStandardSummary[], getRouteStandards),
-    safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
-    safeQuoteDetailTransportFetch('supplier rate cards', [] as TransportSupplierRateCard[], getSupplierRateCards),
+    shouldLoadTransportPlanningData
+      ? safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes)
+      : skippedQuoteDetailFetch('transport service types', [] as TransportServiceType[]),
+    shouldLoadTransportPlanningData
+      ? safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes)
+      : skippedQuoteDetailFetch('routes', [] as RouteOption[]),
+    shouldLoadTransportPlanningData
+      ? safeQuoteDetailFetch('route standards', [] as RouteStandardSummary[], getRouteStandards)
+      : skippedQuoteDetailFetch('route standards', [] as RouteStandardSummary[]),
+    shouldLoadTransportPlanningData
+      ? safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles)
+      : skippedQuoteDetailFetch('vehicles', [] as TransportVehicle[]),
+    shouldLoadTransportPlanningData
+      ? safeQuoteDetailTransportFetch('supplier rate cards', [] as TransportSupplierRateCard[], getSupplierRateCards)
+      : skippedQuoteDetailFetch('supplier rate cards', [] as TransportSupplierRateCard[]),
     shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels) : skippedQuoteDetailFetch('hotels', [] as Hotel[]),
     shouldLoadHotelPlanningData
       ? safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts)
