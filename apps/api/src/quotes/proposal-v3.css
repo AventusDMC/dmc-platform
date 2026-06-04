@@ -961,3 +961,24 @@ body {
     page-break-inside: avoid;
   }
 }
+
+/* ---------- Phase 3A: Arabic / RTL support ----------
+   <html dir="rtl"> is set for Arabic proposals (lang=ar). Mirror text flow and
+   alignment with logical defaults; include an Arabic-capable font so glyphs
+   shape correctly in the Puppeteer PDF (falls back to Arial which covers Arabic). */
+html[dir="rtl"] body,
+html[dir="rtl"] .proposal-v3 {
+  direction: rtl;
+}
+html[dir="rtl"] .proposal-v3 {
+  text-align: right;
+  font-family: "Noto Naskh Arabic", "Noto Sans Arabic", "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+html[dir="rtl"] .proposal-table th,
+html[dir="rtl"] .proposal-table td {
+  text-align: right;
+}
+html[dir="rtl"] .proposal-list {
+  padding-right: 1.1rem;
+  padding-left: 0;
+}

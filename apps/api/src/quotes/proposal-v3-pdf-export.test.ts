@@ -1744,3 +1744,49 @@ test('a stored manual country override wins over the derived hotel country', () 
   // Hotel city resolves to Jordan, but the manual override must win.
   assert.equal(proposal.days[0].country, 'Egypt');
 });
+
+// ---- Phase 3A: multilingual proposal foundation (language only, no POI composition) ----
+
+test('Phase 3A: default (no language) renders English LTR, formatting unchanged', () => {
+  const proposal = mapQuoteToProposalV3(createPdfQuote());
+  assert.equal(proposal.language, 'en');
+  assert.equal(proposal.textDirection, 'ltr');
+  // English duration label shape unchanged ("N Day(s) / M Night(s)").
+  assert.match(proposal.durationLabel, /\d+ Days? \/ \d+ Nights?/);
+});
+
+test('Phase 3A: explicit en === default (regression — English output stable)', () => {
+  const def = mapQuoteToProposalV3(createPdfQuote());
+  const en = mapQuoteToProposalV3(createPdfQuote(), 'en');
+  assert.equal(en.durationLabel, def.durationLabel);
+  assert.equal(en.servicesCountLabel, def.servicesCountLabel);
+  assert.equal(en.totalDaysLabel, def.totalDaysLabel);
+  assert.deepEqual(en.inclusions, def.inclusions);
+});
+
+test('Phase 3A: Portuguese localizes labels (LTR)', () => {
+  const proposal = mapQuoteToProposalV3(createPdfQuote(), 'pt');
+  assert.equal(proposal.language, 'pt');
+  assert.equal(proposal.textDirection, 'ltr');
+  assert.match(proposal.durationLabel, /Dias?/); // "N Dias / M Noites"
+});
+
+test('Phase 3A: Arabic is RTL', () => {
+  const proposal = mapQuoteToProposalV3(createPdfQuote(), 'ar');
+  assert.equal(proposal.language, 'ar');
+  assert.equal(proposal.textDirection, 'rtl');
+});
+
+test('Phase 3A: invalid language falls back to English', () => {
+  const proposal = mapQuoteToProposalV3(createPdfQuote(), 'xx');
+  assert.equal(proposal.language, 'en');
+});
+
+test('Phase 3A: explicit language overrides the quote stored proposalLanguage', () => {
+  // Stored es, render-time pt override wins.
+  const proposal = mapQuoteToProposalV3(createPdfQuote({ proposalLanguage: 'es' }), 'pt');
+  assert.equal(proposal.language, 'pt');
+  // No explicit language → falls back to the stored value.
+  const stored = mapQuoteToProposalV3(createPdfQuote({ proposalLanguage: 'es' }));
+  assert.equal(stored.language, 'es');
+});

@@ -314,6 +314,8 @@ export type ProposalV3AccommodationMatrix = {
 };
 
 export type ProposalV3ViewModel = {
+  language: string;
+  textDirection: 'ltr' | 'rtl';
   documentTitle: string;
   metaTitle: string;
   brandName: string;
