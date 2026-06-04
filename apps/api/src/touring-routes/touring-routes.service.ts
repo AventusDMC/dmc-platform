@@ -58,6 +58,17 @@ type TouringRouteInput = {
   active?: boolean;
   stops?: TouringRouteStopInput[];
   pricings?: TouringRoutePricingInput[];
+  days?: TouringRouteDayInput[];
+};
+
+type TouringRouteDayInput = {
+  dayNumber?: number | null;
+  title?: string | null;
+  description?: string | null;
+  distanceKm?: number | null;
+  driveMinutes?: number | null;
+  lunchIncluded?: boolean | null;
+  dinnerIncluded?: boolean | null;
 };
 
 type FindTouringRoutesInput = {
@@ -4450,6 +4461,7 @@ export class TouringRoutesService {
         },
         orderBy: [{ active: 'desc' }, { minPax: 'asc' }, { createdAt: 'asc' }],
       },
+      days: { orderBy: { dayNumber: 'asc' } },
     };
   }
 
@@ -5249,6 +5261,23 @@ export class TouringRoutesService {
       pricings: this.buildNestedReplace(
         data.pricings,
         (pricing, index) => this.normalizePricingForWrite(pricing, index),
+        partial,
+      ),
+      days: this.buildNestedReplace(
+        data.days,
+        (day, index) => ({
+          dayNumber:
+            day.dayNumber === undefined || day.dayNumber === null ? index + 1 : Math.floor(Number(day.dayNumber)),
+          title: normalizeOptionalString(day.title),
+          description: normalizeOptionalString(day.description),
+          distanceKm: normalizeOptionalNumber(day.distanceKm, `days[${index}].distanceKm`),
+          driveMinutes:
+            day.driveMinutes === undefined || day.driveMinutes === null || (day.driveMinutes as unknown) === ''
+              ? null
+              : Math.max(0, Math.floor(Number(day.driveMinutes))),
+          lunchIncluded: Boolean(day.lunchIncluded),
+          dinnerIncluded: Boolean(day.dinnerIncluded),
+        }),
         partial,
       ),
     };

@@ -21,6 +21,18 @@ export type TouringRouteDetail = {
   active?: boolean;
   stops?: Array<{ id: string; order: number; city: string; location?: string | null; notes?: string | null }>;
   pricings?: TouringRoutePricingDetail[];
+  days?: TouringRouteDayDetail[];
+};
+
+export type TouringRouteDayDetail = {
+  id?: string;
+  dayNumber: number;
+  title?: string | null;
+  description?: string | null;
+  distanceKm?: number | null;
+  driveMinutes?: number | null;
+  lunchIncluded?: boolean | null;
+  dinnerIncluded?: boolean | null;
 };
 
 export type TouringRoutePricingDetail = {

@@ -52,6 +52,15 @@ type TouringRouteBody = {
     active?: boolean;
     notes?: string | null;
   }>;
+  days?: Array<{
+    dayNumber?: number | null;
+    title?: string | null;
+    description?: string | null;
+    distanceKm?: number | null;
+    driveMinutes?: number | null;
+    lunchIncluded?: boolean | null;
+    dinnerIncluded?: boolean | null;
+  }>;
 };
 
 @Controller('touring-routes')

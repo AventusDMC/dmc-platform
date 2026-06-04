@@ -28,6 +28,27 @@ type PricingDraft = {
   notes: string;
 };
 
+type DayDraft = {
+  id?: string;
+  title: string;
+  description: string;
+  distanceKm: string;
+  driveHours: string;
+  driveMinutes: string;
+  lunchIncluded: boolean;
+  dinnerIncluded: boolean;
+};
+
+const BLANK_DAY: DayDraft = {
+  title: '',
+  description: '',
+  distanceKm: '',
+  driveHours: '',
+  driveMinutes: '',
+  lunchIncluded: false,
+  dinnerIncluded: false,
+};
+
 type TouringRouteEditorProps = {
   route: TouringRouteDetail;
   catalogs: TouringRouteCatalogs;
@@ -133,6 +154,21 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
     })),
   );
   const [pricings, setPricings] = useState<PricingDraft[]>((route.pricings || []).map(pricingToDraft));
+  const [days, setDays] = useState<DayDraft[]>(
+    (route.days || [])
+      .slice()
+      .sort((left, right) => left.dayNumber - right.dayNumber)
+      .map((day) => ({
+        id: day.id,
+        title: day.title || '',
+        description: day.description || '',
+        distanceKm: day.distanceKm == null ? '' : String(day.distanceKm),
+        driveHours: day.driveMinutes == null ? '' : String(Math.floor(day.driveMinutes / 60)),
+        driveMinutes: day.driveMinutes == null ? '' : String(day.driveMinutes % 60),
+        lunchIncluded: Boolean(day.lunchIncluded),
+        dinnerIncluded: Boolean(day.dinnerIncluded),
+      })),
+  );
   const activeTransportSuppliers = useMemo(
     () => catalogs.suppliers.filter((supplier) => supplier.active !== false && (!supplier.type || supplier.type.toLowerCase() === 'transport')),
     [catalogs.suppliers],
@@ -165,6 +201,17 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
 
   function updateStop(index: number, patch: Partial<StopDraft>) {
     setStops((current) => current.map((stop, stopIndex) => (stopIndex === index ? { ...stop, ...patch } : stop)));
+  }
+
+  function updateDay(index: number, patch: Partial<DayDraft>) {
+    setDays((current) => {
+      const next = current.slice();
+      while (next.length <= index) {
+        next.push({ ...BLANK_DAY });
+      }
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
   }
 
   function updatePricing(index: number, patch: Partial<PricingDraft>) {
@@ -215,6 +262,19 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
           active: pricing.active,
           notes: pricing.notes || null,
         })),
+        days: Array.from({ length: Math.max(1, Number(durationDays) || 1) }, (_, index) => {
+          const day = days[index] || BLANK_DAY;
+          const driveTotal = (Number(day.driveHours) || 0) * 60 + (Number(day.driveMinutes) || 0);
+          return {
+            dayNumber: index + 1,
+            title: day.title.trim() || null,
+            description: day.description.trim() || null,
+            distanceKm: optionalNumber(day.distanceKm),
+            driveMinutes: driveTotal > 0 ? driveTotal : null,
+            lunchIncluded: day.lunchIncluded,
+            dinnerIncluded: day.dinnerIncluded,
+          };
+        }),
       };
       const response = await fetch(`/api/touring-routes/${encodeURIComponent(route.id)}`, {
         method: 'PATCH',
@@ -348,6 +408,95 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="workspace-section">
+        <div className="section-heading-row">
+          <div>
+            <h3>Day-by-day itinerary</h3>
+            <p className="detail-copy">
+              Authored once per route and copied into the quote itinerary when an operator generates from this route.
+              Breakfast is derived from the matched hotel; set lunch/dinner here.
+            </p>
+          </div>
+        </div>
+        <div className="section-stack">
+          {Array.from({ length: Math.max(1, Number(durationDays) || 1) }, (_, index) => {
+            const day = days[index] || BLANK_DAY;
+            return (
+              <div key={`route-day-${index}`} className="detail-card">
+                <div className="section-heading-row">
+                  <strong>Day {index + 1}</strong>
+                </div>
+                <label>
+                  Title
+                  <input
+                    value={day.title}
+                    placeholder={`Day ${index + 1}`}
+                    onChange={(event) => updateDay(index, { title: event.target.value })}
+                  />
+                </label>
+                <div className="form-grid">
+                  <label>
+                    Distance (km)
+                    <input
+                      type="number"
+                      min="0"
+                      value={day.distanceKm}
+                      onChange={(event) => updateDay(index, { distanceKm: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Drive time (hours)
+                    <input
+                      type="number"
+                      min="0"
+                      value={day.driveHours}
+                      onChange={(event) => updateDay(index, { driveHours: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Drive time (minutes)
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={day.driveMinutes}
+                      onChange={(event) => updateDay(index, { driveMinutes: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <div className="inline-actions">
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={day.lunchIncluded}
+                      onChange={(event) => updateDay(index, { lunchIncluded: event.target.checked })}
+                    />
+                    Lunch included
+                  </label>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={day.dinnerIncluded}
+                      onChange={(event) => updateDay(index, { dinnerIncluded: event.target.checked })}
+                    />
+                    Dinner included
+                  </label>
+                </div>
+                <label>
+                  Description
+                  <textarea
+                    rows={6}
+                    value={day.description}
+                    placeholder="Client-facing description for this day (rendered as the proposal day summary)."
+                    onChange={(event) => updateDay(index, { description: event.target.value })}
+                  />
+                </label>
+              </div>
+            );
+          })}
         </div>
       </section>
 

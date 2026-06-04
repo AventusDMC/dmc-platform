@@ -22,6 +22,7 @@ import {
   buildItineraryApplyMessage,
   classifyDailyDayType,
   classifyOvernightCity,
+  deriveTouringRouteBaseCities,
   getAutoItineraryDayCount,
   generateItineraryDays,
   isMiddleDay,
@@ -637,6 +638,38 @@ function findMeetAssistService(services: SupplierService[]) {
 }
 
 type HotelSetupMissingReason = 'no-hotel-in-city' | 'no-valid-contract' | 'no-rate' | null;
+
+function isTouringRouteOption(route: RouteOption): boolean {
+  return (
+    route.routeType === 'TOURING_ROUTE' ||
+    (route as { canonicalRouteType?: string | null }).canonicalRouteType === 'TOURING_ROUTE'
+  );
+}
+
+type TourPreviewDay = {
+  dayNumber: number;
+  title: string;
+  city: string;
+  date: string | null;
+  narrative: string | null;
+  distanceKm: number | null;
+  driveMinutes: number | null;
+  lunchIncluded: boolean;
+  dinnerIncluded: boolean;
+  hotel: { id: string; name: string } | null;
+  contractId: string | null;
+  rate: HotelRate | null;
+  hotelMissingReason: HotelSetupMissingReason;
+};
+
+type TourPreview = {
+  routeId: string;
+  routeName: string;
+  dayCount: number;
+  days: TourPreviewDay[];
+  pricing: { id: string; baseCost: number; currency: string; label: string } | null;
+  warnings: string[];
+};
 
 function findHotelSetup(values: {
   city: string;
@@ -1675,6 +1708,15 @@ export function QuoteAutoItineraryBuilder({
   const [pax, setPax] = useState(String(Math.max(totalPax || quote.adults + quote.children || 1, 1)));
   const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(quote.quoteType || 'FIT');
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('cost');
+  // "Generate from touring route" state — independent of the text-driven builder.
+  const [tourRouteId, setTourRouteId] = useState('');
+  const [tourPricingId, setTourPricingId] = useState('');
+  const [tourPreview, setTourPreview] = useState<TourPreview | null>(null);
+  const [tourReplace, setTourReplace] = useState(false);
+  const [tourBusy, setTourBusy] = useState(false);
+  const [tourError, setTourError] = useState('');
+  const [tourStatus, setTourStatus] = useState('');
+  const touringRouteOptions = useMemo(() => routes.filter(isTouringRouteOption), [routes]);
   // Default includeActivities=true so Generate Full Itinerary actually
   // populates activities. Operator can uncheck if they only want hotels +
   // transport. Previously default false meant activities never auto-pulled,
@@ -2589,6 +2631,224 @@ export function QuoteAutoItineraryBuilder({
   const unmatchedRoutes = preview?.transports.filter((item) => !item.route).length || 0;
   const unmatchedHotels = preview?.hotels.filter((item) => !item.hotel || !item.contract || !item.rate).length || 0;
 
+  function buildTouringRoutePreview(): TourPreview | null {
+    const route = touringRouteOptions.find((candidate) => candidate.id === tourRouteId);
+    if (!route) {
+      return null;
+    }
+    const derived = deriveTouringRouteBaseCities({
+      startCity: route.startCity,
+      durationDays: route.durationDays,
+      mainDestinations: route.mainDestinations,
+    });
+    const dayShells = generateItineraryDays(travelStartDate || null, Math.max(0, derived.dayCount - 1));
+    const routeDays = route.days || [];
+    const numericPaxLocal = Math.max(1, Math.floor(Number(pax) || 1));
+    const days: TourPreviewDay[] = derived.cities.map((city, index) => {
+      const dayNumber = index + 1;
+      const shell = dayShells[index];
+      const routeDay = routeDays.find((entry) => entry.dayNumber === dayNumber);
+      const hotelSetup = findHotelSetup({
+        city,
+        travelDate: shell?.date ?? null,
+        hotels,
+        hotelContracts,
+        hotelRates,
+        optimizationMode,
+      });
+      return {
+        dayNumber,
+        title: (routeDay?.title || '').trim() || shell?.title || `Day ${dayNumber}`,
+        city,
+        date: shell?.date ?? null,
+        narrative: (routeDay?.description || '').trim() || null,
+        distanceKm: routeDay?.distanceKm ?? null,
+        driveMinutes: routeDay?.driveMinutes ?? null,
+        lunchIncluded: Boolean(routeDay?.lunchIncluded),
+        dinnerIncluded: Boolean(routeDay?.dinnerIncluded),
+        hotel: hotelSetup.hotel ? { id: hotelSetup.hotel.id, name: hotelSetup.hotel.name } : null,
+        contractId: hotelSetup.contract?.id ?? null,
+        rate: hotelSetup.rate,
+        hotelMissingReason: hotelSetup.missingReason,
+      };
+    });
+
+    const pricings = route.touringRoutePricings || [];
+    const chosen =
+      pricings.find((pricing) => pricing.id === tourPricingId) ||
+      pricings.find(
+        (pricing) =>
+          pricing.active !== false && (pricing.minPax ?? 1) <= numericPaxLocal && (pricing.maxPax ?? 99) >= numericPaxLocal,
+      ) ||
+      pricings.find((pricing) => pricing.active !== false) ||
+      pricings[0] ||
+      null;
+    const pricing = chosen
+      ? {
+          id: chosen.id,
+          baseCost: Number(chosen.baseCost || 0),
+          currency: (chosen.currency || 'USD').toUpperCase(),
+          label: `${chosen.vehicle?.name || chosen.vehicle?.vehicleType || 'Vehicle'} · ${chosen.minPax ?? 1}-${chosen.maxPax ?? 99} pax`,
+        }
+      : null;
+
+    const warnings = [...derived.notes];
+    if (!pricing) {
+      warnings.push('This touring route has no pricing rows yet — add one so the transport line is priced.');
+    }
+    const missingHotelCount = days.filter((day) => !day.hotel || !day.contractId || !day.rate).length;
+    if (missingHotelCount > 0) {
+      warnings.push(`${missingHotelCount} day${missingHotelCount === 1 ? '' : 's'} could not auto-match a hotel — add hotels for those cities or set them manually.`);
+    }
+
+    return { routeId: route.id, routeName: route.name, dayCount: derived.dayCount, days, pricing, warnings };
+  }
+
+  function refreshTouringRoutePreview() {
+    setTourError('');
+    setTourStatus('');
+    const built = buildTouringRoutePreview();
+    if (!built) {
+      setTourError('Select a touring route first.');
+      setTourPreview(null);
+      return;
+    }
+    setTourPreview(built);
+  }
+
+  async function applyTouringRoute() {
+    const previewToApply = tourPreview;
+    if (!previewToApply) {
+      return;
+    }
+    setTourBusy(true);
+    setTourError('');
+    setTourStatus('');
+    try {
+      const currentDays = await getCurrentItineraryDays().catch(() => [] as CreatedDay[]);
+      const existingByNumber = new Map(currentDays.map((day) => [day.dayNumber, day]));
+      const savedDays = new Map<number, { id: string }>();
+
+      for (const day of previewToApply.days) {
+        const payload = {
+          dayNumber: day.dayNumber,
+          title: day.title,
+          notes: day.narrative ?? undefined,
+          sortOrder: day.dayNumber,
+          isActive: true,
+        };
+        const existing = existingByNumber.get(day.dayNumber);
+        if (existing) {
+          if (tourReplace || isAutoGeneratedShellDay(existing)) {
+            const updated = await patchJson<CreatedDay>(
+              `${apiBaseUrl}/itinerary/day/${existing.id}`,
+              payload,
+              `Could not update Day ${day.dayNumber}.`,
+            );
+            savedDays.set(day.dayNumber, updated);
+          } else {
+            savedDays.set(day.dayNumber, existing);
+          }
+        } else {
+          const created = await postJson<CreatedDay>(
+            `${apiBaseUrl}/quotes/${quote.id}/itinerary/day`,
+            payload,
+            `Could not create Day ${day.dayNumber}.`,
+          );
+          savedDays.set(day.dayNumber, created);
+        }
+      }
+
+      const numericPaxLocal = Math.max(1, Math.floor(Number(pax) || 1));
+      let createdItemCount = 0;
+
+      const transportService = findService(services, 'transport');
+      const firstDay = savedDays.get(1);
+      if (previewToApply.pricing && transportService && firstDay) {
+        await postJson(
+          `${apiBaseUrl}/quotes/${quote.id}/items`,
+          {
+            serviceId: transportService.id,
+            itineraryId: firstDay.id,
+            quantity: 1,
+            paxCount: numericPaxLocal,
+            dayCount: previewToApply.dayCount,
+            markupPercent: 20,
+            touringRouteId: previewToApply.routeId,
+            touringRoutePricingId: previewToApply.pricing.id,
+            overrideCost: previewToApply.pricing.baseCost,
+            useOverride: true,
+            currency: previewToApply.pricing.currency,
+          },
+          'Could not add the touring-route transport.',
+        );
+        createdItemCount += 1;
+      }
+
+      // Overnight hotels: the final day departs (no night) for multi-day routes;
+      // a single-day route still has one overnight at its base. Group consecutive
+      // identical hotel/contract/rate nights into one item with nightCount=N.
+      const hotelService = findService(services, 'hotel');
+      const overnightCount = previewToApply.dayCount === 1 ? 1 : previewToApply.dayCount - 1;
+      const overnightDays = previewToApply.days.slice(0, overnightCount);
+      if (hotelService) {
+        let index = 0;
+        while (index < overnightDays.length) {
+          const day = overnightDays[index];
+          if (!day.hotel || !day.contractId || !day.rate) {
+            index += 1;
+            continue;
+          }
+          let cursor = index + 1;
+          let nights = 1;
+          while (
+            cursor < overnightDays.length &&
+            overnightDays[cursor].hotel?.id === day.hotel.id &&
+            overnightDays[cursor].contractId === day.contractId &&
+            overnightDays[cursor].rate?.id === day.rate.id
+          ) {
+            nights += 1;
+            cursor += 1;
+          }
+          const anchor = savedDays.get(day.dayNumber);
+          if (anchor) {
+            await postJson(
+              `${apiBaseUrl}/quotes/${quote.id}/items`,
+              {
+                serviceId: hotelService.id,
+                itineraryId: anchor.id,
+                quantity: 1,
+                paxCount: numericPaxLocal,
+                roomCount: 1,
+                nightCount: nights,
+                markupPercent: 20,
+                hotelId: day.hotel.id,
+                contractId: day.contractId,
+                seasonName: day.rate.seasonName,
+                roomCategoryId: day.rate.roomCategoryId,
+                occupancyType: day.rate.occupancyType,
+                mealPlan: day.rate.mealPlan,
+              },
+              `Could not add the hotel for ${day.city}.`,
+            );
+            createdItemCount += 1;
+          }
+          index = cursor;
+        }
+      }
+
+      setTourStatus(
+        `Generated ${previewToApply.dayCount} day${previewToApply.dayCount === 1 ? '' : 's'} and ${createdItemCount} item${createdItemCount === 1 ? '' : 's'} from ${previewToApply.routeName}.`,
+      );
+      setTourPreview(null);
+      router.refresh();
+    } catch (caughtError) {
+      setTourError(caughtError instanceof Error ? caughtError.message : 'Could not generate from touring route.');
+    } finally {
+      setTourBusy(false);
+    }
+  }
+
   return (
     <section className="quote-auto-itinerary-builder">
       <div className="quote-auto-itinerary-head">
@@ -2597,6 +2857,138 @@ export function QuoteAutoItineraryBuilder({
           <h3>Generate a draft itinerary</h3>
         </div>
         <span className="page-tab-badge">{quoteType}</span>
+      </div>
+
+      <div className="detail-card quote-touring-route-generator" style={{ marginBottom: '1rem' }}>
+        <p className="eyebrow">From touring route</p>
+        <h4 style={{ margin: '0 0 0.5rem' }}>Generate days from a touring route</h4>
+        <p className="detail-copy" style={{ marginTop: 0 }}>
+          Lays out the days, attaches the route&apos;s transport at its package price, auto-matches overnight hotels, and
+          fills each day&apos;s description from the route. Review the draft, then Generate.
+        </p>
+        <div className="form-grid">
+          <label>
+            Touring route
+            <select
+              value={tourRouteId}
+              onChange={(event) => {
+                setTourRouteId(event.target.value);
+                setTourPricingId('');
+                setTourPreview(null);
+                setTourError('');
+                setTourStatus('');
+              }}
+            >
+              <option value="">Select a touring route…</option>
+              {touringRouteOptions.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.name}
+                  {route.durationDays ? ` (${route.durationDays}d)` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Start date
+            <input value={travelStartDate} onChange={(event) => setTravelStartDate(event.target.value)} type="date" />
+          </label>
+          <label>
+            Pax
+            <input value={pax} onChange={(event) => setPax(event.target.value)} type="number" min="1" />
+          </label>
+          <label>
+            Hotels
+            <select value={optimizationMode} onChange={(event) => setOptimizationMode(event.target.value as OptimizationMode)}>
+              <option value="cost">Cost</option>
+              <option value="comfort">Comfort</option>
+            </select>
+          </label>
+        </div>
+        {tourRouteId
+          ? (() => {
+              const selectedRoute = touringRouteOptions.find((route) => route.id === tourRouteId);
+              const pricings = selectedRoute?.touringRoutePricings || [];
+              return pricings.length > 0 ? (
+                <label style={{ display: 'block', marginTop: '0.5rem' }}>
+                  Transport pricing
+                  <select value={tourPricingId} onChange={(event) => setTourPricingId(event.target.value)}>
+                    <option value="">Auto (match pax)</option>
+                    {pricings.map((pricing) => (
+                      <option key={pricing.id} value={pricing.id}>
+                        {`${pricing.vehicle?.name || pricing.vehicle?.vehicleType || 'Vehicle'} · ${pricing.minPax ?? 1}-${pricing.maxPax ?? 99} pax · ${(pricing.currency || 'USD').toUpperCase()} ${Number(pricing.baseCost || 0)}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null;
+            })()
+          : null}
+        <div className="inline-actions" style={{ marginTop: '0.65rem' }}>
+          <button type="button" className="secondary-button" disabled={!tourRouteId || tourBusy} onClick={refreshTouringRoutePreview}>
+            Preview
+          </button>
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={tourReplace} onChange={(event) => setTourReplace(event.target.checked)} />
+            Replace existing day text
+          </label>
+        </div>
+
+        {tourError ? <p className="form-error">{tourError}</p> : null}
+        {tourStatus ? <p className="detail-copy" style={{ color: 'var(--ds-color-success, #067647)' }}>{tourStatus}</p> : null}
+
+        {tourPreview ? (
+          <div className="section-stack" style={{ marginTop: '0.75rem' }}>
+            {tourPreview.warnings.map((warning, index) => (
+              <p key={`tour-warning-${index}`} className="detail-copy" style={{ color: 'var(--ds-color-warning, #B54708)', margin: 0 }}>
+                ⚠ {warning}
+              </p>
+            ))}
+            <div className="detail-copy" style={{ fontWeight: 600 }}>
+              {tourPreview.dayCount} day{tourPreview.dayCount === 1 ? '' : 's'} ·{' '}
+              {tourPreview.pricing
+                ? `Transport ${tourPreview.pricing.currency} ${tourPreview.pricing.baseCost} (package)`
+                : 'No transport pricing'}
+            </div>
+            {tourPreview.days.map((day) => (
+              <div key={`tour-day-${day.dayNumber}`} className="detail-card" style={{ borderLeft: '3px solid var(--ds-color-accent, #1F9ACF)' }}>
+                <strong>
+                  Day {day.dayNumber} — {day.title}
+                </strong>
+                <div className="detail-copy" style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-subtle, #667085)' }}>
+                  {[
+                    day.distanceKm ? `~${day.distanceKm} km` : null,
+                    day.driveMinutes ? `~${Math.floor(day.driveMinutes / 60)}h ${day.driveMinutes % 60}m drive` : null,
+                    day.lunchIncluded || day.dinnerIncluded
+                      ? `Meals: ${['Breakfast', day.lunchIncluded ? 'Lunch' : null, day.dinnerIncluded ? 'Dinner' : null].filter(Boolean).join(', ')}`
+                      : 'Meals: Breakfast',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+                {day.narrative ? (
+                  <p className="detail-copy" style={{ margin: '0.35rem 0' }}>
+                    {day.narrative.length > 180 ? `${day.narrative.slice(0, 180)}…` : day.narrative}
+                  </p>
+                ) : (
+                  <p className="detail-copy" style={{ margin: '0.35rem 0', color: 'var(--ds-color-text-subtle, #667085)' }}>
+                    No description authored for this day on the route.
+                  </p>
+                )}
+                <div className="detail-copy" style={{ fontSize: '0.8rem' }}>
+                  {day.hotel ? `🏨 ${day.hotel.name}` : `🏨 ${day.city}: no hotel matched`}
+                </div>
+              </div>
+            ))}
+            <div className="inline-actions">
+              <button type="button" className="primary-button" disabled={tourBusy} onClick={applyTouringRoute}>
+                {tourBusy ? 'Generating…' : 'Generate itinerary'}
+              </button>
+              <button type="button" className="secondary-button" disabled={tourBusy} onClick={() => setTourPreview(null)}>
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {guidedPrefillBanner ? (
