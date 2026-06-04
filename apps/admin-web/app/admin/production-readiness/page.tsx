@@ -137,11 +137,11 @@ export default async function ProductionReadinessPage() {
           border: '1px dashed #d0d5dd',
           borderRadius: 10,
           padding: '0.85rem 1rem',
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.85rem',
         }}
       >
-        <strong style={{ color: '#101828' }}>Hardening scope (v1)</strong>
+        <strong style={{ color: 'var(--ds-color-text, #0F172A)' }}>Hardening scope (v1)</strong>
         <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.2rem' }}>
           <li>Operational safety guards added inline (refuse to dispatch without supplier, etc.).</li>
           <li>Read-only checks here — nothing here mutates state.</li>
@@ -170,7 +170,7 @@ function CheckSection({ title, accent, checks }: { title: string; accent: string
     >
       <h2 style={{ margin: 0, color: accent, fontSize: '1.05rem' }}>{title}</h2>
       {checks.length === 0 ? (
-        <p style={{ color: '#667085', margin: 0 }}>No checks in this category.</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>No checks in this category.</p>
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {checks.map((c) => {

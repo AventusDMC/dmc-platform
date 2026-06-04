@@ -183,7 +183,7 @@ export function ImportPreviewPanel({ hotelId, contractId }: { hotelId: string; c
               <button type="button" className="primary-button" onClick={onApply} disabled={!canApply || applying}>
                 {applying ? 'Applying…' : 'Apply changes'}
               </button>
-              <span className="table-subcopy" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+              <span className="table-subcopy" style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}>
                 Applies the creates &amp; updates above (audited). Re-reads the file server-side
                 before writing.
               </span>

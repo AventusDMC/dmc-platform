@@ -227,7 +227,7 @@ export default async function AdminDashboardPage() {
             <Link
               href="/executive/operations"
               className="primary-button"
-              style={{ background: '#101828', borderColor: '#101828', color: '#ffffff' }}
+              style={{ background: 'var(--ds-color-text, #0F172A)', borderColor: 'var(--ds-color-text, #0F172A)', color: '#ffffff' }}
             >
               👔 Executive Ops
             </Link>

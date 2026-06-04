@@ -345,7 +345,7 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
     <section className="workspace-section" style={{ display: 'grid', gap: '0.85rem' }}>
       <div>
         <h3 style={{ margin: 0 }}>Route Legs</h3>
-        <p style={{ margin: '0.2rem 0 0', color: '#667085', fontSize: '0.85rem' }}>
+        <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Ordered Route Standard movements that compose this touring route's operational flow.
           Pricing comes from the touring-route supplier rate — adding legs does <strong>not</strong>{' '}
           change pricing. Dispatch + quote display use these legs for timing and risk awareness.
@@ -377,9 +377,9 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
 
       {/* Existing legs */}
       {loading ? (
-        <p style={{ color: '#667085', fontSize: '0.85rem' }}>Loading legs…</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>Loading legs…</p>
       ) : legs.length === 0 ? (
-        <p style={{ color: '#667085', fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           No legs yet. Add the first one below — most Jordan touring routes are 3-4 legs (Amman → Madaba → Nebo → Petra,
           Petra → Wadi Rum, etc.).
         </p>
@@ -411,7 +411,7 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
       >
         <p
           style={{
-            color: '#475467',
+            color: 'var(--ds-color-text-muted, #475569)',
             fontSize: '0.72rem',
             fontWeight: 700,
             letterSpacing: '0.08em',
@@ -457,7 +457,7 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
           />
         </div>
         <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Notes</span>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Notes</span>
           <input
             value={formNotes}
             onChange={(e) => setFormNotes(e.target.value)}
@@ -624,11 +624,11 @@ function LegRow({
         alignItems: 'center',
       }}
     >
-      <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#475467', minWidth: 32 }}>
+      <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--ds-color-text-muted, #475569)', minWidth: 32 }}>
         {leg.sequence}
       </div>
       <div>
-        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#101828' }}>
+        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--ds-color-text, #0F172A)' }}>
           {fromLabel} → {toLabel}
           <span
             style={{
@@ -644,7 +644,7 @@ function LegRow({
             {LEG_TYPE_LABELS[leg.legType]}
           </span>
         </div>
-        <div style={{ marginTop: '0.2rem', color: '#475467', fontSize: '0.82rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ marginTop: '0.2rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {isDrive ? (
             std ? (
               <>
@@ -677,7 +677,7 @@ function LegRow({
           )}
         </div>
         {leg.notes ? (
-          <div style={{ marginTop: '0.2rem', color: '#667085', fontSize: '0.78rem' }}>{leg.notes}</div>
+          <div style={{ marginTop: '0.2rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>{leg.notes}</div>
         ) : null}
       </div>
       <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -727,7 +727,7 @@ function ResolvedStandardPreview({
 }) {
   if (loading) {
     return (
-      <p style={{ marginTop: '0.5rem', color: '#667085', fontSize: '0.85rem' }}>Checking for Route Standard…</p>
+      <p style={{ marginTop: '0.5rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>Checking for Route Standard…</p>
     );
   }
   if (!resolved) {
@@ -795,7 +795,7 @@ function FieldPicker({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>{label}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {placeholder ? <option value="">{placeholder}</option> : null}
         {options.map((o) => (
@@ -855,14 +855,14 @@ function GenerateFromStopsControls({
           >
             Auto-build from stops
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.82rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem' }}>
             Generate ordered DRIVE legs by pairing this touring route's existing Stops. Each stop is matched to an
             Operational Area and a Route Standard is auto-resolved. Pricing is <strong>not</strong> affected.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {existingLegCount > 0 ? (
-            <label style={{ fontSize: '0.82rem', color: '#475467', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <label style={{ fontSize: '0.82rem', color: 'var(--ds-color-text-muted, #475569)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <input
                 type="checkbox"
                 checked={replaceExisting}
@@ -911,7 +911,7 @@ function GenerateFromStopsControls({
           >
             Auto-build preview
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>{preview.message}</p>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>{preview.message}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem' }}>
           <button type="button" className="secondary-button" onClick={onDismiss} disabled={generating}>
@@ -946,7 +946,7 @@ function GenerateFromStopsControls({
               fontSize: '0.82rem',
             }}
           >
-            <span style={{ fontFamily: 'monospace', color: '#475467', minWidth: 24 }}>{leg.sequence}.</span>
+            <span style={{ fontFamily: 'monospace', color: 'var(--ds-color-text-muted, #475569)', minWidth: 24 }}>{leg.sequence}.</span>
             <span style={{ flex: 1, minWidth: 200 }}>
               {leg.fromArea?.name || '?'} → {leg.toArea?.name || '?'}
               {leg.suggestedCode ? (
@@ -1029,7 +1029,7 @@ function PreviewBadge({ leg }: { leg: GeneratedLeg }) {
       <span
         style={{
           background: 'var(--ds-color-surface-soft, #F9FAFB)',
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           border: '1px solid #d0d5dd',
           padding: '0.05rem 0.45rem',
           borderRadius: 999,
@@ -1073,7 +1073,7 @@ function FieldNumber({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>{label}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>{label}</span>
       <input
         type="number"
         min="0"

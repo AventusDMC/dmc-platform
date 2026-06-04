@@ -53,7 +53,7 @@ export default async function RouteStandardEditPage({ params }: { params: Promis
                 dispatch references still resolve via it). */}
             {standard.canonicalRouteCode ? (
               <>
-                <p style={{ margin: '0.1rem 0', fontSize: '0.95rem', color: '#475467' }}>
+                <p style={{ margin: '0.1rem 0', fontSize: '0.95rem', color: 'var(--ds-color-text-muted, #475569)' }}>
                   Operational code:{' '}
                   <code
                     style={{
@@ -69,7 +69,7 @@ export default async function RouteStandardEditPage({ params }: { params: Promis
                   </code>
                 </p>
                 <p className="admin-muted-copy" style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
-                  Legacy code: <code style={{ color: '#98a2b3' }}>{standard.routeCode}</code> — preserved for backward
+                  Legacy code: <code style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>{standard.routeCode}</code> — preserved for backward
                   lookup compatibility. Quote items / vouchers / dispatch references that captured this code still resolve.
                 </p>
               </>

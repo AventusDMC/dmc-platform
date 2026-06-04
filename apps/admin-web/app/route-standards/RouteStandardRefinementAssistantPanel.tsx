@@ -207,7 +207,7 @@ export function RouteStandardRefinementAssistantPanel() {
         <div style={{ flex: 1, minWidth: 280 }}>
           <p
             style={{
-              color: '#475467',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.72rem',
               fontWeight: 700,
               letterSpacing: '0.08em',
@@ -217,7 +217,7 @@ export function RouteStandardRefinementAssistantPanel() {
           >
             Refinement assistant
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             One-click suggestions to accelerate cleanup. Canonical codes are recovered
             from city fields or legacy routeCode parsing; missing duration/distance
             are inherited from the reverse route when it has valid timing. VERIFIED
@@ -225,7 +225,7 @@ export function RouteStandardRefinementAssistantPanel() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '0.78rem', color: '#475467', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <label style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             Filter:
             <select value={filterField} onChange={(e) => setFilterField(e.target.value as any)}>
               <option value="all">All suggestions</option>
@@ -265,7 +265,7 @@ export function RouteStandardRefinementAssistantPanel() {
       </div>
 
       {!loading && visibleTasks.length === 0 ? (
-        <p style={{ marginTop: '0.85rem', color: '#475467', fontSize: '0.88rem' }}>
+        <p style={{ marginTop: '0.85rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem' }}>
           No outstanding suggestions. Either the queue is empty or every actionable suggestion
           has been approved/skipped this session.
         </p>
@@ -301,15 +301,15 @@ export function RouteStandardRefinementAssistantPanel() {
                     padding: 0,
                     fontWeight: 700,
                     fontSize: '0.85rem',
-                    color: '#101828',
+                    color: 'var(--ds-color-text, #0F172A)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.4rem',
                   }}
                 >
-                  <span style={{ fontSize: '0.7rem', color: '#475467' }}>{collapsed ? '▶' : '▼'}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--ds-color-text-muted, #475569)' }}>{collapsed ? '▶' : '▼'}</span>
                   {CATEGORY_LABELS[category]}
-                  <span style={{ color: '#667085', fontWeight: 500, fontSize: '0.78rem' }}>
+                  <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontWeight: 500, fontSize: '0.78rem' }}>
                     · {tasks.length} suggestion{tasks.length === 1 ? '' : 's'}
                   </span>
                 </button>
@@ -365,7 +365,7 @@ function Counter({
       <p
         style={{
           margin: 0,
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.68rem',
           textTransform: 'uppercase',
           fontWeight: 700,
@@ -414,33 +414,33 @@ function SuggestionRow({
       }}
     >
       <div>
-        <p style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.78rem', color: '#101828' }}>
+        <p style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--ds-color-text, #0F172A)' }}>
           <strong>{task.routeCode}</strong>
           {task.canonicalRouteCode ? (
             <span style={{ marginLeft: '0.35rem', color: '#7a5c2e' }}>→ {task.canonicalRouteCode}</span>
           ) : null}
         </p>
-        <p style={{ margin: '0.1rem 0 0', color: '#475467', fontSize: '0.78rem' }}>
+        <p style={{ margin: '0.1rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
           {task.routeName}
           {task.fromCity || task.toCity ? (
-            <span style={{ color: '#98a2b3' }}>
+            <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>
               {' '}· {task.fromCity || '?'} → {task.toCity || '?'}
             </span>
           ) : null}
         </p>
       </div>
       <div>
-        <p style={{ margin: 0, color: '#475467', fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
           {FIELD_LABELS[task.field]}
         </p>
-        <p style={{ margin: '0.1rem 0 0', fontSize: '0.85rem', color: '#101828' }}>
-          <span style={{ color: '#98a2b3' }}>{currentDisplay}</span>
+        <p style={{ margin: '0.1rem 0 0', fontSize: '0.85rem', color: 'var(--ds-color-text, #0F172A)' }}>
+          <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>{currentDisplay}</span>
           {' → '}
           <strong style={{ fontFamily: task.field === 'canonicalRouteCode' ? 'monospace' : 'inherit' }}>{suggestedDisplay}</strong>
         </p>
       </div>
       <div>
-        <p style={{ margin: 0, color: '#475467', fontSize: '0.72rem' }}>{SOURCE_LABELS[task.suggestionSource]}</p>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.72rem' }}>{SOURCE_LABELS[task.suggestionSource]}</p>
         {task.isProtected ? (
           <span
             style={{
@@ -465,7 +465,7 @@ function SuggestionRow({
               display: 'inline-block',
               marginTop: '0.2rem',
               background: '#f0f4f8',
-              color: '#475467',
+              color: 'var(--ds-color-text-muted, #475569)',
               padding: '0.05rem 0.45rem',
               borderRadius: 999,
               fontSize: '0.68rem',

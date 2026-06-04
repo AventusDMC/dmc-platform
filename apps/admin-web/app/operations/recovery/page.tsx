@@ -212,7 +212,7 @@ export default async function RecoveryPage() {
           }}
         >
           <strong style={{ fontSize: '1.1rem' }}>✓ No active incidents in the next 7 days.</strong>
-          <p style={{ margin: '0.5rem 0 0', color: '#475467' }}>
+          <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-muted, #475569)' }}>
             Use{' '}
             <Link href="/operations/simulation" style={{ color: 'var(--ds-color-info, #175CD3)', fontWeight: 700 }}>
               /operations/simulation
@@ -309,7 +309,7 @@ function RecoveryBucket({
         <h2 style={{ margin: 0, color: accent }}>
           {title} · {rows.length}
         </h2>
-        <p style={{ margin: 0, color: '#667085', fontSize: '0.85rem' }}>{description}</p>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>{description}</p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
         {rows.map((row) => (
@@ -340,10 +340,10 @@ function IncidentCard({ row }: { row: DispatchRow }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
           {time ? (
-            <strong style={{ fontSize: '1.25rem', color: '#101828', fontVariantNumeric: 'tabular-nums' }}>{time}</strong>
+            <strong style={{ fontSize: '1.25rem', color: 'var(--ds-color-text, #0F172A)', fontVariantNumeric: 'tabular-nums' }}>{time}</strong>
           ) : null}
           <strong style={{ fontSize: '1rem' }}>{row.description || type || 'Service'}</strong>
-          {date ? <span style={{ color: '#667085', fontSize: '0.85rem' }}>{date}</span> : null}
+          {date ? <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>{date}</span> : null}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
           {row.issueEffectiveSeverity || row.issueSeverity ? (
@@ -381,7 +381,7 @@ function IncidentCard({ row }: { row: DispatchRow }) {
         </div>
       </div>
 
-      <div style={{ color: '#475467', fontSize: '0.85rem' }}>
+      <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         <strong>{row.bookingRef || 'Booking'}</strong>
         {row.supplierName ? ` · Supplier: ${row.supplierName}` : ' · No supplier'}
         {row.driverName ? ` · Driver: ${row.driverName}` : ''}

@@ -75,7 +75,7 @@ export function HotelPreferenceRankEditor({ hotelId, initialRank }: HotelPrefere
         Lower number wins (1 = most preferred). Leave blank to clear.
       </p>
       <form onSubmit={handleSubmit} style={{ display: 'flex', alignItems: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', fontSize: '0.82rem', color: '#475467', gap: '0.25rem' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: '0.82rem', color: 'var(--ds-color-text-muted, #475569)', gap: '0.25rem' }}>
           Preference rank
           <input
             value={rank}

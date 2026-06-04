@@ -3086,7 +3086,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               <span className={`quote-ui-badge ${reviewBlockingIssues.length > 0 ? 'quote-ui-badge-warning' : 'quote-ui-badge-success'}`}>
                 {reviewBlockingIssues.length > 0 ? 'Blocked steps' : 'Flow ready'}
               </span>
-              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>
+              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>
                 Guided steps ▾
               </span>
             </summary>

@@ -248,7 +248,7 @@ export default async function SupplementEditPage({ params }: Props) {
                 Applies to (optional)
                 <input type="date" name="appliesTo" defaultValue={supplement.appliesTo ? supplement.appliesTo.slice(0, 10) : ''} />
               </label>
-              <span style={{ gridColumn: 'span 2', color: '#94a3b8', fontSize: '0.72rem', alignSelf: 'end' }}>
+              <span style={{ gridColumn: 'span 2', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.72rem', alignSelf: 'end' }}>
                 Date-specific charge (e.g. a 31 Dec gala): set both to that date. Blank = charged across
                 the whole stay.
               </span>
@@ -270,7 +270,7 @@ export default async function SupplementEditPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/supplements/{supplementId}/edit —
           server-rendered. PATCH via Server Action.

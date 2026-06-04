@@ -197,12 +197,12 @@ export default async function ExecutivePage() {
                 type="button"
                 onClick={undefined}
                 style={{
-                  background: '#101828',
+                  background: 'var(--ds-color-text, #0F172A)',
                   color: '#ffffff',
                   padding: '0.6rem 1rem',
                   borderRadius: 8,
                   fontWeight: 700,
-                  border: '1px solid #101828',
+                  border: '1px solid var(--ds-color-text, #0F172A)',
                   cursor: 'pointer',
                 }}
                 aria-label="Print snapshot"
@@ -269,7 +269,7 @@ export default async function ExecutivePage() {
           <Stat label="Delay cost" value={money(data.financialExposure.delayExposure)} tone={data.financialExposure.delayExposure > 0 ? 'action' : 'ready'} />
           <Stat label="Avg leakage per service" value={money(data.financialExposure.avgLeakagePerService)} tone="info" />
         </div>
-        <p className="executive-no-print" style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.78rem' }}>
+        <p className="executive-no-print" style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           All amounts are <strong>heuristic estimates</strong> — see <Link href="/operations/intelligence/financial" style={{ color: 'var(--ds-color-info, #175CD3)' }}>Financial Convergence</Link> for the underlying rate model.
         </p>
       </Panel>
@@ -317,7 +317,7 @@ export default async function ExecutivePage() {
           <DeltaCard label="Completed" current={data.deltas.current.completed} previous={data.deltas.previous.completed} delta={data.deltas.completedDelta} />
           <DeltaCard label="Delayed" current={data.deltas.current.delayed} previous={data.deltas.previous.delayed} delta={data.deltas.delayedDelta} invertColor />
         </div>
-        <p className="executive-no-print" style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.78rem' }}>
+        <p className="executive-no-print" style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           Comparing this {data.rangeDays}-day window against the previous {data.rangeDays} days. Down on incidents and delayed is good (shown green).
         </p>
       </Panel>
@@ -360,7 +360,7 @@ export default async function ExecutivePage() {
       {/* SUPPLIER RANKING */}
       <Panel title="Supplier Intelligence Ranking" accent="#175cd3">
         {data.supplierRanking.length === 0 ? (
-          <p style={{ color: '#667085' }}>No supplier activity in window.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>No supplier activity in window.</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead>
@@ -379,7 +379,7 @@ export default async function ExecutivePage() {
                 const tone = scoreTone(s.reliabilityScore);
                 return (
                   <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
-                    <td style={{ padding: '0.4rem', textAlign: 'center', color: '#667085', fontWeight: 600 }}>{s.rank}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'center', color: 'var(--ds-color-text-subtle, #667085)', fontWeight: 600 }}>{s.rank}</td>
                     <td style={{ padding: '0.4rem', fontWeight: 600 }}>{s.name}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'center' }}>
                       <span style={{ background: tone.bg, color: tone.text, border: `1px solid ${tone.border}`, padding: '0.1rem 0.5rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 700 }}>
@@ -387,9 +387,9 @@ export default async function ExecutivePage() {
                       </span>
                     </td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.totalServices}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>{s.incidentCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)' }}>{s.incidentCount}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.recoverySuccessPct}%</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)' }}>
                       {money(s.estimatedLeakage)}
                     </td>
                   </tr>
@@ -404,14 +404,14 @@ export default async function ExecutivePage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1rem' }}>
         <Panel title="Routes & Destinations" accent="#b54708">
           {data.routeIntelligence.length === 0 ? (
-            <p style={{ color: '#667085', margin: 0 }}>No route-level bottlenecks detected.</p>
+            <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>No route-level bottlenecks detected.</p>
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {data.routeIntelligence.map((r, i) => (
                 <li key={i} style={{ padding: '0.5rem 0.6rem', background: '#fafbfc', border: '1px solid #e4e7ec', borderRadius: 6 }}>
                   <strong>{r.label}</strong>
                   <span style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', color: 'var(--ds-color-danger, #B42318)', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.5rem', textTransform: 'uppercase' }}>{r.category}</span>
-                  <div style={{ color: '#475467', fontSize: '0.82rem', marginTop: '0.15rem' }}>{r.insight}</div>
+                  <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', marginTop: '0.15rem' }}>{r.insight}</div>
                 </li>
               ))}
             </ul>
@@ -419,7 +419,7 @@ export default async function ExecutivePage() {
         </Panel>
         <Panel title="Weekly Trends · last 4 weeks" accent="#067647">
           {data.trends.length === 0 ? (
-            <p style={{ color: '#667085', margin: 0 }}>No historical activity in window.</p>
+            <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>No historical activity in window.</p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
               <thead>
@@ -437,8 +437,8 @@ export default async function ExecutivePage() {
                     <td style={{ padding: '0.4rem', fontWeight: 600 }}>{t.weekLabel}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.delayedCount > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467' }}>{t.delayedCount}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467', fontWeight: 700 }}>{t.incidentCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.delayedCount > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)' }}>{t.delayedCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)', fontWeight: 700 }}>{t.incidentCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -450,7 +450,7 @@ export default async function ExecutivePage() {
       {/* OPERATIONS TEAM */}
       <Panel title="Operations Team Performance" accent="#7e22ce">
         {data.teamStats.length === 0 ? (
-          <p style={{ color: '#667085', margin: 0 }}>No operator activity logged in window.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>No operator activity logged in window.</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
             <thead>
@@ -622,14 +622,14 @@ function DeltaCard({
         gap: '0.2rem',
       }}
     >
-      <span style={{ color: '#475467', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
+      <span style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-        <strong style={{ fontSize: '1.6rem', color: '#101828' }}>{current}</strong>
+        <strong style={{ fontSize: '1.6rem', color: 'var(--ds-color-text, #0F172A)' }}>{current}</strong>
         <span style={{ color: arrow.color, fontSize: '1.1rem', fontWeight: 800 }}>
           {arrow.arrow} {arrow.label}
         </span>
       </div>
-      <span style={{ color: '#667085', fontSize: '0.78rem' }}>vs {previous} previous period</span>
+      <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>vs {previous} previous period</span>
     </div>
   );
 }

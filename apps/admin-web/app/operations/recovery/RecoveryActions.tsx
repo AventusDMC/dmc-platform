@@ -200,7 +200,7 @@ function ActionControl({
 function PanelSuggestions({ serviceId }: { serviceId: string }) {
   return (
     <div style={{ marginTop: '0.5rem' }}>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.78rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
         <strong>Suggestions</strong> · alternative suppliers / drivers / vehicles for this row
       </p>
       <SuggestionsFetcher serviceId={serviceId} />
@@ -211,7 +211,7 @@ function PanelSuggestions({ serviceId }: { serviceId: string }) {
 function PanelImpact({ serviceId }: { serviceId: string }) {
   return (
     <div style={{ marginTop: '0.75rem' }}>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.78rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
         <strong>Cascading impact</strong> · downstream operations affected by this incident
       </p>
       <ImpactFetcher serviceId={serviceId} />
@@ -225,16 +225,16 @@ function SuggestionsFetcher({ serviceId }: { serviceId: string }) {
     <ClientFetch
       url={`/api/bookings/services/${serviceId}/recovery/suggestions`}
       render={(data: any) => {
-        if (!data) return <p style={{ color: '#98a2b3', fontSize: '0.8rem' }}>Loading suggestions…</p>;
+        if (!data) return <p style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.8rem' }}>Loading suggestions…</p>;
         const suppliers = data.suppliers || [];
         const drivers = data.drivers || [];
         const vehicles = data.vehicles || [];
         const guides = data.guides || [];
         if (suppliers.length === 0 && drivers.length === 0 && vehicles.length === 0 && guides.length === 0) {
-          return <p style={{ color: '#667085', fontSize: '0.82rem' }}>No alternative resources found in the system.</p>;
+          return <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>No alternative resources found in the system.</p>;
         }
         return (
-          <ul style={{ margin: '0.4rem 0 0', padding: '0 0 0 1.1rem', color: '#475467', fontSize: '0.82rem', lineHeight: 1.6 }}>
+          <ul style={{ margin: '0.4rem 0 0', padding: '0 0 0 1.1rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.6 }}>
             {suppliers.length > 0 ? (
               <li>
                 <strong>Suppliers ({suppliers.length}):</strong>{' '}
@@ -287,10 +287,10 @@ function ImpactFetcher({ serviceId }: { serviceId: string }) {
     <ClientFetch
       url={`/api/bookings/services/${serviceId}/recovery/impact`}
       render={(data: any) => {
-        if (!data) return <p style={{ color: '#98a2b3', fontSize: '0.8rem' }}>Loading impact…</p>;
+        if (!data) return <p style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.8rem' }}>Loading impact…</p>;
         const sameDay = data.affectedSameDay || [];
         const summary = (
-          <ul style={{ margin: '0.4rem 0 0', padding: '0 0 0 1.1rem', color: '#475467', fontSize: '0.82rem', lineHeight: 1.6 }}>
+          <ul style={{ margin: '0.4rem 0 0', padding: '0 0 0 1.1rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.6 }}>
             <li>
               <strong>Downstream services:</strong> {data.affectedDownstream || 0} total · {sameDay.length} same-day
             </li>
@@ -309,7 +309,7 @@ function ImpactFetcher({ serviceId }: { serviceId: string }) {
           <>
             {summary}
             {sameDay.length > 0 ? (
-              <ul style={{ margin: '0.5rem 0 0', padding: '0 0 0 1.1rem', color: '#475467', fontSize: '0.78rem' }}>
+              <ul style={{ margin: '0.5rem 0 0', padding: '0 0 0 1.1rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
                 {sameDay.slice(0, 5).map((d: any) => (
                   <li key={d.id}>
                     {d.time || '—'} · {d.description}

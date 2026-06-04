@@ -465,7 +465,7 @@ function StatusPill({ label, value, ok }: { label: string; value: string; ok: bo
     <span
       style={{
         background: ok ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
-        color: ok ? 'var(--ds-color-success, #067647)' : '#475467',
+        color: ok ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
         padding: '0.1rem 0.4rem',
         borderRadius: 6,
         fontSize: '0.7rem',
@@ -512,11 +512,11 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.7rem', minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
           {time ? (
-            <strong style={{ fontSize: '1.5rem', color: isCritical ? '#7a271a' : '#101828', fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem' }}>
+            <strong style={{ fontSize: '1.5rem', color: isCritical ? '#7a271a' : 'var(--ds-color-text, #0F172A)', fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem' }}>
               {time}
             </strong>
           ) : null}
-          <span style={{ fontSize: '1.05rem', fontWeight: 700, color: isCritical ? '#7a271a' : '#101828' }}>
+          <span style={{ fontSize: '1.05rem', fontWeight: 700, color: isCritical ? '#7a271a' : 'var(--ds-color-text, #0F172A)' }}>
             {row.description || row.serviceType || 'Service'}
           </span>
         </div>
@@ -527,7 +527,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', color: '#475467', fontSize: '0.85rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         <span><strong>{row.bookingRef || 'Booking'}</strong></span>
         {row.clientName ? <span>· {row.clientName}</span> : null}
         {row.dayNumber ? <span>· Day {row.dayNumber}{row.dayTitle ? ` (${row.dayTitle})` : ''}</span> : null}
@@ -655,7 +655,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
         ) : null}
       </div>
 
-      <details style={{ fontSize: '0.78rem', color: '#667085' }}>
+      <details style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-subtle, #667085)' }}>
         <summary style={{ cursor: 'pointer' }}>Secondary details</summary>
         <div style={{ marginTop: '0.4rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.25rem' }}>
           {row.pickupLocation ? <div><span>Pickup:</span> <strong>{row.pickupLocation}</strong></div> : null}
@@ -718,7 +718,7 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{lane.label}</h3>
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <span style={{ color: '#667085', fontSize: '0.85rem' }}>{lane.total} total</span>
+            <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>{lane.total} total</span>
             {lane.critical > 0 ? (
               <span style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.critical} critical
@@ -738,13 +738,13 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
         </div>
       </summary>
       {lane.total === 0 ? (
-        <p style={{ color: '#667085', margin: '0.5rem 0 0' }}>No {lane.label.toLowerCase()} in this window.</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: '0.5rem 0 0' }}>No {lane.label.toLowerCase()} in this window.</p>
       ) : (
         <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {sectionsToRender.map(([bucketLabel, rows]) =>
             rows.length === 0 ? null : (
               <div key={bucketLabel}>
-                <p style={{ margin: '0 0 0.4rem', color: '#475467', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                <p style={{ margin: '0 0 0.4rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                   {bucketLabel} · {rows.length}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -864,7 +864,7 @@ function renderDispatchBody({
                     padding: '0.35rem 0.7rem',
                     borderRadius: 6,
                     background: view === opt.value ? '#ffffff' : 'transparent',
-                    color: view === opt.value ? '#101828' : '#475467',
+                    color: view === opt.value ? 'var(--ds-color-text, #0F172A)' : 'var(--ds-color-text-muted, #475569)',
                     fontWeight: view === opt.value ? 700 : 500,
                     fontSize: '0.85rem',
                     textDecoration: 'none',
@@ -1107,7 +1107,7 @@ function renderDispatchBody({
             padding: '0.85rem 1rem',
           }}
         >
-          <p style={{ margin: 0, color: '#475467', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             Dispatch summary
           </p>
           <SidebarStat label="Critical" value={c.criticalIssuesCount} accent="#b42318" />
@@ -1265,7 +1265,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
             />
             Live Operations · happening now
           </p>
-          <h2 style={{ margin: 0, color: '#101828' }}>
+          <h2 style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)' }}>
             {inProgressRows.length} in progress
             {anyDelayed ? ` · ${delayedRows.length} delayed / issue` : ''}
           </h2>
@@ -1310,7 +1310,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
                   <h3 style={{ margin: 0, fontSize: '0.95rem', color: meta.accent }}>
                     Active {meta.label.toLowerCase()}
                   </h3>
-                  <span style={{ color: '#667085', fontSize: '0.8rem' }}>· {rows.length}</span>
+                  <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.8rem' }}>· {rows.length}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                   {rows.map((row) => (
@@ -1487,14 +1487,14 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
               <strong
                 style={{
                   fontSize: '1.6rem',
-                  color: critical > 0 ? 'var(--ds-color-danger, #B42318)' : action > 0 ? 'var(--ds-color-warning, #B54708)' : '#101828',
+                  color: critical > 0 ? 'var(--ds-color-danger, #B42318)' : action > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text, #0F172A)',
                   fontVariantNumeric: 'tabular-nums',
                   lineHeight: 1,
                 }}
               >
                 {time}
               </strong>
-              <span style={{ color: '#667085', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.04em' }}>
+              <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.04em' }}>
                 {rows.length} svc{rows.length === 1 ? '' : 's'}
               </span>
               {critical > 0 ? (
@@ -1529,8 +1529,8 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
               gap: '0.2rem',
             }}
           >
-            <strong style={{ fontSize: '0.95rem', color: '#475467', textAlign: 'right' }}>UNSCHED.</strong>
-            <span style={{ color: '#667085', fontSize: '0.72rem', fontWeight: 600 }}>
+            <strong style={{ fontSize: '0.95rem', color: 'var(--ds-color-text-muted, #475569)', textAlign: 'right' }}>UNSCHED.</strong>
+            <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.72rem', fontWeight: 600 }}>
               {unscheduled.length} svc{unscheduled.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -1540,7 +1540,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
         </div>
       ) : null}
       {allRows.length === 0 ? (
-        <p style={{ color: '#667085' }}>No services in this window.</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>No services in this window.</p>
       ) : null}
     </section>
   );
@@ -1553,7 +1553,7 @@ function LanesView({ data, returnTo }: { data: DispatchResponse; returnTo: strin
   // render an empty state instead of crashing the page.
   if (!data.lanes) {
     return (
-      <section style={{ color: '#667085', padding: '1rem', border: '1px dashed #d0d5dd', borderRadius: 8 }}>
+      <section style={{ color: 'var(--ds-color-text-subtle, #667085)', padding: '1rem', border: '1px dashed #d0d5dd', borderRadius: 8 }}>
         Lanes view is not available for this response. Switch to Timeline view.
       </section>
     );
@@ -1581,8 +1581,8 @@ function SidebarStat({ label, value, accent, sub }: { label: string; value: numb
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid #f2f4f7' }}>
       <div>
-        <div style={{ color: '#475467', fontSize: '0.78rem' }}>{label}</div>
-        {sub ? <div style={{ color: '#98a2b3', fontSize: '0.7rem' }}>{sub}</div> : null}
+        <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>{label}</div>
+        {sub ? <div style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.7rem' }}>{sub}</div> : null}
       </div>
       <strong style={{ color: accent, fontSize: '1.15rem' }}>{value}</strong>
     </div>

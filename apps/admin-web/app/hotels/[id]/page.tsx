@@ -188,7 +188,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
                       <td>
                         <span
                           style={{
-                            color: room.isActive ? '#15803d' : '#94a3b8',
+                            color: room.isActive ? '#15803d' : 'var(--ds-color-text-faint, #94A3B8)',
                             fontWeight: 600,
                             fontSize: '0.78rem',
                           }}
@@ -230,7 +230,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotel.id} — pure server component, no client JS. Action buttons are
           placeholders until their pages ship.
@@ -243,7 +243,7 @@ export default async function HotelDetailPage({ params }: HotelDetailPageProps) 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <dt style={{ color: '#475467', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{label}</dt>
+      <dt style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{label}</dt>
       <dd style={{ margin: 0, fontWeight: 500 }}>{children}</dd>
     </>
   );

@@ -318,7 +318,7 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   ⚠ Current supplier id is not in the supplier catalog — pick one to fix.
                 </p>
               ) : hotel.supplierName ? (
-                <p className="table-subcopy" style={{ marginTop: '0.4rem', color: '#475467' }}>
+                <p className="table-subcopy" style={{ marginTop: '0.4rem', color: 'var(--ds-color-text-muted, #475569)' }}>
                   Currently resolves to: <strong>{hotel.supplierName}</strong>
                 </p>
               ) : null}
@@ -388,7 +388,7 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                   />
                 </label>
               </div>
-              <p className="table-subcopy" style={{ marginTop: '0.4rem', color: '#94a3b8', fontSize: '0.75rem' }}>
+              <p className="table-subcopy" style={{ marginTop: '0.4rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}>
                 Leave a field blank to clear it. Times are free-text — use 24-hour or 12-hour
                 format consistent with how your operations team writes them.
               </p>
@@ -641,7 +641,7 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
                 marginTop: '0.4rem',
               }}
             >
-              <legend style={{ fontSize: '0.78rem', color: '#475467', padding: '0 0.4rem' }}>
+              <legend style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', padding: '0 0.4rem' }}>
                 Amenities
               </legend>
               <div

@@ -183,7 +183,7 @@ export default async function SimulationPage({
           >
             <div>
               <h2 style={{ margin: 0 }}>1. Pick a booking</h2>
-              <p style={{ margin: 0, color: '#667085', fontSize: '0.85rem' }}>
+              <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
                 The scenario lands on a service inside this booking. The simulator picks the most operationally-relevant row
                 (IN_PROGRESS &gt; DISPATCHED &gt; READY) of the right service type.
               </p>
@@ -228,12 +228,12 @@ export default async function SimulationPage({
           >
             <div>
               <h2 style={{ margin: 0 }}>2. Apply a scenario</h2>
-              <p style={{ margin: 0, color: '#667085', fontSize: '0.85rem' }}>
+              <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
                 Mutates the booking to look like the scenario happened. Use the dispatch dashboard to triage and resolve.
               </p>
             </div>
             {scenarios.length === 0 ? (
-              <p style={{ color: '#667085' }}>
+              <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>
                 No scenarios available. Verify the backend simulation module is deployed and the database migration ran.
               </p>
             ) : (
@@ -271,7 +271,7 @@ export default async function SimulationPage({
           >
             <div>
               <strong style={{ color: 'var(--ds-color-info, #175CD3)' }}>3. Open Dispatch to triage</strong>
-              <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+              <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
                 Once a scenario is applied the row appears in Live Ops or the Critical Issues banner. Resolve via the
                 existing execution actions (Mark complete / Resolve issue / Reassign supplier).
               </p>
@@ -311,10 +311,10 @@ export default async function SimulationPage({
         >
           <div>
             <strong>Operational replay log</strong>
-            <p style={{ margin: 0, color: '#667085', fontSize: '0.78rem' }}>Last {events.length} events</p>
+            <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>Last {events.length} events</p>
           </div>
           {events.length === 0 ? (
-            <p style={{ color: '#667085', fontSize: '0.85rem' }}>
+            <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
               No events yet. Apply a scenario or run an execution action on the dispatch page.
             </p>
           ) : (
@@ -337,19 +337,19 @@ export default async function SimulationPage({
                         <span aria-hidden style={{ marginRight: '0.3rem' }}>{tone.icon}</span>
                         {event.eventType.replace(/_/g, ' ')}
                       </strong>
-                      <time style={{ color: '#667085', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums' }}>
+                      <time style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums' }}>
                         {formatEventTime(event.occurredAt)}
                       </time>
                     </div>
-                    <div style={{ color: '#475467', fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                    <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem', marginTop: '0.2rem' }}>
                       {event.booking?.bookingRef ? <strong>{event.booking.bookingRef}</strong> : null}
                       {event.bookingService?.description ? ` · ${event.bookingService.description}` : ''}
                     </div>
                     {event.notes ? (
-                      <div style={{ color: '#475467', fontSize: '0.78rem', marginTop: '0.2rem' }}>{event.notes}</div>
+                      <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem', marginTop: '0.2rem' }}>{event.notes}</div>
                     ) : null}
                     {event.actor ? (
-                      <div style={{ color: '#98a2b3', fontSize: '0.72rem', marginTop: '0.15rem' }}>by {event.actor}</div>
+                      <div style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.72rem', marginTop: '0.15rem' }}>by {event.actor}</div>
                     ) : null}
                   </li>
                 );
@@ -411,8 +411,8 @@ function ScenarioCard({
           {scenario.defaultSeverity}
         </span>
       </div>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.82rem', lineHeight: 1.4 }}>{scenario.description}</p>
-      <div style={{ color: '#667085', fontSize: '0.72rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.4 }}>{scenario.description}</p>
+      <div style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.72rem' }}>
         Target: <strong>{scenario.expectedTargetType}</strong>
       </div>
       <button

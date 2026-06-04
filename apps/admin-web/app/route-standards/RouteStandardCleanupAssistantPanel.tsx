@@ -290,7 +290,7 @@ export function RouteStandardCleanupAssistantPanel() {
           marginBottom: '1rem',
         }}
       >
-        <p style={{ color: '#475467', fontSize: '0.85rem', margin: 0 }}>Loading cleanup classification…</p>
+        <p style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem', margin: 0 }}>Loading cleanup classification…</p>
       </section>
     );
   }
@@ -325,7 +325,7 @@ export function RouteStandardCleanupAssistantPanel() {
         <div style={{ flex: 1, minWidth: 280 }}>
           <p
             style={{
-              color: '#475467',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.72rem',
               fontWeight: 700,
               letterSpacing: '0.08em',
@@ -335,7 +335,7 @@ export function RouteStandardCleanupAssistantPanel() {
           >
             Route Standards Cleanup Assistant
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Classifies every Route Standard into one of six buckets so you can deactivate
             non-route rows safely and fill timing on real movement legs from the Jordan
             operational backbone + reverse-route inheritance. VERIFIED and MANUAL rows are
@@ -416,7 +416,7 @@ export function RouteStandardCleanupAssistantPanel() {
 
       {/* Filter + table */}
       <div style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: '0.78rem', color: '#475467', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <label style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           Filter:
           <select value={filter} onChange={(e) => setFilter(e.target.value as FilterMode)}>
             {FILTER_OPTIONS.map((o) => (
@@ -424,7 +424,7 @@ export function RouteStandardCleanupAssistantPanel() {
             ))}
           </select>
         </label>
-        <span style={{ color: '#667085', fontSize: '0.78rem' }}>
+        <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           {filteredRows.length} of {data.counters.total} rows shown
         </span>
       </div>
@@ -480,26 +480,26 @@ function CleanupRow({ row }: { row: ClassifiedRow }) {
           {CLASSIFICATION_LABELS[row.classification]}
         </span>
       </td>
-      <td style={{ padding: '0.4rem 0.5rem', color: '#475467', fontSize: '0.78rem' }}>
+      <td style={{ padding: '0.4rem 0.5rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
         {row.classificationReason}
         {row.suspicious ? (
           <div style={{ color: '#7c2d12', fontSize: '0.72rem', marginTop: '0.15rem' }}>⚠ {row.suspiciousReason}</div>
         ) : null}
       </td>
-      <td style={{ padding: '0.4rem 0.5rem', color: '#475467', fontSize: '0.78rem' }}>
+      <td style={{ padding: '0.4rem 0.5rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
         {RECOMMENDED_ACTION_LABELS[row.recommendedAction]}
       </td>
       <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.78rem' }}>
         {row.timingSuggestion ? <TimingSuggestionCell suggestion={row.timingSuggestion} /> : (
-          <span style={{ color: '#98a2b3' }}>—</span>
+          <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</span>
         )}
       </td>
       <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.72rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          <span style={{ color: row.isActive ? 'var(--ds-color-success, #067647)' : '#98a2b3' }}>
+          <span style={{ color: row.isActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-faint, #94A3B8)' }}>
             {row.isActive ? 'Active' : 'Inactive'}
           </span>
-          {row.reviewStatus ? <span style={{ color: '#475467' }}>{row.reviewStatus}</span> : null}
+          {row.reviewStatus ? <span style={{ color: 'var(--ds-color-text-muted, #475569)' }}>{row.reviewStatus}</span> : null}
           {row.source === 'MANUAL' ? <span style={{ color: '#7a5c2e' }}>MANUAL</span> : null}
           {row.isProtected ? <span style={{ color: 'var(--ds-color-success, #067647)' }}>Protected</span> : null}
         </div>
@@ -521,7 +521,7 @@ function TimingSuggestionCell({ suggestion }: { suggestion: TimingSuggestion }) 
   }[suggestion.confidence];
   return (
     <div>
-      <span style={{ color: '#101828' }}>{parts.length > 0 ? parts.join(' · ') : '—'}</span>
+      <span style={{ color: 'var(--ds-color-text, #0F172A)' }}>{parts.length > 0 ? parts.join(' · ') : '—'}</span>
       {(suggestion.flags.mountainRoadFlag || suggestion.flags.borderCrossingFlag || suggestion.flags.airportRouteFlag || suggestion.flags.longDistanceFlag) ? (
         <div style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap', marginTop: '0.15rem' }}>
           {suggestion.flags.mountainRoadFlag ? <Chip>Mountain</Chip> : null}
@@ -586,7 +586,7 @@ function Counter({ label, value, tone }: { label: string; value: number; tone: '
       <p
         style={{
           margin: 0,
-          color: highlight ? colors.text : '#98a2b3',
+          color: highlight ? colors.text : 'var(--ds-color-text-faint, #94A3B8)',
           fontSize: '0.65rem',
           textTransform: 'uppercase',
           fontWeight: 700,
@@ -600,7 +600,7 @@ function Counter({ label, value, tone }: { label: string; value: number; tone: '
           margin: '0.1rem 0 0',
           fontSize: '1.25rem',
           fontWeight: 700,
-          color: highlight ? colors.text : '#98a2b3',
+          color: highlight ? colors.text : 'var(--ds-color-text-faint, #94A3B8)',
           fontVariantNumeric: 'tabular-nums',
         }}
       >

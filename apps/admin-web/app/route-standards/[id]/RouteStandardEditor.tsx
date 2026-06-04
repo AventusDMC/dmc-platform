@@ -181,10 +181,10 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         style={{ width: 18, height: 18, marginTop: '0.15rem', flexShrink: 0 }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#101828', lineHeight: 1.3 }}>
+        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--ds-color-text, #0F172A)', lineHeight: 1.3 }}>
           {label}
         </div>
-        <div style={{ fontSize: '0.78rem', color: '#667085', lineHeight: 1.35, marginTop: '0.15rem' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-subtle, #667085)', lineHeight: 1.35, marginTop: '0.15rem' }}>
           {helper}
         </div>
       </div>
@@ -197,7 +197,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         <h3 style={{ marginTop: 0 }}>Identity</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Route code *</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Route code *</span>
             <input
               required
               value={state.routeCode}
@@ -206,19 +206,19 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Route name *</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Route name *</span>
             <input required value={state.routeName} onChange={(e) => setState((s) => ({ ...s, routeName: e.target.value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>From city</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>From city</span>
             <input value={state.fromCity} onChange={(e) => setState((s) => ({ ...s, fromCity: e.target.value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>To city</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>To city</span>
             <input value={state.toCity} onChange={(e) => setState((s) => ({ ...s, toCity: e.target.value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Destination area (if not a single city)</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Destination area (if not a single city)</span>
             <input
               value={state.destinationArea}
               onChange={(e) => setState((s) => ({ ...s, destinationArea: e.target.value }))}
@@ -232,7 +232,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         <h3 style={{ marginTop: 0 }}>Standard timing</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Distance (km)</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Distance (km)</span>
             <input
               type="number"
               step="0.1"
@@ -241,7 +241,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Duration (hours)</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Duration (hours)</span>
             <input
               type="number"
               step="0.1"
@@ -250,7 +250,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Operational buffer (min)</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Operational buffer (min)</span>
             <input
               type="number"
               step="5"
@@ -270,7 +270,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
           {flagRow('borderCrossingFlag', 'Border crossing', '1-3 hour unpredictable border wait')}
           {flagRow('airportRouteFlag', 'Airport route', 'Peak-hour traffic risk')}
         </div>
-        <p style={{ marginTop: '0.75rem', color: '#475467', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.75rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
           Computed confidence:{' '}
           <span
             style={{
@@ -291,7 +291,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
 
       <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Canonical code &amp; review</h3>
-        <p style={{ marginTop: 0, color: '#667085', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           The original <code>routeCode</code> column above stays intact for legacy
           lookup compatibility. <code>canonicalRouteCode</code> is the short
           FROM_TO operational identifier ops moves to (AMM_PET, PET_WR, etc.).
@@ -300,7 +300,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Canonical route code</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Canonical route code</span>
             <input
               value={state.canonicalRouteCode}
               onChange={(e) => setState((s) => ({ ...s, canonicalRouteCode: e.target.value }))}
@@ -309,7 +309,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Review status</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Review status</span>
             <select
               value={state.reviewStatus}
               onChange={(e) => setState((s) => ({ ...s, reviewStatus: e.target.value }))}
@@ -350,10 +350,10 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
               style={{ width: 18, height: 18, marginTop: '0.15rem', flexShrink: 0 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#101828', lineHeight: 1.3 }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--ds-color-text, #0F172A)', lineHeight: 1.3 }}>
                 Suspicious duration
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#667085', lineHeight: 1.35, marginTop: '0.15rem' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-subtle, #667085)', lineHeight: 1.35, marginTop: '0.15rem' }}>
                 Duration looks like an excursion day length rather than realistic transfer time.
               </div>
             </div>
@@ -364,7 +364,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
       <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Notes &amp; status</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Operational notes</span>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Operational notes</span>
           <textarea
             rows={3}
             value={state.notes}
@@ -399,8 +399,8 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
             onClick={(e) => e.stopPropagation()}
             style={{ width: 18, height: 18, flexShrink: 0 }}
           />
-          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#101828' }}>Active</span>
-          <span style={{ fontSize: '0.78rem', color: '#667085' }}>(unchecked = retained for history but excluded from lookups)</span>
+          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--ds-color-text, #0F172A)' }}>Active</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-subtle, #667085)' }}>(unchecked = retained for history but excluded from lookups)</span>
         </div>
       </section>
 

@@ -128,7 +128,7 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
                 />
               </label>
               <label>
-                Code <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-suggested if blank)</span>
+                Code <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontWeight: 400 }}>(auto-suggested if blank)</span>
                 <input type="text" name="code" placeholder="STD — leave blank to auto-generate" maxLength={32} />
               </label>
               <label>
@@ -206,7 +206,7 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
                         <td>
                           <span
                             style={{
-                              color: room.isActive ? '#15803d' : '#94a3b8',
+                              color: room.isActive ? '#15803d' : 'var(--ds-color-text-faint, #94A3B8)',
                               fontWeight: 600,
                               fontSize: '0.78rem',
                             }}
@@ -252,7 +252,7 @@ export default async function HotelRoomsPage({ params }: RoomsPageProps) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/rooms — pure server-rendered with Next.js Server Actions for
           mutations. No client JS. Delete is blocked when the room is referenced by rates

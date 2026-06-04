@@ -68,7 +68,7 @@ export function RouteStandardImportPanel() {
           >
             Bulk import
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Upload a Route Standards <code>.xlsx</code> (export gives you the exact column layout). Preview first to confirm
             counts, then import to upsert by route code.
           </p>
@@ -95,7 +95,7 @@ export function RouteStandardImportPanel() {
 
       {error ? <p className="form-error" style={{ marginTop: '0.5rem' }}>{error}</p> : null}
       {preview ? (
-        <p style={{ marginTop: '0.5rem', color: '#475467', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.5rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
           Preview: <strong>{preview.count}</strong> row{preview.count === 1 ? '' : 's'} parsed. Click Import to upsert by route
           code (existing codes update in place; new ones get created).
         </p>

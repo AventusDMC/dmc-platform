@@ -220,7 +220,7 @@ export function RouteStandardRefinementPanel() {
           >
             Refinement dashboard
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Operational health of the canonical route catalog. After bootstrap,
             review the counters below and run <strong>Apply canonical codes</strong>{' '}
             to assign short FROM_TO identifiers (AMM_PET, PET_WR, etc.) and flag any
@@ -280,7 +280,7 @@ export function RouteStandardRefinementPanel() {
                   margin: '0.1rem 0 0',
                   fontSize: '1.4rem',
                   fontWeight: 700,
-                  color: highlight ? '#8b5e34' : '#475467',
+                  color: highlight ? '#8b5e34' : 'var(--ds-color-text-muted, #475569)',
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
@@ -292,7 +292,7 @@ export function RouteStandardRefinementPanel() {
       </div>
 
       {summary && summary.totalActive > 0 ? (
-        <p style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.78rem' }}>
+        <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           {summary.totalActive} active row{summary.totalActive === 1 ? '' : 's'} / {summary.totalRows} total.
         </p>
       ) : null}
@@ -326,7 +326,7 @@ export function RouteStandardRefinementPanel() {
             border: '1px solid #e2dccc',
             borderRadius: 8,
             padding: '0.55rem 0.75rem',
-            color: '#475467',
+            color: 'var(--ds-color-text-muted, #475569)',
             fontSize: '0.85rem',
           }}
         >
@@ -387,7 +387,7 @@ function DuplicateGroupCard({
   return (
     <div style={{ background: '#fff', border: '1px solid #e2dccc', borderRadius: 8, padding: '0.55rem 0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
-        <p style={{ margin: 0, fontWeight: 600, fontFamily: 'monospace', color: '#101828' }}>
+        <p style={{ margin: 0, fontWeight: 600, fontFamily: 'monospace', color: 'var(--ds-color-text, #0F172A)' }}>
           {group.canonicalRouteCode}
         </p>
         <button
@@ -415,12 +415,12 @@ function DuplicateGroupCard({
               onChange={() => setTargetId(m.id)}
             />
             <code style={{ fontSize: '0.78rem' }}>{m.routeCode}</code>
-            <span style={{ color: '#475467', fontSize: '0.85rem' }}>— {m.routeName}</span>
+            <span style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>— {m.routeName}</span>
             {m.standardDurationHours != null ? (
-              <span style={{ color: '#667085', fontSize: '0.78rem' }}>· {m.standardDurationHours} h</span>
+              <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>· {m.standardDurationHours} h</span>
             ) : null}
             {m.standardDistanceKm != null ? (
-              <span style={{ color: '#667085', fontSize: '0.78rem' }}>· {m.standardDistanceKm} km</span>
+              <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>· {m.standardDistanceKm} km</span>
             ) : null}
             {m.suspiciousDuration ? (
               <span
@@ -437,7 +437,7 @@ function DuplicateGroupCard({
               </span>
             ) : null}
             {!m.isActive ? (
-              <span style={{ color: '#98a2b3', fontSize: '0.78rem' }}>(inactive)</span>
+              <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.78rem' }}>(inactive)</span>
             ) : null}
           </li>
         ))}

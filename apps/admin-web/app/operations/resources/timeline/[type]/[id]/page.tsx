@@ -134,7 +134,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                   gap: '0.6rem',
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: '1rem', color: '#101828' }}>{niceDate}</h2>
+                <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--ds-color-text, #0F172A)' }}>{niceDate}</h2>
                 <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   {items.map((item, idx) => {
                     const tone =
@@ -157,7 +157,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                           fontSize: '0.88rem',
                         }}
                       >
-                        <strong style={{ fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem', color: tone?.text || '#101828' }}>
+                        <strong style={{ fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem', color: tone?.text || 'var(--ds-color-text, #0F172A)' }}>
                           {formatTime(item.startTime)}
                         </strong>
                         <span style={{ flex: 1 }}>
@@ -173,7 +173,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         <span
                           style={{
                             background: '#f2f4f7',
-                            color: '#475467',
+                            color: 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,
                             fontSize: '0.72rem',
@@ -185,7 +185,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         <span
                           style={{
                             background: item.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
-                            color: item.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
+                            color: item.executionStatus === 'READY' ? 'var(--ds-color-text-muted, #475569)' : 'var(--ds-color-info, #175CD3)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,
                             fontSize: '0.72rem',
