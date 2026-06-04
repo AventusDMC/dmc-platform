@@ -1299,6 +1299,7 @@ model QuoteItineraryDay {
   updatedAt            DateTime                 @updatedAt
   quote                Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   dayItems             QuoteItineraryDayItem[]
+  poiAssignments       QuoteItineraryDayPoi[]
   auditLogs            QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
   roomingGroups        RoomingGroup[]
 
@@ -1327,6 +1328,35 @@ model QuoteItineraryDayItem {
   @@index([dayId, sortOrder])
   @@index([quoteServiceId])
   @@map("quote_itinerary_day_items")
+}
+
+// Phase 3B.1 — ordered Point-of-Interest assignments for a quote itinerary day.
+// Decouples the proposal day narrative source from the live TouringRouteStop:
+// poiId is the live content source; sourceTouringRouteStopId is provenance only;
+// fallbackTitle/fallbackCity are snapshotted at assignment time so a later
+// composer can still render a label even if the POI or stop is removed.
+// 3B.1 only persists these rows — no proposal rendering uses them yet (3B.2).
+model QuoteItineraryDayPoi {
+  id                       String            @id @default(uuid()) @db.Uuid
+  dayId                    String            @db.Uuid
+  poiId                    String?           @db.Uuid
+  sourceTouringRouteStopId String?           @db.Uuid
+  // Snapshot of the POI's display title/city at assignment time, so the label
+  // survives deletion of the POI or its source stop (onDelete SetNull above).
+  fallbackTitle            String?
+  fallbackCity             String?
+  sortOrder                Int               @default(0)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  day                      QuoteItineraryDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  pointOfInterest          PointOfInterest?  @relation(fields: [poiId], references: [id], onDelete: SetNull)
+  sourceTouringRouteStop   TouringRouteStop? @relation(fields: [sourceTouringRouteStopId], references: [id], onDelete: SetNull)
+
+  @@unique([dayId, sortOrder])
+  @@index([dayId, sortOrder])
+  @@index([poiId])
+  @@index([sourceTouringRouteStopId])
+  @@map("quote_itinerary_day_pois")
 }
 
 model QuoteItineraryAuditLog {
@@ -2109,6 +2139,7 @@ model PointOfInterest {
   entranceFee          EntranceFee?     @relation(fields: [entranceFeeId], references: [id], onDelete: SetNull)
   translations         PointOfInterestTranslation[]
   touringRouteStops    TouringRouteStop[]
+  dayAssignments       QuoteItineraryDayPoi[]
 
   @@index([isActive, sortOrder])
   @@index([cityId])
@@ -2501,6 +2532,7 @@ model TouringRouteStop {
   updatedAt      DateTime     @updatedAt
   touringRoute    TouringRoute     @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
   pointOfInterest PointOfInterest? @relation(fields: [poiId], references: [id], onDelete: SetNull)
+  dayAssignments  QuoteItineraryDayPoi[]
 
   @@unique([touringRouteId, order])
   @@index([touringRouteId])

@@ -7,6 +7,8 @@ import {
   CreateQuoteItineraryDayDto,
   CreateQuoteItineraryDayItemDto,
   QuoteItineraryAuditActor,
+  QuoteItineraryDayPoiInputDto,
+  SetQuoteItineraryDayPoisDto,
   UpdateQuoteItineraryDayDto,
   UpdateQuoteItineraryDayItemDto,
 } from './quote-itinerary.dto';
@@ -23,6 +25,27 @@ export class QuoteItineraryService {
     return (this.prisma as any).quoteItineraryDayItem;
   }
 
+  private get dayPoiModel() {
+    return (this.prisma as any).quoteItineraryDayPoi;
+  }
+
+  // Shared include for a day's ordered POI assignments (+ live POI content).
+  private get dayPoiInclude() {
+    return {
+      poiAssignments: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        include: {
+          pointOfInterest: {
+            include: {
+              city: true,
+              translations: true,
+            },
+          },
+        },
+      },
+    } as const;
+  }
+
   private get auditLogModel() {
     return (this.prisma as any).quoteItineraryAuditLog;
   }
@@ -33,6 +56,7 @@ export class QuoteItineraryService {
     const days = await this.dayModel.findMany({
       where: { quoteId },
       include: {
+        ...this.dayPoiInclude,
         dayItems: {
           where: {
             isActive: true,
@@ -348,6 +372,114 @@ export class QuoteItineraryService {
     return { id: itemId };
   }
 
+  // ---- Phase 3B.1: ordered day POI assignments ----------------------------
+
+  async listDayPois(dayId: string) {
+    const day = await this.findDayOrThrow(dayId);
+    return {
+      dayId,
+      poiAssignments: (day.poiAssignments || []).map((assignment: any) => this.serializeDayPoi(assignment)),
+    };
+  }
+
+  // Replace-all of a day's ordered POI assignments. Snapshots fallbackTitle/
+  // fallbackCity from each linked POI at assignment time (an explicit value in
+  // the input wins). Existing quotes with no assignments are unaffected, and
+  // sending an empty list clears the day. Proposal rendering does not read these.
+  async setDayPois(dayId: string, data: SetQuoteItineraryDayPoisDto, actor?: QuoteItineraryAuditActor) {
+    const day = await this.findDayOrThrow(dayId);
+    const requiredActor = this.requireActor(actor);
+    const normalized = this.normalizeDayPoiInput(data);
+
+    // Resolve POI snapshots up front (outside the transaction).
+    const poiIds = Array.from(new Set(normalized.map((entry) => entry.poiId).filter((id): id is string => Boolean(id))));
+    const pois = poiIds.length
+      ? await (this.prisma as any).pointOfInterest.findMany({
+          where: { id: { in: poiIds } },
+          include: { city: true, translations: true },
+        })
+      : [];
+    const poiById = new Map<string, any>(pois.map((poi: any) => [poi.id, poi]));
+
+    for (const entry of normalized) {
+      if (entry.poiId && !poiById.has(entry.poiId)) {
+        throw new BadRequestException(`Point of interest ${entry.poiId} was not found`);
+      }
+    }
+
+    const rows = normalized.map((entry, index) => {
+      const poi = entry.poiId ? poiById.get(entry.poiId) : null;
+      const snapshotTitle = poi ? this.resolvePoiDisplayTitle(poi) : null;
+      const snapshotCity = poi?.city?.name ?? null;
+      return {
+        dayId,
+        poiId: entry.poiId,
+        sourceTouringRouteStopId: entry.sourceTouringRouteStopId,
+        // Explicit input wins; else snapshot from the POI at assignment time.
+        fallbackTitle: entry.fallbackTitle ?? snapshotTitle,
+        fallbackCity: entry.fallbackCity ?? snapshotCity,
+        sortOrder: index,
+      };
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      const txDayPoiModel = (tx as any).quoteItineraryDayPoi;
+      // Replace-all: delete first so the @@unique([dayId, sortOrder]) never clashes.
+      await txDayPoiModel.deleteMany({ where: { dayId } });
+      for (const row of rows) {
+        await txDayPoiModel.create({ data: row });
+      }
+      await this.writeAuditLog(tx, {
+        quoteId: day.quoteId,
+        dayId,
+        action: 'DAY_POIS_UPDATED',
+        oldValue: this.formatDayPoiSummary(day.poiAssignments || []),
+        newValue: this.formatDayPoiSummary(rows),
+        actor: requiredActor,
+      });
+    });
+
+    return this.listDayPois(dayId);
+  }
+
+  private normalizeDayPoiInput(data: SetQuoteItineraryDayPoisDto): QuoteItineraryDayPoiInputDto[] {
+    const assignments = Array.isArray(data?.assignments) ? data.assignments : [];
+    return assignments.map((entry) => {
+      const poiId = normalizeOptionalString(entry?.poiId);
+      const sourceTouringRouteStopId = normalizeOptionalString(entry?.sourceTouringRouteStopId);
+      const fallbackTitle = normalizeOptionalString(entry?.fallbackTitle);
+      const fallbackCity = normalizeOptionalString(entry?.fallbackCity);
+      if (!poiId && !fallbackTitle) {
+        throw new BadRequestException('Each day POI assignment needs a poiId or a fallbackTitle');
+      }
+      return {
+        poiId: poiId ?? null,
+        sourceTouringRouteStopId: sourceTouringRouteStopId ?? null,
+        fallbackTitle: fallbackTitle ?? null,
+        fallbackCity: fallbackCity ?? null,
+      };
+    });
+  }
+
+  private resolvePoiDisplayTitle(poi: any): string {
+    const translations = Array.isArray(poi?.translations) ? poi.translations : [];
+    const english = translations.find((t: any) => t?.locale === 'en');
+    const englishTitle = typeof english?.title === 'string' ? english.title.trim() : '';
+    if (englishTitle) {
+      return englishTitle;
+    }
+    return typeof poi?.name === 'string' ? poi.name : '';
+  }
+
+  private formatDayPoiSummary(assignments: any[]): string | null {
+    if (!assignments?.length) {
+      return 'none';
+    }
+    return assignments
+      .map((a, index) => `${index + 1}. ${a.fallbackTitle || a.poiId || 'unlabeled'}`)
+      .join(' | ');
+  }
+
   private async ensureQuoteExists(quoteId: string, actor?: CompanyScopedActor) {
     if (actor) {
       requireActorCompanyId(actor);
@@ -372,6 +504,7 @@ export class QuoteItineraryService {
     const day = await this.dayModel.findUnique({
       where: { id: dayId },
       include: {
+        ...this.dayPoiInclude,
         dayItems: {
           where: {
             isActive: true,
@@ -670,6 +803,35 @@ export class QuoteItineraryService {
       createdAt: day.createdAt,
       updatedAt: day.updatedAt,
       dayItems: (day.dayItems || []).map((item: any) => this.serializeDayItem(item)),
+      poiAssignments: (day.poiAssignments || []).map((assignment: any) => this.serializeDayPoi(assignment)),
+    };
+  }
+
+  private serializeDayPoi(assignment: any) {
+    const poi = assignment.pointOfInterest || null;
+    return {
+      id: assignment.id,
+      dayId: assignment.dayId,
+      poiId: assignment.poiId,
+      sourceTouringRouteStopId: assignment.sourceTouringRouteStopId,
+      // Snapshot captured at assignment time — survives POI/stop deletion.
+      fallbackTitle: assignment.fallbackTitle,
+      fallbackCity: assignment.fallbackCity,
+      sortOrder: assignment.sortOrder,
+      createdAt: assignment.createdAt,
+      updatedAt: assignment.updatedAt,
+      // Live POI summary (null if the POI was deleted → SetNull). Display title
+      // prefers the English translation, then the internal name.
+      pointOfInterest: poi
+        ? {
+            id: poi.id,
+            code: poi.code,
+            name: poi.name,
+            isActive: poi.isActive,
+            displayTitle: this.resolvePoiDisplayTitle(poi),
+            city: poi.city ? { id: poi.city.id, name: poi.city.name, country: poi.city.country ?? null } : null,
+          }
+        : null,
     };
   }
 

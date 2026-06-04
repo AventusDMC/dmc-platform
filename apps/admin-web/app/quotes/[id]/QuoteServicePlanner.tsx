@@ -7,6 +7,7 @@ import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppab
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import QuoteDayPoiAssignments from './QuoteDayPoiAssignments';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
 import type { RouteStandardSummary } from '../../lib/route-standards';
@@ -3953,6 +3954,8 @@ function ScopePlanner({
                   </form>
                   {dayCountryError ? <p className="form-error">{dayCountryError}</p> : null}
                 </section>
+
+                <QuoteDayPoiAssignments dayId={summary.day.id} apiBaseUrl={plannerProps.apiBaseUrl} />
 
                 <details className="quote-operational-collapsible quote-operational-collapsible-intelligence">
                   <summary>
