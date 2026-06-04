@@ -2898,7 +2898,7 @@ export function QuoteAutoItineraryBuilder({
                 ) : item.fromCity && item.toCity ? (
                   <em>
                     No route from {item.fromCity} to {item.toCity} —{' '}
-                    <Link href="/routes" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                    <Link href="/routes" style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'underline' }}>
                       add it in Transfer Routes
                     </Link>
                   </em>
@@ -2958,7 +2958,7 @@ export function QuoteAutoItineraryBuilder({
                 cue = (
                   <>
                     No {item.city} hotel in catalog —{' '}
-                    <Link href="/hotels" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                    <Link href="/hotels" style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'underline' }}>
                       add one in Hotels admin
                     </Link>
                   </>
@@ -2967,7 +2967,7 @@ export function QuoteAutoItineraryBuilder({
                 cue = (
                   <>
                     {item.hotel?.name || item.city} has no contract covering this travel date —{' '}
-                    <Link href="/hotel-contracts" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                    <Link href="/hotel-contracts" style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'underline' }}>
                       add a contract
                     </Link>
                   </>
@@ -2976,7 +2976,7 @@ export function QuoteAutoItineraryBuilder({
                 cue = (
                   <>
                     {item.hotel?.name || item.city} contract has no rates —{' '}
-                    <Link href="/hotel-rates" style={{ color: '#175cd3', textDecoration: 'underline' }}>
+                    <Link href="/hotel-rates" style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'underline' }}>
                       add rates
                     </Link>
                   </>

@@ -103,7 +103,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
             borderRadius: 12,
             padding: '1.5rem',
             textAlign: 'center',
-            color: '#067647',
+            color: 'var(--ds-color-success, #067647)',
           }}
         >
           <strong style={{ fontSize: '1.1rem' }}>No upcoming assignments for this resource.</strong>
@@ -163,7 +163,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         <span style={{ flex: 1 }}>
                           <Link
                             href={`/bookings/${item.bookingId}/operations`}
-                            style={{ color: '#175cd3', textDecoration: 'none', fontWeight: 600 }}
+                            style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'none', fontWeight: 600 }}
                           >
                             {item.bookingRef || item.bookingId.slice(0, 8)}
                           </Link>
@@ -185,7 +185,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         <span
                           style={{
                             background: item.executionStatus === 'READY' ? '#f2f4f7' : '#eff8ff',
-                            color: item.executionStatus === 'READY' ? '#475467' : '#175cd3',
+                            color: item.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,
                             fontSize: '0.72rem',
@@ -210,7 +210,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                             ⚠ {tone.label}
                           </span>
                         ) : idx < items.length - 1 ? (
-                          <span style={{ color: '#067647', fontSize: '0.72rem', fontWeight: 600 }}>
+                          <span style={{ color: 'var(--ds-color-success, #067647)', fontSize: '0.72rem', fontWeight: 600 }}>
                             {item.gapToNextMinutes}m gap
                           </span>
                         ) : null}

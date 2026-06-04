@@ -62,7 +62,7 @@ export function RecoveryActions({ row }: { row: RecoveryRow }) {
         ))}
       </div>
       <details style={{ fontSize: '0.82rem' }}>
-        <summary style={{ cursor: 'pointer', color: '#175cd3', fontWeight: 600 }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--ds-color-info, #175CD3)', fontWeight: 600 }}>
           Replacement suggestions & cascading impact
         </summary>
         <PanelSuggestions serviceId={row.serviceId} />
@@ -345,6 +345,6 @@ function ClientFetch<T>({ url, render }: { url: string; render: (data: T | null)
       cancelled = true;
     };
   }, [url]);
-  if (error) return <p style={{ color: '#b42318', fontSize: '0.8rem' }}>Could not load: {error}</p>;
+  if (error) return <p style={{ color: 'var(--ds-color-danger, #B42318)', fontSize: '0.8rem' }}>Could not load: {error}</p>;
   return render(data);
 }

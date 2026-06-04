@@ -270,7 +270,7 @@ export default async function SimulationPage({
             }}
           >
             <div>
-              <strong style={{ color: '#175cd3' }}>3. Open Dispatch to triage</strong>
+              <strong style={{ color: 'var(--ds-color-info, #175CD3)' }}>3. Open Dispatch to triage</strong>
               <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
                 Once a scenario is applied the row appears in Live Ops or the Critical Issues banner. Resolve via the
                 existing execution actions (Mark complete / Resolve issue / Reassign supplier).
@@ -279,7 +279,7 @@ export default async function SimulationPage({
             <Link
               href="/operations/dispatch"
               style={{
-                background: '#175cd3',
+                background: 'var(--ds-color-info, #175CD3)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,

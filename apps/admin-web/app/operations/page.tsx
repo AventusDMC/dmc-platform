@@ -1810,10 +1810,10 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                 href="/operations/dispatch"
                 className="dashboard-toolbar-link"
                 style={{
-                  background: '#175cd3',
+                  background: 'var(--ds-color-info, #175CD3)',
                   color: '#ffffff',
                   fontWeight: 700,
-                  border: '1px solid #175cd3',
+                  border: '1px solid var(--ds-color-info, #175CD3)',
                 }}
               >
                 Open Dispatch →

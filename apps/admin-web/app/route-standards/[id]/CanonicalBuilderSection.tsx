@@ -362,7 +362,7 @@ export function CanonicalBuilderSection({
           the symmetric leg. */}
       {reversePreview ? (
         reversePreview.existingMatch ? (
-          <p style={{ marginTop: '0.5rem', color: '#067647', fontSize: '0.85rem' }}>
+          <p style={{ marginTop: '0.5rem', color: 'var(--ds-color-success, #067647)', fontSize: '0.85rem' }}>
             ✓ Reverse route{' '}
             <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>{reversePreview.suggestedCode}</code>{' '}
             exists ({reversePreview.existingMatch.routeName}).
@@ -413,7 +413,7 @@ export function CanonicalBuilderSection({
           style={{
             marginTop: '0.5rem',
             background: '#ecfdf3',
-            color: '#067647',
+            color: 'var(--ds-color-success, #067647)',
             border: '1px solid #abefc6',
             borderRadius: 6,
             padding: '0.5rem 0.7rem',
@@ -535,7 +535,7 @@ function PreviewBanner({
         background: '#ecfdf3',
         border: '1px solid #abefc6',
         borderRadius: 8,
-        color: '#067647',
+        color: 'var(--ds-color-success, #067647)',
         fontSize: '0.88rem',
       }}
     >

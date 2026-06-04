@@ -51,7 +51,7 @@ export default function DispatchError({ error, reset }: DispatchErrorProps) {
             type="button"
             onClick={reset}
             style={{
-              background: '#b42318',
+              background: 'var(--ds-color-danger, #B42318)',
               color: '#ffffff',
               border: 'none',
               padding: '0.5rem 1rem',
@@ -66,7 +66,7 @@ export default function DispatchError({ error, reset }: DispatchErrorProps) {
             href="/operations"
             style={{
               background: '#ffffff',
-              color: '#175cd3',
+              color: 'var(--ds-color-info, #175CD3)',
               border: '1px solid #84caff',
               padding: '0.5rem 1rem',
               borderRadius: 8,

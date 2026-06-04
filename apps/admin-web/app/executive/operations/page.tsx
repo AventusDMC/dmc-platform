@@ -215,7 +215,7 @@ export default async function ExecutivePage() {
             <Link
               href="/operations/intelligence"
               style={{
-                background: '#175cd3',
+                background: 'var(--ds-color-info, #175CD3)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,
@@ -270,7 +270,7 @@ export default async function ExecutivePage() {
           <Stat label="Avg leakage per service" value={money(data.financialExposure.avgLeakagePerService)} tone="info" />
         </div>
         <p className="executive-no-print" style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.78rem' }}>
-          All amounts are <strong>heuristic estimates</strong> — see <Link href="/operations/intelligence/financial" style={{ color: '#175cd3' }}>Financial Convergence</Link> for the underlying rate model.
+          All amounts are <strong>heuristic estimates</strong> — see <Link href="/operations/intelligence/financial" style={{ color: 'var(--ds-color-info, #175CD3)' }}>Financial Convergence</Link> for the underlying rate model.
         </p>
       </Panel>
 
@@ -387,9 +387,9 @@ export default async function ExecutivePage() {
                       </span>
                     </td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.totalServices}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: s.incidentCount > 0 ? '#b42318' : '#475467' }}>{s.incidentCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>{s.incidentCount}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.recoverySuccessPct}%</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: s.estimatedLeakage > 100 ? '#b42318' : '#475467' }}>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>
                       {money(s.estimatedLeakage)}
                     </td>
                   </tr>
@@ -410,7 +410,7 @@ export default async function ExecutivePage() {
               {data.routeIntelligence.map((r, i) => (
                 <li key={i} style={{ padding: '0.5rem 0.6rem', background: '#fafbfc', border: '1px solid #e4e7ec', borderRadius: 6 }}>
                   <strong>{r.label}</strong>
-                  <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.5rem', textTransform: 'uppercase' }}>{r.category}</span>
+                  <span style={{ background: '#fef3f2', color: 'var(--ds-color-danger, #B42318)', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.5rem', textTransform: 'uppercase' }}>{r.category}</span>
                   <div style={{ color: '#475467', fontSize: '0.82rem', marginTop: '0.15rem' }}>{r.insight}</div>
                 </li>
               ))}
@@ -436,9 +436,9 @@ export default async function ExecutivePage() {
                   <tr key={i} style={{ borderBottom: '1px solid #f2f4f7' }}>
                     <td style={{ padding: '0.4rem', fontWeight: 600 }}>{t.weekLabel}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: '#067647' }}>{t.completedCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right', color: t.delayedCount > 0 ? '#b54708' : '#475467' }}>{t.delayedCount}</td>
-                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.incidentCount > 0 ? '#b42318' : '#475467', fontWeight: 700 }}>{t.incidentCount}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467', fontWeight: 700 }}>{t.incidentCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -469,7 +469,7 @@ export default async function ExecutivePage() {
                   <td style={{ padding: '0.4rem', fontWeight: 600 }}>{s.actor}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.totalActions}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.dispatches}</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'right', color: '#067647', fontWeight: 600 }}>{s.resolutions}</td>
+                  <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)', fontWeight: 600 }}>{s.resolutions}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.reassignments}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>
                     {s.avgResolutionMinutes != null ? `${s.avgResolutionMinutes}m` : '—'}
@@ -491,7 +491,7 @@ export default async function ExecutivePage() {
             href="/operations/resources/conflicts"
             className="executive-no-print"
             style={{
-              background: '#175cd3',
+              background: 'var(--ds-color-info, #175CD3)',
               color: '#ffffff',
               padding: '0.5rem 0.85rem',
               borderRadius: 8,

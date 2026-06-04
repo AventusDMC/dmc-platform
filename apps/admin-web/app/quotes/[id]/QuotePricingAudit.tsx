@@ -473,7 +473,7 @@ export function QuotePricingAudit({
                 {itemRows.map((row) => (
                   <tr key={row.id} style={{ borderTop: '1px solid #e9ecef' }}>
                     <td style={{ padding: '0.4rem 0.65rem', maxWidth: 280 }}>
-                      <Link href={row.href} style={{ color: '#175cd3', textDecoration: 'none' }}>
+                      <Link href={row.href} style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'none' }}>
                         {row.name}
                       </Link>
                     </td>

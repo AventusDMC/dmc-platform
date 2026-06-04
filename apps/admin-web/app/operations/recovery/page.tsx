@@ -153,7 +153,7 @@ export default async function RecoveryPage() {
           <Link
             href="/operations/dispatch"
             style={{
-              background: '#175cd3',
+              background: 'var(--ds-color-info, #175CD3)',
               color: '#ffffff',
               padding: '0.6rem 1rem',
               borderRadius: 8,
@@ -208,13 +208,13 @@ export default async function RecoveryPage() {
             borderRadius: 12,
             padding: '1.5rem',
             textAlign: 'center',
-            color: '#067647',
+            color: 'var(--ds-color-success, #067647)',
           }}
         >
           <strong style={{ fontSize: '1.1rem' }}>✓ No active incidents in the next 7 days.</strong>
           <p style={{ margin: '0.5rem 0 0', color: '#475467' }}>
             Use{' '}
-            <Link href="/operations/simulation" style={{ color: '#175cd3', fontWeight: 700 }}>
+            <Link href="/operations/simulation" style={{ color: 'var(--ds-color-info, #175CD3)', fontWeight: 700 }}>
               /operations/simulation
             </Link>{' '}
             to inject scenarios for testing.
@@ -367,7 +367,7 @@ function IncidentCard({ row }: { row: DispatchRow }) {
             <span
               style={{
                 background: '#fef3f2',
-                color: '#b42318',
+                color: 'var(--ds-color-danger, #B42318)',
                 border: '1px solid #f04438',
                 padding: '0.1rem 0.5rem',
                 borderRadius: 999,

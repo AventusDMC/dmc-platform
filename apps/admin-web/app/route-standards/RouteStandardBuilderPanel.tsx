@@ -575,7 +575,7 @@ function PreviewBanner({
         background: '#ecfdf3',
         border: '1px solid #abefc6',
         borderRadius: 8,
-        color: '#067647',
+        color: 'var(--ds-color-success, #067647)',
         fontSize: '0.88rem',
       }}
     >

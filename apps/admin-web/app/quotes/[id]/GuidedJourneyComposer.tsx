@@ -428,7 +428,7 @@ export function GuidedJourneyComposer({
         <div style={{ flex: 1, minWidth: 280 }}>
           <p
             style={{
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.1em',
@@ -445,7 +445,7 @@ export function GuidedJourneyComposer({
                 ? `Building a single-destination journey in ${destinations[0]}.`
                 : `Building a ${destinations.length}-city journey.`}
           </h2>
-          <p style={{ margin: '0.3rem 0 0', color: '#475569', fontSize: '0.92rem' }}>
+          <p style={{ margin: '0.3rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.92rem' }}>
             A step-by-step view of your travel journey. Suggested touring routes, operational pacing,
             and a readiness checklist — all read-only. Switch to the Advanced Workspace any time to
             edit services directly.
@@ -552,7 +552,7 @@ function JourneyFlowSection({ destinations, quote }: { destinations: string[]; q
     >
       <p
         style={{
-          color: '#475569',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.7rem',
           fontWeight: 700,
           letterSpacing: '0.08em',
@@ -625,7 +625,7 @@ function PacingSection({ pacing, notes }: { pacing: GuidedSuggestionsResponse['p
     >
       <p
         style={{
-          color: '#475569',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.7rem',
           fontWeight: 700,
           letterSpacing: '0.08em',
@@ -653,7 +653,7 @@ function PacingSection({ pacing, notes }: { pacing: GuidedSuggestionsResponse['p
           {pacing.totalDriveHours}h total drive · longest leg {pacing.longestSingleLegHours}h
         </span>
       </div>
-      <p style={{ margin: '0.5rem 0 0', color: '#475569', fontSize: '0.88rem', lineHeight: 1.45 }}>
+      <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', lineHeight: 1.45 }}>
         {pacing.explanation}
       </p>
       {notes.length > 0 ? (
@@ -683,7 +683,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
     >
       <p
         style={{
-          color: '#475569',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.7rem',
           fontWeight: 700,
           letterSpacing: '0.08em',
@@ -707,7 +707,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
                   style={{
                     marginLeft: '0.4rem',
                     background: '#f1f5f9',
-                    color: '#475569',
+                    color: 'var(--ds-color-text-muted, #475569)',
                     padding: '0.05rem 0.4rem',
                     borderRadius: 999,
                     fontSize: '0.68rem',
@@ -735,7 +735,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, color: '#0f172a', fontSize: '0.88rem' }}>
-                      <code style={{ fontSize: '0.78rem', color: '#475569', marginRight: '0.35rem' }}>
+                      <code style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', marginRight: '0.35rem' }}>
                         {tr.code}
                       </code>
                       {tr.name}
@@ -848,7 +848,7 @@ function ReadinessSection({ readiness }: { readiness: ReturnType<typeof computeQ
     >
       <p
         style={{
-          color: '#475569',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.7rem',
           fontWeight: 700,
           letterSpacing: '0.08em',
@@ -910,7 +910,7 @@ function SuggestedHotelsSection({
         <div>
           <p
             style={{
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.08em',
@@ -987,7 +987,7 @@ function DestinationHotelGroup({
           <span
             style={{
               background: '#f1f5f9',
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               padding: '0.05rem 0.4rem',
               borderRadius: 999,
               fontSize: '0.68rem',
@@ -1023,7 +1023,7 @@ function DestinationHotelGroup({
                 <p
                   style={{
                     margin: '0 0 0.3rem',
-                    color: '#475569',
+                    color: 'var(--ds-color-text-muted, #475569)',
                     fontSize: '0.7rem',
                     fontWeight: 700,
                     letterSpacing: '0.06em',
@@ -1193,7 +1193,7 @@ function SuggestedExperiencesSection({
         <div>
           <p
             style={{
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.08em',
@@ -1322,7 +1322,7 @@ function DestinationExperienceGroup({
           <span
             style={{
               background: '#f1f5f9',
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               padding: '0.05rem 0.4rem',
               borderRadius: 999,
               fontSize: '0.68rem',
@@ -1360,7 +1360,7 @@ function DestinationExperienceGroup({
                 <p
                   style={{
                     margin: '0 0 0.3rem',
-                    color: '#475569',
+                    color: 'var(--ds-color-text-muted, #475569)',
                     fontSize: '0.7rem',
                     fontWeight: 700,
                     letterSpacing: '0.06em',
@@ -1441,7 +1441,7 @@ function ExperienceCard({
         </a>
       </div>
       {!compact && exp.description ? (
-        <p style={{ margin: 0, color: '#475569', fontSize: '0.82rem', lineHeight: 1.4 }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.4 }}>
           {exp.description.length > 180 ? `${exp.description.slice(0, 180)}…` : exp.description}
         </p>
       ) : null}
@@ -1450,7 +1450,7 @@ function ExperienceCard({
           <span
             style={{
               background: '#f1f5f9',
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               padding: '0.05rem 0.4rem',
               borderRadius: 999,
               fontSize: '0.68rem',
@@ -1553,7 +1553,7 @@ function SuggestedTransportSection({
         <div>
           <p
             style={{
-              color: '#475569',
+              color: 'var(--ds-color-text-muted, #475569)',
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.08em',
@@ -1609,7 +1609,7 @@ function SuggestedTransportSection({
             <div>
               <p
                 style={{
-                  color: '#475569',
+                  color: 'var(--ds-color-text-muted, #475569)',
                   fontSize: '0.7rem',
                   fontWeight: 700,
                   letterSpacing: '0.06em',
@@ -1695,13 +1695,13 @@ function TransportRecommendationCard({
               </span>
             ) : null}
           </div>
-          <p style={{ margin: '0.15rem 0 0', color: '#475569', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.15rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Recommended for: <strong>{recommendation.recommendationLine}</strong>
           </p>
           <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.78rem' }}>
             Typical examples: {recommendation.typicalExample}
           </p>
-          <p style={{ margin: '0.25rem 0 0', color: '#475569', fontSize: '0.78rem' }}>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
             {recommendation.luggageNote}
           </p>
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.45rem' }}>
@@ -1725,7 +1725,7 @@ function TransportRecommendationCard({
             </span>
           </div>
           {recommendation.comfortNotes.length > 0 ? (
-            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>
+            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.45 }}>
               {recommendation.comfortNotes.map((note, i) => (
                 <li key={i}>{note}</li>
               ))}
@@ -1766,7 +1766,7 @@ function TransportPacingCard({ pacing }: { pacing: TransportSuggestionsResponse[
           {pacing.label}
         </span>
       </div>
-      <p style={{ margin: '0.4rem 0 0', color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>
+      <p style={{ margin: '0.4rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.45 }}>
         {pacing.explanation}
       </p>
     </div>
@@ -1796,7 +1796,7 @@ function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
               style={{
                 marginLeft: '0.4rem',
                 background: '#f1f5f9',
-                color: '#475569',
+                color: 'var(--ds-color-text-muted, #475569)',
                 padding: '0.05rem 0.35rem',
                 borderRadius: 4,
                 fontSize: '0.74rem',

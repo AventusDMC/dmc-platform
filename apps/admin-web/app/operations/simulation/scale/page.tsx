@@ -104,7 +104,7 @@ export default async function ScaleSimulationPage({
           <Link
             href="/operations/dispatch"
             style={{
-              background: '#175cd3',
+              background: 'var(--ds-color-info, #175CD3)',
               color: '#ffffff',
               padding: '0.6rem 1rem',
               borderRadius: 8,
@@ -175,7 +175,7 @@ export default async function ScaleSimulationPage({
               <button
                 type="submit"
                 style={{
-                  background: '#b42318',
+                  background: 'var(--ds-color-danger, #B42318)',
                   color: '#ffffff',
                   padding: '0.6rem 1rem',
                   borderRadius: 8,
@@ -234,7 +234,7 @@ export default async function ScaleSimulationPage({
           gap: '0.5rem',
         }}
       >
-        <strong style={{ color: '#175cd3' }}>After applying a preset, verify how the system responds:</strong>
+        <strong style={{ color: 'var(--ds-color-info, #175CD3)' }}>After applying a preset, verify how the system responds:</strong>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
           <Pill href="/operations/dispatch" label="Dispatch — should show all synthetic rows" />
           <Pill href="/operations/recovery" label="Recovery — should surface ISSUE-state rows" />
@@ -334,7 +334,7 @@ function Pill({ href, label }: { href: string; label: string }) {
       href={href}
       style={{
         background: '#ffffff',
-        color: '#175cd3',
+        color: 'var(--ds-color-info, #175CD3)',
         border: '1px solid #84caff',
         padding: '0.4rem 0.75rem',
         borderRadius: 999,

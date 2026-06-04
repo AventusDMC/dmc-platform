@@ -465,7 +465,7 @@ function StatusPill({ label, value, ok }: { label: string; value: string; ok: bo
     <span
       style={{
         background: ok ? '#ecfdf3' : '#f2f4f7',
-        color: ok ? '#067647' : '#475467',
+        color: ok ? 'var(--ds-color-success, #067647)' : '#475467',
         padding: '0.1rem 0.4rem',
         borderRadius: 6,
         fontSize: '0.7rem',
@@ -575,7 +575,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
             href={primaryAction.href}
             style={{
               background: '#ffffff',
-              color: '#175cd3',
+              color: 'var(--ds-color-info, #175CD3)',
               padding: '0.5rem 0.85rem',
               borderRadius: 8,
               fontWeight: 600,
@@ -591,7 +591,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
           href={`/bookings/${row.bookingId}`}
           style={{
             background: '#ffffff',
-            color: '#175cd3',
+            color: 'var(--ds-color-info, #175CD3)',
             padding: '0.5rem 0.85rem',
             borderRadius: 8,
             fontWeight: 600,
@@ -624,7 +624,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
             href={`tel:${row.driverPhone}`}
             style={{
               background: '#ffffff',
-              color: '#067647',
+              color: 'var(--ds-color-success, #067647)',
               padding: '0.5rem 0.85rem',
               borderRadius: 8,
               fontWeight: 600,
@@ -641,7 +641,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
             href={`tel:${row.supplierPhone}`}
             style={{
               background: '#ffffff',
-              color: '#067647',
+              color: 'var(--ds-color-success, #067647)',
               padding: '0.5rem 0.85rem',
               borderRadius: 8,
               fontWeight: 600,
@@ -720,7 +720,7 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <span style={{ color: '#667085', fontSize: '0.85rem' }}>{lane.total} total</span>
             {lane.critical > 0 ? (
-              <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+              <span style={{ background: '#fef3f2', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.critical} critical
               </span>
             ) : null}
@@ -730,7 +730,7 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
               </span>
             ) : null}
             {lane.ready > 0 ? (
-              <span style={{ background: '#ecfdf3', color: '#067647', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+              <span style={{ background: '#ecfdf3', color: 'var(--ds-color-success, #067647)', padding: '0.1rem 0.5rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
                 {lane.ready} ready
               </span>
             ) : null}
@@ -1027,7 +1027,7 @@ function renderDispatchBody({
             <AppAlert tone="danger" aria-label="Resolution queue">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div>
-                  <p style={{ margin: 0, color: '#b42318', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  <p style={{ margin: 0, color: 'var(--ds-color-danger, #B42318)', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Resolution Queue · oldest first
                   </p>
                   <h2 style={{ margin: 0, color: '#7a271a' }}>
@@ -1061,7 +1061,7 @@ function renderDispatchBody({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                   <div>
-                    <p style={{ margin: 0, color: '#b42318', fontWeight: 700, letterSpacing: '0.04em', fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                    <p style={{ margin: 0, color: 'var(--ds-color-danger, #B42318)', fontWeight: 700, letterSpacing: '0.04em', fontSize: '0.78rem', textTransform: 'uppercase' }}>
                       Critical · resolve first
                     </p>
                     <h2 style={{ margin: 0, color: '#7a271a' }}>{criticalRows.length} row{criticalRows.length === 1 ? '' : 's'} blocking dispatch</h2>
@@ -1242,7 +1242,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
           <p
             style={{
               margin: 0,
-              color: '#175cd3',
+              color: 'var(--ds-color-info, #175CD3)',
               fontSize: '0.72rem',
               fontWeight: 800,
               letterSpacing: '0.08em',
@@ -1259,7 +1259,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: '#175cd3',
+                background: 'var(--ds-color-info, #175CD3)',
                 boxShadow: '0 0 0 4px rgba(23, 92, 211, 0.18)',
               }}
             />
@@ -1341,7 +1341,7 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span aria-hidden style={{ fontSize: '1rem' }}>⚠</span>
-            <h3 style={{ margin: 0, color: '#b42318', fontSize: '1rem' }}>
+            <h3 style={{ margin: 0, color: 'var(--ds-color-danger, #B42318)', fontSize: '1rem' }}>
               Delayed / Issue · resolve now
             </h3>
             <span style={{ color: '#7a271a', fontSize: '0.85rem' }}>· {delayedRows.length}</span>
@@ -1384,7 +1384,7 @@ function CompletedTodaySummary({ data }: { data: DispatchResponse }) {
       }}
       aria-label="Completed today"
     >
-      <strong style={{ color: '#067647', fontSize: '0.95rem' }}>
+      <strong style={{ color: 'var(--ds-color-success, #067647)', fontSize: '0.95rem' }}>
         ✓ {rows.length} completed today
       </strong>
       {order.map((key) => {
@@ -1395,7 +1395,7 @@ function CompletedTodaySummary({ data }: { data: DispatchResponse }) {
           <span
             key={key}
             style={{
-              color: '#067647',
+              color: 'var(--ds-color-success, #067647)',
               fontSize: '0.82rem',
               fontWeight: 600,
               display: 'inline-flex',
@@ -1487,7 +1487,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
               <strong
                 style={{
                   fontSize: '1.6rem',
-                  color: critical > 0 ? '#b42318' : action > 0 ? '#b54708' : '#101828',
+                  color: critical > 0 ? 'var(--ds-color-danger, #B42318)' : action > 0 ? '#b54708' : '#101828',
                   fontVariantNumeric: 'tabular-nums',
                   lineHeight: 1,
                 }}
@@ -1498,7 +1498,7 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
                 {rows.length} svc{rows.length === 1 ? '' : 's'}
               </span>
               {critical > 0 ? (
-                <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.1rem 0.4rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
+                <span style={{ background: '#fef3f2', color: 'var(--ds-color-danger, #B42318)', padding: '0.1rem 0.4rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
                   ⚠ {critical}
                 </span>
               ) : null}

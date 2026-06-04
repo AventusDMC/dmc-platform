@@ -441,7 +441,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
             <p
               style={{
                 background: '#ecfdf3',
-                color: '#067647',
+                color: 'var(--ds-color-success, #067647)',
                 border: '1px solid #abefc6',
                 borderRadius: 6,
                 padding: '0.5rem 0.7rem',
@@ -571,7 +571,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                         <span
                           style={{
                             background: a.isActive ? '#ecfdf3' : '#f2f4f7',
-                            color: a.isActive ? '#067647' : '#475467',
+                            color: a.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,
                             fontSize: '0.72rem',

@@ -402,7 +402,7 @@ export function RouteStandardCleanupAssistantPanel() {
           style={{
             margin: '0.5rem 0 0',
             background: '#ecfdf3',
-            color: '#067647',
+            color: 'var(--ds-color-success, #067647)',
             border: '1px solid #abefc6',
             borderRadius: 6,
             padding: '0.5rem 0.7rem',
@@ -496,12 +496,12 @@ function CleanupRow({ row }: { row: ClassifiedRow }) {
       </td>
       <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.72rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          <span style={{ color: row.isActive ? '#067647' : '#98a2b3' }}>
+          <span style={{ color: row.isActive ? 'var(--ds-color-success, #067647)' : '#98a2b3' }}>
             {row.isActive ? 'Active' : 'Inactive'}
           </span>
           {row.reviewStatus ? <span style={{ color: '#475467' }}>{row.reviewStatus}</span> : null}
           {row.source === 'MANUAL' ? <span style={{ color: '#7a5c2e' }}>MANUAL</span> : null}
-          {row.isProtected ? <span style={{ color: '#067647' }}>Protected</span> : null}
+          {row.isProtected ? <span style={{ color: 'var(--ds-color-success, #067647)' }}>Protected</span> : null}
         </div>
       </td>
     </tr>
