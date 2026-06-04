@@ -1,0 +1,45 @@
+import { NextRequest } from 'next/server';
+import { buildActorHeaders } from '../../../../bookings/actorHeaders';
+import { forwardProxyJsonResponse } from '../../../../proxy-response';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('NEXT_PUBLIC_API_URL is required for frontend API routes.');
+}
+
+// Phase 3B.1 — ordered Point-of-Interest assignments for a quote itinerary day.
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ dayId: string }> },
+) {
+  const { dayId } = await context.params;
+  const response = await fetch(`${API_BASE_URL}/itinerary/day/${dayId}/pois`, {
+    method: 'GET',
+    headers: buildActorHeaders(request),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ dayId: string }> },
+) {
+  const { dayId } = await context.params;
+  const body = await request.json().catch(() => ({}));
+  const response = await fetch(`${API_BASE_URL}/itinerary/day/${dayId}/pois`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}

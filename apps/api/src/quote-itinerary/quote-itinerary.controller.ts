@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import {
   CreateQuoteItineraryDayDto,
   CreateQuoteItineraryDayItemDto,
+  SetQuoteItineraryDayPoisDto,
   UpdateQuoteItineraryDayDto,
   UpdateQuoteItineraryDayItemDto,
 } from './quote-itinerary.dto';
@@ -28,6 +29,17 @@ type CreateDayItemBody = {
 };
 
 type UpdateDayItemBody = Partial<CreateDayItemBody>;
+
+type DayPoiAssignmentBody = {
+  poiId?: string | null;
+  sourceTouringRouteStopId?: string | null;
+  fallbackTitle?: string | null;
+  fallbackCity?: string | null;
+};
+
+type SetDayPoisBody = {
+  assignments?: DayPoiAssignmentBody[];
+};
 
 @Controller()
 export class QuoteItineraryController {
@@ -87,6 +99,22 @@ export class QuoteItineraryController {
     return this.quoteItineraryService.removeDayItem(dayId, itemId, this.toActor(actor));
   }
 
+  // Phase 3B.1 — ordered Point-of-Interest assignments for a day.
+  @Get('itinerary/day/:dayId/pois')
+  async listDayPois(@Param('dayId') dayId: string) {
+    return this.quoteItineraryService.listDayPois(dayId);
+  }
+
+  @Put('itinerary/day/:dayId/pois')
+  @Roles('admin', 'viewer', 'finance')
+  async setDayPois(
+    @Param('dayId') dayId: string,
+    @Body() body: SetDayPoisBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.quoteItineraryService.setDayPois(dayId, this.toSetDayPoisDto(body), this.toActor(actor));
+  }
+
   private toCreateDayDto(body: CreateDayBody): CreateQuoteItineraryDayDto {
     return {
       dayNumber: Number(body.dayNumber),
@@ -123,6 +151,18 @@ export class QuoteItineraryController {
       sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       notes: body.notes,
       isActive: body.isActive,
+    };
+  }
+
+  private toSetDayPoisDto(body: SetDayPoisBody): SetQuoteItineraryDayPoisDto {
+    const assignments = Array.isArray(body?.assignments) ? body.assignments : [];
+    return {
+      assignments: assignments.map((entry) => ({
+        poiId: entry?.poiId ?? null,
+        sourceTouringRouteStopId: entry?.sourceTouringRouteStopId ?? null,
+        fallbackTitle: entry?.fallbackTitle ?? null,
+        fallbackCity: entry?.fallbackCity ?? null,
+      })),
     };
   }
 
