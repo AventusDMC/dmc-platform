@@ -6,7 +6,7 @@ import { SUPPORTED_CURRENCIES } from '../../../lib/currencyOptions';
 import { filterCanonicalFleetVehicles } from '../../../lib/transport-vehicles';
 import type { TouringRouteCatalogs, TouringRouteDetail, TouringRoutePricingDetail } from '../types';
 
-type StopDraft = { id?: string; order: number; city: string; location: string; overnight: boolean; notes: string };
+type StopDraft = { id?: string; order: number; city: string; location: string; overnight: boolean; notes: string; poiId: string };
 type PricingDraft = {
   id?: string;
   supplierId: string;
@@ -130,6 +130,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
       location: stop.location || '',
       overnight: stopHasOvernight(stop.notes),
       notes: (stop.notes || '').replace(/\bOvernight stop\b/gi, '').replace(/^\s*\|\s*|\s*\|\s*$/g, '').trim(),
+      poiId: stop.poiId || '',
     })),
   );
   const [pricings, setPricings] = useState<PricingDraft[]>((route.pricings || []).map(pricingToDraft));
@@ -194,6 +195,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
           city: stop.city,
           location: stop.location,
           notes: cleanStopNotes(stop.notes, stop.overnight),
+          poiId: stop.poiId || null,
         })),
         pricings: pricings.map((pricing) => ({
           id: pricing.id || null,
@@ -313,13 +315,13 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
             <h3>Stops</h3>
             <p className="detail-copy">Stops define the operational circuit and overnight markers for multi-day programs.</p>
           </div>
-          <button type="button" className="secondary-button" onClick={() => setStops((current) => [...current, { order: current.length + 1, city: '', location: '', overnight: false, notes: '' }])}>
+          <button type="button" className="secondary-button" onClick={() => setStops((current) => [...current, { order: current.length + 1, city: '', location: '', overnight: false, notes: '', poiId: '' }])}>
             Add stop
           </button>
         </div>
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Stop order</th><th>Region</th><th>Place</th><th>Overnight</th><th>Notes</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Stop order</th><th>Region</th><th>Place</th><th>Point of interest</th><th>Overnight</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>
               {stops.map((stop, index) => (
                 <tr key={stop.id || `new-stop-${index}`}>
@@ -335,6 +337,14 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                       Stop
                       <input value={stop.location} list="touring-route-destination-options" onChange={(event) => updateStop(index, { location: event.target.value })} />
                     </label>
+                  </td>
+                  <td>
+                    <select value={stop.poiId} onChange={(event) => updateStop(index, { poiId: event.target.value })}>
+                      <option value="">— none —</option>
+                      {(catalogs.pois || []).map((poi) => (
+                        <option key={poi.id} value={poi.id}>{poi.name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <select value={stop.overnight ? 'true' : 'false'} onChange={(event) => updateStop(index, { overnight: event.target.value === 'true' })}>

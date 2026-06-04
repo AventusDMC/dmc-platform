@@ -31,6 +31,7 @@ type TouringRouteBody = {
     city: string;
     location?: string | null;
     notes?: string | null;
+    poiId?: string | null;
   }>;
   pricings?: Array<{
     id?: string | null;

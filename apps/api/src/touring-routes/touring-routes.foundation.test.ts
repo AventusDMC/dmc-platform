@@ -1278,3 +1278,69 @@ test('touring route duplicate preserves operational metadata and leaves source u
   assert.ok(copy.stops.every((stop: any) => !sourceRoute.stops.some((sourceStop) => sourceStop.id === stop.id)));
   assert.deepEqual(JSON.parse(JSON.stringify(sourceRoute)), originalSnapshot);
 });
+
+// ---- Phase 2: TouringRouteStop -> PointOfInterest link (additive, backward-compatible) ----
+
+test('Phase 2 wiring: TouringRouteStop optionally links to a PointOfInterest (additive only)', () => {
+  // Additive schema: optional poiId + optional relation + index. No existing
+  // stop field is changed or made required.
+  assert.match(schemaSource, /model TouringRouteStop[\s\S]*?poiId\s+String\?\s+@db\.Uuid/);
+  assert.match(schemaSource, /pointOfInterest\s+PointOfInterest\?\s+@relation\(fields:\s*\[poiId\]/);
+  assert.match(schemaSource, /onDelete:\s*SetNull/);
+  // city stays required (not weakened), location/notes stay optional — fallback intact.
+  assert.match(schemaSource, /model TouringRouteStop[\s\S]*?city\s+String\b/);
+  // Service persists + includes the link; controller body accepts it.
+  assert.match(serviceSource, /poiId:\s*normalizeOptionalString\(stop\.poiId\)/);
+  assert.match(serviceSource, /pointOfInterest:\s*\{\s*select:/);
+  assert.match(controllerSource, /poiId\?:\s*string\s*\|\s*null/);
+});
+
+test('Phase 2 regression: a route with NO POI links saves and stays fully backward-compatible', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+
+  const created = await service.create({
+    code: 'JOR-TR-NOPOI',
+    name: 'No-POI legacy-shaped route',
+    startCity: 'Amman',
+    durationDays: 1,
+    mainDestinations: ['Jerash'],
+    stops: [
+      { order: 1, city: 'Amman', location: 'Amman' },
+      { order: 2, city: 'Jerash', location: 'Jerash Ruins', notes: 'Visit' },
+    ],
+  });
+
+  assert.equal(created.code, 'JOR-TR-NOPOI');
+  assert.equal(stores.stops.length, 2);
+  // Existing city/location/notes preserved exactly; poiId resolves to null (no link).
+  assert.deepEqual(
+    stores.stops.map((stop) => ({ city: stop.city, location: stop.location, notes: stop.notes || null, poiId: stop.poiId ?? null })),
+    [
+      { city: 'Amman', location: 'Amman', notes: null, poiId: null },
+      { city: 'Jerash', location: 'Jerash Ruins', notes: 'Visit', poiId: null },
+    ],
+  );
+});
+
+test('Phase 2: a stop can link to a PointOfInterest and the link persists on create', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+
+  await service.create({
+    code: 'JOR-TR-POI',
+    name: 'POI-linked route',
+    startCity: 'Amman',
+    durationDays: 1,
+    mainDestinations: ['Jerash'],
+    stops: [
+      { order: 1, city: 'Amman', location: 'Amman' },
+      { order: 2, city: 'Jerash', location: 'Jerash', poiId: 'poi-jerash-123' },
+    ],
+  });
+
+  const jerash = stores.stops.find((stop) => stop.city === 'Jerash');
+  const amman = stores.stops.find((stop) => stop.city === 'Amman');
+  assert.equal(jerash?.poiId, 'poi-jerash-123'); // link persisted
+  assert.equal(amman?.poiId ?? null, null); // unlinked stop stays null — mixed routes work
+});

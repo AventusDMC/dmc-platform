@@ -24,14 +24,17 @@ async function getRoute(id: string) {
 }
 
 async function getCatalogs(): Promise<TouringRouteCatalogs> {
-  const [suppliers, vehicles, transportServiceTypes] = await Promise.all([
+  const [suppliers, vehicles, transportServiceTypes, pois] = await Promise.all([
     adminPageFetchJson<TouringRouteCatalogs['suppliers']>('/api/suppliers?type=transport&active=true', 'Transport supplier catalog', { cache: 'no-store' }),
     adminPageFetchJson<TouringRouteCatalogs['vehicles']>('/api/vehicles', 'Vehicle catalog', { cache: 'no-store' }),
     adminPageFetchJson<TouringRouteCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Transport service type catalog', {
       cache: 'no-store',
     }),
+    adminPageFetchJson<TouringRouteCatalogs['pois']>('/api/points-of-interest?active=true', 'Points of interest catalog', {
+      cache: 'no-store',
+    }).catch(() => [] as TouringRouteCatalogs['pois']),
   ]);
-  return { suppliers, vehicles, transportServiceTypes };
+  return { suppliers, vehicles, transportServiceTypes, pois };
 }
 
 function formatDestinations(route: TouringRouteDetail) {
