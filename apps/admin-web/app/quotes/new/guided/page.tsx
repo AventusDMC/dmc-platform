@@ -26,7 +26,7 @@ export default function GuidedQuoteBuilderPage() {
             href="/quotes/new"
             style={{
               background: '#ffffff',
-              color: '#175cd3',
+              color: 'var(--ds-color-info, #175CD3)',
               padding: '0.5rem 0.95rem',
               borderRadius: 8,
               fontWeight: 600,

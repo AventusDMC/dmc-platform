@@ -447,7 +447,7 @@ function SuggestionRow({
               display: 'inline-block',
               marginTop: '0.2rem',
               background: '#ecfdf3',
-              color: '#067647',
+              color: 'var(--ds-color-success, #067647)',
               padding: '0.05rem 0.45rem',
               borderRadius: 999,
               fontSize: '0.68rem',

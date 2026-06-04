@@ -204,7 +204,7 @@ export function TouringRouteJourneyFlowStrip({
           style={{
             margin: '0.1rem 0 0',
             fontSize: '0.7rem',
-            color: '#475569',
+            color: 'var(--ds-color-text-muted, #475569)',
             fontStyle: 'italic',
             lineHeight: 1.4,
           }}

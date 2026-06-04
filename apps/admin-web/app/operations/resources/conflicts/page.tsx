@@ -133,7 +133,7 @@ export default async function ResourceConflictsPage() {
           <Link
             href="/operations/dispatch"
             style={{
-              background: '#175cd3',
+              background: 'var(--ds-color-info, #175CD3)',
               color: '#ffffff',
               padding: '0.6rem 1rem',
               borderRadius: 8,
@@ -165,7 +165,7 @@ export default async function ResourceConflictsPage() {
             borderRadius: 12,
             padding: '1.5rem',
             textAlign: 'center',
-            color: '#067647',
+            color: 'var(--ds-color-success, #067647)',
           }}
         >
           <strong style={{ fontSize: '1.1rem' }}>✓ No resource conflicts in the next {conflicts.rangeDays} days.</strong>
@@ -317,7 +317,7 @@ function ConflictSection({
         <span>
           <strong style={{ color: accent }}>{title}</strong> · No conflicts detected
         </span>
-        <span style={{ color: '#067647' }}>✓ Clear</span>
+        <span style={{ color: 'var(--ds-color-success, #067647)' }}>✓ Clear</span>
       </section>
     );
   }
@@ -412,7 +412,7 @@ function ConflictCard({
             <span style={{ flex: 1 }}>
               <Link
                 href={`/bookings/${s.bookingId}/operations`}
-                style={{ color: '#175cd3', textDecoration: 'none', fontWeight: 600 }}
+                style={{ color: 'var(--ds-color-info, #175CD3)', textDecoration: 'none', fontWeight: 600 }}
               >
                 {s.bookingRef || s.bookingId.slice(0, 8)}
               </Link>
@@ -434,7 +434,7 @@ function ConflictCard({
             <span
               style={{
                 background: s.executionStatus === 'READY' ? '#f2f4f7' : '#eff8ff',
-                color: s.executionStatus === 'READY' ? '#475467' : '#175cd3',
+                color: s.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,
                 fontSize: '0.72rem',
@@ -451,7 +451,7 @@ function ConflictCard({
           href={`/operations/resources/timeline/${resourceType}/${conflict.resourceId}`}
           style={{
             background: '#ffffff',
-            color: '#175cd3',
+            color: 'var(--ds-color-info, #175CD3)',
             border: '1px solid #84caff',
             padding: '0.4rem 0.75rem',
             borderRadius: 6,

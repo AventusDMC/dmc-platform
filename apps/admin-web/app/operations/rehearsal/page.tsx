@@ -165,7 +165,7 @@ export default async function RehearsalPage({
             <Link
               href="/operations/rehearsal"
               style={{
-                background: '#b42318',
+                background: 'var(--ds-color-danger, #B42318)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,
@@ -180,7 +180,7 @@ export default async function RehearsalPage({
             <Link
               href={`/operations/rehearsal?started=${new Date().toISOString()}`}
               style={{
-                background: '#067647',
+                background: 'var(--ds-color-success, #067647)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,
@@ -210,10 +210,10 @@ export default async function RehearsalPage({
           flexWrap: 'wrap',
         }}
       >
-        <strong style={{ color: sessionActive ? '#067647' : '#175cd3' }}>
+        <strong style={{ color: sessionActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-info, #175CD3)' }}>
           {sessionActive ? '🟢 Rehearsal session active' : '⏸ No active session — showing baseline window'}
         </strong>
-        <span style={{ color: sessionActive ? '#067647' : '#175cd3', fontSize: '0.85rem' }}>{elapsedLabel}</span>
+        <span style={{ color: sessionActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-info, #175CD3)', fontSize: '0.85rem' }}>{elapsedLabel}</span>
       </section>
 
       {/* Aggregate scorecard */}
@@ -292,9 +292,9 @@ export default async function RehearsalPage({
                       <td style={{ padding: '0.4rem', fontWeight: 600 }}>{a.actor}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: 700 }}>{a.totalActions}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right' }}>{a.dispatches}</td>
-                      <td style={{ padding: '0.4rem', textAlign: 'right', color: '#067647' }}>{a.resolutions}</td>
+                      <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{a.resolutions}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right' }}>{a.reassignments}</td>
-                      <td style={{ padding: '0.4rem', textAlign: 'right', color: a.escalations > 0 ? '#b42318' : '#475467' }}>{a.escalations}</td>
+                      <td style={{ padding: '0.4rem', textAlign: 'right', color: a.escalations > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>{a.escalations}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -390,7 +390,7 @@ function ScenarioCard({ scenario, sessionStartIso }: { scenario: Scenario; sessi
         <span
           style={{
             background: '#eff8ff',
-            color: '#175cd3',
+            color: 'var(--ds-color-info, #175CD3)',
             padding: '0.1rem 0.45rem',
             borderRadius: 999,
             fontSize: '0.72rem',
@@ -404,7 +404,7 @@ function ScenarioCard({ scenario, sessionStartIso }: { scenario: Scenario; sessi
       <Link
         href={href}
         style={{
-          background: '#175cd3',
+          background: 'var(--ds-color-info, #175CD3)',
           color: '#ffffff',
           padding: '0.4rem 0.75rem',
           borderRadius: 6,

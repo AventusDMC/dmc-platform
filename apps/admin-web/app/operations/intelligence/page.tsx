@@ -186,7 +186,7 @@ export default async function IntelligencePage() {
             <Link
               href="/operations/dispatch"
               style={{
-                background: '#175cd3',
+                background: 'var(--ds-color-info, #175CD3)',
                 color: '#ffffff',
                 padding: '0.6rem 1rem',
                 borderRadius: 8,
@@ -308,7 +308,7 @@ export default async function IntelligencePage() {
                       title={`${total} services${inc > 0 ? `, ${inc} incidents` : ''}`}
                     >
                       {total}
-                      {inc > 0 ? <span style={{ color: '#b42318', marginLeft: '0.3rem', fontSize: '0.72rem' }}>⚠{inc}</span> : null}
+                      {inc > 0 ? <span style={{ color: 'var(--ds-color-danger, #B42318)', marginLeft: '0.3rem', fontSize: '0.72rem' }}>⚠{inc}</span> : null}
                     </td>
                   );
                 })}
@@ -335,9 +335,9 @@ export default async function IntelligencePage() {
               <tr key={i} style={{ borderBottom: '1px solid #f2f4f7' }}>
                 <td style={{ padding: '0.5rem', fontWeight: 600 }}>{t.weekLabel}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
-                <td style={{ padding: '0.5rem', textAlign: 'right', color: '#067647' }}>{t.completedCount}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right', color: t.delayedCount > 0 ? '#b54708' : '#475467' }}>{t.delayedCount}</td>
-                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.incidentCount > 0 ? '#b42318' : '#475467', fontWeight: 700 }}>
+                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467', fontWeight: 700 }}>
                   {t.incidentCount}
                 </td>
               </tr>
@@ -462,7 +462,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.incidentRatePct >= 20 ? '#b42318' : p.incidentRatePct > 0 ? '#b54708' : '#475467',
+                    color: p.incidentRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.incidentRatePct > 0 ? '#b54708' : '#475467',
                     fontWeight: 600,
                   }}
                 >
@@ -472,12 +472,12 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.delayedRatePct >= 20 ? '#b42318' : p.delayedRatePct > 0 ? '#b54708' : '#475467',
+                    color: p.delayedRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.delayedRatePct > 0 ? '#b54708' : '#475467',
                   }}
                 >
                   {p.delayedRatePct}%{p.avgDelayMinutes > 0 ? ` · ${p.avgDelayMinutes}m` : ''}
                 </td>
-                <td style={{ padding: '0.4rem', textAlign: 'right', color: '#067647', fontWeight: 600 }}>{p.completionPct}%</td>
+                <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)', fontWeight: 600 }}>{p.completionPct}%</td>
               </tr>
             ))}
           </tbody>

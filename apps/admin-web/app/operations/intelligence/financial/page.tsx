@@ -147,7 +147,7 @@ export default async function FinancialIntelligencePage() {
           <Link
             href="/operations/intelligence"
             style={{
-              background: '#175cd3',
+              background: 'var(--ds-color-info, #175CD3)',
               color: '#ffffff',
               padding: '0.6rem 1rem',
               borderRadius: 8,
@@ -207,7 +207,7 @@ export default async function FinancialIntelligencePage() {
       {/* Leakage breakdown */}
       <Panel title="Margin Leakage by Category" accent="#b42318">
         {data.leakageByCategory.length === 0 ? (
-          <p style={{ color: '#067647', margin: 0 }}>✓ No cost leakage detected in the window.</p>
+          <p style={{ color: 'var(--ds-color-success, #067647)', margin: 0 }}>✓ No cost leakage detected in the window.</p>
         ) : (
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {data.leakageByCategory.map((c) => {
@@ -269,7 +269,7 @@ export default async function FinancialIntelligencePage() {
                   <td style={{ padding: '0.5rem', fontWeight: 600 }}>{r.bookingRef || r.bookingServiceId.slice(0, 8)}</td>
                   <td style={{ padding: '0.5rem' }}>{r.operationType}</td>
                   <td style={{ padding: '0.5rem' }}>{r.supplierName || '—'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right', color: r.delayMinutes > 30 ? '#b42318' : '#475467' }}>
+                  <td style={{ padding: '0.5rem', textAlign: 'right', color: r.delayMinutes > 30 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>
                     {r.delayMinutes > 0 ? `${r.delayMinutes}m` : '—'}
                   </td>
                   <td style={{ padding: '0.5rem', textAlign: 'right' }}>{r.reassignments || '—'}</td>
@@ -279,7 +279,7 @@ export default async function FinancialIntelligencePage() {
                       padding: '0.5rem',
                       textAlign: 'right',
                       fontWeight: 700,
-                      color: r.estimatedTotalCost > 100 ? '#b42318' : r.estimatedTotalCost > 20 ? '#b54708' : '#475467',
+                      color: r.estimatedTotalCost > 100 ? 'var(--ds-color-danger, #B42318)' : r.estimatedTotalCost > 20 ? '#b54708' : '#475467',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -410,7 +410,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
                 style={{
                   padding: '0.4rem',
                   textAlign: 'right',
-                  color: s.incidentCount > 0 ? '#b42318' : '#475467',
+                  color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467',
                   fontWeight: 600,
                 }}
               >
@@ -423,7 +423,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
                   textAlign: 'right',
                   fontVariantNumeric: 'tabular-nums',
                   fontWeight: 700,
-                  color: s.estimatedLeakage > 100 ? '#b42318' : s.estimatedLeakage > 0 ? '#b54708' : '#475467',
+                  color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : s.estimatedLeakage > 0 ? '#b54708' : '#475467',
                 }}
               >
                 {money(s.estimatedLeakage)}

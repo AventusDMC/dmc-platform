@@ -193,7 +193,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                             style={{
                               marginLeft: '0.4rem',
                               background: '#ecfdf3',
-                              color: '#067647',
+                              color: 'var(--ds-color-success, #067647)',
                               padding: '0.05rem 0.4rem',
                               borderRadius: 999,
                               fontSize: '0.62rem',
@@ -277,7 +277,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                         <span
                           style={{
                             background: s.isActive ? '#ecfdf3' : '#f2f4f7',
-                            color: s.isActive ? '#067647' : '#475467',
+                            color: s.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,
                             fontSize: '0.72rem',
