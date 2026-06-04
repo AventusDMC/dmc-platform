@@ -2419,10 +2419,7 @@ select option:checked {
   line-height: 1.02;
 }
 
-.quote-dashboard-actions {
-  align-content: flex-start;
-  gap: 0.65rem;
-}
+/* (dead .quote-dashboard-actions align/gap removed — overridden later; Phase 4 dedup, verified no-op) */
 
 .quote-dashboard-actions > *,
 .quote-dashboard-actions a,
