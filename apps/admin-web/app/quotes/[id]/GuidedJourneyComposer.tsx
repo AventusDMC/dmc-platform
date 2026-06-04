@@ -416,7 +416,7 @@ export function GuidedJourneyComposer({
   return (
     <section
       style={{
-        background: '#f8fafc',
+        background: 'var(--ds-color-canvas, #F8FAFC)',
         border: '1px solid #e2e8f0',
         borderRadius: 12,
         padding: '1.25rem',
@@ -438,7 +438,7 @@ export function GuidedJourneyComposer({
           >
             Journey Composer · Guided Mode
           </p>
-          <h2 style={{ margin: '0.25rem 0 0', fontSize: '1.4rem', color: '#0f172a' }}>
+          <h2 style={{ margin: '0.25rem 0 0', fontSize: '1.4rem', color: 'var(--ds-color-text, #0F172A)' }}>
             {destinations.length === 0
               ? 'Start by adding destinations to your itinerary.'
               : destinations.length === 1
@@ -700,7 +700,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
       <div style={{ display: 'grid', gap: '0.7rem' }}>
         {withSuggestions.map((s) => (
           <div key={s.destination}>
-            <p style={{ margin: 0, color: '#0f172a', fontWeight: 600, fontSize: '0.92rem' }}>
+            <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontWeight: 600, fontSize: '0.92rem' }}>
               {s.destination}
               {s.matchedAreaCode ? (
                 <span
@@ -728,13 +728,13 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
                     alignItems: 'baseline',
                     gap: '0.6rem',
                     padding: '0.45rem 0.65rem',
-                    background: '#f8fafc',
+                    background: 'var(--ds-color-canvas, #F8FAFC)',
                     border: '1px solid #e2e8f0',
                     borderRadius: 8,
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, color: '#0f172a', fontSize: '0.88rem' }}>
+                    <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '0.88rem' }}>
                       <code style={{ fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', marginRight: '0.35rem' }}>
                         {tr.code}
                       </code>
@@ -874,7 +874,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
     <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem' }}>
       <span style={{ color, fontSize: '1rem', fontWeight: 700, width: '1.1rem' }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, color: '#0f172a', fontWeight: 600, fontSize: '0.88rem' }}>{item.label}</p>
+        <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontWeight: 600, fontSize: '0.88rem' }}>{item.label}</p>
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.82rem' }}>{item.detail}</p>
       </div>
     </div>
@@ -932,7 +932,7 @@ function SuggestedHotelsSection({
             padding: '0.35rem 0.7rem',
             border: '1px solid #cbd5e1',
             borderRadius: 8,
-            background: '#f8fafc',
+            background: 'var(--ds-color-canvas, #F8FAFC)',
             color: '#0c4a6e',
             fontSize: '0.78rem',
             fontWeight: 600,
@@ -982,7 +982,7 @@ function DestinationHotelGroup({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>{group.destination}</p>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: 'var(--ds-color-text, #0F172A)' }}>{group.destination}</p>
         {group.matchedAreaCode ? (
           <span
             style={{
@@ -1065,7 +1065,7 @@ function HotelCard({
   return (
     <div
       style={{
-        background: '#f8fafc',
+        background: 'var(--ds-color-canvas, #F8FAFC)',
         border: '1px solid #e2e8f0',
         borderRadius: 8,
         padding: '0.55rem 0.7rem',
@@ -1074,7 +1074,7 @@ function HotelCard({
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.92rem', fontWeight: 600 }}>{hotel.name}</p>
+        <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '0.92rem', fontWeight: 600 }}>{hotel.name}</p>
         <a
           href={`/quotes/${quoteId}?tab=hotels&hotelId=${encodeURIComponent(hotel.id)}`}
           style={{
@@ -1216,7 +1216,7 @@ function SuggestedExperiencesSection({
             padding: '0.35rem 0.7rem',
             border: '1px solid #cbd5e1',
             borderRadius: 8,
-            background: '#f8fafc',
+            background: 'var(--ds-color-canvas, #F8FAFC)',
             color: '#0c4a6e',
             fontSize: '0.78rem',
             fontWeight: 600,
@@ -1317,7 +1317,7 @@ function DestinationExperienceGroup({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>{group.destination}</p>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.92rem', color: 'var(--ds-color-text, #0F172A)' }}>{group.destination}</p>
         {group.matchedAreaCode ? (
           <span
             style={{
@@ -1413,7 +1413,7 @@ function ExperienceCard({
   return (
     <div
       style={{
-        background: '#f8fafc',
+        background: 'var(--ds-color-canvas, #F8FAFC)',
         border: '1px solid #e2e8f0',
         borderRadius: 8,
         padding: '0.55rem 0.7rem',
@@ -1422,7 +1422,7 @@ function ExperienceCard({
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.92rem', fontWeight: 600 }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '0.92rem', fontWeight: 600 }}>
           {exp.premiumExperienceFlag ? <span aria-hidden style={{ marginRight: '0.25rem' }}>✨</span> : null}
           {exp.name}
         </p>
@@ -1575,7 +1575,7 @@ function SuggestedTransportSection({
             padding: '0.35rem 0.7rem',
             border: '1px solid #cbd5e1',
             borderRadius: 8,
-            background: '#f8fafc',
+            background: 'var(--ds-color-canvas, #F8FAFC)',
             color: '#0c4a6e',
             fontSize: '0.78rem',
             fontWeight: 600,
@@ -1662,7 +1662,7 @@ function TransportRecommendationCard({
   return (
     <div
       style={{
-        background: '#f8fafc',
+        background: 'var(--ds-color-canvas, #F8FAFC)',
         border: '1px solid #e2e8f0',
         borderRadius: 10,
         padding: '0.85rem 1rem',
@@ -1674,7 +1674,7 @@ function TransportRecommendationCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem', flexWrap: 'wrap' }}>
-            <p style={{ margin: 0, color: '#0f172a', fontSize: '1.05rem', fontWeight: 700 }}>
+            <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '1.05rem', fontWeight: 700 }}>
               {recommendation.label}
             </p>
             <span style={{ color: '#64748b', fontSize: '0.82rem' }}>{recommendation.seatRange}</span>
@@ -1782,14 +1782,14 @@ function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
   return (
     <div
       style={{
-        background: '#f8fafc',
+        background: 'var(--ds-color-canvas, #F8FAFC)',
         border: '1px solid #e2e8f0',
         borderRadius: 8,
         padding: '0.5rem 0.7rem',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <p style={{ margin: 0, color: '#0f172a', fontSize: '0.88rem', fontWeight: 600 }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '0.88rem', fontWeight: 600 }}>
           {leg.fromCity} → {leg.toCity}
           {leg.canonicalCode ? (
             <code

@@ -226,7 +226,7 @@ export default async function ScaleSimulationPage({
       <section
         style={{
           background: 'linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)',
-          border: '1px solid #84caff',
+          border: '1px solid var(--ds-color-info-border, #84CAFF)',
           borderRadius: 10,
           padding: '0.85rem 1rem',
           display: 'flex',
@@ -335,7 +335,7 @@ function Pill({ href, label }: { href: string; label: string }) {
       style={{
         background: '#ffffff',
         color: 'var(--ds-color-info, #175CD3)',
-        border: '1px solid #84caff',
+        border: '1px solid var(--ds-color-info-border, #84CAFF)',
         padding: '0.4rem 0.75rem',
         borderRadius: 999,
         fontSize: '0.82rem',

@@ -219,7 +219,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
   return (
     <div
       style={{
-        background: '#f9fafb',
+        background: 'var(--ds-color-surface-soft, #F9FAFB)',
         border: '1px solid #e4e7ec',
         borderRadius: 8,
         padding: '0.75rem 0.9rem',
@@ -498,7 +498,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
                       ))}
                     </ul>
                   ) : (
-                    <p style={{ margin: '0.4rem 0 0', color: '#b54708' }}>No guests assigned to this room yet.</p>
+                    <p style={{ margin: '0.4rem 0 0', color: 'var(--ds-color-warning, #B54708)' }}>No guests assigned to this room yet.</p>
                   )}
                   {codeLine ? (
                     <p style={{ margin: '0.4rem 0 0', fontWeight: 600 }}>{codeLine}</p>

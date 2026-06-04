@@ -403,7 +403,7 @@ export function TouringRouteLegsPanel({ touringRouteId }: { touringRouteId: stri
       {/* Add leg form */}
       <div
         style={{
-          background: '#f9fafb',
+          background: 'var(--ds-color-surface-soft, #F9FAFB)',
           border: '1px solid #e4e7ec',
           borderRadius: 10,
           padding: '0.85rem 1rem',
@@ -648,7 +648,7 @@ function LegRow({
           {isDrive ? (
             std ? (
               <>
-                <code style={{ background: '#f9fafb', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.78rem' }}>
+                <code style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.78rem' }}>
                   {std.canonicalRouteCode || std.routeCode}
                 </code>
                 {std.standardDistanceKm != null ? <span>{std.standardDistanceKm} km</span> : null}
@@ -764,8 +764,8 @@ function ResolvedStandardPreview({
       style={{
         marginTop: '0.5rem',
         padding: '0.55rem 0.7rem',
-        background: '#ecfdf3',
-        border: '1px solid #abefc6',
+        background: 'var(--ds-color-success-surface, #ECFDF3)',
+        border: '1px solid var(--ds-color-success-border, #ABEFC6)',
         borderRadius: 8,
         color: 'var(--ds-color-success, #067647)',
         fontSize: '0.85rem',
@@ -953,7 +953,7 @@ function GenerateFromStopsControls({
                 <code
                   style={{
                     marginLeft: '0.4rem',
-                    background: '#f9fafb',
+                    background: 'var(--ds-color-surface-soft, #F9FAFB)',
                     padding: '0.05rem 0.4rem',
                     borderRadius: 4,
                     fontSize: '0.78rem',
@@ -992,9 +992,9 @@ function PreviewBadge({ leg }: { leg: GeneratedLeg }) {
     return (
       <span
         style={{
-          background: '#ecfdf3',
+          background: 'var(--ds-color-success-surface, #ECFDF3)',
           color: 'var(--ds-color-success, #067647)',
-          border: '1px solid #abefc6',
+          border: '1px solid var(--ds-color-success-border, #ABEFC6)',
           padding: '0.05rem 0.45rem',
           borderRadius: 999,
           fontSize: '0.7rem',
@@ -1028,7 +1028,7 @@ function PreviewBadge({ leg }: { leg: GeneratedLeg }) {
     return (
       <span
         style={{
-          background: '#f9fafb',
+          background: 'var(--ds-color-surface-soft, #F9FAFB)',
           color: '#475467',
           border: '1px solid #d0d5dd',
           padding: '0.05rem 0.45rem',

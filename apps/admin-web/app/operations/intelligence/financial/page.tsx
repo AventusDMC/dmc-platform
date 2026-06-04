@@ -253,7 +253,7 @@ export default async function FinancialIntelligencePage() {
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+              <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
                 <th style={{ padding: '0.5rem' }}>Booking</th>
                 <th style={{ padding: '0.5rem' }}>Type</th>
                 <th style={{ padding: '0.5rem' }}>Supplier</th>
@@ -279,7 +279,7 @@ export default async function FinancialIntelligencePage() {
                       padding: '0.5rem',
                       textAlign: 'right',
                       fontWeight: 700,
-                      color: r.estimatedTotalCost > 100 ? 'var(--ds-color-danger, #B42318)' : r.estimatedTotalCost > 20 ? '#b54708' : '#475467',
+                      color: r.estimatedTotalCost > 100 ? 'var(--ds-color-danger, #B42318)' : r.estimatedTotalCost > 20 ? 'var(--ds-color-warning, #B54708)' : '#475467',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -374,7 +374,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
       <thead>
-        <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+        <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
           <th style={{ padding: '0.4rem' }}>Supplier</th>
           <th style={{ padding: '0.4rem', textAlign: 'center' }}>Reliability</th>
           <th style={{ padding: '0.4rem', textAlign: 'right' }}>Svcs</th>
@@ -423,7 +423,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
                   textAlign: 'right',
                   fontVariantNumeric: 'tabular-nums',
                   fontWeight: 700,
-                  color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : s.estimatedLeakage > 0 ? '#b54708' : '#475467',
+                  color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : s.estimatedLeakage > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
                 }}
               >
                 {money(s.estimatedLeakage)}

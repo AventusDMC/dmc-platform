@@ -234,7 +234,7 @@ export default async function AdminDashboardPage() {
             <Link
               href="/admin/production-readiness"
               className="primary-button"
-              style={{ background: '#b54708', borderColor: '#b54708', color: '#ffffff' }}
+              style={{ background: 'var(--ds-color-warning, #B54708)', borderColor: 'var(--ds-color-warning, #B54708)', color: '#ffffff' }}
             >
               🩺 Readiness
             </Link>

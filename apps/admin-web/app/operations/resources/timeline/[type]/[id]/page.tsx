@@ -184,7 +184,7 @@ export default async function ResourceTimelinePage({ params }: { params: Promise
                         </span>
                         <span
                           style={{
-                            background: item.executionStatus === 'READY' ? '#f2f4f7' : '#eff8ff',
+                            background: item.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
                             color: item.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
                             padding: '0.1rem 0.45rem',
                             borderRadius: 4,

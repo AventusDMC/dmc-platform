@@ -572,8 +572,8 @@ function PreviewBanner({
       style={{
         marginTop: '0.5rem',
         padding: '0.6rem 0.8rem',
-        background: '#ecfdf3',
-        border: '1px solid #abefc6',
+        background: 'var(--ds-color-success-surface, #ECFDF3)',
+        border: '1px solid var(--ds-color-success-border, #ABEFC6)',
         borderRadius: 8,
         color: 'var(--ds-color-success, #067647)',
         fontSize: '0.88rem',
