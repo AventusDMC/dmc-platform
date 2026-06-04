@@ -2881,9 +2881,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   <h1>{quote.title}</h1>
                 </div>
                 <QuoteBuilderStatusBadge status={quote.status} expired={quoteExpired} />
-                {/* Command-bar money: keep sell/cost/margin in view at the top of the
-                    quote (stage 1 of the workspace redesign). Cost + margin are
-                    internal metrics, gated to admin/finance roles like elsewhere. */}
+                {/* Command-bar money: at-a-glance headline only — Sell (+ Margin% for
+                    admin/finance). The full internal breakdown (Cost / Profit / Markup)
+                    lives in the sidebar Financial-summary card, so the two displays have
+                    distinct roles instead of duplicating Cost/Margin (quote Pass 4). */}
                 <div className="quote-command-money" style={{ marginLeft: 'auto', display: 'flex', gap: '1.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                     <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Sell</span>
@@ -2891,10 +2892,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   </div>
                   {(session?.role === 'admin' || session?.role === 'super_admin' || session?.role === 'finance' || session?.role === 'agent_admin') ? (
                     <>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                        <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Cost</span>
-                        <strong style={{ fontSize: '1.05rem', fontWeight: 700 }}>{quote.quoteCurrency} {Math.round(quote.totalCost).toLocaleString()}</strong>
-                      </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Margin</span>
                         <strong className="quote-money-margin" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ds-color-success, #067647)' }}>
