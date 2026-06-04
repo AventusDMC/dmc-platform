@@ -114,6 +114,12 @@ export function QuoteGroupPricing({
     return roundMoney(sell);
   }, [costPerPax, markupMode, markupValue]);
 
+  const computedMarginPercent =
+    computedSell !== null && computedSell > 0
+      ? roundMoney(((computedSell - costPerPax) / computedSell) * 100)
+      : null;
+  const marginIsThin = computedMarginPercent !== null && computedMarginPercent < 15;
+
   function applyComputedSell() {
     if (computedSell === null) {
       return;
@@ -313,6 +319,11 @@ export function QuoteGroupPricing({
                   <div>
                     <span>Sell price per person</span>
                     <strong>{formatPackageMoney(computedSell, costCurrency)}</strong>
+                    {computedMarginPercent !== null ? (
+                      <span className={`quote-package-markup-margin${marginIsThin ? ' quote-package-markup-margin-thin' : ''}`}>
+                        {computedMarginPercent.toFixed(1)}% margin{marginIsThin ? ' — thin' : ''}
+                      </span>
+                    ) : null}
                   </div>
                   <button type="button" className="secondary-button" onClick={applyComputedSell}>
                     Use this price

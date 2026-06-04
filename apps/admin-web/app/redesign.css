@@ -740,3 +740,46 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   font-weight: 700;
   color: var(--ds-color-text, #0F172A);
 }
+
+/* ---------- Pricing: bulk-markup scope clarity + quick-markup margin ----------
+   Small helper/empty-state copy explaining the bulk markup scope and why a
+   scope can yield 0 compatible rows; plus the resulting margin readout on the
+   package Quick-markup helper. Layout/colour only — no logic change. */
+.quote-bulk-scope-hint {
+  margin: -4px 0 0;
+  font-size: 0.78rem;
+  color: var(--ds-color-text-subtle, #667085);
+}
+.quote-bulk-scope-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ds-color-warning, #B54708);
+}
+.quote-package-markup-margin {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ds-color-success, #067647);
+}
+.quote-package-markup-margin-thin {
+  color: var(--ds-color-warning, #B54708);
+}
+
+/* ---------- Pricing components: stop the open detail drawer collapsing ----------
+   The row-detail drawer renders inside a shrink-to-fit cell
+   (.quote-pricing-details-cell { width: 1% } in globals-05). Under the quote
+   builder's min-width:0 table override, when the <details> opens during the
+   first-paint/hydration window the auto-layout column can stay at ~its minimum,
+   crushing the panel to ~60px so its text wraps one glyph per line (intermittent;
+   a reload re-runs layout and fixes it). Force a real width floor ONLY while the
+   drawer is open — the closed/normal state keeps width:1% untouched, so this
+   cannot change the default table layout. min-width:0 on the grid body stops the
+   inner content from forcing per-character wrapping. */
+.quote-pricing-details-cell:has(.operations-row-details[open]) {
+  width: auto;
+  min-width: 18rem;
+}
+.quote-pricing-details-cell .operations-row-details-body {
+  min-width: 0;
+}

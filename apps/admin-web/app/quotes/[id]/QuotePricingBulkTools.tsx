@@ -165,16 +165,22 @@ export function QuotePricingBulkTools({
     return allItems.filter((item) => matchesPricingFocus(item, activeFilter));
   }, [activeFilter, allItems, currencyScope]);
 
-  const markupTargets = useMemo(() => {
-    const baseTargets =
-      markupScope === 'missing-sell'
-        ? allItems.filter((item) => isMissingSell(item))
-        : markupScope === 'zero-sell'
-          ? allItems.filter((item) => item.totalSell <= 0)
-          : allItems.filter((item) => matchesPricingFocus(item, activeFilter));
-
-    return baseTargets.filter((item) => item.totalCost > 0);
+  const markupScopeRows = useMemo(() => {
+    return markupScope === 'missing-sell'
+      ? allItems.filter((item) => isMissingSell(item))
+      : markupScope === 'zero-sell'
+        ? allItems.filter((item) => item.totalSell <= 0)
+        : allItems.filter((item) => matchesPricingFocus(item, activeFilter));
   }, [activeFilter, allItems, markupScope]);
+
+  const markupTargets = useMemo(
+    () => markupScopeRows.filter((item) => item.totalCost > 0),
+    [markupScopeRows],
+  );
+
+  // Rows that match the scope but can't be marked up because they have no cost
+  // to mark up from. Surfacing this explains the common "0 compatible rows" case.
+  const markupBlockedByMissingCost = markupScopeRows.length - markupTargets.length;
 
   async function patchItems(
     targets: PricingTargetItem[],
@@ -398,6 +404,13 @@ export function QuotePricingBulkTools({
               <option value="zero-sell">Zero-sell rows</option>
             </select>
           </label>
+          <p className="detail-copy quote-bulk-scope-hint">
+            {markupScope === 'missing-sell'
+              ? 'Rows that have a cost but no sell price yet. Existing prices are left untouched.'
+              : markupScope === 'zero-sell'
+                ? 'Rows whose sell price is currently 0.'
+                : 'Every row in the current filter — this overwrites sell prices that are already set.'}
+          </p>
           <label className="field-label">
             Markup %
             <input value={markupPercent} onChange={(event) => setMarkupPercent(event.target.value)} inputMode="decimal" />
@@ -408,7 +421,23 @@ export function QuotePricingBulkTools({
               <strong>{markupTargets.length}</strong>
             </div>
           </div>
-          <button type="button" className="secondary-button" disabled={isApplyingMarkup} onClick={handleMarkupApply}>
+          {markupTargets.length === 0 ? (
+            <p className="detail-copy quote-bulk-scope-empty">
+              {markupBlockedByMissingCost > 0
+                ? `${markupBlockedByMissingCost} ${markupBlockedByMissingCost === 1 ? 'row' : 'rows'} in this scope ${
+                    markupBlockedByMissingCost === 1 ? 'has' : 'have'
+                  } no cost yet, so markup can't be calculated. Add a cost to ${
+                    markupBlockedByMissingCost === 1 ? 'that row' : 'those rows'
+                  } first (see the “Missing cost” slice).`
+                : 'No rows match this scope right now.'}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={isApplyingMarkup || markupTargets.length === 0}
+            onClick={handleMarkupApply}
+          >
             {isApplyingMarkup ? 'Applying...' : 'Apply markup default'}
           </button>
         </section>
