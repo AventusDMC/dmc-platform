@@ -3,20 +3,7 @@
   padding-inline: 1rem;
 }
 
-.panel.quote-workspace-page {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 1rem;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  box-shadow: none;
-}
 
-.quote-builder-shell {
-  gap: 1rem;
-}
 
 .quote-dashboard-header,
 .quote-dashboard-workflow,
@@ -37,63 +24,13 @@
   box-shadow: none;
 }
 
-.quote-dashboard-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-  gap: 1rem;
-  padding: 1rem;
-}
 
-.quote-dashboard-header-main {
-  display: grid;
-  gap: 0.85rem;
-  min-width: 0;
-}
 
-.quote-dashboard-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
 
-.quote-dashboard-title-row h1 {
-  margin: 0.15rem 0 0;
-  font-size: 1.8rem;
-  line-height: 1.12;
-  letter-spacing: 0;
-}
 
-.quote-dashboard-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.75rem;
-}
 
-.quote-dashboard-meta-grid div {
-  min-width: 0;
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-}
 
-.quote-dashboard-meta-grid span {
-  display: block;
-  color: #64748b;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
 
-.quote-dashboard-meta-grid strong {
-  display: block;
-  margin-top: 0.25rem;
-  color: #0f172a;
-  font-size: 0.92rem;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
 
 .quote-dashboard-actions {
   display: flex;
@@ -111,23 +48,8 @@
   min-width: 0;
 }
 
-.quote-dashboard-actions .secondary-button,
-.quote-dashboard-actions .primary-button,
-.quote-dashboard-actions button {
-  min-height: 38px;
-  border-radius: 8px;
-}
 
-.quote-dashboard-action-panel {
-  min-width: 190px;
-}
 
-.quote-dashboard-workflow {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0;
-  padding: 0.5rem;
-}
 
 .quote-dashboard-workflow-step {
   position: relative;
@@ -152,73 +74,16 @@
   border-radius: 6px;
 }
 
-.quote-dashboard-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.75rem;
-}
 
-.quote-dashboard-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 38px;
-  padding: 0.45rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  color: #334155;
-  background: #f8fafc;
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-decoration: none;
-}
 
-.quote-dashboard-tab-active {
-  color: #1F9ACF;
-  background: #ecfdf5;
-  border-color: #E8F6FB;
-}
 
-.quote-builder-layout {
-  grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
-  gap: 1rem;
-}
 
-.quote-builder-main-content {
-  padding: 0;
-  background: transparent;
-  border-radius: 8px;
-}
 
-.quote-builder-main,
-.quote-builder-main .section-stack {
-  gap: 1rem;
-}
 
-.quote-builder-sidebar {
-  max-width: none;
-  top: 1rem;
-  gap: 1rem;
-}
 
-.quote-builder-sidebar .secondary-button,
-.quote-builder-sidebar .primary-button,
-.quote-builder-sidebar button {
-  border-radius: 8px;
-}
 
-.quote-pricing-summary-card {
-  padding: 1rem;
-}
 
-.quote-builder-step-shell {
-  padding: 0.75rem;
-}
 
-.quote-builder-step-shell .workspace-section-head {
-  display: none;
-}
 
 /* (dead .quote-step-nav gap removed — overridden by a later gap; Phase 4 dedup, verified no-op) */
 
@@ -539,10 +404,6 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.booking-ops-panel-card,
-.booking-ops-sidebar-card {
-  padding: 1.35rem;
-}
 
 .booking-ops-sidebar-card .workspace-section-head,
 .booking-rooming-summary-card > div:first-child,
@@ -612,11 +473,6 @@
   box-shadow: 0 18px 42px rgba(217, 119, 6, 0.08);
 }
 
-.booking-ops-alert-panel-danger {
-  background: linear-gradient(180deg, rgba(254, 235, 235, 0.98), rgba(249, 250, 251, 0.94));
-  border-color: rgba(185, 28, 28, 0.22);
-  box-shadow: 0 18px 42px rgba(185, 28, 28, 0.1);
-}
 
 .booking-ops-alert-panel-neutral {
   background: linear-gradient(180deg, rgba(247, 244, 239, 0.98), rgba(249, 250, 251, 0.94));
@@ -674,11 +530,6 @@
   border-color: rgba(217, 119, 6, 0.12);
 }
 
-.booking-ops-alert-panel-danger .booking-ops-alert-list p {
-  background: rgba(254, 242, 242, 0.92);
-  border-color: rgba(185, 28, 28, 0.14);
-  color: #991b1b;
-}
 
 .booking-rooming-summary-card {
   display: grid;
@@ -2041,11 +1892,6 @@
   overflow-wrap: anywhere;
 }
 
-.quote-dashboard-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.5rem;
-}
 
 .quote-dashboard-meta-grid div {
   min-width: 0;
@@ -2150,11 +1996,6 @@
   text-decoration: none;
 }
 
-.quote-dashboard-tab-active {
-  border-color: #E8F6FB;
-  color: #1F9ACF;
-  background: #ecfdf5;
-}
 
 .quote-builder-step-shell {
   padding: 0.65rem;
@@ -2228,13 +2069,7 @@
   gap: 0.85rem;
 }
 
-.quote-pricing-summary-card {
-  padding: 0.9rem;
-}
 
-.quote-pricing-summary-row {
-  gap: 0.75rem;
-}
 
 .quote-pricing-summary-row > div {
   max-width: 58%;
@@ -2715,28 +2550,12 @@
 /* Admin-wide modern facelift */
 /* (dead .admin-main-shell background:transparent removed — redesign.css owns the canvas. Phase 1b) */
 
-.admin-content-shell {
-  width: 100%;
-}
 
 .site-header {
   padding: 1rem 1.25rem 0;
 }
 
-.page,
-.panel,
-.workspace-shell-card,
-.executive-dashboard-page,
-.booking-ops-workspace-page,
-.panel.quote-workspace-page {
-  width: 100%;
-  max-width: 1440px;
-  margin-inline: auto;
-}
 
-.page {
-  padding: 1.25rem;
-}
 
 .login-page {
   display: grid;
@@ -2752,10 +2571,6 @@
   max-width: 520px;
 }
 
-.admin-sidebar {
-  background: linear-gradient(180deg, #0b1220 0%, #111827 58%, #0f172a 100%);
-  box-shadow: 12px 0 40px rgba(15, 23, 42, 0.12);
-}
 
 .admin-sidebar-copy,
 .admin-subnav-copy,
@@ -2829,12 +2644,6 @@ h1,
   line-height: 1.05;
 }
 
-.eyebrow {
-  color: #1F9ACF;
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
 
 .entity-form,
 .lead-form {
@@ -2901,9 +2710,6 @@ h1,
   border-radius: 8px;
 }
 
-.admin-top-nav-link {
-  border-radius: 8px;
-}
 
 .status-badge,
 .booking-payment-status-badge,
@@ -3059,9 +2865,6 @@ h1,
    removed — a later, superseding `--axis-*` :root block (search `--axis-navy`)
    redefined every var it set EXCEPT `--axis-gray`, which has been folded into that
    block. Verified byte-identical via getComputedStyle before/after. */
-a {
-  color: var(--axis-blue);
-}
 
 /* (dead .admin-shell background removed — redesign.css owns the canvas. Phase 1b) */
 
@@ -3172,15 +2975,7 @@ a {
   background: var(--axis-blue-dark);
 }
 
-.admin-top-nav-link-active {
-  border-color: rgba(31, 154, 207, 0.34);
-  background: rgba(31, 154, 207, 0.12);
-  color: var(--axis-blue-dark);
-}
 
-.admin-top-nav-link-active::before {
-  background: var(--axis-blue);
-}
 
 .admin-subnav-link-active,
 .reports-sort-links .active {
@@ -3189,13 +2984,6 @@ a {
   color: var(--axis-blue);
 }
 
-.status-badge,
-.booking-payment-status-badge,
-.invoice-portal-status-badge {
-  border-color: var(--axis-blue-border);
-  background: var(--axis-blue-soft);
-  color: var(--axis-blue-dark);
-}
 
 .page.admin-dashboard-shell {
   width: 100%;
@@ -3272,13 +3060,7 @@ a {
   background: #FFFFFF;
 }
 
-.reports-mini-bar {
-  background: var(--axis-blue-soft);
-}
 
-.reports-mini-bar span {
-  background: var(--axis-blue);
-}
 
 @media (max-width: 1180px) {
   .admin-dashboard-page .dashboard-grid {
@@ -3331,32 +3113,13 @@ a {
   --shadow-md: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 
-body,
-.admin-main-shell,
-.admin-content-shell {
-  /* canvas background owned by redesign.css (--rd-canvas); dead value removed. Phase 1b */
-  color: var(--axis-text-soft);
-}
 
 a {
   color: var(--axis-blue);
 }
 
-.admin-shell,
-.login-page {
-  background: var(--axis-section-background);
-}
 
-.admin-sidebar {
-  background: var(--axis-navy);
-  color: rgba(255, 255, 255, 0.82);
-  border-right: 1px solid rgba(17, 24, 39, 0.18);
-  box-shadow: none;
-}
 
-.admin-sidebar-brand {
-  padding: 0.4rem 0.5rem 1rem;
-}
 
 .admin-sidebar .admin-brand-row {
   align-items: center;
@@ -3415,23 +3178,8 @@ a {
   color: #FFFFFF;
 }
 
-.admin-top-nav-link {
-  border-color: transparent;
-  border-radius: 12px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.88);
-}
 
-.admin-top-nav-link-active {
-  border-color: rgba(31, 154, 207, 0.34);
-  background: rgba(31, 154, 207, 0.12);
-  color: var(--axis-blue-dark);
-  box-shadow: none;
-}
 
-.admin-top-nav-link-active::before {
-  background: var(--axis-blue);
-}
 
 .page,
 .panel,
@@ -3444,9 +3192,6 @@ a {
   margin-inline: auto;
 }
 
-.page {
-  padding: 24px;
-}
 
 .detail-card,
 .entity-card,
@@ -3781,10 +3526,6 @@ textarea:focus,
   background: #F3F4F6;
 }
 
-.admin-subnav-link-active {
-  border-color: var(--axis-blue-border);
-  background: var(--axis-blue-soft);
-}
 
 .public-proposal-page {
   background: #F9FAFB;

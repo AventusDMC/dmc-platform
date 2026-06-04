@@ -31,9 +31,6 @@ a {
   text-decoration: none;
 }
 
-.site-header {
-  padding: 1.25rem 2rem 0;
-}
 
 .admin-shell {
   min-height: 100vh;
@@ -47,14 +44,7 @@ a {
   padding-bottom: 1rem;
 }
 
-.admin-main-shell {
-  display: grid;
-  min-width: 0;
-}
 
-.admin-content-shell {
-  min-width: 0;
-}
 
 .admin-mobile-nav {
   display: none;
@@ -70,9 +60,6 @@ a {
   border-right: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.admin-sidebar .eyebrow {
-  color: rgba(107, 107, 107, 0.78);
-}
 
 .admin-sidebar-brand {
   display: grid;
@@ -101,10 +88,6 @@ a {
   line-height: 1.05;
 }
 
-.admin-sidebar .admin-brand-title {
-  color: #FFFFFF;
-  font-size: 1.55rem;
-}
 
 .admin-account {
   display: flex;
@@ -160,10 +143,6 @@ a {
   color: rgba(31, 41, 55, 0.78);
 }
 
-.admin-top-nav-link strong {
-  font-size: 0.98rem;
-  font-weight: 700;
-}
 
 .admin-top-nav-link span {
   color: rgba(107, 107, 107, 0.78);
@@ -190,9 +169,6 @@ a {
   background: rgba(249, 250, 251, 0.96);
 }
 
-.admin-top-nav-link-active span {
-  color: rgba(31, 41, 55, 0.78);
-}
 
 .admin-subnav-shell {
   display: grid;
@@ -1132,9 +1108,6 @@ select option:checked {
   color: var(--muted-foreground);
 }
 
-.reports-filter-bar input {
-  min-width: 160px;
-}
 
 .reports-list-grid {
   display: grid;
@@ -1218,10 +1191,6 @@ select option:checked {
   background: var(--accent);
 }
 
-.admin-dashboard-selling-section {
-  border-color: rgba(31, 154, 207, 0.18);
-  background: #FFFFFF;
-}
 
 .admin-dashboard-trend-card {
   padding: 1.1rem;
@@ -1272,11 +1241,6 @@ select option:checked {
   text-align: left;
 }
 
-.data-table th {
-  color: var(--accent);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
 
 @media (min-width: 860px) {
   .detail-grid {
@@ -1317,9 +1281,6 @@ select option:checked {
   }
 }
 
-.quote-workspace-page {
-  max-width: 1380px;
-}
 
 .workspace-shell {
   display: grid;
@@ -1923,10 +1884,6 @@ select option:checked {
   font-size: 0.88rem;
 }
 
-.quote-version-actions {
-  display: grid;
-  gap: 0.75rem;
-}
 
 .quote-status-form {
   display: grid;
@@ -2686,10 +2643,6 @@ select option:checked {
   font-size: 0.9rem;
 }
 
-.quote-service-check-complete {
-  border-color: rgba(31, 154, 207, 0.18);
-  background: rgba(31, 154, 207, 0.06);
-}
 
 .quote-service-check-missing {
   border-color: rgba(180, 83, 9, 0.18);
@@ -2702,10 +2655,6 @@ select option:checked {
   gap: 0.6rem;
 }
 
-.quote-service-day-card-focused {
-  border-color: rgba(31, 154, 207, 0.28);
-  box-shadow: 0 0 0 3px rgba(31, 154, 207, 0.08);
-}
 
 .quote-service-day-meta {
   display: flex;
@@ -2740,9 +2689,6 @@ select option:checked {
   min-height: auto;
 }
 
-.quote-service-planner .quote-service-day-card > .row-details-summary {
-  padding: 0;
-}
 
 .quote-service-planner .quote-service-day-card > .row-details-summary > span:first-child {
   font-size: 1rem;
@@ -2803,10 +2749,6 @@ select option:checked {
   align-items: start;
 }
 
-.quote-service-catalog-link {
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.7rem;
-}
 
 .quote-service-catalog-link .secondary-button {
   min-height: 2.2rem;
@@ -4352,12 +4294,6 @@ select option:checked {
   margin-top: -0.25rem;
 }
 
-.quote-service-category-group {
-  padding: 1rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(30, 27, 24, 0.08);
-  background: #fff;
-}
 
 .quote-service-group-head {
   align-items: center;
@@ -4962,10 +4898,6 @@ select option:checked {
   margin-bottom: 0.25rem;
 }
 
-.section-stack {
-  display: grid;
-  gap: 1.25rem;
-}
 
 .workspace-panel {
   max-width: 1180px;
@@ -5072,14 +5004,6 @@ select option:checked {
   background: rgba(31, 154, 207, 0.16);
 }
 
-.workspace-shell-header {
-  display: grid;
-  gap: 1rem;
-  padding: 1.25rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(30, 27, 24, 0.08);
-  background: rgba(255, 255, 255, 0.78);
-}
 
 .workspace-shell-copy .section-copy {
   margin-left: 0;
@@ -5149,10 +5073,6 @@ select option:checked {
   background: rgba(255, 255, 255, 0.78);
 }
 
-.summary-strip-label {
-  color: rgba(30, 27, 24, 0.62);
-  font-size: 0.88rem;
-}
 
 .summary-strip-value {
   display: block;
@@ -5972,11 +5892,6 @@ select option:checked {
   line-height: 1.38;
 }
 
-.supplier-warning-badge {
-  display: inline-flex;
-  margin-left: 0.45rem;
-  vertical-align: middle;
-}
 
 .touring-audit-page,
 .touring-audit-page * {

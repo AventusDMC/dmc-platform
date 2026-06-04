@@ -267,9 +267,6 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
   display: flex !important; align-items: center; justify-content: center;
   flex: none;
 }
-.quote-dashboard-tab-active { background: var(--rd-accent-weak) !important; box-shadow: inset 0 0 0 1px #bfe6f4 !important; }
-.quote-dashboard-tab-active .quote-dashboard-tab-index { background: var(--rd-accent) !important; }
-.quote-dashboard-tab-active strong { color: var(--rd-ink) !important; }
 .quote-dashboard-tab:not(:last-child)::after {
   content: "›";
   color: var(--rd-ink-faint);

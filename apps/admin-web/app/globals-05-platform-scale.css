@@ -64,11 +64,6 @@
   letter-spacing: 0;
 }
 
-.workspace-shell-content,
-.section-stack,
-.app-section-stack {
-  gap: var(--admin-section-gap);
-}
 
 .app-workspace-layout {
   display: grid;
@@ -148,10 +143,6 @@
   transition: background 140ms ease, transform 140ms ease;
 }
 
-.data-table tbody tr:hover td,
-.app-table tbody tr:hover td {
-  background: #F4FAFD;
-}
 
 .app-filter-bar,
 .compact-filter-bar,
@@ -345,14 +336,6 @@
   box-shadow: 0 16px 34px rgba(17, 24, 39, 0.075);
 }
 
-.app-day-navigation-card-active {
-  background:
-    radial-gradient(circle at top right, rgba(31, 154, 207, 0.24), transparent 8rem),
-    #FFFFFF;
-  box-shadow:
-    0 20px 46px rgba(28, 127, 184, 0.14),
-    inset 4px 0 0 #1F9ACF;
-}
 
 .app-day-navigation-card span {
   color: #111827;
@@ -611,17 +594,6 @@
   box-shadow: 0 12px 28px rgba(28, 127, 184, 0.09);
 }
 
-.app-financial-panel,
-.financial-panel,
-.quote-pricing-summary-card-dominant.app-financial-panel {
-  background:
-    radial-gradient(circle at 88% 0%, rgba(31, 154, 207, 0.28), transparent 13rem),
-    linear-gradient(180deg, #111827 0%, #1C7FB8 48%, #1F9ACF 100%);
-  box-shadow:
-    0 42px 110px rgba(17, 24, 39, 0.44),
-    0 18px 46px rgba(28, 127, 184, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
-}
 
 .app-financial-panel strong,
 .app-financial-panel .financial-value,
@@ -632,10 +604,6 @@
   font-weight: 950;
 }
 
-.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
-.app-financial-panel .quote-pricing-summary-row:first-child strong {
-  font-size: clamp(3rem, 4.8vw, 4.35rem);
-}
 
 .app-financial-panel .quote-pricing-summary-row,
 .financial-panel .quote-pricing-summary-row,
@@ -690,9 +658,6 @@
   gap: 1rem;
 }
 
-.app-day-navigation-list {
-  gap: 0.78rem;
-}
 
 .app-day-navigation-card,
 .quote-service-day-nav-card {
@@ -990,11 +955,6 @@
   background: transparent;
 }
 
-.quote-service-editor-panel-drawer .quote-service-editor-tab-active {
-  background: #E8F6FB;
-  color: #1C7FB8;
-  box-shadow: 0 8px 18px rgba(28, 127, 184, 0.1);
-}
 
 .quote-service-editor-panel-drawer .quote-service-catalog-link {
   padding: 0.7rem 0.8rem;
@@ -1130,21 +1090,12 @@
 
 /* (dead body background/color removed — redesign.css owns the canvas. Phase 1b) */
 
-.admin-sidebar {
-  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
-  color: rgba(255, 255, 255, 0.9);
-  border-right-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 18px 0 60px rgba(17, 24, 39, 0.16);
-}
 
 .admin-sidebar-brand {
   padding: 0.75rem 0 1rem;
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
-.admin-sidebar .admin-brand-row {
-  align-items: center;
-}
 
 .admin-brand-logo-wrapper {
   width: auto;
@@ -1165,16 +1116,7 @@
   object-fit: contain;
 }
 
-.admin-top-nav-link-active {
-  background: rgba(31, 154, 207, 0.22);
-  border-color: rgba(230, 244, 243, 0.32);
-  color: #FFFFFF;
-  box-shadow: inset 4px 0 0 #1F9ACF;
-}
 
-.admin-top-nav-link-active span {
-  color: rgba(255, 255, 255, 0.72);
-}
 
 .primary-button,
 .app-button-primary,
@@ -1200,12 +1142,6 @@
   box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
 }
 
-.secondary-button:hover,
-.app-button-secondary:hover,
-a:hover,
-.interactive-link:hover {
-  color: #1C7FB8;
-}
 
 .app-tabs button[aria-selected='true'],
 .app-tabs .active,
@@ -1216,14 +1152,6 @@ a:hover,
   border-color: #1F9ACF;
 }
 
-.app-badge-primary,
-.badge-primary,
-.status-badge-active,
-.margin-badge-positive {
-  background: #E8F6FB;
-  color: #1C7FB8;
-  border-color: rgba(31, 154, 207, 0.24);
-}
 
 .app-card,
 .workspace-card,
@@ -1234,15 +1162,6 @@ a:hover,
   border-color: #E5E7EB;
 }
 
-.app-input:focus,
-.app-select:focus,
-.app-textarea:focus,
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: #1F9ACF;
-  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
-}
 
 .app-financial-panel,
 .financial-panel,
@@ -1272,12 +1191,6 @@ textarea:focus {
 
 /* (dead body background/color removed — redesign.css owns the canvas. Phase 1b) */
 
-.admin-sidebar {
-  background: #0B1F2A;
-  color: rgba(255, 255, 255, 0.9);
-  border-right-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 18px 0 60px rgba(11, 31, 42, 0.18);
-}
 
 .admin-brand-logo-wrapper {
   width: auto;
@@ -1298,12 +1211,6 @@ textarea:focus {
   object-fit: contain;
 }
 
-.admin-top-nav-link-active {
-  background: rgba(31, 154, 207, 0.2);
-  border-color: rgba(31, 154, 207, 0.38);
-  color: #FFFFFF;
-  box-shadow: inset 4px 0 0 #1F9ACF;
-}
 
 .primary-button,
 .app-button-primary,
@@ -1484,9 +1391,6 @@ textarea:focus {
   font-style: normal;
 }
 
-.quote-timeline-drawer {
-  width: min(100%, 420px);
-}
 
 .quote-timeline-drawer-form {
   display: grid;
@@ -1507,9 +1411,6 @@ textarea:focus {
 }
 
 /* Sidebar logo must render directly on the Axis sidebar. */
-.admin-sidebar {
-  background: #0B1F2A;
-}
 
 .admin-sidebar .admin-brand-row {
   align-items: center;
@@ -2063,9 +1964,6 @@ video {
   font-size: clamp(2rem, 3vw, 2.55rem);
 }
 
-.quote-builder-main-content {
-  background: rgba(31, 154, 207, 0.035);
-}
 
 .quote-builder-main .workspace-section,
 .quote-builder-main .detail-card,
@@ -2125,12 +2023,6 @@ video {
   text-overflow: ellipsis;
 }
 
-.quote-pricing-summary-card-dominant.app-financial-panel {
-  box-shadow:
-    0 24px 58px rgba(17, 24, 39, 0.28),
-    0 10px 28px rgba(28, 127, 184, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
-}
 
 .quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
 .app-financial-panel .quote-pricing-summary-row:first-child strong {
@@ -2158,22 +2050,8 @@ video {
   padding: 0.95rem;
 }
 
-.quote-service-mini-card h5 {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.24;
-}
 
-.quote-service-card-supplier {
-  margin: 0;
-}
 
-.quote-service-card-pricing-summary {
-  gap: 0.38rem;
-  padding: 0.75rem;
-  border: 1px solid rgba(229, 231, 235, 0.86);
-  background: rgba(244, 250, 253, 0.78);
-}
 
 .quote-service-card-pricing-summary .quote-service-card-price {
   display: block;
@@ -2190,10 +2068,6 @@ video {
   min-width: 0;
 }
 
-.quote-service-card-pricing-summary .quote-money {
-  margin-left: auto;
-  text-align: right;
-}
 
 .quote-service-mini-card-actions {
   grid-template-columns: minmax(0, 1fr) minmax(5.75rem, auto);
@@ -2662,9 +2536,6 @@ video {
 }
 
 /* Itinerary Builder visual hierarchy and finance value safeguards. */
-.quote-service-planner .quote-service-day-column {
-  gap: 1.5rem;
-}
 
 .quote-service-planner .quote-service-day-card-active {
   width: 100%;
@@ -3023,9 +2894,6 @@ video {
   color: #475467;
 }
 
-.quote-service-planner .quote-service-add-primary {
-  background: #1C7FB8;
-}
 
 .quote-service-planner .quote-service-current-services,
 .quote-service-planner .quote-service-side-section {
@@ -3110,12 +2978,6 @@ video {
   background: rgba(255, 255, 255, 0.78);
 }
 
-.quote-dashboard-tabs {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(120px, 1fr));
-  gap: 0.65rem;
-  align-items: stretch;
-}
 
 .quote-dashboard-tab {
   position: relative;
@@ -3159,12 +3021,6 @@ video {
   line-height: 1.25;
 }
 
-.quote-dashboard-tab-active {
-  border-color: #1F9ACF;
-  background: #E8F6FB;
-  color: #145F83;
-  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.26), 0 8px 18px rgba(31, 154, 207, 0.12);
-}
 
 .quote-dashboard-tab-active .quote-dashboard-tab-index {
   background: #1F9ACF;
@@ -3231,9 +3087,6 @@ video {
   font-size: 0.72rem;
 }
 
-.quote-service-editor-drawer .quote-drawer-section {
-  border-radius: 8px;
-}
 
 .quote-service-editor-drawer .quote-drawer-section-head h3 {
   font-size: 1rem;

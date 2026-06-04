@@ -10,14 +10,7 @@
 
 /* (dead .admin-shell background removed — redesign.css owns the canvas. Phase 1b) */
 
-.admin-sidebar {
-  gap: 1.5rem;
-  padding: 1.6rem 1.15rem;
-}
 
-.admin-sidebar-brand {
-  padding: 0.35rem 0.55rem 1.25rem;
-}
 
 .admin-sidebar-copy {
   max-width: 16rem;
@@ -29,41 +22,19 @@
   gap: 0.65rem;
 }
 
-.admin-top-nav-link {
-  min-height: 58px;
-  padding: 0.85rem 0.95rem;
-  border-radius: var(--admin-card-radius);
-}
 
-.admin-top-nav-link strong {
-  font-size: 0.96rem;
-}
 
 .admin-top-nav-link span {
   max-width: 15rem;
 }
 
-.admin-top-nav-link:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #FFFFFF;
-}
 
-.admin-top-nav-link-active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #FFFFFF;
-}
 
-.admin-top-nav-link-active span {
-  color: rgba(255, 255, 255, 0.72);
-}
 
 .admin-main-shell {
   min-width: 0;
 }
 
-.site-header {
-  padding: 1.4rem var(--admin-page-padding) 0;
-}
 
 .admin-topbar,
 .admin-subnav-shell {
@@ -77,9 +48,6 @@
   padding: 1.15rem 1.35rem;
 }
 
-.admin-subnav-shell {
-  padding: 1rem 1.1rem;
-}
 
 .admin-subnav {
   gap: 0.65rem;
@@ -90,18 +58,7 @@
   padding: 0.72rem 1rem;
 }
 
-.page,
-.panel,
-.workspace-shell-card,
-.executive-dashboard-page,
-.booking-ops-workspace-page,
-.panel.quote-workspace-page {
-  max-width: var(--admin-page-max);
-}
 
-.page {
-  padding: var(--admin-page-padding);
-}
 
 .panel {
   padding-inline: 0;
@@ -116,18 +73,6 @@
   margin-bottom: 1.35rem;
 }
 
-.workspace-shell,
-.settings-stack,
-.reports-dashboard,
-.dashboard-main-grid,
-.dashboard-column,
-.dashboard-list,
-.reports-list-grid,
-.detail-grid,
-.leads-list,
-.entity-list {
-  gap: 20px;
-}
 
 .detail-card,
 .entity-card,
@@ -167,30 +112,6 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 26px rgba(15, 23, 42, 0.04);
 }
 
-.detail-card,
-.workspace-section,
-.workspace-sidebar-card,
-.workspace-summary,
-.dashboard-panel,
-.dashboard-section-card,
-.dashboard-card,
-.executive-dashboard-section-card,
-.booking-ops-panel-card,
-.booking-ops-sidebar-card,
-.quote-dashboard-header,
-.quote-dashboard-workflow,
-.quote-dashboard-tabs,
-.quote-builder-step-shell,
-.quote-pricing-summary-card,
-.quote-builder-health-card,
-.tab-panel-card,
-.lead-form,
-.entity-form,
-.form-fieldset,
-.branding-section,
-.inline-create-panel {
-  padding: var(--admin-card-padding);
-}
 
 .workspace-section h2,
 .dashboard-panel-header h2,
@@ -211,11 +132,6 @@
   margin-bottom: 2rem;
 }
 
-.form-row,
-.form-row-3,
-.form-row-4 {
-  gap: var(--admin-row-gap);
-}
 
 .lead-form label,
 .entity-form label,
@@ -277,14 +193,6 @@ input[type="radio"] {
   min-width: 190px;
 }
 
-.table-wrap,
-.table-scroll,
-.data-table-wrapper,
-.dashboard-table-wrapper {
-  border: 1px solid #dfe5ee;
-  border-radius: var(--admin-card-radius);
-  background: #FFFFFF;
-}
 
 .data-table,
 table {
@@ -292,10 +200,6 @@ table {
   border-spacing: 0;
 }
 
-.data-table {
-  border: 0;
-  border-radius: 0;
-}
 
 table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
 table:not(.quote-client-itinerary-table):not(.invoice-portal-table) td,
@@ -319,11 +223,6 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
   text-transform: uppercase;
 }
 
-table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:hover td,
-.data-table tbody tr:hover td,
-.reports-visual-table tbody tr:hover td {
-  background: #f9fbfe;
-}
 
 table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:last-child td,
 .data-table tbody tr:last-child td,
@@ -360,15 +259,6 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   background: #ffffff;
 }
 
-.empty-state,
-.catalog-empty-state,
-.quote-builder-empty-state,
-.quote-service-empty-state,
-.booking-ops-empty-state,
-.executive-dashboard-empty-state {
-  padding: 1.35rem;
-  color: #667085;
-}
 
 .dashboard-grid,
 .dashboard-summary-grid,
@@ -377,13 +267,7 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   gap: 20px;
 }
 
-.admin-dashboard-page {
-  max-width: var(--admin-page-max);
-}
 
-.page.admin-dashboard-shell {
-  padding: var(--admin-page-padding);
-}
 
 @media (min-width: 980px) {
   .admin-shell {
@@ -494,9 +378,6 @@ body {
   box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
 }
 
-.admin-sidebar-brand {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
 
 .admin-sidebar-copy {
   color: rgba(255, 255, 255, 0.68);
@@ -514,15 +395,7 @@ body {
   transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
-.admin-top-nav-link:hover {
-  transform: translateX(2px);
-  background: rgba(255, 255, 255, 0.075);
-}
 
-.admin-top-nav-link-active {
-  background: linear-gradient(135deg, rgba(31, 154, 207, 0.22), rgba(255, 255, 255, 0.08));
-  color: #FFFFFF;
-}
 
 .admin-top-nav-link-active::before {
   left: 0;
@@ -537,17 +410,7 @@ body {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
-.site-header {
-  padding: 24px var(--admin-page-padding) 0;
-}
 
-.admin-topbar,
-.admin-subnav-shell {
-  border: 1px solid var(--saas-border);
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: var(--saas-shadow-subtle);
-  backdrop-filter: blur(14px);
-}
 
 .admin-topbar {
   min-height: 84px;
@@ -580,27 +443,8 @@ body {
   box-shadow: inset 0 0 0 1px var(--saas-border-strong), var(--saas-shadow-subtle);
 }
 
-.admin-subnav-link-active,
-.quote-dashboard-tab-active,
-.booking-dashboard-tab-active,
-.reports-sort-links .active {
-  background: linear-gradient(135deg, rgba(31, 154, 207, 0.14), rgba(255, 255, 255, 0.92));
-  color: var(--saas-accent-strong);
-  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.28);
-}
 
-.page,
-.panel,
-.workspace-shell-card,
-.executive-dashboard-page,
-.booking-ops-workspace-page,
-.panel.quote-workspace-page {
-  max-width: 1640px;
-}
 
-.page {
-  padding: var(--admin-page-padding);
-}
 
 .panel-header,
 .page-header,
@@ -740,10 +584,6 @@ body {
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.085);
 }
 
-.entity-form,
-.lead-form {
-  gap: 22px;
-}
 
 .form-row,
 .form-row-3,
@@ -802,16 +642,6 @@ textarea:focus,
   box-shadow: 0 0 0 4px var(--saas-focus);
 }
 
-.primary-button,
-.lead-form button,
-.entity-form button,
-.invoice-portal-primary-button {
-  min-height: 44px;
-  border: 0;
-  border-radius: 13px;
-  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
-  box-shadow: 0 14px 28px rgba(31, 154, 207, 0.22);
-}
 
 .primary-button:hover,
 .lead-form button:hover,
@@ -874,10 +704,6 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) td,
   border-bottom-color: rgba(148, 163, 184, 0.18);
 }
 
-.data-table td,
-.reports-visual-table td {
-  color: #344054;
-}
 
 table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:hover td,
 .data-table tbody tr:hover td,
@@ -4320,10 +4146,6 @@ th.money-cell {
   vertical-align: top;
 }
 
-.data-table th {
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-}
 
 .data-table td {
   font-size: 0.94rem;
@@ -4711,20 +4533,12 @@ th.money-cell {
   padding: 1.4rem;
 }
 
-.panel.quote-workspace-page {
-  width: min(100%, 1400px);
-  max-width: 1400px;
-}
 
 .quote-builder-page {
   width: 100%;
   min-width: 0;
 }
 
-.quote-builder-shell {
-  display: grid;
-  gap: 1.5rem;
-}
 
 .quote-builder-header,
 .quote-builder-tab-shell,
@@ -4886,12 +4700,6 @@ th.money-cell {
   padding: 1.1rem 1.2rem;
 }
 
-.quote-builder-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 352px;
-  gap: 2rem;
-  align-items: flex-start;
-}
 
 .quote-builder-layout > * {
   min-width: 0;
@@ -4940,15 +4748,7 @@ th.money-cell {
   max-width: none;
 }
 
-.quote-builder-main-content {
-  padding: 0.125rem;
-  border-radius: 1.5rem;
-  background: rgba(31, 154, 207, 0.05);
-}
 
-.quote-builder-main .split-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
 
 .quote-builder-main .split-layout > * {
   min-width: 0;
@@ -5236,11 +5036,6 @@ th.money-cell {
   border-color: rgba(115, 99, 87, 0.12);
 }
 
-.quote-service-item-row:hover {
-  transform: translateY(-1px);
-  border-color: rgba(31, 154, 207, 0.16);
-  box-shadow: 0 18px 34px rgba(34, 28, 22, 0.08);
-}
 
 .quote-service-item-main {
   min-width: 0;
