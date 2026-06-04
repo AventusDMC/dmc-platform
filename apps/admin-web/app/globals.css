@@ -2450,11 +2450,8 @@ select option:checked {
   gap: 1rem;
 }
 
-.quote-step-nav {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+/* (dead .quote-step-nav block removed — fully overridden by the later grid-auto-flow:column
+   definition; design-system Phase 4 dedup, verified no-op via computed-style) */
 
 .quote-step-link {
   display: flex;

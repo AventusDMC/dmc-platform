@@ -220,9 +220,7 @@
   display: none;
 }
 
-.quote-step-nav {
-  gap: 0.45rem;
-}
+/* (dead .quote-step-nav gap removed — overridden by a later gap; Phase 4 dedup, verified no-op) */
 
 .quote-step-link,
 .quote-step-index,
@@ -2075,13 +2073,8 @@
   overflow-wrap: anywhere;
 }
 
-.quote-dashboard-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.45rem;
-  min-width: 0;
-}
+/* (dead .quote-dashboard-actions block removed — fully overridden by later definitions;
+   Phase 4 dedup, verified no-op via computed-style) */
 
 .quote-dashboard-actions > *,
 .quote-dashboard-actions form,
