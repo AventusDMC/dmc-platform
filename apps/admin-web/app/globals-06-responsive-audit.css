@@ -1,20 +1,5 @@
 /* Final admin responsive guardrail: this must remain the last layout block. */
-.admin-shell {
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  max-width: 100vw;
-  overflow-x: clip;
-}
 
-.admin-main-shell,
-.admin-content-shell,
-.page,
-.panel,
-.workspace-panel,
-.workspace-shell-card,
-.app-page-content {
-  min-width: 0 !important;
-  max-width: 100%;
-}
 
 .admin-shell :where(
   .app-workspace-layout-summary,
@@ -27,68 +12,8 @@
   min-width: 0;
 }
 
-.admin-shell :where(
-  .table-wrap,
-  .responsive-table,
-  .data-table-wrapper,
-  .dashboard-table-wrapper,
-  .internal-costing-table-wrap,
-  .transport-contract-table-wrap,
-  .quote-service-assigned-table-wrap,
-  .leads-crm-table-shell,
-  .table-scroll
-) {
-  max-width: 100%;
-  overflow-x: auto !important;
-  overflow-y: visible;
-}
 
-.admin-shell :where(
-  .data-table,
-  .app-table,
-  .internal-costing-table,
-  .transport-contract-table,
-  .quote-service-assigned-table,
-  .reports-visual-table,
-  .allotment-table,
-  .finance-dashboard-table,
-  .finance-bookings-table,
-  .invoice-table,
-  .leads-crm-table
-) {
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
-  table-layout: auto;
-}
 
-.admin-shell :where(
-  .data-table th,
-  .data-table td,
-  .app-table th,
-  .app-table td,
-  .internal-costing-table th,
-  .internal-costing-table td,
-  .transport-contract-table th,
-  .transport-contract-table td,
-  .quote-service-assigned-table th,
-  .quote-service-assigned-table td,
-  .reports-visual-table th,
-  .reports-visual-table td,
-  .allotment-table th,
-  .allotment-table td,
-  .finance-dashboard-table th,
-  .finance-dashboard-table td,
-  .invoice-table th,
-  .invoice-table td
-) {
-  min-width: 8.5rem;
-  max-width: 28rem;
-  overflow: visible;
-  overflow-wrap: break-word;
-  word-break: normal;
-  white-space: normal;
-}
 
 @media (max-width: 1440px) {
   .admin-shell :where(
@@ -471,39 +396,6 @@
   border-spacing: 0;
 }
 
-.admin-shell :where(
-  .data-table th,
-  .data-table td,
-  .app-table th,
-  .app-table td,
-  .internal-costing-table th,
-  .internal-costing-table td,
-  .transport-contract-table th,
-  .transport-contract-table td,
-  .quote-service-assigned-table th,
-  .quote-service-assigned-table td,
-  .reports-visual-table th,
-  .reports-visual-table td,
-  .allotment-table th,
-  .allotment-table td,
-  .finance-dashboard-table th,
-  .finance-dashboard-table td,
-  .finance-bookings-table th,
-  .finance-bookings-table td,
-  .invoice-table th,
-  .invoice-table td,
-  .leads-crm-table th,
-  .leads-crm-table td
-) {
-  min-width: 8.5rem;
-  max-width: 28rem;
-  overflow: visible;
-  overflow-wrap: break-word;
-  word-break: normal;
-  white-space: normal;
-  text-overflow: clip;
-  vertical-align: top;
-}
 
 .admin-shell :where(
   .data-table th,
@@ -570,9 +462,6 @@
   max-width: 100%;
 }
 
-.admin-shell :where(input, select, textarea, .app-input, .app-select, .app-textarea) {
-  width: 100%;
-}
 
 .admin-shell :where(button, .primary-button, .secondary-button, .compact-button, .ghost-button, .app-button) {
   white-space: normal;
@@ -1486,12 +1375,6 @@
 }
 
 /* Global numeric/value overflow safeguards. */
-.admin-shell,
-.admin-shell *,
-.admin-shell *::before,
-.admin-shell *::after {
-  box-sizing: border-box;
-}
 
 .admin-shell :where(
   .page,
@@ -1755,9 +1638,6 @@
   gap: 0.75rem;
 }
 
-.leads-crm-table {
-  min-width: 980px;
-}
 
 .leads-crm-table th,
 .leads-crm-table td {
@@ -1959,29 +1839,8 @@
 }
 
 /* Quote overview sidebar should read as part of the layout, not an overlay. */
-.quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
-  position: relative;
-  top: auto;
-  z-index: auto;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  align-self: start;
-  justify-self: stretch;
-  margin: 0;
-}
 
-.quote-builder-page .quote-builder-sidebar.app-sticky-panel > * {
-  position: relative;
-  z-index: auto;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
 
-.quote-builder-page .quote-builder-sidebar .quote-pricing-summary-card-dominant.app-financial-panel {
-  box-shadow: var(--shadow-md);
-}
 
 @media (max-width: 1280px) {
   .quote-builder-page .quote-builder-sidebar.app-sticky-panel {
@@ -2208,19 +2067,6 @@
   white-space: normal;
 }
 
-.admin-shell :where(
-  .table-wrap,
-  .data-table-wrapper,
-  .dashboard-table-wrapper,
-  .internal-costing-table-wrap,
-  .transport-contract-table-wrap,
-  .quote-service-assigned-table-wrap,
-  .leads-crm-table-shell
-) {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
-}
 
 .admin-shell :where(
   .data-table,
@@ -3196,23 +3042,6 @@
   overscroll-behavior-x: contain;
 }
 
-.admin-shell :where(
-  .data-table,
-  .app-table,
-  .internal-costing-table,
-  .transport-contract-table,
-  .quote-service-assigned-table,
-  .reports-visual-table,
-  .allotment-table,
-  .finance-dashboard-table,
-  .finance-bookings-table,
-  .invoice-table,
-  .leads-crm-table
-) {
-  width: 100%;
-  max-width: 100%;
-  table-layout: fixed;
-}
 
 .admin-shell :where(
   .data-table th,
