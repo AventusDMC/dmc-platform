@@ -232,6 +232,7 @@ model City {
   updatedAt DateTime @updatedAt
   hotels    Hotel[]
   places    Place[]
+  pointsOfInterest PointOfInterest[]
 
   @@index([isActive, name])
   @@map("cities")
@@ -388,6 +389,7 @@ model Activity {
   excursionComponents ExcursionTemplateComponent[]
   packageComponents   PackageTemplateComponent[]
   quoteItems          QuoteItem[]
+  pointsOfInterest    PointOfInterest[]
 
   @@index([active, name])
   @@index([code])
@@ -1934,6 +1936,7 @@ model OperationalArea {
   // can disambiguate FROM vs TO.
   legsAsFrom  TouringRouteLeg[] @relation("LegFromArea")
   legsAsTo    TouringRouteLeg[] @relation("LegToArea")
+  pointsOfInterest PointOfInterest[]
 
   @@index([isActive, code])
   @@index([city])
@@ -2066,9 +2069,63 @@ model EntranceFee {
   updatedAt            DateTime        @updatedAt
   service              SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   quoteItems           QuoteItem[]
+  pointsOfInterest     PointOfInterest[]
 
   @@index([includedInJordanPass, siteName])
   @@map("entrance_fees")
+}
+
+model PointOfInterest {
+  id                   String   @id @default(uuid()) @db.Uuid
+  code                 String   @unique
+  name                 String
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  // Optional links to existing masters — POI owns CONTENT + sightseeing
+  // metadata only; commerce/routing stays on the linked entity.
+  cityId               String?  @db.Uuid
+  operationalAreaId    String?  @db.Uuid
+  activityId           String?  @db.Uuid
+  entranceFeeId        String?  @db.Uuid
+  // Sightseeing metadata not owned elsewhere.
+  stopType             String?
+  visitDurationMinutes Int?
+  guideRecommended     Boolean  @default(false)
+  lunchOpportunity     Boolean  @default(false)
+  photoStop            Boolean  @default(false)
+  viewpoint            Boolean  @default(false)
+  religiousSite        Boolean  @default(false)
+  imageUrl             String?
+  operationalNotes     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  city                 City?            @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  operationalArea      OperationalArea? @relation(fields: [operationalAreaId], references: [id], onDelete: SetNull)
+  activity             Activity?        @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  entranceFee          EntranceFee?     @relation(fields: [entranceFeeId], references: [id], onDelete: SetNull)
+  translations         PointOfInterestTranslation[]
+
+  @@index([isActive, sortOrder])
+  @@index([cityId])
+  @@index([operationalAreaId])
+  @@map("points_of_interest")
+}
+
+model PointOfInterestTranslation {
+  id               String          @id @default(uuid()) @db.Uuid
+  poiId            String          @db.Uuid
+  // BCP-47-ish short codes: en | pt | es | ar.
+  locale           String
+  title            String?
+  shortDescription String?
+  longDescription  String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  pointOfInterest  PointOfInterest @relation(fields: [poiId], references: [id], onDelete: Cascade)
+
+  @@unique([poiId, locale])
+  @@index([poiId])
+  @@map("point_of_interest_translations")
 }
 
 model JordanPassProduct {

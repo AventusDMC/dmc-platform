@@ -90,6 +90,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Guides', '/guides'],
       ['Restaurants', '/restaurants'],
       ['Operational Areas', '/operational-areas'],
+      ['Points of Interest', '/points-of-interest'],
       ['Services', '/catalog?tab=services'],
       ['Suppliers', '/suppliers'],
     ],
