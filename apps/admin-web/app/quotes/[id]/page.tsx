@@ -3412,6 +3412,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     initialSlabs={quote.pricingSlabs}
                     initialFixedPricePerPerson={quote.fixedPricePerPerson}
                     initialGroupSize={totalPax}
+                    packageTotalCost={quote.totalCost}
+                    costCurrency={quote.quoteCurrency}
                   />
                 </>
               ) : (

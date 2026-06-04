@@ -700,3 +700,43 @@ body { background: var(--rd-canvas); color: var(--rd-ink); }
    deliberate accent — its rule (.quote-pricing-summary-card-dominant.app-financial-panel
    .eyebrow, ~L535) is higher-specificity + !important, so it wins over this one. */
 .quote-builder-sidebar .eyebrow { color: #667085 !important; }
+
+/* ---------- Quote group pricing: quick-markup helper ----------
+   Lightweight cost+margin calculator inside the Package-price card. Lets an
+   operator type a % or fixed per-pax margin and have the sell-per-person
+   computed for them, instead of doing the cost+margin math by hand. Layout
+   only — purely client-side, no pricing-engine change. */
+.quote-package-markup-helper {
+  padding: 14px 16px;
+  border: 1px solid var(--ds-color-border-subtle, #E4E7EC);
+  border-radius: 10px;
+  background: var(--ds-color-surface-soft, #F9FAFB);
+}
+.quote-package-markup-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .quote-package-markup-controls { grid-template-columns: 1fr; }
+}
+.quote-package-markup-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ds-color-surface, #FFFFFF);
+  border: 1px solid var(--ds-color-border-subtle, #E4E7EC);
+}
+.quote-package-markup-result span {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ds-color-text-subtle, #667085);
+}
+.quote-package-markup-result strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ds-color-text, #0F172A);
+}

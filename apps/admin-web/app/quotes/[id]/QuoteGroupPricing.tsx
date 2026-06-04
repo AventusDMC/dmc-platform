@@ -27,6 +27,8 @@ type QuoteSlab = {
   notes?: string | null;
 };
 
+type MarkupMode = 'percent' | 'fixed';
+
 type QuoteGroupPricingProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -34,7 +36,21 @@ type QuoteGroupPricingProps = {
   initialSlabs: QuoteSlab[];
   initialFixedPricePerPerson: number;
   initialGroupSize: number;
+  packageTotalCost: number;
+  costCurrency: string;
 };
+
+function roundMoney(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function formatPackageMoney(value: number, currency: string) {
+  const safeCurrency = currency && currency.trim() ? currency.trim() : 'USD';
+  return `${safeCurrency} ${value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 export function QuoteGroupPricing({
   apiBaseUrl,
@@ -43,12 +59,16 @@ export function QuoteGroupPricing({
   initialSlabs,
   initialFixedPricePerPerson,
   initialGroupSize,
+  packageTotalCost,
+  costCurrency,
 }: QuoteGroupPricingProps) {
   const router = useRouter();
   const [pricingMode, setPricingMode] = useState<QuotePricingMode>(initialMode);
   const [fixedPricePerPerson, setFixedPricePerPerson] = useState(
     initialFixedPricePerPerson > 0 ? String(initialFixedPricePerPerson) : '',
   );
+  const [markupMode, setMarkupMode] = useState<MarkupMode>('percent');
+  const [markupValue, setMarkupValue] = useState('');
   const [rows, setRows] = useState<GroupPricingEditorRow[]>(
     initialSlabs.length > 0
       ? normalizeGroupPricingRows(
@@ -75,6 +95,31 @@ export function QuoteGroupPricing({
     [rows, sampleGroupSize],
   );
   const parsedRows = useMemo(() => parseGroupPricingRows(rows), [rows]);
+
+  const paxForCost = Math.max(1, Math.floor(initialGroupSize || 1));
+  const costPerPax = packageTotalCost > 0 ? roundMoney(packageTotalCost / paxForCost) : 0;
+  const computedSell = useMemo(() => {
+    if (costPerPax <= 0) {
+      return null;
+    }
+    const trimmed = markupValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const value = Number(trimmed);
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    const sell = markupMode === 'percent' ? costPerPax * (1 + value / 100) : costPerPax + value;
+    return roundMoney(sell);
+  }, [costPerPax, markupMode, markupValue]);
+
+  function applyComputedSell() {
+    if (computedSell === null) {
+      return;
+    }
+    setFixedPricePerPerson(String(computedSell));
+  }
 
   function updateRow(clientId: string, field: keyof GroupPricingEditorRow, value: string) {
     setRows((current) =>
@@ -222,6 +267,60 @@ export function QuoteGroupPricing({
                 <h3>Set the package sell basis</h3>
               </div>
             </div>
+
+            <div className="quote-package-markup-helper section-stack">
+              <p className="eyebrow">Quick markup</p>
+              {costPerPax > 0 ? (
+                <p className="table-subcopy">
+                  Package cost per pax is{' '}
+                  <strong>{formatPackageMoney(costPerPax, costCurrency)}</strong> ({paxForCost} pax). Add your
+                  margin and we&apos;ll work out the sell price per person.
+                </p>
+              ) : (
+                <p className="table-subcopy">
+                  Add service costs to the quote first — once there is a package cost we can calculate the sell
+                  price from your margin.
+                </p>
+              )}
+              <div className="quote-package-markup-controls">
+                <label>
+                  Markup type
+                  <select
+                    value={markupMode}
+                    onChange={(event) => setMarkupMode(event.target.value as MarkupMode)}
+                    disabled={costPerPax <= 0}
+                  >
+                    <option value="percent">Percentage of cost</option>
+                    <option value="fixed">Fixed amount per pax</option>
+                  </select>
+                </label>
+                <label>
+                  {markupMode === 'percent' ? 'Markup %' : `Margin per pax (${costCurrency})`}
+                  <input
+                    value={markupValue}
+                    onChange={(event) => setMarkupValue(event.target.value)}
+                    type="number"
+                    min="0"
+                    step={markupMode === 'percent' ? '1' : '0.01'}
+                    inputMode="decimal"
+                    placeholder={markupMode === 'percent' ? 'e.g. 20' : 'e.g. 150'}
+                    disabled={costPerPax <= 0}
+                  />
+                </label>
+              </div>
+              {computedSell !== null ? (
+                <div className="quote-package-markup-result">
+                  <div>
+                    <span>Sell price per person</span>
+                    <strong>{formatPackageMoney(computedSell, costCurrency)}</strong>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={applyComputedSell}>
+                    Use this price
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             <label>
               Package sell price per person
               <input
