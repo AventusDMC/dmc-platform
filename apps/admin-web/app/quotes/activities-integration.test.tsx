@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../lib/global-css-source';
 import { describe, it } from 'node:test';
 
 const quotePageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
@@ -10,7 +11,7 @@ const quoteAutoItineraryBuilderSource = readFileSync(new URL('./[id]/QuoteAutoIt
 const quoteItineraryTabSource = readFileSync(new URL('./[id]/QuoteItineraryTab.tsx', import.meta.url), 'utf8');
 const quoteVersionPageSource = readFileSync(new URL('./[id]/versions/[versionId]/page.tsx', import.meta.url), 'utf8');
 const bookingPageSource = readFileSync(new URL('../bookings/[id]/page.tsx', import.meta.url), 'utf8');
-const bookingCssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+const bookingCssSource = globalCssSource;
 const serviceTaxonomySource = readFileSync(new URL('../lib/service-taxonomy.ts', import.meta.url), 'utf8');
 const pricingDiagnosticsSource = readFileSync(new URL('./[id]/pricing-diagnostics.ts', import.meta.url), 'utf8');
 

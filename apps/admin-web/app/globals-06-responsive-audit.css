@@ -1,0 +1,3772 @@
+/* Final admin responsive guardrail: this must remain the last layout block. */
+.admin-shell {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
+.admin-main-shell,
+.admin-content-shell,
+.page,
+.panel,
+.workspace-panel,
+.workspace-shell-card,
+.app-page-content {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  min-width: 0;
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .responsive-table,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell,
+  .table-scroll
+) {
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .reports-visual-table,
+  .allotment-table,
+  .finance-dashboard-table,
+  .finance-bookings-table,
+  .invoice-table,
+  .leads-crm-table
+) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .data-table td,
+  .app-table th,
+  .app-table td,
+  .internal-costing-table th,
+  .internal-costing-table td,
+  .transport-contract-table th,
+  .transport-contract-table td,
+  .quote-service-assigned-table th,
+  .quote-service-assigned-table td,
+  .reports-visual-table th,
+  .reports-visual-table td,
+  .allotment-table th,
+  .allotment-table td,
+  .finance-dashboard-table th,
+  .finance-dashboard-table td,
+  .invoice-table th,
+  .invoice-table td
+) {
+  min-width: 8.5rem;
+  max-width: 28rem;
+  overflow: visible;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+}
+
+@media (max-width: 1440px) {
+  .admin-shell :where(
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid,
+    .quote-service-planner-shell.quote-service-planner-saas-grid,
+    .transport-rate-card-workspace,
+    .hotel-detail-workspace,
+    .hotel-contract-workspace
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 979px) {
+  .admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Global Admin Web responsive stabilization.
+   These rules intentionally sit last to neutralize older page-specific fixed-width
+   and dense-grid declarations without changing page behavior. */
+.min-w-0,
+.admin-shell .min-w-0 {
+  min-width: 0 !important;
+}
+
+.truncate-safe {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.break-safe {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.responsive-table {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+}
+
+.workspace-grid,
+.stack-on-narrow {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--admin-section-gap, clamp(1rem, 1.4vw, 1.5rem));
+}
+
+.workspace-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.stack-on-narrow {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-shell {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-items: stretch;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
+.admin-main-shell,
+.admin-content-shell,
+.admin-content-shell > *,
+.page,
+.panel,
+.workspace-panel,
+.workspace-shell-card,
+.app-page-content,
+.quote-workspace-page,
+.booking-ops-workspace-page,
+.executive-dashboard-page {
+  min-width: 0 !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+.admin-main-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.admin-content-shell {
+  overflow-x: clip;
+}
+
+.admin-sidebar {
+  width: 100%;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.page {
+  padding-inline: clamp(1rem, 1.7vw, 2rem);
+}
+
+.panel,
+.workspace-panel,
+.workspace-panel.workspace-panel-wide,
+.panel.quote-workspace-page {
+  margin-inline: 0;
+}
+
+.admin-shell :where(
+  .workspace-shell-header,
+  .workspace-section-head,
+  .page-header,
+  .panel-header,
+  .app-page-header,
+  .app-workspace-header,
+  .app-entity-detail-header,
+  .booking-dashboard-header,
+  .quote-dashboard-header,
+  .transport-contract-supplier-head,
+  .transport-rate-card-summary-head,
+  .dashboard-panel-header
+) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(0.85rem, 1.2vw, 1.25rem);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .workspace-shell-copy,
+  .app-workspace-header-copy,
+  .app-page-header > div,
+  .app-entity-detail-copy,
+  .booking-dashboard-copy,
+  .quote-dashboard-copy,
+  .dashboard-panel-header > div,
+  .workspace-section-head > div,
+  .panel-header > div
+) {
+  flex: 1 1 26rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .workspace-shell-switcher,
+  .admin-header-actions,
+  .app-page-header-actions,
+  .app-workspace-header-actions,
+  .app-entity-detail-actions,
+  .booking-dashboard-actions,
+  .quote-dashboard-actions,
+  .dashboard-panel-action,
+  .page-action-bar-actions
+) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .app-workspace-layout,
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid,
+  .quote-service-planner-shell.quote-service-planner-saas-grid,
+  .transport-rate-card-workspace,
+  .hotel-detail-workspace,
+  .hotel-contract-workspace
+) {
+  display: grid;
+  align-items: start;
+  min-width: 0;
+  max-width: 100%;
+  gap: clamp(1rem, 1.5vw, 1.5rem);
+}
+
+.admin-shell :where(.app-workspace-layout-summary) {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, min(32vw, 360px));
+}
+
+.admin-shell :where(.app-workspace-layout-three-column) {
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(280px, min(30vw, 340px));
+}
+
+.admin-shell :where(
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, min(30vw, 360px));
+}
+
+.admin-shell :where(.quote-builder-layout-itinerary) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 2200px) {
+  .admin-shell :where(.quote-builder-layout-itinerary) {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  }
+}
+
+.admin-shell :where(
+  .app-workspace-sidebar,
+  .app-workspace-main,
+  .app-workspace-summary,
+  .quote-builder-main,
+  .quote-builder-main-content,
+  .quote-builder-sidebar,
+  .quote-pricing-review-main,
+  .quote-pricing-review-sidebar,
+  .booking-ops-main,
+  .booking-ops-sidebar,
+  .executive-dashboard-main-column,
+  .executive-dashboard-sidebar,
+  .quote-live-pricing-panel
+) {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .workspace-summary-grid,
+  .costing-grid,
+  .internal-costing-grid,
+  .support-text-grid,
+  .summary-strip,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .executive-dashboard-stat-grid,
+  .executive-dashboard-finance-tier-grid,
+  .booking-ops-stat-grid,
+  .quote-preview-grid,
+  .quote-preview-total-list,
+  .quote-dashboard-meta-grid,
+  .quote-drawer-financial-summary,
+  .quote-service-category-grid,
+  .quote-service-day-checklist,
+  .quote-service-card-pricing-summary,
+  .quote-auto-itinerary-grid,
+  .quote-auto-itinerary-status-grid,
+  .quote-transport-vehicle-groups,
+  .quote-selected-transport-summary,
+  .transport-rate-card-summary,
+  .transport-rate-card-detail-grid,
+  .transport-vehicle-pricing-summary,
+  .transport-rate-card-secondary-grid,
+  .transport-pricing-rule-grid,
+  .route-detail-grid,
+  .vehicle-detail-grid,
+  .catalog-results-grid,
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4,
+  .service-rate-pricing-grid,
+  .service-rate-tax-grid,
+  .service-rate-tourism-grid
+) {
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .detail-card,
+  .app-card,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card,
+  .entity-card,
+  .lead-card,
+  .quote-service-day-card,
+  .quote-hotel-step-panel,
+  .quote-transport-step-panel,
+  .quote-live-pricing-panel
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.admin-shell :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  span,
+  strong,
+  small,
+  label,
+  legend,
+  li,
+  dd,
+  dt,
+  .detail-copy,
+  .section-copy,
+  .table-subcopy,
+  .empty-state,
+  .form-helper,
+  .form-error,
+  .financial-value,
+  .money-value,
+  .metric-value,
+  .summary-strip-value
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .responsive-table,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell,
+  .table-scroll
+) {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .reports-visual-table,
+  .allotment-table,
+  .finance-dashboard-table,
+  .finance-bookings-table,
+  .invoice-table,
+  .leads-crm-table
+) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .data-table td,
+  .app-table th,
+  .app-table td,
+  .internal-costing-table th,
+  .internal-costing-table td,
+  .transport-contract-table th,
+  .transport-contract-table td,
+  .quote-service-assigned-table th,
+  .quote-service-assigned-table td,
+  .reports-visual-table th,
+  .reports-visual-table td,
+  .allotment-table th,
+  .allotment-table td,
+  .finance-dashboard-table th,
+  .finance-dashboard-table td,
+  .finance-bookings-table th,
+  .finance-bookings-table td,
+  .invoice-table th,
+  .invoice-table td,
+  .leads-crm-table th,
+  .leads-crm-table td
+) {
+  min-width: 8.5rem;
+  max-width: 28rem;
+  overflow: visible;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+  text-overflow: clip;
+  vertical-align: top;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .app-table th,
+  .internal-costing-table th,
+  .transport-contract-table th,
+  .quote-service-assigned-table th,
+  .reports-visual-table th,
+  .allotment-table th,
+  .finance-dashboard-table th,
+  .finance-bookings-table th,
+  .invoice-table th,
+  .leads-crm-table th
+) {
+  white-space: nowrap;
+}
+
+.admin-shell :where(
+  .data-table td:first-child,
+  .app-table td:first-child,
+  .data-table th:first-child,
+  .app-table th:first-child
+) {
+  min-width: 11rem;
+}
+
+.admin-shell :where(
+  .table-action-row,
+  .inline-actions,
+  .quote-status-actions,
+  .admin-header-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions,
+  .app-drawer-actions,
+  .app-action-bar,
+  .page-action-bar-actions,
+  .hero-actions
+) {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  input,
+  select,
+  textarea,
+  button,
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button,
+  .app-button-primary,
+  .app-button-secondary,
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .search-combobox,
+  .search-combobox-shell
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(input, select, textarea, .app-input, .app-select, .app-textarea) {
+  width: 100%;
+}
+
+.admin-shell :where(button, .primary-button, .secondary-button, .compact-button, .ghost-button, .app-button) {
+  white-space: normal;
+  text-align: center;
+}
+
+.booking-operational-readiness-panel,
+.booking-operational-readiness-grid,
+.booking-operational-counter-strip,
+.booking-dashboard-day-readiness {
+  min-width: 0;
+}
+
+.booking-operational-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+.booking-operational-readiness-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.booking-operations-simplified-page {
+  max-width: 1680px;
+}
+
+.booking-operations-action-center,
+.booking-operations-phase,
+.booking-operations-manifest-card {
+  margin-bottom: 16px;
+}
+
+.booking-operations-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.booking-operations-action-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.booking-operations-action-card span,
+.booking-operations-key-grid span,
+.booking-operations-secondary-grid span,
+.booking-operations-sidebar span {
+  color: var(--admin-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.booking-operations-action-card strong {
+  font-size: 1.55rem;
+}
+
+.severity-critical {
+  border-color: rgba(185, 28, 28, 0.45);
+  background: rgba(254, 242, 242, 0.9);
+}
+
+.severity-action-required {
+  border-color: rgba(180, 83, 9, 0.45);
+  background: rgba(255, 251, 235, 0.9);
+}
+
+.severity-info {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(239, 246, 255, 0.9);
+}
+
+.booking-operations-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.booking-operations-sidebar {
+  padding: 18px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-card-bg);
+}
+
+.booking-operations-groups {
+  min-width: 0;
+}
+
+.booking-operations-manifest-card,
+.booking-operations-row-head,
+.operations-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.booking-operations-row-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.booking-operations-row-card {
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--admin-surface);
+}
+
+.booking-operations-row-card.severity-critical {
+  border-left: 5px solid #b91c1c;
+}
+
+.booking-operations-row-card.severity-action-required {
+  border-left: 5px solid #b45309;
+}
+
+.booking-operations-row-card.severity-info {
+  border-left: 5px solid #2563eb;
+}
+
+.operation-type-pill,
+.operations-readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-border);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.operations-readiness-ready {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.3);
+  background: rgba(240, 253, 244, 0.95);
+}
+
+.operations-readiness-pending {
+  color: #92400e;
+  border-color: rgba(146, 64, 14, 0.3);
+  background: rgba(255, 251, 235, 0.95);
+}
+
+.operations-readiness-blocked,
+.operations-readiness-critical {
+  color: #991b1b;
+  border-color: rgba(153, 27, 27, 0.3);
+  background: rgba(254, 242, 242, 0.95);
+}
+
+.booking-operations-key-grid,
+.booking-operations-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.booking-operations-key-grid > div,
+.booking-operations-secondary-grid > div {
+  display: grid;
+  gap: 3px;
+}
+
+.booking-operations-reason-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--admin-text);
+}
+
+.booking-operations-quick-actions,
+.booking-operations-editor-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.operations-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.operations-inline-form select,
+.operations-inline-form input {
+  min-height: 34px;
+}
+
+.operations-quick-form {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .booking-operations-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-operations-sidebar {
+    position: static;
+  }
+}
+
+.booking-dashboard-day-readiness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 1440px) {
+  .admin-shell :where(
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid,
+    .quote-service-planner-shell.quote-service-planner-saas-grid,
+    .transport-rate-card-workspace,
+    .hotel-detail-workspace,
+    .hotel-contract-workspace
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .app-sticky-panel,
+    .app-workspace-sidebar,
+    .app-workspace-summary,
+    .quote-builder-sidebar,
+    .quote-pricing-review-sidebar,
+    .booking-ops-sidebar,
+    .executive-dashboard-sidebar,
+    .quote-live-pricing-panel,
+    .quote-service-day-nav
+  ) {
+    position: static;
+    top: auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 979px) {
+  .admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-sidebar {
+    display: none;
+  }
+
+  .admin-mobile-nav {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding-inline: 1rem;
+  }
+
+  .admin-shell :where(
+    .workspace-shell-header,
+    .workspace-section-head,
+    .page-header,
+    .panel-header,
+    .app-page-header,
+    .app-workspace-header,
+    .app-entity-detail-header,
+    .booking-dashboard-header,
+    .quote-dashboard-header,
+    .dashboard-panel-header
+  ) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .workspace-summary-grid,
+    .costing-grid,
+    .internal-costing-grid,
+    .support-text-grid,
+    .summary-strip,
+    .dashboard-grid,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .executive-dashboard-stat-grid,
+    .executive-dashboard-finance-tier-grid,
+    .booking-ops-stat-grid,
+    .quote-preview-grid,
+    .quote-preview-total-list,
+    .quote-dashboard-meta-grid,
+    .quote-drawer-financial-summary,
+    .quote-service-category-grid,
+    .quote-service-day-checklist,
+    .quote-service-card-pricing-summary,
+    .quote-auto-itinerary-grid,
+    .quote-auto-itinerary-status-grid,
+    .quote-transport-vehicle-groups,
+    .quote-selected-transport-summary,
+    .transport-rate-card-summary,
+    .transport-rate-card-detail-grid,
+    .transport-vehicle-pricing-summary,
+    .transport-rate-card-secondary-grid,
+    .transport-pricing-rule-grid,
+    .route-detail-grid,
+    .vehicle-detail-grid,
+    .catalog-results-grid,
+    .form-row,
+    .form-row-2,
+    .form-row-3,
+    .form-row-4
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.quote-external-package-editor {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-external-package-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0;
+  background: var(--app-surface, #fff);
+  border-bottom: 1px solid #d9e2ec;
+}
+
+.quote-external-package-tab {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quote-external-package-tab-active {
+  border-color: #1f9acf;
+  background: #e8f6fb;
+  color: #145f83;
+}
+
+.quote-external-package-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-external-package-section .form-row-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.quote-external-package-text-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.quote-external-large-textarea {
+  min-height: 11rem;
+}
+
+.quote-external-matrix-table {
+  display: grid;
+  gap: 0.55rem;
+  overflow-x: visible;
+}
+
+.quote-external-matrix-head,
+.quote-external-matrix-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.1fr) repeat(3, minmax(3.8rem, 0.65fr)) repeat(2, minmax(5.5rem, 0.8fr)) minmax(7rem, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.quote-external-matrix-head {
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.quote-external-matrix-row input {
+  min-width: 0;
+}
+
+.quote-external-package-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem -0.25rem -0.25rem;
+  padding: 0.85rem 0.25rem 0.25rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), #fff 24%);
+  border-top: 1px solid #d9e2ec;
+}
+
+.quote-external-package-errors {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+}
+
+.quote-external-package-errors strong {
+  color: #991b1b;
+}
+
+.quote-external-package-errors .form-error {
+  margin: 0;
+}
+
+.quote-external-package-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+@media (max-width: 900px) {
+  .quote-external-package-section .form-row-2,
+  .quote-external-package-text-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-external-matrix-head {
+    display: none;
+  }
+
+  .quote-external-matrix-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0.7rem;
+    border: 1px solid #d9e2ec;
+    border-radius: 8px;
+  }
+
+  .quote-external-matrix-row .compact-button {
+    grid-column: 1 / -1;
+  }
+
+  .quote-external-package-footer-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.quote-service-empty-state-collapsed summary strong {
+  background: color-mix(in srgb, var(--lane-accent) 12%, #FFFFFF);
+  color: var(--lane-accent);
+}
+
+.quote-service-empty-state-collapsed summary strong {
+  max-width: 13rem;
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--lane-accent) 28%, #FFFFFF);
+  border-radius: 8px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.quote-service-planner .quote-service-side-section {
+  padding: 0.95rem 1rem;
+  border-style: dashed;
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.quote-service-planner .quote-service-day-checklist {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-current-services {
+    padding: 0.85rem;
+  }
+}
+
+/* Financial sidebar amount overflow fix. */
+.quote-builder-sidebar,
+.quote-pricing-review-sidebar,
+.quote-pricing-summary-card,
+.quote-pricing-context-panel.app-financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-pricing-review-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 25rem);
+}
+
+.quote-builder-sidebar .quote-pricing-summary-card,
+.quote-pricing-review-sidebar .quote-pricing-summary-card {
+  overflow: hidden;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-row,
+.quote-pricing-review-sidebar .quote-pricing-summary-row,
+.quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row,
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.quote-builder-sidebar .financial-value-shell,
+.quote-pricing-review-sidebar .financial-value-shell,
+.quote-pricing-context-panel.app-financial-panel .financial-value-shell,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value-shell {
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-row strong,
+.quote-builder-sidebar .financial-value,
+.quote-pricing-review-sidebar .quote-pricing-summary-row strong,
+.quote-pricing-review-sidebar .financial-value,
+.quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row strong,
+.quote-pricing-context-panel.app-financial-panel .financial-value,
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row strong,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+.app-financial-panel .quote-pricing-summary-row:first-child strong {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  color: #111827;
+  font-size: clamp(1rem, 1.15vw, 1.18rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1.18;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row:first-child .financial-value,
+.quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row:first-child .financial-value {
+  font-size: clamp(1.08rem, 1.3vw, 1.28rem);
+}
+
+.quote-builder-sidebar .quote-pricing-summary-row > span,
+.quote-pricing-review-sidebar .quote-pricing-summary-row > span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-row p,
+.quote-pricing-review-sidebar .quote-pricing-summary-row p {
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (min-width: 1280px) {
+  .quote-pricing-review-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(24rem, 27rem);
+  }
+}
+
+@media (max-width: 1180px) {
+  .quote-pricing-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-pricing-review-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 420px) {
+  .quote-builder-sidebar .quote-pricing-summary-row strong,
+  .quote-builder-sidebar .financial-value,
+  .quote-pricing-review-sidebar .quote-pricing-summary-row strong,
+  .quote-pricing-review-sidebar .financial-value,
+  .quote-pricing-context-panel.app-financial-panel .financial-value,
+  .quote-pricing-summary-card-dominant.app-financial-panel .financial-value {
+    font-size: 0.98rem;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Day Description drawer polish. */
+.quote-timeline-drawer .app-drawer-header {
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.85rem;
+}
+
+.quote-timeline-drawer .app-drawer-header h2 {
+  font-size: 1.22rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.quote-timeline-drawer .app-drawer-header p {
+  margin-top: 0.25rem;
+  color: #667085;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.quote-timeline-drawer .app-drawer-actions .secondary-button {
+  min-height: 2.2rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 0.65rem;
+  font-size: 0.82rem;
+}
+
+.quote-timeline-drawer .app-drawer-body {
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.quote-timeline-drawer-form {
+  gap: 0.7rem;
+}
+
+.quote-timeline-drawer-form label {
+  gap: 0.38rem;
+  color: #344054;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.quote-day-description-textarea {
+  min-height: 210px;
+  padding: 0.95rem 1rem;
+  border: 1.5px solid rgba(28, 127, 184, 0.34);
+  border-radius: 0.85rem;
+  background: #FFFFFF;
+  color: #111827;
+  font: inherit;
+  font-size: 0.96rem;
+  line-height: 1.55;
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.045);
+}
+
+.quote-day-description-textarea:focus {
+  border-color: #1C7FB8;
+  box-shadow:
+    0 0 0 3px rgba(28, 127, 184, 0.12),
+    0 12px 28px rgba(17, 24, 39, 0.06);
+  outline: none;
+}
+
+.quote-timeline-drawer-actions {
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: -0.15rem;
+}
+
+.quote-timeline-drawer-actions .primary-button {
+  min-height: 2.3rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 0.68rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .quote-day-description-textarea {
+    min-height: 180px;
+  }
+
+  .quote-timeline-drawer-actions {
+    justify-content: stretch;
+  }
+
+  .quote-timeline-drawer-actions .primary-button {
+    width: 100%;
+  }
+}
+
+/* Day Description contextual drawer integration. */
+.quote-timeline-drawer {
+  width: min(100%, 390px);
+  border-left: 1px solid rgba(28, 127, 184, 0.16);
+  background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 34%);
+  box-shadow:
+    -18px 0 46px rgba(17, 24, 39, 0.16),
+    -1px 0 0 rgba(28, 127, 184, 0.08);
+}
+
+.quote-timeline-drawer .app-drawer-header {
+  position: relative;
+  border-bottom-color: rgba(203, 213, 225, 0.84);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6F8FB 100%);
+}
+
+.quote-timeline-drawer .app-drawer-header::before {
+  content: "";
+  position: absolute;
+  left: 1.1rem;
+  top: 1rem;
+  width: 0.28rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  background: #1C7FB8;
+}
+
+.quote-timeline-drawer .app-drawer-header > div:first-child {
+  min-width: 0;
+  padding-left: 0.7rem;
+}
+
+.quote-timeline-drawer .app-drawer-header h2 {
+  color: #111827;
+  font-size: 1.16rem;
+  font-weight: 900;
+}
+
+.quote-timeline-drawer .app-drawer-header p {
+  color: #475467;
+  font-weight: 650;
+}
+
+.quote-timeline-drawer .app-drawer-body {
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.68) 0%, rgba(255, 255, 255, 0) 9rem);
+}
+
+@media (max-width: 520px) {
+  .quote-timeline-drawer {
+    width: min(100%, 100vw);
+  }
+}
+
+/* Itinerary Builder timeline layout. */
+.quote-service-planner .quote-service-day-card-active {
+  border-color: rgba(148, 163, 184, 0.68);
+}
+
+.quote-service-planner .workspace-day-header {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  color: #0F172A;
+  font-size: clamp(1.75rem, 2.65vw, 2.35rem);
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.quote-service-planner .quote-service-current-services {
+  background:
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+}
+
+.quote-service-planner .quote-service-visual-board {
+  position: relative;
+  gap: 1.15rem;
+  padding-left: 1.55rem;
+}
+
+.quote-service-planner .quote-service-visual-board::before {
+  content: "";
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  left: 0.47rem;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(28, 127, 184, 0.38), rgba(148, 163, 184, 0.12));
+}
+
+.quote-service-planner .quote-service-lane {
+  position: relative;
+  padding: 1rem 1rem 1rem 1.05rem;
+  border-color: rgba(203, 213, 225, 0.84);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.quote-service-planner .quote-service-lane::before {
+  content: "";
+  position: absolute;
+  top: 1.18rem;
+  left: -1.48rem;
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 3px solid #FFFFFF;
+  border-radius: 999px;
+  background: #1C7FB8;
+  box-shadow: 0 0 0 1px rgba(28, 127, 184, 0.34);
+}
+
+.quote-service-planner .quote-service-lane-head {
+  border-bottom: 0;
+  padding-bottom: 0.15rem;
+}
+
+.quote-service-planner .quote-service-lane-head span {
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.quote-service-planner .quote-service-card-row {
+  gap: 0.85rem;
+}
+
+.quote-service-planner .quote-service-mini-card {
+  position: relative;
+  gap: 0.85rem;
+  padding: 1.1rem;
+  border-color: rgba(203, 213, 225, 0.95);
+  border-radius: 0.95rem;
+  background: #FFFFFF;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.06);
+}
+
+.quote-service-planner .quote-service-mini-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 0.95rem 0 0 0.95rem;
+  background: rgba(28, 127, 184, 0.56);
+}
+
+.quote-service-planner .quote-service-mini-card-title-row {
+  align-items: center;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy span {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy h5 {
+  color: #111827;
+  font-size: 1.02rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.quote-service-time-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.22rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(28, 127, 184, 0.09);
+  color: #1C7FB8;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.quote-service-planner .quote-service-card-price {
+  color: #0F172A;
+  font-size: 1.08rem;
+}
+
+.quote-service-planner .quote-service-card-supplier {
+  margin-top: -0.1rem;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.quote-service-planner .quote-service-card-details {
+  margin-top: -0.1rem;
+}
+
+/* Global numeric/value overflow safeguards. */
+.admin-shell,
+.admin-shell *,
+.admin-shell *::before,
+.admin-shell *::after {
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .page,
+  .panel,
+  .workspace-panel,
+  .workspace-shell,
+  .workspace-content,
+  .section-stack,
+  .detail-grid,
+  .detail-card,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .dashboard-card,
+  .dashboard-summary-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .app-financial-panel,
+  .financial-panel,
+  .summary-strip,
+  .summary-strip-card,
+  .workspace-summary-card,
+  .quote-dashboard-header,
+  .quote-dashboard-workflow,
+  .quote-dashboard-tabs,
+  .quote-pricing-summary-card,
+  .quote-pricing-summary-row,
+  .quote-service-mini-card,
+  .quote-service-card-pricing-summary,
+  .booking-ops-sidebar-list,
+  .table-section-shell,
+  .table-section-body,
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .summary-strip,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .dashboard-grid,
+  .executive-dashboard-stat-grid,
+  .executive-dashboard-finance-tier-grid,
+  .executive-dashboard-finance-tier-grid-primary,
+  .executive-dashboard-finance-tier-grid-secondary,
+  .quote-dashboard-meta-grid,
+  .quote-service-card-pricing-summary
+) {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.admin-shell :where(
+  .money-value,
+  .metric-value,
+  .financial-value,
+  .stat-value,
+  .summary-strip-value,
+  .workspace-summary-card strong,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .executive-dashboard-finance-card b,
+  .executive-dashboard-row-value,
+  .app-financial-panel strong,
+  .financial-panel strong,
+  .quote-money,
+  .quote-preview-total-list strong,
+  .quote-pricing-summary-row strong,
+  .quote-pricing-summary-row p,
+  .quote-drawer-financial-summary strong,
+  .quote-service-card-price,
+  .quote-service-card-financials strong,
+  .quote-service-card-financials .quote-money,
+  .quote-service-card-pricing-summary .quote-money,
+  .quote-live-pricing-profit strong,
+  .quote-live-pricing-row strong,
+  .quote-pricing-money-cell strong,
+  .money-cell
+) {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(
+  .money-value,
+  .financial-value,
+  .quote-money,
+  .money-cell,
+  .quote-pricing-money-cell strong
+) {
+  text-align: right;
+}
+
+.admin-shell :where(
+  .summary-strip-value,
+  .workspace-summary-card strong,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .app-metric-card strong,
+  .metric-card strong,
+  .metric-value,
+  .stat-value
+) {
+  font-size: clamp(1.1rem, 1.6vw, 1.65rem);
+  line-height: 1.15;
+  text-align: left;
+}
+
+.admin-shell :where(
+  .app-financial-panel strong,
+  .financial-panel strong,
+  .quote-pricing-summary-row strong,
+  .quote-service-card-price,
+  .executive-dashboard-finance-card b,
+  .financial-value
+) {
+  font-size: clamp(1rem, 1.35vw, 1.45rem);
+}
+
+.admin-shell :where(
+  .quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+  .app-financial-panel .quote-pricing-summary-row:first-child strong,
+  .quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row:first-child .financial-value,
+  .quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row:first-child .financial-value,
+  .executive-dashboard-finance-card-primary b
+) {
+  font-size: clamp(1.35rem, 2.4vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.admin-shell :where(
+  .quote-pricing-summary-row,
+  .quote-service-card-pricing-summary,
+  .executive-dashboard-finance-card-head,
+  .dashboard-list-item,
+  .dashboard-inline-item,
+  .executive-dashboard-finance-row
+) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell :where(.data-table th, .data-table td) {
+  max-width: min(24rem, 48vw);
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.data-table th.money-cell, .data-table td.money-cell) {
+  min-width: 7.5rem;
+  max-width: 12rem;
+  white-space: normal;
+}
+
+@media (max-width: 640px) {
+  .admin-shell :where(
+    .summary-strip,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .dashboard-grid,
+    .executive-dashboard-stat-grid,
+    .executive-dashboard-finance-tier-grid,
+    .quote-dashboard-meta-grid,
+    .quote-service-card-pricing-summary
+  ) {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .admin-shell :where(
+    .summary-strip-card,
+    .dashboard-summary-card,
+    .dashboard-kpi-card,
+    .dashboard-stat-card,
+    .executive-dashboard-stat-card,
+    .executive-dashboard-finance-card,
+    .workspace-summary-card
+  ) {
+    padding: 0.9rem;
+  }
+
+  .admin-shell :where(
+    .summary-strip-value,
+    .workspace-summary-card strong,
+    .dashboard-summary-card strong,
+    .dashboard-kpi-card strong,
+    .dashboard-stat-card strong,
+    .executive-dashboard-stat-card strong,
+    .executive-dashboard-finance-card b,
+    .app-financial-panel strong,
+    .financial-panel strong,
+    .financial-value,
+    .quote-pricing-summary-row strong,
+    .quote-service-card-price
+  ) {
+    font-size: clamp(0.95rem, 5vw, 1.25rem);
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-visual-board {
+    padding-left: 1rem;
+  }
+
+  .quote-service-planner .quote-service-lane::before {
+    left: -0.92rem;
+  }
+
+  .quote-service-planner .workspace-day-header h3 {
+    font-size: 1.45rem;
+  }
+}
+
+.leads-crm-page .workspace-panel {
+  padding-top: 1rem;
+}
+
+.leads-crm-stack {
+  gap: 1rem;
+}
+
+.leads-crm-page .workspace-subheader {
+  padding: 1rem 1.1rem;
+}
+
+.leads-crm-page .workspace-subheader-title {
+  font-size: clamp(1.35rem, 1.7vw, 1.85rem);
+}
+
+.leads-crm-page .summary-strip,
+.leads-crm-page .table-section-shell {
+  margin-top: 0;
+}
+
+.leads-crm-page .summary-strip {
+  gap: 0.75rem;
+}
+
+.leads-crm-page .table-section-shell {
+  padding: 1rem;
+}
+
+.leads-crm-table-shell {
+  gap: 0.75rem;
+}
+
+.leads-crm-table {
+  min-width: 980px;
+}
+
+.leads-crm-table th,
+.leads-crm-table td {
+  padding-block: 0.75rem;
+  vertical-align: top;
+}
+
+.leads-crm-primary-cell,
+.leads-crm-request-cell {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.leads-crm-primary-cell strong,
+.leads-crm-request-cell strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leads-crm-primary-cell span,
+.leads-crm-request-cell span {
+  display: block;
+  max-width: 26rem;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leads-crm-number-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lead-status-pill {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 999px;
+  background: #F9FAFB;
+  color: #374151;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lead-status-pill-new {
+  border-color: rgba(31, 154, 207, 0.22);
+  background: rgba(31, 154, 207, 0.11);
+  color: #1C7FB8;
+}
+
+.lead-status-pill-contacted {
+  border-color: rgba(79, 70, 229, 0.2);
+  background: rgba(79, 70, 229, 0.1);
+  color: #4338CA;
+}
+
+.lead-status-pill-qualified {
+  border-color: rgba(22, 163, 74, 0.22);
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803D;
+}
+
+.lead-status-pill-converted {
+  border-color: rgba(5, 150, 105, 0.24);
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+}
+
+.lead-status-pill-lost,
+.lead-status-pill-closed {
+  border-color: rgba(107, 114, 128, 0.24);
+  background: rgba(107, 114, 128, 0.1);
+  color: #4B5563;
+}
+
+.leads-crm-row-actions {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.leads-crm-row-actions .compact-button,
+.leads-crm-row-actions .operations-row-details > summary {
+  min-height: 34px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.leads-crm-action-disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.leads-crm-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.65rem;
+  padding: 1.25rem;
+}
+
+.leads-crm-empty-state h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.1rem;
+  font-weight: 850;
+}
+
+.leads-crm-empty-state p {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.8rem;
+  width: 100%;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list > div {
+  display: grid;
+  min-width: 0;
+  height: auto;
+  align-content: start;
+  gap: 0.35rem;
+  padding: 0.85rem;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list span,
+.quote-builder-main .detail-card .quote-preview-total-list strong,
+.quote-builder-main .detail-card .quote-preview-total-list em {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list strong {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: normal;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list em {
+  justify-self: start;
+}
+
+.quote-builder-main .quote-admin-profit-card,
+.quote-builder-main .quote-admin-profit-card * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-main .quote-admin-profit-card {
+  container-type: inline-size;
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid {
+  grid-template-columns: minmax(0, 1fr);
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid > div {
+  min-width: 0;
+  max-width: 100%;
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid span,
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid strong,
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid em {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@container (min-width: 380px) {
+  .quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Quote overview sidebar should read as part of the layout, not an overlay. */
+.quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
+  position: relative;
+  top: auto;
+  z-index: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-self: start;
+  justify-self: stretch;
+  margin: 0;
+}
+
+.quote-builder-page .quote-builder-sidebar.app-sticky-panel > * {
+  position: relative;
+  z-index: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-page .quote-builder-sidebar .quote-pricing-summary-card-dominant.app-financial-panel {
+  box-shadow: var(--shadow-md);
+}
+
+@media (max-width: 1280px) {
+  .quote-builder-page .quote-builder-sidebar.app-sticky-panel {
+    position: static;
+  }
+}
+
+/* Quote overview metric tile grid safeguards. */
+.quote-builder-main .detail-card > .quote-preview-total-list,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list,
+.quote-dashboard-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list > div,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list > div,
+.quote-dashboard-meta-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 0.9rem 0.95rem;
+  overflow: visible;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list span,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list span,
+.quote-dashboard-meta-grid span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list strong,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list strong,
+.quote-dashboard-meta-grid strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: visible;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.18;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list em,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list em {
+  width: fit-content;
+  max-width: 100%;
+}
+
+@media (max-width: 1080px) {
+  .quote-builder-main .detail-card > .quote-preview-total-list,
+  .quote-builder-main .tab-panel-card > .quote-preview-total-list,
+  .quote-dashboard-meta-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .quote-builder-main .detail-card > .quote-preview-total-list,
+  .quote-builder-main .tab-panel-card > .quote-preview-total-list,
+  .quote-dashboard-meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Pre-audit layout containment sweep. */
+.admin-shell :where(
+  .workspace-shell-card,
+  .workspace-shell-content,
+  .workspace-panel,
+  .section-stack,
+  .detail-grid,
+  .detail-card,
+  .table-section-shell,
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .dashboard-kpi-card,
+  .executive-dashboard-page,
+  .executive-dashboard-shell,
+  .executive-dashboard-main-column,
+  .executive-dashboard-sidebar,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .booking-ops-workspace-page,
+  .booking-ops-shell,
+  .booking-ops-main,
+  .booking-ops-sidebar,
+  .booking-ops-panel-card,
+  .booking-ops-sidebar-card,
+  .app-workspace-layout,
+  .app-workspace-main,
+  .app-workspace-sidebar,
+  .app-workspace-summary,
+  .app-financial-panel,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-main-content,
+  .quote-builder-sidebar,
+  .quote-pricing-review-layout,
+  .quote-pricing-review-main,
+  .quote-pricing-review-sidebar,
+  .quote-service-planner,
+  .quote-service-planner-shell,
+  .quote-service-day-column,
+  .quote-service-current-services,
+  .quote-service-lane,
+  .quote-service-mini-card,
+  .leads-crm-table-shell
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid,
+  .executive-dashboard-finance-grid,
+  .quote-service-planner-shell.quote-service-planner-saas-grid
+) {
+  align-items: start;
+}
+
+.admin-shell :where(
+  .app-sticky-panel,
+  .quote-builder-sidebar,
+  .quote-pricing-review-sidebar,
+  .booking-ops-sidebar,
+  .executive-dashboard-sidebar,
+  .quote-service-day-nav
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .quote-builder-sidebar .quote-pricing-summary-card,
+  .quote-pricing-review-sidebar .quote-pricing-summary-card,
+  .app-financial-panel,
+  .booking-ops-sidebar-card,
+  .executive-dashboard-section-card
+) {
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .summary-strip,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .executive-dashboard-stat-grid,
+  .executive-dashboard-finance-tier-grid,
+  .executive-dashboard-finance-tier-grid-primary,
+  .executive-dashboard-finance-tier-grid-secondary,
+  .booking-ops-stat-grid,
+  .quote-service-card-pricing-summary,
+  .quote-client-summary-strip
+) {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.admin-shell :where(
+  .summary-strip-card,
+  .dashboard-summary-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .booking-ops-stat-card,
+  .quote-client-summary-card,
+  .workspace-summary-card
+) {
+  min-width: 0;
+  height: auto;
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .summary-strip-card strong,
+  .summary-strip-value,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .executive-dashboard-finance-card b,
+  .executive-dashboard-row-value,
+  .booking-ops-stat-card strong,
+  .booking-ops-sidebar-list strong,
+  .quote-client-summary-card strong,
+  .workspace-summary-card strong,
+  .money-cell,
+  .money-value,
+  .financial-value,
+  .metric-value,
+  .stat-value
+) {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell
+) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .leads-crm-table
+) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.leads-crm-table {
+  min-width: min(980px, 100%);
+}
+
+.leads-crm-primary-cell strong,
+.leads-crm-request-cell strong,
+.leads-crm-primary-cell span,
+.leads-crm-request-cell span {
+  max-width: 100%;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+@media (max-width: 1180px) {
+  .admin-shell :where(
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid,
+    .executive-dashboard-finance-grid,
+    .quote-service-planner-shell.quote-service-planner-saas-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .app-sticky-panel,
+    .quote-builder-sidebar,
+    .quote-pricing-review-sidebar,
+    .booking-ops-sidebar,
+    .executive-dashboard-sidebar,
+    .quote-service-day-nav
+  ) {
+    position: static;
+    top: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-shell :where(
+    .summary-strip,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .executive-dashboard-stat-grid,
+    .executive-dashboard-finance-tier-grid,
+    .executive-dashboard-finance-tier-grid-primary,
+    .executive-dashboard-finance-tier-grid-secondary,
+    .booking-ops-stat-grid,
+    .quote-service-card-pricing-summary,
+    .quote-client-summary-strip
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Quote overview financial summary must stay in the sidebar flow. */
+.quote-builder-page .quote-builder-layout {
+  position: relative;
+}
+
+.quote-builder-page .quote-builder-layout-itinerary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 2200px) {
+  .quote-builder-page .quote-builder-layout-itinerary {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+.quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
+  position: static;
+  top: auto;
+  z-index: 0;
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  align-self: start;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  transform: none;
+}
+
+.quote-builder-page .quote-builder-sidebar.app-sticky-panel > * {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  transform: none;
+}
+
+.quote-builder-page .quote-builder-sidebar .quote-pricing-summary-card-dominant.app-financial-panel {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  transform: none;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.22);
+}
+
+.quote-builder-page .quote-builder-sidebar .quote-pricing-summary-card-dominant.app-financial-panel:hover {
+  transform: none;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.22);
+}
+
+/* Final admin UI audit polish. */
+.quote-list-filter-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.quote-list-filter-grid .quote-list-filter-field:first-child {
+  min-width: min(100%, 260px);
+}
+
+.quote-list-filters .workspace-section-head,
+.leads-crm-page .workspace-section-head,
+.leads-crm-page .workspace-subheader {
+  align-items: start;
+}
+
+.leads-crm-convert-action {
+  border-color: rgba(31, 154, 207, 0.34);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
+  color: #FFFFFF;
+  font-weight: 850;
+  box-shadow: 0 10px 22px rgba(28, 127, 184, 0.18);
+}
+
+.leads-crm-convert-action:hover {
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
+  color: #FFFFFF;
+  box-shadow: 0 12px 26px rgba(28, 127, 184, 0.24);
+}
+
+.admin-shell :where(.finance-dashboard-table, .finance-bookings-table, .invoice-table, .allotment-table) strong {
+  overflow-wrap: anywhere;
+}
+
+.admin-shell :where(.table-action-row, .leads-crm-row-actions, .quote-builder-sidebar-actions) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 980px) {
+  .quote-list-filters .workspace-section-head,
+  .leads-crm-page .workspace-section-head,
+  .leads-crm-page .workspace-subheader {
+    display: grid;
+  }
+}
+
+/* System-wide admin layout containment audit. */
+.admin-shell :where(
+  .page,
+  .panel,
+  .workspace-panel,
+  .workspace-shell-card,
+  .workspace-section,
+  .detail-card,
+  .app-card,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section,
+  .entity-form,
+  .compact-form,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-sidebar,
+  .quote-pricing-review-layout,
+  .quote-pricing-review-main,
+  .quote-pricing-review-sidebar,
+  .booking-ops-main,
+  .booking-ops-sidebar,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .detail-card,
+  .app-card,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  padding: clamp(1rem, 1.35vw, 1.35rem);
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .section-stack,
+  .workspace-shell-content,
+  .app-section-stack,
+  .entity-list,
+  .allotment-table-stack,
+  .quote-pricing-workspace,
+  .quote-pricing-review-layout,
+  .quote-builder-layout,
+  .split-layout,
+  .summary-strip,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid
+) {
+  gap: clamp(1rem, 1.35vw, 1.5rem);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .panel-header,
+  .app-page-header,
+  .workspace-shell-header,
+  .quote-dashboard-header,
+  .quote-dashboard-title-row
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .workspace-section-head > *,
+  .panel-header > *,
+  .app-page-header > *,
+  .workspace-shell-header > *,
+  .quote-dashboard-header > *,
+  .quote-dashboard-title-row > *,
+  .split-layout > *,
+  .summary-strip > *,
+  .dashboard-grid > *,
+  .dashboard-summary-grid > *,
+  .dashboard-kpi-grid > *,
+  .quote-builder-layout > *,
+  .quote-pricing-review-layout > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .detail-copy,
+  .table-subcopy,
+  .section-copy,
+  .copy,
+  .empty-state,
+  .workspace-section p,
+  .detail-card p,
+  .app-card p,
+  .summary-strip-helper,
+  .summary-strip-label,
+  .summary-strip-value,
+  .app-metric-card strong,
+  .metric-card strong,
+  .dashboard-stat-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-summary-card strong,
+  .quote-dashboard-meta-grid span,
+  .quote-dashboard-meta-grid strong
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.summary-strip-value, .app-metric-card strong, .metric-card strong) {
+  text-align: left;
+}
+
+.admin-shell :where(.data-table th, .data-table td, .app-table th, .app-table td) {
+  height: auto;
+  min-width: 0;
+  max-width: min(28rem, 52vw);
+  padding: 0.95rem 1rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.data-table th, .app-table th) {
+  line-height: 1.25;
+}
+
+.admin-shell :where(.table-wrap, .data-table-wrapper, .dashboard-table-wrapper, .table-scroll) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  button,
+  a
+) {
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge
+) {
+  min-width: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.admin-shell :where(
+  .table-action-row,
+  .inline-actions,
+  .leads-crm-row-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions,
+  .app-drawer-actions,
+  .app-action-bar,
+  .page-action-bar,
+  .action-bar
+) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .table-action-row > *,
+  .inline-actions > *,
+  .leads-crm-row-actions > *,
+  .quote-dashboard-actions > *,
+  .booking-dashboard-actions > *,
+  .app-drawer-actions > *,
+  .app-action-bar > *,
+  .page-action-bar > *,
+  .action-bar > *
+) {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  input,
+  select,
+  textarea,
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .search-combobox-shell
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(input, select, textarea, .app-input, .app-select, .app-textarea) {
+  width: 100%;
+}
+
+.admin-shell :where(
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge,
+  .margin-badge
+) {
+  max-width: 100%;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .compact-button,
+  .primary-button,
+  .secondary-button,
+  .app-button-primary,
+  .app-button-secondary
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-inline: 0.9rem;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(
+    .workspace-section,
+    .detail-card,
+    .app-card,
+    .dashboard-panel,
+    .dashboard-card,
+    .dashboard-section-card,
+    .table-section-shell,
+    .form-section,
+    .app-form-section,
+    .summary-strip-card,
+    .app-metric-card,
+    .metric-card
+  ) {
+    padding: 1rem;
+  }
+
+  .admin-shell :where(.data-table th, .data-table td, .app-table th, .app-table td) {
+    max-width: 72vw;
+    padding: 0.85rem;
+  }
+}
+
+/* Admin visual hierarchy and spacing refinement. */
+.admin-shell :where(.workspace-shell-content, .section-stack, .app-section-stack) {
+  gap: clamp(1.5rem, 2vw, 2rem);
+}
+
+.admin-shell :where(
+  .app-workspace-layout,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .split-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  gap: clamp(1.35rem, 2vw, 2.25rem);
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .app-card,
+  .detail-card,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section
+) {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 253, 0.96)),
+    #FFFFFF;
+}
+
+.admin-shell :where(
+  .workspace-section .workspace-section,
+  .workspace-section .app-card,
+  .workspace-section .detail-card,
+  .detail-card .workspace-section,
+  .detail-card .app-card,
+  .detail-card .detail-card,
+  .app-card .workspace-section,
+  .app-card .app-card,
+  .app-card .detail-card,
+  .inline-row-editor-shell,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  border-color: rgba(226, 232, 240, 0.78);
+  background:
+    linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 250, 253, 0.92)),
+    #F9FAFB;
+  box-shadow:
+    0 8px 22px rgba(17, 24, 39, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .panel-header,
+  .app-page-header,
+  .workspace-shell-header,
+  .dashboard-panel-header,
+  .executive-dashboard-section-head,
+  .app-form-section-head
+) {
+  padding-bottom: 0.35rem;
+}
+
+.admin-shell :where(
+  .workspace-section-head h2,
+  .workspace-section-head h3,
+  .panel-header h2,
+  .dashboard-panel-header h2,
+  .detail-card h2,
+  .detail-card h3,
+  .app-card h2,
+  .app-card h3,
+  .app-form-section-head h3
+) {
+  margin: 0;
+  color: #0F172A;
+  line-height: 1.14;
+  font-weight: 880;
+}
+
+.admin-shell :where(.workspace-section-head p, .panel-header p, .dashboard-panel-header p, .detail-copy, .section-copy) {
+  line-height: 1.55;
+}
+
+.admin-shell :where(.eyebrow) {
+  margin-bottom: 0.22rem;
+  color: #1C7FB8;
+  font-weight: 850;
+}
+
+.admin-shell :where(.table-section-shell, .app-table-section) {
+  gap: 1.25rem;
+}
+
+.admin-shell :where(.table-wrap, .data-table-wrapper, .dashboard-table-wrapper, .table-scroll) {
+  background: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.admin-shell :where(.data-table th, .app-table th) {
+  background: #F1F7FB;
+  color: #475569;
+}
+
+.admin-shell :where(.primary-button, .app-button-primary) {
+  font-weight: 850;
+  box-shadow:
+    0 16px 34px rgba(28, 127, 184, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.admin-shell :where(.secondary-button, .app-button-secondary, .compact-button, .ghost-button) {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(203, 213, 225, 0.95);
+  color: #334155;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.035);
+}
+
+.admin-shell :where(.secondary-button:hover, .app-button-secondary:hover, .compact-button:hover, .ghost-button:hover) {
+  background: #F4FAFD;
+  color: #1C7FB8;
+}
+
+.admin-shell :where(.status-badge, .status-pill, .page-tab-badge, .app-badge, .quote-ui-badge, .margin-badge) {
+  border-color: rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.admin-shell :where(.form-section, .app-form-section, .entity-form, .compact-form) {
+  gap: 1.15rem;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(.workspace-shell-content, .section-stack, .app-section-stack) {
+    gap: 1.2rem;
+  }
+}
+
+/* Admin scan rhythm refinement: stronger primary sections, quieter nested cards. */
+.admin-shell :where(
+  .workspace-shell-content,
+  .app-workspace-main,
+  .quote-builder-main,
+  .quote-pricing-review-main,
+  .booking-ops-main,
+  .executive-dashboard-main-column
+) {
+  gap: clamp(1.75rem, 2.4vw, 2.5rem);
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .table-section-shell,
+  .quote-builder-step-shell,
+  .quote-builder-tab-shell
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 252, 0.98)),
+    #FFFFFF;
+  border-color: rgba(203, 213, 225, 0.92);
+  box-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.admin-shell :where(
+  .detail-card,
+  .app-card,
+  .summary-panel,
+  .app-summary-panel,
+  .form-section,
+  .app-form-section
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 252, 253, 0.94)),
+    #FFFFFF;
+  border-color: rgba(226, 232, 240, 0.88);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.admin-shell :where(
+  .workspace-section .detail-card,
+  .workspace-section .app-card,
+  .workspace-section .summary-strip-card,
+  .workspace-section .app-metric-card,
+  .workspace-section .metric-card,
+  .detail-card .detail-card,
+  .detail-card .app-card,
+  .app-card .detail-card,
+  .app-card .app-card,
+  .inline-row-editor-shell
+) {
+  background: rgba(248, 250, 252, 0.88);
+  border-color: rgba(226, 232, 240, 0.78);
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .dashboard-panel-header,
+  .executive-dashboard-section-head,
+  .app-form-section-head,
+  .panel-header
+) {
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.78);
+  padding-bottom: 0.8rem;
+}
+
+.admin-shell :where(
+  .workspace-section-head h2,
+  .workspace-section-head h3,
+  .dashboard-panel-header h2,
+  .executive-dashboard-section-head h2,
+  .detail-card h2,
+  .detail-card h3,
+  .app-card h2,
+  .app-card h3,
+  .app-form-section-head h3
+) {
+  color: #0B1220;
+  font-size: clamp(1.08rem, 1.25vw, 1.35rem);
+  letter-spacing: 0;
+}
+
+.admin-shell :where(
+  .workspace-section-head p,
+  .dashboard-panel-header p,
+  .executive-dashboard-section-head p,
+  .detail-copy,
+  .section-copy,
+  .table-subcopy
+) {
+  color: #64748B;
+}
+
+.admin-shell :where(.summary-strip, .dashboard-summary-grid, .dashboard-kpi-grid) {
+  gap: clamp(0.9rem, 1.2vw, 1.25rem);
+}
+
+.admin-shell :where(.summary-strip-card, .app-metric-card, .metric-card) {
+  border-left: 3px solid rgba(31, 154, 207, 0.18);
+}
+
+.admin-shell :where(.table-section-shell .table-wrap, .table-section-shell .data-table-wrapper) {
+  margin-top: 0.15rem;
+}
+
+.admin-shell :where(.primary-button, .app-button-primary) {
+  background:
+    linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 58%, #176C9E 100%);
+}
+
+.admin-shell :where(.secondary-button, .app-button-secondary, .compact-button, .ghost-button) {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+/* Global UI overflow containment utilities and admin-wide safe defaults. */
+.ui-contain,
+.ui-wrap,
+.ui-safe-grid,
+.ui-safe-table,
+.ui-safe-cell {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-contain {
+  overflow-x: clip;
+}
+
+.ui-wrap,
+.ui-safe-cell {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ui-safe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  align-items: start;
+}
+
+.ui-safe-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-safe-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.ui-safe-table :where(th, td),
+.ui-safe-cell {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.admin-shell,
+.admin-shell *,
+.admin-shell *::before,
+.admin-shell *::after {
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .page,
+  .panel,
+  .admin-main-shell,
+  .admin-content-shell,
+  .workspace-shell-card,
+  .workspace-shell-content,
+  .workspace-panel,
+  .workspace-section,
+  .workspace-section-head,
+  .app-workspace-layout,
+  .app-workspace-main,
+  .app-workspace-sidebar,
+  .app-card,
+  .detail-card,
+  .detail-grid,
+  .section-stack,
+  .entity-list,
+  .entity-card,
+  .entity-form,
+  .lead-form,
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4,
+  .table-section-shell,
+  .table-section-body,
+  .quote-builder-page,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-main-content,
+  .quote-builder-sidebar,
+  .quote-service-planner,
+  .quote-service-planner-shell,
+  .quote-service-day-card,
+  .quote-service-day-layout,
+  .quote-service-day-main,
+  .quote-service-day-side,
+  .quote-service-current-services,
+  .quote-service-editor-panel,
+  .quote-service-editor-panel-drawer,
+  .quote-hotel-step-panel,
+  .quote-transport-step-panel,
+  .quote-live-pricing-panel,
+  .quote-drawer-section,
+  .quote-drawer-financial-summary,
+  .quote-preview-total-list,
+  .hotel-detail-workspace,
+  .hotel-contract-workspace,
+  .transport-rate-card-workspace,
+  .transport-rate-card-list,
+  .transport-contract-supplier-group,
+  .transport-contract-supplier-head,
+  .transport-rate-card-summary-head,
+  .transport-rate-card-summary,
+  .transport-rate-card-detail-grid,
+  .transport-rate-card-detail-shell,
+  .transport-rate-card-section,
+  .transport-rate-card-form-panel,
+  .transport-rate-card-metadata-form,
+  .routes-workspace,
+  .route-workspace,
+  .vehicle-fleet-workspace,
+  .vehicles-workspace,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .summary-strip,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-shell :where(
+  .detail-card,
+  .app-card,
+  .entity-card,
+  .workspace-section,
+  .workspace-panel,
+  .table-section-shell,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card,
+  .quote-service-day-card,
+  .quote-hotel-step-panel,
+  .quote-transport-step-panel,
+  .quote-live-pricing-panel,
+  .quote-drawer-section,
+  .transport-contract-supplier-group,
+  .transport-rate-card-form-panel,
+  .quote-client-modal-card
+) {
+  overflow-x: clip;
+}
+
+.admin-shell :where(
+  .workspace-summary-grid,
+  .costing-grid,
+  .internal-costing-grid,
+  .support-text-grid,
+  .summary-strip,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .reports-list-grid,
+  .quote-dashboard-meta-grid,
+  .quote-preview-total-list,
+  .quote-drawer-financial-summary,
+  .quote-service-category-grid,
+  .quote-service-day-layout,
+  .quote-service-day-checklist,
+  .quote-service-card-pricing-summary,
+  .quote-auto-itinerary-grid,
+  .quote-auto-itinerary-status-grid,
+  .quote-transport-vehicle-groups,
+  .quote-selected-transport-summary,
+  .transport-rate-card-summary,
+  .transport-rate-card-detail-grid,
+  .transport-vehicle-pricing-summary,
+  .transport-rate-card-secondary-grid,
+  .transport-pricing-rule-grid,
+  .route-detail-grid,
+  .vehicle-detail-grid,
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4
+) {
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
+.admin-shell :where(
+  .quote-service-day-layout,
+  .transport-rate-card-workspace,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .app-workspace-layout,
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .admin-shell :where(
+    .quote-service-day-layout,
+    .transport-rate-card-workspace,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .app-workspace-layout,
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell
+) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .reports-visual-table,
+  .allotment-table,
+  .finance-dashboard-table,
+  .finance-bookings-table,
+  .invoice-table,
+  .leads-crm-table
+) {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .data-table td,
+  .app-table th,
+  .app-table td,
+  .internal-costing-table th,
+  .internal-costing-table td,
+  .transport-contract-table th,
+  .transport-contract-table td,
+  .quote-service-assigned-table th,
+  .quote-service-assigned-table td,
+  .reports-visual-table th,
+  .reports-visual-table td,
+  .allotment-table th,
+  .allotment-table td,
+  .finance-dashboard-table th,
+  .finance-dashboard-table td,
+  .finance-bookings-table th,
+  .finance-bookings-table td,
+  .invoice-table th,
+  .invoice-table td,
+  .leads-crm-table th,
+  .leads-crm-table td
+) {
+  min-width: 0;
+  max-width: min(30rem, 64vw);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  text-overflow: clip;
+  vertical-align: top;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .app-table th,
+  .internal-costing-table th,
+  .transport-contract-table th,
+  .quote-service-assigned-table th,
+  .reports-visual-table th,
+  .allotment-table th,
+  .finance-dashboard-table th,
+  .finance-bookings-table th,
+  .invoice-table th,
+  .leads-crm-table th
+) {
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.admin-shell :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  span,
+  strong,
+  em,
+  small,
+  label,
+  legend,
+  dt,
+  dd,
+  li,
+  code,
+  pre,
+  .detail-copy,
+  .table-subcopy,
+  .section-copy,
+  .empty-state,
+  .form-helper,
+  .form-error,
+  .form-success,
+  .money-cell,
+  .money-value,
+  .financial-value,
+  .metric-value,
+  .stat-value,
+  .summary-strip-value,
+  .quote-service-card-price,
+  .quote-transport-suggestion-price,
+  .transport-rate-card-supplier,
+  .transport-rate-card-label
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-shell :where(
+  input,
+  select,
+  textarea,
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .search-combobox,
+  .search-combobox-shell,
+  .search-combobox-shell input
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .app-drawer-panel,
+  .catalog-edit-drawer-panel,
+  .contract-drawer,
+  .quote-service-editor-drawer,
+  .quote-timeline-drawer,
+  .transport-rate-card-form-panel
+) {
+  min-width: 0;
+  max-width: min(100%, 100vw);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-shell :where(
+  .app-drawer-body,
+  .catalog-edit-drawer-body,
+  .contract-drawer-body,
+  .quote-service-editor-drawer .app-drawer-body,
+  .quote-timeline-drawer .app-drawer-body,
+  .transport-rate-card-form-panel
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-shell :where(
+  .app-drawer-body > *,
+  .catalog-edit-drawer-body > *,
+  .contract-drawer-body > *,
+  .quote-service-editor-panel-drawer > *,
+  .transport-rate-card-form-panel > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  button,
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  .button,
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge,
+  .margin-badge
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .table-action-row,
+  .inline-actions,
+  .admin-header-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions,
+  .app-drawer-actions,
+  .quote-client-modal-actions,
+  .transport-rate-card-toolbar,
+  .transport-contract-supplier-head,
+  .transport-rate-card-summary-head,
+  .transport-rate-card-section-head,
+  .quote-service-day-actions,
+  .quote-timeline-drawer-actions
+) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.admin-shell :where(
+  .table-action-row > *,
+  .inline-actions > *,
+  .admin-header-actions > *,
+  .quote-dashboard-actions > *,
+  .booking-dashboard-actions > *,
+  .app-drawer-actions > *,
+  .quote-client-modal-actions > *,
+  .transport-rate-card-toolbar > *,
+  .transport-contract-supplier-head > *,
+  .transport-rate-card-summary-head > *,
+  .transport-rate-card-section-head > *,
+  .quote-service-day-actions > *,
+  .quote-timeline-drawer-actions > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(
+    .workspace-summary-grid,
+    .costing-grid,
+    .internal-costing-grid,
+    .support-text-grid,
+    .summary-strip,
+    .dashboard-grid,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .reports-list-grid,
+    .quote-dashboard-meta-grid,
+    .quote-preview-total-list,
+    .quote-drawer-financial-summary,
+    .quote-service-category-grid,
+    .quote-service-day-layout,
+    .quote-service-day-checklist,
+    .quote-service-card-pricing-summary,
+    .quote-auto-itinerary-grid,
+    .quote-auto-itinerary-status-grid,
+    .quote-transport-vehicle-groups,
+    .quote-selected-transport-summary,
+    .transport-rate-card-summary,
+    .transport-rate-card-detail-grid,
+    .transport-vehicle-pricing-summary,
+    .transport-rate-card-secondary-grid,
+    .transport-pricing-rule-grid,
+    .route-detail-grid,
+    .vehicle-detail-grid,
+    .form-row,
+    .form-row-2,
+    .form-row-3,
+    .form-row-4
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .data-table th,
+    .data-table td,
+    .app-table th,
+    .app-table td,
+    .internal-costing-table th,
+    .internal-costing-table td,
+    .transport-contract-table th,
+    .transport-contract-table td,
+    .quote-service-assigned-table th,
+    .quote-service-assigned-table td,
+    .allotment-table th,
+    .allotment-table td
+  ) {
+    max-width: 78vw;
+  }
+}
+
+/* Quote workspace usability overrides. Keep last so older quote layout rules do not dilute the stepper. */
+.quote-dashboard-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.quote-dashboard-tab {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.55rem;
+  min-height: 4.25rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+.quote-dashboard-tab-active {
+  border-color: #1F9ACF;
+  background: #E8F6FB;
+  color: #145F83;
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.26), 0 8px 18px rgba(31, 154, 207, 0.12);
+}
+
+@media (max-width: 1180px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Final admin responsive guardrail: keep after quote workspace overrides. */
+.admin-shell {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
+.admin-main-shell,
+.admin-content-shell,
+.page,
+.panel,
+.workspace-panel,
+.workspace-shell-card,
+.app-page-content {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .responsive-table,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell,
+  .table-scroll
+) {
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .reports-visual-table,
+  .allotment-table,
+  .finance-dashboard-table,
+  .finance-bookings-table,
+  .invoice-table,
+  .leads-crm-table
+) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .data-table td,
+  .app-table th,
+  .app-table td,
+  .internal-costing-table th,
+  .internal-costing-table td,
+  .transport-contract-table th,
+  .transport-contract-table td,
+  .quote-service-assigned-table th,
+  .quote-service-assigned-table td,
+  .reports-visual-table th,
+  .reports-visual-table td,
+  .allotment-table th,
+  .allotment-table td,
+  .finance-dashboard-table th,
+  .finance-dashboard-table td,
+  .invoice-table th,
+  .invoice-table td
+) {
+  min-width: 8.5rem;
+  max-width: 28rem;
+  overflow: visible;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+}
+
+@media (max-width: 1440px) {
+  .admin-shell :where(
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid,
+    .quote-service-planner-shell.quote-service-planner-saas-grid,
+    .transport-rate-card-workspace,
+    .hotel-detail-workspace,
+    .hotel-contract-workspace
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 979px) {
+  .admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Browser-print styles for the operational voucher detail page. No PDF
+   engine yet — operators can hit Print and the page reflows to a clean
+   single-column, black-on-white layout suitable for handing to a driver
+   or hotel front desk. Scoped to .operational-voucher-page so other
+   admin pages aren't affected. */
+@media print {
+  .operational-voucher-page {
+    background: #ffffff;
+    color: #000000;
+    padding: 0;
+    max-width: 100%;
+  }
+  body:has(.operational-voucher-page) {
+    background: #ffffff;
+  }
+  .operational-voucher-page .admin-heading-actions,
+  .voucher-print-control,
+  body:has(.operational-voucher-page) .admin-shell-sidebar,
+  body:has(.operational-voucher-page) .admin-shell-header,
+  body:has(.operational-voucher-page) nav[aria-label="Primary"] {
+    display: none !important;
+  }
+  .operational-voucher-page .admin-card {
+    break-inside: avoid;
+    border: 1px solid #cccccc;
+    box-shadow: none;
+    margin-bottom: 0.5rem;
+    padding: 0.75rem;
+    background: #ffffff;
+  }
+  .operational-voucher-page .warning-banner {
+    border: 1px solid #999;
+    background: #f5f5f5;
+    color: #000;
+    page-break-inside: avoid;
+  }
+  .operational-voucher-page h1,
+  .operational-voucher-page h2,
+  .operational-voucher-page .eyebrow {
+    color: #000;
+  }
+}
+
+/* Package itinerary drag-and-drop */
+.dnd-zone {
+  border-radius: 8px;
+  transition: box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.dnd-zone-over {
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+  background-color: rgba(37, 99, 235, 0.04);
+}
+.dnd-handle {
+  cursor: grab;
+  user-select: none;
+  padding: 0 0.35rem;
+  color: var(--muted-foreground, #6b7280);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.dnd-handle:active {
+  cursor: grabbing;
+}
+tr.dnd-row-over > td {
+  box-shadow: inset 0 2px 0 var(--accent, #2563eb);
+}
+
+/*
+ * PERF: transport rate-card view "Page Unresponsive" freeze.
+ *
+ * The rate-card view nests many single-column `display: grid` stacks — both the
+ * design-system layout wrappers (.app-page-content, .app-workspace-shell,
+ * .workspace-shell-content, .app-section-stack, .table-section-shell,
+ * .table-section-body) and the transport rate-card containers — each declared
+ * with `display: grid` but NO explicit `grid-template-columns`, so each gets an
+ * implicit `auto` track. An `auto` grid track is sized from the `max-content`
+ * width of its contents, which recurses through the entire subtree; nested this
+ * deep over the rate-card tree it becomes super-linear and a single layout pass
+ * takes ~13s (the browser-confirmed root cause: 12.96s "Layout", 890 dirty
+ * nodes, rooted at #document, on every render/filter change).
+ *
+ * Giving each stack an explicit `minmax(0, 1fr)` track (available-width based,
+ * no max-content scan) makes them behave exactly as the single-column stacks
+ * they already are, and collapses the layout cost. Measured on the live page:
+ * Load Rate Cards went from ~25s (20.6s longest task) to ~0.7s (61ms longest
+ * task). The design-system wrappers are scoped to `.transport-contracts-page`
+ * so no other page's layout is affected; the `.transport-*` classes are
+ * transport-only. The 2-column workspace (`-with-panel`) is preserved below.
+ */
+.transport-rate-card-list,
+.transport-contract-supplier-group,
+.transport-rate-card-workspace,
+.supplier-rate-card-safe-loader,
+.transport-contracts-page .app-page-content,
+.transport-contracts-page .app-workspace-shell,
+.transport-contracts-page .workspace-shell-content,
+.transport-contracts-page .app-section-stack,
+.transport-contracts-page .table-section-shell,
+.transport-contracts-page .table-section-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.transport-rate-card-workspace-with-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+}
+
+/*
+ * PERF: same implicit-`auto`-grid-column issue as the transport rate cards
+ * (see note above), on the QUOTES LIST page. Its layout chain (entity-list ->
+ * table-section-body -> table-section-shell -> section-stack ->
+ * workspace-shell-content/app-section-stack -> app-page-content) is the same
+ * stack of single-column `display: grid` wrappers with implicit `auto` tracks,
+ * each sizing from the max-content of the quotes table -> ~2s layout on load.
+ * Give them an explicit minmax(0, 1fr) track. Scoped to `.quotes-list-page`
+ * (added to the page's <main>) so nothing else is affected.
+ */
+.quotes-list-page .app-page-content,
+.quotes-list-page .app-workspace-shell,
+.quotes-list-page .workspace-shell-content,
+.quotes-list-page .app-section-stack,
+.quotes-list-page .section-stack,
+.quotes-list-page .table-section-shell,
+.quotes-list-page .table-section-body,
+.quotes-list-page .entity-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * PERF (systemic): the design-system layout STACK wrappers below are
+ * single-column `display: grid` containers used on every page. Several declare
+ * `display: grid` with no explicit `grid-template-columns`, so they fall back
+ * to an implicit `auto` track that is sized from the max-content of their whole
+ * subtree. Nested over heavy content (transport rate cards, the quotes table,
+ * the quote builder, etc.) that recurses and becomes super-linear -> multi-
+ * second "Page Unresponsive" layouts. Pinning them to an explicit
+ * `minmax(0, 1fr)` track (available-width based, no max-content scan) fixes it
+ * everywhere at once. These are single-column stacks by design, so this is
+ * visually identical; any genuine multi-column usage of these classes is set
+ * via higher-specificity compound selectors (e.g. `.quote-workspace-page.
+ * app-page-content`) which still override this rule. This generalises the
+ * page-scoped fixes in #295 (transport) and #296 (quotes list).
+ */
+.app-page-content,
+.app-workspace-shell,
+.workspace-shell-content,
+.app-section-stack,
+.section-stack,
+.table-section-shell,
+.table-section-body {
+  grid-template-columns: minmax(0, 1fr);
+}

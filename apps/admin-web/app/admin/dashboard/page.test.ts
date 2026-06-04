@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../../lib/global-css-source';
 import test from 'node:test';
 import { calculatePercentChange, formatPercentChange } from './dashboard-metrics';
 
@@ -10,7 +11,7 @@ const rootPageSource = readFileSync(new URL('../../page.tsx', import.meta.url), 
 const dashboardAliasSource = readFileSync(new URL('../../dashboard/page.tsx', import.meta.url), 'utf8');
 const adminNavSource = readFileSync(new URL('../../components/AdminChromeNav.tsx', import.meta.url), 'utf8');
 const adminHeaderActionsSource = readFileSync(new URL('../../components/AdminHeaderActions.tsx', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
+const cssSource = globalCssSource;
 
 test('admin dashboard renders KPI cards from existing report endpoints', () => {
   assert.match(pageSource, /\/api\/reports\/finance-summary/);

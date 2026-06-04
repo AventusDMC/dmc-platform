@@ -1,6 +1,7 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { globalCssSource } from './lib/global-css-source';
 import path = require('node:path');
 import { fileURLToPath } from 'node:url';
 import { NAV_GROUPS, getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
@@ -17,7 +18,7 @@ const quotePageSource = readFileSync(new URL('./quotes/[id]/page.tsx', import.me
 const bookingPageSource = readFileSync(new URL('./bookings/[id]/page.tsx', import.meta.url), 'utf8');
 const activityPageSource = readFileSync(new URL('./activities/[id]/page.tsx', import.meta.url), 'utf8');
 const proposalPageSource = readFileSync(new URL('./proposal/[token]/page.tsx', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
+const cssSource = globalCssSource;
 const appDir = new URL('./', import.meta.url);
 
 function collectSourceFiles(directory: string): string[] {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { globalCssSource } from '../lib/global-css-source';
 import { describe, it } from 'node:test';
 import { buildExcursionTariffRowSources, filterExcursionTariffRowSources } from './ExcursionTariffWorkbookSection';
 import { buildExcursionTariffCsvRows } from './ExcursionTariffWorkbookGrid';
@@ -154,7 +155,7 @@ describe('excursion template admin UI', () => {
   });
 
   it('renders the excursion tariff workbook as a local spreadsheet-style grid with CSV actions', () => {
-    const cssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+    const cssSource = globalCssSource;
 
     expectSourceContains(tariffWorkbookGridSource, [
       'Excursion Tariff Workbook',
