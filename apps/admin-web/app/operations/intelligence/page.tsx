@@ -332,7 +332,7 @@ export default async function IntelligencePage() {
           </thead>
           <tbody>
             {data.trends.map((t, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #f2f4f7' }}>
+              <tr key={i} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                 <td style={{ padding: '0.5rem', fontWeight: 600 }}>{t.weekLabel}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
@@ -358,7 +358,7 @@ export default async function IntelligencePage() {
                   gap: '0.55rem',
                   padding: '0.55rem 0.75rem',
                   background: '#fafbfc',
-                  border: '1px solid #e4e7ec',
+                  border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
                   borderRadius: 6,
                   alignItems: 'center',
                   fontSize: '0.85rem',
@@ -400,7 +400,7 @@ function Panel({ title, accent, children }: { title: string; accent: string; chi
     <section
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: `6px solid ${accent}`,
         borderRadius: 10,
         padding: '0.85rem 1rem',
@@ -455,7 +455,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
           </thead>
           <tbody>
             {performers.map((p) => (
-              <tr key={p.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
+              <tr key={p.id} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                 <td style={{ padding: '0.4rem', fontWeight: 600 }}>{p.name}</td>
                 <td style={{ padding: '0.4rem', textAlign: 'right' }}>{p.totalServices}</td>
                 <td

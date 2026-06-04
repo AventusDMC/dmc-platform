@@ -115,14 +115,14 @@ export function PromotionRulesEditor({
   }
 
   return (
-    <div style={{ marginTop: '0.8rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.6rem' }}>
+    <div style={{ marginTop: '0.8rem', borderTop: '1px solid var(--ds-color-border-subtle, #E4E7EC)', paddingTop: '0.6rem' }}>
       <p className="table-subcopy" style={{ margin: '0 0 0.4rem', fontWeight: 650 }}>
         Applicability rules ({rules.length}) — blank = applies to the whole contract
       </p>
       {rules.map((r, i) => (
         <div
           key={i}
-          style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.5rem', marginBottom: '0.5rem' }}
+          style={{ border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 6, padding: '0.5rem', marginBottom: '0.5rem' }}
         >
           <div className="form-row form-row-4">
             <label>

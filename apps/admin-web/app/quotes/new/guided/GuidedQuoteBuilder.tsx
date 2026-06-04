@@ -106,7 +106,7 @@ export function GuidedQuoteBuilder() {
       <section
         style={{
           background: '#ffffff',
-          border: '1px solid #e4e7ec',
+          border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
           borderRadius: 10,
           padding: '0.75rem 1rem',
           display: 'flex',
@@ -153,7 +153,7 @@ export function GuidedQuoteBuilder() {
       <section
         style={{
           background: '#ffffff',
-          border: '1px solid #e4e7ec',
+          border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
           borderRadius: 12,
           padding: '1.25rem 1.5rem',
           display: 'flex',
@@ -178,7 +178,7 @@ export function GuidedQuoteBuilder() {
         {step === 7 ? <Step7Generate handoffHref={handoffHref} totalPax={totalPax} totalNights={totalNights} journey={journey} /> : null}
 
         {/* Navigation */}
-        <footer style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', borderTop: '1px solid #f2f4f7', paddingTop: '0.85rem', marginTop: '0.5rem' }}>
+        <footer style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', borderTop: '1px solid var(--ds-color-surface-soft, #F9FAFB)', paddingTop: '0.85rem', marginTop: '0.5rem' }}>
           <button
             type="button"
             onClick={() => canGoBack && setStep((step - 1) as StepKey)}

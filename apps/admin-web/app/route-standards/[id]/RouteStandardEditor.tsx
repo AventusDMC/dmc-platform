@@ -166,7 +166,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         alignItems: 'flex-start',
         gap: '0.5rem',
         padding: '0.6rem 0.7rem',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         background: '#fff',
         cursor: 'pointer',
@@ -193,7 +193,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
 
   return (
     <form onSubmit={save} style={{ display: 'grid', gap: '1rem' }}>
-      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#fff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Identity</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -228,7 +228,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         </div>
       </section>
 
-      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#fff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Standard timing</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -261,7 +261,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         </div>
       </section>
 
-      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#fff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Risk flags</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.5rem' }}>
           {flagRow('longDistanceFlag', 'Long distance', 'Triggers "Long Distance Drive" confidence label')}
@@ -289,7 +289,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         </p>
       </section>
 
-      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#fff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Canonical code &amp; review</h3>
         <p style={{ marginTop: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           The original <code>routeCode</code> column above stays intact for legacy
@@ -335,7 +335,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
               alignItems: 'flex-start',
               gap: '0.5rem',
               padding: '0.6rem 0.7rem',
-              border: '1px solid #e4e7ec',
+              border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
               borderRadius: 8,
               background: '#fff',
               cursor: 'pointer',
@@ -361,7 +361,7 @@ export function RouteStandardEditor({ standard }: { standard: RouteStandard }) {
         </div>
       </section>
 
-      <section style={{ background: '#fff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#fff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Notes &amp; status</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Operational notes</span>

@@ -126,7 +126,7 @@ export function TouringRouteJourneyFlowStrip({
         marginTop: '0.35rem',
         padding: '0.4rem 0.55rem',
         background: 'var(--ds-color-canvas, #F8FAFC)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 6,
         display: 'grid',
         gap: '0.2rem',

@@ -195,7 +195,7 @@ export default async function ScaleSimulationPage({
       <section
         style={{
           background: '#ffffff',
-          border: '1px solid #e4e7ec',
+          border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
           borderRadius: 10,
           padding: '1rem',
           marginBottom: '1rem',

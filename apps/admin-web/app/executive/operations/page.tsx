@@ -378,7 +378,7 @@ export default async function ExecutivePage() {
               {data.supplierRanking.map((s) => {
                 const tone = scoreTone(s.reliabilityScore);
                 return (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                  <tr key={s.id} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                     <td style={{ padding: '0.4rem', textAlign: 'center', color: 'var(--ds-color-text-subtle, #667085)', fontWeight: 600 }}>{s.rank}</td>
                     <td style={{ padding: '0.4rem', fontWeight: 600 }}>{s.name}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'center' }}>
@@ -408,7 +408,7 @@ export default async function ExecutivePage() {
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {data.routeIntelligence.map((r, i) => (
-                <li key={i} style={{ padding: '0.5rem 0.6rem', background: '#fafbfc', border: '1px solid #e4e7ec', borderRadius: 6 }}>
+                <li key={i} style={{ padding: '0.5rem 0.6rem', background: '#fafbfc', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 6 }}>
                   <strong>{r.label}</strong>
                   <span style={{ background: 'var(--ds-color-danger-surface, #FEF3F2)', color: 'var(--ds-color-danger, #B42318)', padding: '0.05rem 0.4rem', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.5rem', textTransform: 'uppercase' }}>{r.category}</span>
                   <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', marginTop: '0.15rem' }}>{r.insight}</div>
@@ -433,7 +433,7 @@ export default async function ExecutivePage() {
               </thead>
               <tbody>
                 {data.trends.map((t, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                  <tr key={i} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                     <td style={{ padding: '0.4rem', fontWeight: 600 }}>{t.weekLabel}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
                     <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
@@ -465,7 +465,7 @@ export default async function ExecutivePage() {
             </thead>
             <tbody>
               {data.teamStats.map((s) => (
-                <tr key={s.actor} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                <tr key={s.actor} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                   <td style={{ padding: '0.4rem', fontWeight: 600 }}>{s.actor}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.totalActions}</td>
                   <td style={{ padding: '0.4rem', textAlign: 'right' }}>{s.dispatches}</td>
@@ -514,7 +514,7 @@ function Panel({ title, accent, children }: { title: string; accent: string; chi
       className="executive-panel"
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderLeft: `6px solid ${accent}`,
         borderRadius: 10,
         padding: '0.85rem 1rem',
@@ -614,7 +614,7 @@ function DeltaCard({
     <div
       style={{
         background: '#ffffff',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 10,
         padding: '0.85rem 1rem',
         display: 'flex',

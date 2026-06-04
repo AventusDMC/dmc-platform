@@ -635,7 +635,7 @@ export default async function EditHotelPage({ params }: EditHotelPageProps) {
             </div>
             <fieldset
               style={{
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
                 borderRadius: 6,
                 padding: '0.6rem 0.8rem',
                 marginTop: '0.4rem',

@@ -313,7 +313,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
       <section
         style={{
           background: '#ffffff',
-          border: '1px solid #e4e7ec',
+          border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
           borderRadius: 10,
           padding: '1rem',
           marginBottom: '1rem',
@@ -518,7 +518,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
       </section>
 
       {/* Table */}
-      <section style={{ background: '#ffffff', border: '1px solid #e4e7ec', borderRadius: 10, padding: '1rem' }}>
+      <section style={{ background: '#ffffff', border: '1px solid var(--ds-color-border-subtle, #E4E7EC)', borderRadius: 10, padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>
           {visibleAreas.length} of {areas.length} areas
         </h2>
@@ -529,20 +529,20 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Type</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>City</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Region</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Code</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Name</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Type</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>City</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Region</th>
                   <th
-                    style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}
+                    style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}
                     title="Preferred Operational Area — lower wins on ties"
                   >
                     Priority
                   </th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Defaults</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}>Active</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #e4e7ec' }}></th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Defaults</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Active</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -553,7 +553,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                   if (a.mountainRoadFlagDefault) flags.push('mountain');
                   if (a.overnightRiskDefault) flags.push('overnight');
                   return (
-                    <tr key={a.id} style={{ borderBottom: '1px solid #f2f4f7' }}>
+                    <tr key={a.id} style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)' }}>
                       <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>
                         <strong>{a.code}</strong>
                       </td>
@@ -570,7 +570,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                       <td style={{ padding: '0.5rem' }}>
                         <span
                           style={{
-                            background: a.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
+                            background: a.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : 'var(--ds-color-surface-soft, #F9FAFB)',
                             color: a.isActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,
@@ -816,7 +816,7 @@ function FlagCard({
         alignItems: 'flex-start',
         gap: '0.5rem',
         padding: '0.55rem 0.7rem',
-        border: '1px solid #e4e7ec',
+        border: '1px solid var(--ds-color-border-subtle, #E4E7EC)',
         borderRadius: 8,
         background: '#fff',
         cursor: 'pointer',

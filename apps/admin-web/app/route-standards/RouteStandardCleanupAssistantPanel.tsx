@@ -433,13 +433,13 @@ export function RouteStandardCleanupAssistantPanel() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ background: 'var(--ds-color-surface-soft, #F9FAFB)', textAlign: 'left' }}>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Code</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Name</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Classification</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Reason</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Recommended</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Timing suggestion</th>
-              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid #e4e7ec' }}>Status</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Code</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Name</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Classification</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Reason</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Recommended</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Timing suggestion</th>
+              <th style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--ds-color-border-subtle, #E4E7EC)' }}>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -456,7 +456,7 @@ export function RouteStandardCleanupAssistantPanel() {
 function CleanupRow({ row }: { row: ClassifiedRow }) {
   const colors = CLASSIFICATION_COLORS[row.classification];
   return (
-    <tr style={{ borderBottom: '1px solid #f2f4f7', background: row.isActive ? 'transparent' : '#fafafa' }}>
+    <tr style={{ borderBottom: '1px solid var(--ds-color-surface-soft, #F9FAFB)', background: row.isActive ? 'transparent' : '#fafafa' }}>
       <td style={{ padding: '0.4rem 0.5rem', fontFamily: 'monospace', fontSize: '0.78rem' }}>
         <strong>{row.routeCode}</strong>
         {row.canonicalRouteCode && row.canonicalRouteCode !== row.routeCode ? (
