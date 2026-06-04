@@ -78,10 +78,9 @@ Precedence the proposal uses for a day summary:
 - Arabic renders right-to-left (RTL) in the on-screen / HTML proposal.
 - Set the language per quote (proposal language) or per render via `?language=xx`.
 
-## Known limitation (PDF + Arabic)
+## Arabic PDF rendering
 
-The on-screen/HTML proposal renders Arabic correctly. **The downloadable PDF currently
-does not embed an Arabic font**, so an Arabic *PDF* may show empty/box glyphs until an
-Arabic web font is embedded in the proposal styles. English/Portuguese/Spanish PDFs are
-unaffected. Use the on-screen Arabic proposal until the PDF font fix ships. See the
-content-gap report for details.
+Both the on-screen/HTML proposal and the downloadable **PDF** render Arabic correctly.
+An Arabic web font (Noto Naskh Arabic, SIL OFL) is embedded in the proposal styles, so
+Arabic PDFs display proper glyphs (no boxes/tofu) and keep right-to-left direction
+without relying on server/system fonts. English/Portuguese/Spanish PDFs are unchanged.

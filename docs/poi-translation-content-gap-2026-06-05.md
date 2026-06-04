@@ -50,19 +50,18 @@ into **PT, ES, AR** first (title + short description; long description optional)
 After this batch, extend to the remaining active POIs (Aqaba, Dana, Shobak, Pella,
 Qasr Amra/Kharana, Azraq/Shaumari reserves, the Islamic shrines, etc.).
 
-## Separate technical gap — Arabic PDF font (flagged, not a content issue)
+## Separate technical gap — Arabic PDF font — RESOLVED (Phase 3C.1)
 
-The Arabic **HTML** proposal renders glyphs and RTL correctly. The Arabic **PDF** does
-not currently embed an Arabic font: the generated PDF only embeds Latin-only fonts
-(Liberation family from the headless renderer), so Arabic characters have no covering
-font and render as empty/box glyphs. Fix = embed an Arabic web font (e.g. Noto Naskh
-Arabic `woff2`) as an `@font-face` in `proposal-v3.css`, alongside the existing brand
-fonts, so the PDF renderer subsets Arabic glyphs. This is a small code change, tracked
-separately from content translation.
+_Originally flagged here: the Arabic PDF embedded only Latin-only fonts (Liberation),
+so Arabic glyphs rendered as boxes/tofu._ **Fixed in Phase 3C.1:** Noto Naskh Arabic
+(SIL OFL) is now bundled and embedded as a base64 `@font-face` data URI in
+`proposal-v3.css`, RTL-scoped. Production verification confirmed the Arabic PDF embeds
+`NotoNaskhArabic-Regular` (CIDFontType2 subset) with correct glyphs and RTL, while
+EN/PT/ES PDFs remain Latin-only and unchanged. No further font work is required for
+Arabic PDFs.
 
 ## Suggested sequence (content-first, per the roadmap)
 
 1. Translate the top-15 POIs above into PT / ES / AR (human).
 2. Pilot real proposals in all four languages with a live quote.
-3. (If Arabic PDFs are needed) ship the Arabic-font embedding fix.
-4. Only then plan Phase 3D: the POI-aware touring-route → quote generator.
+3. Only then plan Phase 3D: the POI-aware touring-route → quote generator.
