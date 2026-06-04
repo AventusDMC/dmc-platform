@@ -169,7 +169,7 @@ export default async function ContractAuditLogPage({ params }: Props) {
                         <td style={{ maxWidth: '34rem', fontSize: '0.8rem' }}>
                           {change}
                           {e.note ? (
-                            <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginTop: '0.2rem' }}>{e.note}</div>
+                            <div style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.72rem', marginTop: '0.2rem' }}>{e.note}</div>
                           ) : null}
                         </td>
                         <td style={{ fontSize: '0.8rem' }}>{e.actor || '—'}</td>
@@ -184,7 +184,7 @@ export default async function ContractAuditLogPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/audit-log — server-rendered, read-only.
           Merged from the per-entity audit tables via /hotel-contracts/:id/audit-log.

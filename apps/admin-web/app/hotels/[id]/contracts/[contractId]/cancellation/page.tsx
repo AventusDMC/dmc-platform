@@ -422,7 +422,7 @@ export default async function ContractCancellationPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/cancellation — server-rendered.
           Policy upsert via PUT; rule create / edit / delete via Server Actions.

@@ -376,7 +376,7 @@ export default async function ContractRatesPage({ params }: Props) {
                     style={{ fontSize: '0.95rem', marginBottom: '0.4rem' }}
                   >
                     {g.name}{' '}
-                    <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontWeight: 400, fontSize: '0.82rem' }}>
                       ({g.ranges.map((rg) => `${formatDate(rg.from)}→${formatDate(rg.to)}`).join(', ')} ·{' '}
                       {g.rows.length} cell{g.rows.length === 1 ? '' : 's'})
                     </span>
@@ -405,7 +405,7 @@ export default async function ContractRatesPage({ params }: Props) {
                               <td>
                                 <strong>{room?.name || r.roomCategoryId}</strong>
                                 {room?.code ? (
-                                  <span style={{ color: '#94a3b8', marginLeft: '0.4rem' }}>
+                                  <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', marginLeft: '0.4rem' }}>
                                     ({room.code})
                                   </span>
                                 ) : null}
@@ -445,7 +445,7 @@ export default async function ContractRatesPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/rates — server-rendered. Create / edit /
           delete via Server Actions. Bulk matrix editor still routed to legacy until PR-A5+.

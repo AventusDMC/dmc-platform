@@ -294,7 +294,7 @@ export default async function RehearsalPage({
                       <td style={{ padding: '0.4rem', textAlign: 'right' }}>{a.dispatches}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{a.resolutions}</td>
                       <td style={{ padding: '0.4rem', textAlign: 'right' }}>{a.reassignments}</td>
-                      <td style={{ padding: '0.4rem', textAlign: 'right', color: a.escalations > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>{a.escalations}</td>
+                      <td style={{ padding: '0.4rem', textAlign: 'right', color: a.escalations > 0 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)' }}>{a.escalations}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -310,7 +310,7 @@ export default async function RehearsalPage({
 
       {/* Scenario picker */}
       <Panel title="Rehearsal Scenarios" accent="#b54708">
-        <p style={{ margin: '0 0 0.5rem', color: '#667085', fontSize: '0.85rem' }}>
+        <p style={{ margin: '0 0 0.5rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Open a scenario in the existing simulation tools. The rehearsal scorecard above updates with every action you take.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.6rem' }}>
@@ -340,7 +340,7 @@ export default async function RehearsalPage({
                     fontSize: '0.8rem',
                   }}
                 >
-                  <span style={{ color: '#667085', fontVariantNumeric: 'tabular-nums', minWidth: '5rem' }}>{formatTime(e.occurredAt)}</span>
+                  <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontVariantNumeric: 'tabular-nums', minWidth: '5rem' }}>{formatTime(e.occurredAt)}</span>
                   <span
                     style={{
                       background: tone.bg,
@@ -354,8 +354,8 @@ export default async function RehearsalPage({
                   >
                     {e.eventType.replace(/_/g, ' ')}
                   </span>
-                  <span style={{ flex: 1, color: '#475467' }}>{e.notes || ''}</span>
-                  <span style={{ color: '#98a2b3', fontSize: '0.74rem' }}>{e.actor || 'system'}</span>
+                  <span style={{ flex: 1, color: 'var(--ds-color-text-muted, #475569)' }}>{e.notes || ''}</span>
+                  <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.74rem' }}>{e.actor || 'system'}</span>
                 </li>
               );
             })}
@@ -400,7 +400,7 @@ function ScenarioCard({ scenario, sessionStartIso }: { scenario: Scenario; sessi
           Target {scenario.targetScore}
         </span>
       </div>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.82rem', lineHeight: 1.4 }}>{scenario.description}</p>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.4 }}>{scenario.description}</p>
       <Link
         href={href}
         style={{

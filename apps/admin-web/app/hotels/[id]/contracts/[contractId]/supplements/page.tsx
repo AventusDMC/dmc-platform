@@ -230,7 +230,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                   <option value="AI">AI — All Inclusive upgrade</option>
                 </select>
                 <span
-                  style={{ color: '#94a3b8', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}
+                  style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}
                 >
                   Tag HB / FB / AI when this supplement upgrades a base BB rate. The quote engine
                   auto-applies it only when the guest picks that meal plan.
@@ -272,7 +272,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                 Applies to (optional)
                 <input type="date" name="appliesTo" />
               </label>
-              <span style={{ gridColumn: 'span 2', color: '#94a3b8', fontSize: '0.72rem', alignSelf: 'end' }}>
+              <span style={{ gridColumn: 'span 2', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.72rem', alignSelf: 'end' }}>
                 Pin a date-specific charge (e.g. a 31 Dec gala dinner): set both to that date.
                 Leave blank to charge across the whole stay.
               </span>
@@ -302,7 +302,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                     style={{ fontSize: '0.95rem', marginBottom: '0.4rem' }}
                   >
                     {SUPPLEMENT_TYPE_LABELS[g.type] || g.type}{' '}
-                    <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontWeight: 400, fontSize: '0.82rem' }}>
                       ({g.rows.length} supplement{g.rows.length === 1 ? '' : 's'})
                     </span>
                   </h3>
@@ -334,13 +334,13 @@ export default async function ContractSupplementsPage({ params }: Props) {
                                   <>
                                     <strong>{r.roomCategory.name}</strong>
                                     {r.roomCategory.code ? (
-                                      <span style={{ color: '#94a3b8', marginLeft: '0.4rem' }}>
+                                      <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', marginLeft: '0.4rem' }}>
                                         ({r.roomCategory.code})
                                       </span>
                                     ) : null}
                                   </>
                                 ) : (
-                                  <em style={{ color: '#64748b' }}>All room types</em>
+                                  <em style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>All room types</em>
                                 )}
                               </td>
                               <td>
@@ -359,7 +359,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                                     {r.mealPlanCode}
                                   </span>
                                 ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>
+                                  <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.8rem' }}>—</span>
                                 )}
                               </td>
                               <td>{CHARGE_BASIS_LABELS[r.chargeBasis] || r.chargeBasis}</td>
@@ -370,7 +370,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
                                 {appliesLabel ? (
                                   appliesLabel
                                 ) : (
-                                  <span style={{ color: '#94a3b8' }}>Whole stay</span>
+                                  <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>Whole stay</span>
                                 )}
                               </td>
                               <td style={{ maxWidth: '20rem' }}>{r.notes || '—'}</td>
@@ -412,7 +412,7 @@ export default async function ContractSupplementsPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/supplements — server-rendered. Create
           / edit / delete via Server Actions.

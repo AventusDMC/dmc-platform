@@ -409,13 +409,13 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
                   </tr>
                   {cost.serviceCharge > 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ textAlign: 'right', color: '#64748b' }}>+ Service charge</td>
+                      <td colSpan={4} style={{ textAlign: 'right', color: 'var(--ds-color-text-subtle, #667085)' }}>+ Service charge</td>
                       <td className="numeric-cell">{cost.serviceCharge.toFixed(2)}</td>
                     </tr>
                   ) : null}
                   {cost.salesTax > 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ textAlign: 'right', color: '#64748b' }}>+ Sales tax</td>
+                      <td colSpan={4} style={{ textAlign: 'right', color: 'var(--ds-color-text-subtle, #667085)' }}>+ Sales tax</td>
                       <td className="numeric-cell">{cost.salesTax.toFixed(2)}</td>
                     </tr>
                   ) : null}
@@ -437,7 +437,7 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
                   {promos.appliedPromotions.map((p) => (
                     <li key={p.id} style={{ marginBottom: '0.25rem' }}>
                       <strong>{p.name}</strong> — −{money(p.effectAmount, currency)}
-                      {p.explanation ? <span style={{ color: '#64748b' }}> · {p.explanation}</span> : null}
+                      {p.explanation ? <span style={{ color: 'var(--ds-color-text-subtle, #667085)' }}> · {p.explanation}</span> : null}
                     </li>
                   ))}
                 </ul>
@@ -469,7 +469,7 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
                   if (a.worst === 'release_window')
                     return <p style={{ margin: 0, color: '#b45309', fontWeight: 600 }}>Within the release window on {a.worstDate} — unsold rooms may have been returned to the hotel.</p>;
                   if (a.worst === 'not_configured' || a.worst === 'inactive')
-                    return <p style={{ margin: 0, color: '#64748b' }}>On request — no committed allotment covers these dates.</p>;
+                    return <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)' }}>On request — no committed allotment covers these dates.</p>;
                   return (
                     <p style={{ margin: 0, color: '#16a34a', fontWeight: 600 }}>
                       Available{a.minRemaining != null ? ` — at least ${a.minRemaining} room${a.minRemaining === 1 ? '' : 's'} every night` : ''}.
@@ -483,7 +483,7 @@ export default async function QuoteSimulatorPage({ params, searchParams }: Props
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/simulator — server-rendered, read-only.
           Cost from /hotel-rates/calculate-hotel-cost; promotions from /promotions/evaluate.

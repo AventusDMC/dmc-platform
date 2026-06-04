@@ -162,11 +162,11 @@ export function GuidedQuoteBuilder() {
         }}
       >
         <header>
-          <p style={{ margin: 0, color: '#667085', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Step {step} of 7
           </p>
-          <h2 style={{ margin: '0.2rem 0 0', color: '#101828' }}>{STEPS[stepIdx].label}</h2>
-          <p style={{ margin: '0.3rem 0 0', color: '#667085', fontSize: '0.92rem' }}>{STEPS[stepIdx].description}</p>
+          <h2 style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text, #0F172A)' }}>{STEPS[stepIdx].label}</h2>
+          <p style={{ margin: '0.3rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.92rem' }}>{STEPS[stepIdx].description}</p>
         </header>
 
         {step === 1 ? <Step1TripSetup trip={trip} setTrip={setTrip} /> : null}
@@ -185,7 +185,7 @@ export function GuidedQuoteBuilder() {
             disabled={!canGoBack}
             style={{
               background: '#ffffff',
-              color: canGoBack ? 'var(--ds-color-info, #175CD3)' : '#98a2b3',
+              color: canGoBack ? 'var(--ds-color-info, #175CD3)' : 'var(--ds-color-text-faint, #94A3B8)',
               border: `1px solid ${canGoBack ? '#84caff' : '#d0d5dd'}`,
               padding: '0.5rem 1rem',
               borderRadius: 8,
@@ -195,7 +195,7 @@ export function GuidedQuoteBuilder() {
           >
             ← Back
           </button>
-          <span style={{ color: '#667085', fontSize: '0.85rem' }}>
+          <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
             {totalPax} pax · {journey.length} stop{journey.length === 1 ? '' : 's'}
             {' · '}
             {tripNights != null && tripNights !== totalNights ? (
@@ -348,7 +348,7 @@ function Step2Journey({
         <span style={{ color: nightsBanner.text, fontSize: '0.8rem', opacity: 0.85 }}>{nightsBanner.text2}</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
           Add cities in the order the guests will travel. Recommended night counts are pre-filled — adjust to match the trip duration.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -385,7 +385,7 @@ function Step2Journey({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Selected journey ({journey.length} stop{journey.length === 1 ? '' : 's'})</h3>
         {journey.length === 0 ? (
-          <p style={{ color: '#667085', fontSize: '0.85rem', margin: 0 }}>Pick at least one city above to start building the trip.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem', margin: 0 }}>Pick at least one city above to start building the trip.</p>
         ) : (
           <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             {journey.map((c, idx) => {
@@ -395,7 +395,7 @@ function Step2Journey({
                   <span style={{ fontWeight: 700, color: '#6b7a6b', fontVariantNumeric: 'tabular-nums', minWidth: '1.5rem' }}>{idx + 1}.</span>
                   <span style={{ fontSize: '1.05rem' }} aria-hidden>{lib?.icon || '✦'}</span>
                   <strong style={{ color: '#3a5a3a', flex: 1 }}>{c.name}</strong>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: '#475467' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--ds-color-text-muted, #475569)' }}>
                     Nights:
                     <input type="number" min={0} value={c.nights} onChange={(e) => updateNights(c.name, Number(e.target.value) || 0)} style={{ width: '4rem' }} />
                   </label>
@@ -474,7 +474,7 @@ function Step3Hotels({ journey }: { journey: JourneyCity[] }) {
     );
   }
   if (hotels === null) {
-    return <p style={{ color: '#667085', fontSize: '0.9rem' }}>Loading hotel catalogue…</p>;
+    return <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.9rem' }}>Loading hotel catalogue…</p>;
   }
 
   const byCity = new Map<string, HotelOption[]>();
@@ -486,7 +486,7 @@ function Step3Hotels({ journey }: { journey: JourneyCity[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         Hotels from the platform catalogue, grouped by the cities in your journey. Operator picks during the final advanced workspace step.
       </p>
       {journey.map((j) => {
@@ -592,7 +592,7 @@ function Step4Experiences({ journey }: { journey: JourneyCity[] }) {
     );
   }
   if (activities === null) {
-    return <p style={{ color: '#667085', fontSize: '0.9rem' }}>Loading activity catalogue…</p>;
+    return <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.9rem' }}>Loading activity catalogue…</p>;
   }
 
   // Match per journey city: prefer supplierCompany.city match, fall back to
@@ -609,7 +609,7 @@ function Step4Experiences({ journey }: { journey: JourneyCity[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         Activities from the platform catalogue, grouped by the cities in your journey. Matched on supplier city or activity name.
       </p>
       {journey.map((j) => {
@@ -676,7 +676,7 @@ function Step5Transport({ journey }: { journey: JourneyCity[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.85rem' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         Transfer legs derived from your journey. Vehicle types, suppliers, and pickup times are configured in the advanced workspace at Step 7 — the
         platform's transport-pricing rules pre-fill the safe defaults.
       </p>
@@ -704,7 +704,7 @@ function Step5Transport({ journey }: { journey: JourneyCity[] }) {
           </li>
         ))}
       </ol>
-      <p style={{ margin: 0, color: '#667085', fontSize: '0.78rem', fontStyle: 'italic' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem', fontStyle: 'italic' }}>
         {legs.length} transfer leg{legs.length === 1 ? '' : 's'} total. Operator can override or add intermediate transfers in the advanced workspace.
       </p>
     </div>
@@ -722,11 +722,11 @@ function ScaffoldStep({ title, detail }: { title: string; detail: string }) {
         textAlign: 'center',
       }}
     >
-      <strong style={{ color: '#475467', fontSize: '1rem' }}>{title}</strong>
-      <p style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.88rem', maxWidth: '40rem', marginLeft: 'auto', marginRight: 'auto' }}>
+      <strong style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '1rem' }}>{title}</strong>
+      <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.88rem', maxWidth: '40rem', marginLeft: 'auto', marginRight: 'auto' }}>
         {detail}
       </p>
-      <p style={{ margin: '0.75rem 0 0', color: '#98a2b3', fontSize: '0.78rem', fontStyle: 'italic' }}>
+      <p style={{ margin: '0.75rem 0 0', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.78rem', fontStyle: 'italic' }}>
         v1 scaffold — click Continue to proceed. The advanced workspace at the end lets you configure this fully.
       </p>
     </div>
@@ -754,7 +754,7 @@ function Step6Review({ trip, journey, totalPax, totalNights }: { trip: TripSetup
         <Stat label="Budget" value={trip.budgetLevel || '—'} />
         <Stat label="Market" value={trip.market || '—'} />
       </div>
-      <p style={{ color: '#667085', fontSize: '0.85rem', margin: 0 }}>
+      <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem', margin: 0 }}>
         Pricing breakdown will populate in v2 once recommendation steps land. For now, complete the quote in the advanced workspace on the next step
         — the engine will compute totals, margin, and operational confidence from the data you've already entered.
       </p>
@@ -779,7 +779,7 @@ function Step7Generate({ handoffHref, totalPax, totalNights, journey }: { handof
           {totalPax} pax · {totalNights} nights · {journey.map((c) => c.name).join(' → ')}
         </p>
       </div>
-      <p style={{ color: '#475467', fontSize: '0.9rem', margin: 0 }}>
+      <p style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.9rem', margin: 0 }}>
         Click <strong>Open in Advanced Workspace</strong> to finalise pricing, configure suppliers, and generate the client-ready proposal. Your
         guided-builder inputs travel through as URL hints so the advanced workspace can pre-fill where possible.
       </p>
@@ -841,7 +841,7 @@ function ConfidenceIndicator({ totalPax, journeyLength, totalNights }: { totalPa
 function Field({ label, children }: { label: string; children: any }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475467', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</span>
+      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--ds-color-text-muted, #475569)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</span>
       {children}
     </label>
   );

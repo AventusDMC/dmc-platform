@@ -249,7 +249,7 @@ export default async function FinancialIntelligencePage() {
       {/* Top cost-impact rows */}
       <Panel title="Top Cost-Impact Operations" accent="#7e22ce">
         {data.topCostRows.length === 0 ? (
-          <p style={{ color: '#667085', margin: 0 }}>No cost-impacted rows in the window.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>No cost-impacted rows in the window.</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
@@ -269,7 +269,7 @@ export default async function FinancialIntelligencePage() {
                   <td style={{ padding: '0.5rem', fontWeight: 600 }}>{r.bookingRef || r.bookingServiceId.slice(0, 8)}</td>
                   <td style={{ padding: '0.5rem' }}>{r.operationType}</td>
                   <td style={{ padding: '0.5rem' }}>{r.supplierName || '—'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right', color: r.delayMinutes > 30 ? 'var(--ds-color-danger, #B42318)' : '#475467' }}>
+                  <td style={{ padding: '0.5rem', textAlign: 'right', color: r.delayMinutes > 30 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)' }}>
                     {r.delayMinutes > 0 ? `${r.delayMinutes}m` : '—'}
                   </td>
                   <td style={{ padding: '0.5rem', textAlign: 'right' }}>{r.reassignments || '—'}</td>
@@ -279,7 +279,7 @@ export default async function FinancialIntelligencePage() {
                       padding: '0.5rem',
                       textAlign: 'right',
                       fontWeight: 700,
-                      color: r.estimatedTotalCost > 100 ? 'var(--ds-color-danger, #B42318)' : r.estimatedTotalCost > 20 ? 'var(--ds-color-warning, #B54708)' : '#475467',
+                      color: r.estimatedTotalCost > 100 ? 'var(--ds-color-danger, #B42318)' : r.estimatedTotalCost > 20 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -299,14 +299,14 @@ export default async function FinancialIntelligencePage() {
           border: '1px dashed #d0d5dd',
           borderRadius: 10,
           padding: '0.85rem 1rem',
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.85rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.4rem',
         }}
       >
-        <strong style={{ color: '#101828' }}>Heuristic cost model (v1)</strong>
+        <strong style={{ color: 'var(--ds-color-text, #0F172A)' }}>Heuristic cost model (v1)</strong>
         <p style={{ margin: 0 }}>
           Real per-incident cost tracking needs an <code>IncidentCostEntry</code> schema (deferred to v2). For now the platform estimates leakage with these
           constants:
@@ -369,7 +369,7 @@ function Stat({ label, value, tone, sub }: { label: string; value: number | stri
 
 function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntelligence[]; emptyLabel: string }) {
   if (suppliers.length === 0) {
-    return <p style={{ color: '#667085', margin: 0 }}>{emptyLabel}</p>;
+    return <p style={{ color: 'var(--ds-color-text-subtle, #667085)', margin: 0 }}>{emptyLabel}</p>;
   }
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -410,7 +410,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
                 style={{
                   padding: '0.4rem',
                   textAlign: 'right',
-                  color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467',
+                  color: s.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)',
                   fontWeight: 600,
                 }}
               >
@@ -423,7 +423,7 @@ function SupplierTable({ suppliers, emptyLabel }: { suppliers: SupplierIntellige
                   textAlign: 'right',
                   fontVariantNumeric: 'tabular-nums',
                   fontWeight: 700,
-                  color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : s.estimatedLeakage > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
+                  color: s.estimatedLeakage > 100 ? 'var(--ds-color-danger, #B42318)' : s.estimatedLeakage > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)',
                 }}
               >
                 {money(s.estimatedLeakage)}

@@ -61,7 +61,7 @@ export function RouteConfidenceBadge({ standard, compact = false }: { standard: 
       >
         {confidence.label}
       </span>
-      {bits.length > 0 ? <span style={{ color: '#475467' }}>{bits.join(' · ')}</span> : null}
+      {bits.length > 0 ? <span style={{ color: 'var(--ds-color-text-muted, #475569)' }}>{bits.join(' · ')}</span> : null}
       {!compact && standard.notes ? <span style={{ color: '#6b7a6b' }}>· {standard.notes}</span> : null}
     </span>
   );

@@ -539,7 +539,7 @@ export function RateHawkImportWizard() {
                       <div>
                         <strong>{c.name}</strong>
                         {c.kind ? (
-                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{c.kind}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>{c.kind}</div>
                         ) : null}
                       </div>
                     </div>
@@ -547,7 +547,7 @@ export function RateHawkImportWizard() {
                   <td>
                     {c.cityName ?? '—'}, {c.countryCode}
                     {c.addressLine ? (
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{c.addressLine}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>{c.addressLine}</div>
                     ) : null}
                   </td>
                   <td>{c.starRating != null ? `${c.starRating}★` : '—'}</td>
@@ -559,7 +559,7 @@ export function RateHawkImportWizard() {
                         Imported
                       </span>
                     ) : (
-                      <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.78rem' }}>
+                      <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontWeight: 600, fontSize: '0.78rem' }}>
                         Available
                       </span>
                     )}

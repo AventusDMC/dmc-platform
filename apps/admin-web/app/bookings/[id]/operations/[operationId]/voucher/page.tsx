@@ -178,7 +178,7 @@ function Detail({ label, children, hideIfEmpty = false }: { label: string; child
   // rendered inline with no space, producing "Booking refBK-2026-0004".
   return (
     <div className="voucher-detail-row" style={{ display: 'flex', gap: '0.75rem', alignItems: 'baseline', padding: '0.35rem 0', borderBottom: '1px solid #eef0f3' }}>
-      <span style={{ color: '#667085', minWidth: '11rem', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: 'var(--ds-color-text-subtle, #667085)', minWidth: '11rem', flexShrink: 0 }}>{label}</span>
       <strong>{isEmpty ? '-' : children}</strong>
     </div>
   );
@@ -236,7 +236,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
       >
         <p
           style={{
-            color: '#475467',
+            color: 'var(--ds-color-text-muted, #475569)',
             fontSize: '0.72rem',
             fontWeight: 700,
             letterSpacing: '0.08em',
@@ -261,10 +261,10 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
           {confidence.label}
         </span>
       </div>
-      <p style={{ margin: '0.35rem 0 0', fontSize: '1rem', fontWeight: 600, color: '#101828' }}>
+      <p style={{ margin: '0.35rem 0 0', fontSize: '1rem', fontWeight: 600, color: 'var(--ds-color-text, #0F172A)' }}>
         {standard.routeName || standard.routeCode}
       </p>
-      <p style={{ margin: '0.15rem 0 0', color: '#475467', fontSize: '0.9rem' }}>
+      <p style={{ margin: '0.15rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.9rem' }}>
         {[distance, duration, buffer].filter(Boolean).join(' · ') || 'Operational profile pending refinement.'}
       </p>
       {riskChips.length > 0 ? (
@@ -274,7 +274,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
               key={chip}
               style={{
                 background: '#fff',
-                color: '#475467',
+                color: 'var(--ds-color-text-muted, #475569)',
                 border: '1px solid #d0d5dd',
                 padding: '0.08rem 0.5rem',
                 borderRadius: 999,
@@ -291,7 +291,7 @@ function RouteStandardReferenceBlock({ standard }: { standard: NonNullable<Route
         <p
           style={{
             margin: '0.5rem 0 0',
-            color: '#475467',
+            color: 'var(--ds-color-text-muted, #475569)',
             fontSize: '0.85rem',
             lineHeight: 1.45,
             borderTop: '1px dashed #e4e7ec',
@@ -504,7 +504,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
                     <p style={{ margin: '0.4rem 0 0', fontWeight: 600 }}>{codeLine}</p>
                   ) : null}
                   {roomTypeForDisplay || room.notes ? (
-                    <p style={{ margin: '0.25rem 0 0', color: '#667085', fontSize: '0.85rem' }}>
+                    <p style={{ margin: '0.25rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
                       {[roomTypeForDisplay, room.notes].filter(Boolean).join(' — ')}
                     </p>
                   ) : null}

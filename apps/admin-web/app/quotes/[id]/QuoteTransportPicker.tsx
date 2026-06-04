@@ -1397,7 +1397,7 @@ export function QuoteTransportPicker({
                 style={{
                   background: '#f5f8f5',
                   border: '1px solid #cdd7cd',
-                  color: '#475467',
+                  color: 'var(--ds-color-text-muted, #475569)',
                   borderRadius: 10,
                   padding: '0.7rem 0.9rem',
                   margin: 0,

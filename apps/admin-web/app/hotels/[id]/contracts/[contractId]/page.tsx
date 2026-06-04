@@ -300,7 +300,7 @@ export default async function ContractDetailPage({ params }: Props) {
             <Field label="Status">
               <span style={{ color: conf.color, fontWeight: 600 }}>{conf.label}</span>
               {contract.lastVerifiedAt ? (
-                <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
+                <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
                   last verified {formatDate(contract.lastVerifiedAt)}
                 </span>
               ) : null}
@@ -441,7 +441,7 @@ export default async function ContractDetailPage({ params }: Props) {
                       <td style={{ maxWidth: '24rem' }}>
                         <strong>{r.name}</strong>
                         {r.description ? (
-                          <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: '0.15rem' }}>
+                          <div style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.78rem', marginTop: '0.15rem' }}>
                             {r.description}
                           </div>
                         ) : null}
@@ -492,7 +492,7 @@ export default async function ContractDetailPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contract.id} — read-only summary. v2 editors arrive
           in subsequent PRs.
@@ -505,7 +505,7 @@ export default async function ContractDetailPage({ params }: Props) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <dt style={{ color: '#475467', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{label}</dt>
+      <dt style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{label}</dt>
       <dd style={{ margin: 0, fontWeight: 500 }}>{children}</dd>
     </>
   );
@@ -536,9 +536,9 @@ function EditorCard({
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <strong style={{ fontSize: '0.95rem' }}>{label}</strong>
-        <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>→</span>
+        <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.85rem' }}>→</span>
       </div>
-      <div style={{ color: '#475467', fontSize: '0.8rem' }}>{description}</div>
+      <div style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.8rem' }}>{description}</div>
     </Link>
   );
 }
@@ -546,7 +546,7 @@ function EditorCard({
 function CountCard({ label, value, href }: { label: string; value: number; href?: string }) {
   const inner = (
     <>
-      <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
         {label}
       </div>
       <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{value.toLocaleString()}</div>

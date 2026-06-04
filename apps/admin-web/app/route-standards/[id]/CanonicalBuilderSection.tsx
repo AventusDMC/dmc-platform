@@ -294,7 +294,7 @@ export function CanonicalBuilderSection({
       }}
     >
       <h3 style={{ marginTop: 0 }}>Canonical Builder</h3>
-      <p style={{ marginTop: 0, color: '#475467', fontSize: '0.85rem' }}>
+      <p style={{ marginTop: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
         Generate this row's canonical FROM_TO operational code from the operational-area
         dictionary. Legacy <code>routeCode</code> is <strong>never</strong> overwritten —
         only <code>canonicalRouteCode</code> is updated. Bookings / vouchers / dispatch
@@ -302,14 +302,14 @@ export function CanonicalBuilderSection({
       </p>
 
       {areasLoading ? (
-        <p style={{ color: '#667085', fontSize: '0.85rem', margin: 0 }}>Loading operational areas…</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem', margin: 0 }}>Loading operational areas…</p>
       ) : null}
       {areasError ? <p className="form-error" style={{ margin: 0 }}>{areasError}</p> : null}
 
       {!areasLoading && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>From area</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>From area</span>
             <select value={fromAreaId} onChange={(e) => setFromAreaId(e.target.value)}>
               <option value="">— pick an area —</option>
               {areaOptions
@@ -321,11 +321,11 @@ export function CanonicalBuilderSection({
                 ))}
             </select>
             {currentFromCity ? (
-              <span style={{ fontSize: '0.72rem', color: '#98a2b3' }}>Row currently has fromCity = {currentFromCity}</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>Row currently has fromCity = {currentFromCity}</span>
             ) : null}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>To area</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>To area</span>
             <select value={toAreaId} onChange={(e) => setToAreaId(e.target.value)}>
               <option value="">— pick an area —</option>
               {areaOptions
@@ -337,7 +337,7 @@ export function CanonicalBuilderSection({
                 ))}
             </select>
             {currentToCity ? (
-              <span style={{ fontSize: '0.72rem', color: '#98a2b3' }}>Row currently has toCity = {currentToCity}</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>Row currently has toCity = {currentToCity}</span>
             ) : null}
           </div>
         </div>
@@ -345,7 +345,7 @@ export function CanonicalBuilderSection({
 
       {/* Preview banner */}
       {previewing && !preview ? (
-        <p style={{ marginTop: '0.5rem', color: '#667085', fontSize: '0.85rem' }}>Checking…</p>
+        <p style={{ marginTop: '0.5rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>Checking…</p>
       ) : null}
       {preview ? (
         <PreviewBanner
@@ -547,7 +547,7 @@ function PreviewBanner({
         — {preview.suggestedRouteName}.
       </p>
       {preview.existingMatch?.id === standardId ? (
-        <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#475467' }}>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: 'var(--ds-color-text-muted, #475569)' }}>
           (This row already owns the canonical code — Apply rewrites it cleanly with the area-generated route name.)
         </p>
       ) : null}

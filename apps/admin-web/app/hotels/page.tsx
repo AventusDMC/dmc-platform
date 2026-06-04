@@ -186,7 +186,7 @@ export default async function HotelsListPage() {
           </div>
         )}
 
-        <p className="table-subcopy" style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>
+        <p className="table-subcopy" style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}>
           /hotels — pure server component, no client JS beyond the global admin shell.
           Detail pages and the contract wizard ship in subsequent PRs.
         </p>
@@ -204,7 +204,7 @@ function SummaryCard({ label, value, helper }: { label: string; value: number; h
       <strong style={{ fontSize: '1.6rem', display: 'block', margin: '0.2rem 0' }}>
         {value.toLocaleString()}
       </strong>
-      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{helper}</span>
+      <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>{helper}</span>
     </article>
   );
 }

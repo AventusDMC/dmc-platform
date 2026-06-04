@@ -51,7 +51,7 @@ export function QuoteWorkspaceGuide() {
         {/* Five-step path */}
         <section>
           <h4 style={{ margin: '0 0 0.4rem', color: '#3a5a3a', fontSize: '0.95rem' }}>The 5-step path</h4>
-          <ol style={{ paddingLeft: '1.2rem', margin: 0, color: '#475467', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <ol style={{ paddingLeft: '1.2rem', margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <li>
               <strong>Setup</strong> — confirm client, dates, pax, currency. Already done if you arrived here from the Guided Builder.
             </li>
@@ -73,7 +73,7 @@ export function QuoteWorkspaceGuide() {
         {/* Where to check the quote is correct */}
         <section>
           <h4 style={{ margin: '0 0 0.4rem', color: '#3a5a3a', fontSize: '0.95rem' }}>Three places to verify the quote is correct</h4>
-          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: '#475467', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <li>
               <strong>Pricing Audit</strong> (sage panel above day cards) — are prices entered? Currency mix? Margin floor?
             </li>
@@ -89,7 +89,7 @@ export function QuoteWorkspaceGuide() {
         {/* Vocabulary disambiguation — the "too many models" problem */}
         <section>
           <h4 style={{ margin: '0 0 0.4rem', color: '#3a5a3a', fontSize: '0.95rem' }}>Same thing, different names</h4>
-          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: '#475467', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <li>
               <strong>Itinerary</strong> = <strong>Day-by-day workspace</strong> = the column of day cards on the left side of the Services tab.
             </li>
@@ -108,7 +108,7 @@ export function QuoteWorkspaceGuide() {
         {/* When to use which Auto Builder button */}
         <section>
           <h4 style={{ margin: '0 0 0.4rem', color: '#3a5a3a', fontSize: '0.95rem' }}>Which Auto Builder button do I press?</h4>
-          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: '#475467', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <li>
               <strong>Generate Full Itinerary</strong> — does everything: day shells + hotels + transport + activities at 20% markup. <em>Start here 9 times out of 10.</em>
             </li>
@@ -124,7 +124,7 @@ export function QuoteWorkspaceGuide() {
         {/* What the tabs mean */}
         <section>
           <h4 style={{ margin: '0 0 0.4rem', color: '#3a5a3a', fontSize: '0.95rem' }}>What each tab is for</h4>
-          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: '#475467', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <ul style={{ paddingLeft: '1.2rem', margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <li>
               <strong>Overview</strong> — quote setup form + at-a-glance trip summary. Edit client / dates / pax here.
             </li>

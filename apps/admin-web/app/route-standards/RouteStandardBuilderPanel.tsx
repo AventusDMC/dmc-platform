@@ -269,7 +269,7 @@ export function RouteStandardBuilderPanel() {
       }}
     >
       <h2 style={{ marginTop: 0 }}>Route Builder</h2>
-      <p style={{ color: '#667085', marginTop: 0, fontSize: '0.88rem' }}>
+      <p style={{ color: 'var(--ds-color-text-subtle, #667085)', marginTop: 0, fontSize: '0.88rem' }}>
         Pick the operational From / To areas and the ERP generates the canonical route code
         for you (AMM_PET, PET_WR, etc.). Duplicate route standards are detected before save.
         Route codes are never typed by hand.
@@ -291,7 +291,7 @@ export function RouteStandardBuilderPanel() {
               borderRadius: 999,
               border: mode === m ? '1px solid #0c4a6e' : '1px solid #d0d5dd',
               background: mode === m ? '#e0f2fe' : '#fff',
-              color: mode === m ? '#0c4a6e' : '#475467',
+              color: mode === m ? '#0c4a6e' : 'var(--ds-color-text-muted, #475569)',
               fontWeight: mode === m ? 700 : 500,
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -303,7 +303,7 @@ export function RouteStandardBuilderPanel() {
       </div>
 
       {areasLoading ? (
-        <p style={{ color: '#667085', fontSize: '0.85rem' }}>Loading operational areas…</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>Loading operational areas…</p>
       ) : null}
       {areasError ? <p className="form-error">{areasError}</p> : null}
 
@@ -328,7 +328,7 @@ export function RouteStandardBuilderPanel() {
           <NumberField label="Duration (hours)" value={durationHours} onChange={setDurationHours} step="0.1" placeholder="3.5" />
           <NumberField label="Operational buffer (min)" value={bufferMinutes} onChange={setBufferMinutes} step="5" placeholder="30" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', gridColumn: '1 / -1' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Notes</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Notes</span>
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -421,7 +421,7 @@ export function RouteStandardBuilderPanel() {
                 alignItems: 'center',
                 gap: '0.4rem',
                 fontSize: '0.85rem',
-                color: '#475467',
+                color: 'var(--ds-color-text-muted, #475569)',
                 cursor: 'pointer',
               }}
             >
@@ -475,7 +475,7 @@ function AreaPicker({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>{label}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">— pick an area —</option>
         {options
@@ -505,7 +505,7 @@ function NumberField({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>{label}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>{label}</span>
       <input type="number" step={step} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
@@ -524,7 +524,7 @@ function PreviewBanner({
 }) {
   if (previewing && !preview) {
     return (
-      <p style={{ marginTop: '0.5rem', color: '#667085', fontSize: '0.85rem' }}>
+      <p style={{ marginTop: '0.5rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
         Checking for duplicates…
       </p>
     );
@@ -616,7 +616,7 @@ function MultiStopBuilder({
   }
   return (
     <div>
-      <p style={{ color: '#667085', fontSize: '0.85rem' }}>
+      <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
         Pick an ordered sequence of stops. The ERP creates a separate Route Standard for each leg
         (AMM → MAD → NEB → PET becomes <code>AMM_MAD</code>, <code>MAD_NEB</code>, <code>NEB_PET</code>).
         Existing legs are reused; only missing legs are created.
@@ -624,7 +624,7 @@ function MultiStopBuilder({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
         {stops.map((stopId, idx) => (
           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ color: '#475467', fontSize: '0.85rem', minWidth: '4.5rem' }}>Stop {idx + 1}</span>
+            <span style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem', minWidth: '4.5rem' }}>Stop {idx + 1}</span>
             <select
               value={stopId}
               onChange={(e) => onChange(idx, e.target.value)}

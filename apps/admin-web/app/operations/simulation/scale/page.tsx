@@ -206,13 +206,13 @@ export default async function ScaleSimulationPage({
       >
         <div>
           <h2 style={{ margin: 0 }}>Apply a preset</h2>
-          <p style={{ margin: 0, color: '#667085', fontSize: '0.85rem' }}>
+          <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
             Each preset spawns N synthetic services across the most-recent bookings. Resources (drivers / vehicles / guides) are reused to force
             conflicts. Some services land in ISSUE state with delayMinutes to generate immediate operational pressure.
           </p>
         </div>
         {presets.length === 0 ? (
-          <p style={{ color: '#667085' }}>No presets available. Backend may still be deploying.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>No presets available. Backend may still be deploying.</p>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.6rem' }}>
             {presets.map((p) => (
@@ -252,7 +252,7 @@ export default async function ScaleSimulationPage({
           border: '1px dashed #d0d5dd',
           borderRadius: 10,
           padding: '0.85rem 1rem',
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.85rem',
           marginTop: '1rem',
           display: 'flex',
@@ -260,7 +260,7 @@ export default async function ScaleSimulationPage({
           gap: '0.3rem',
         }}
       >
-        <strong style={{ color: '#101828' }}>Synthetic data caveats (v1)</strong>
+        <strong style={{ color: 'var(--ds-color-text, #0F172A)' }}>Synthetic data caveats (v1)</strong>
         <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
           <li>Synthetic services attach to existing bookings (not new bookings). Booking-level counts (pax, rooms, etc.) don't change.</li>
           <li>All synthetic rows are tagged with <code>sourceMetadata.scaleSimMarker = true</code> for safe cleanup.</li>
@@ -301,7 +301,7 @@ function PresetCard({ preset, disabled }: { preset: Preset; disabled: boolean })
         <strong style={{ color: tone.text, fontSize: '1rem' }}>{preset.label}</strong>
         <span style={{ color: tone.text, fontSize: '0.78rem', fontWeight: 700 }}>~{expectedServices} services</span>
       </div>
-      <p style={{ margin: 0, color: '#475467', fontSize: '0.82rem', lineHeight: 1.4 }}>{preset.description}</p>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem', lineHeight: 1.4 }}>{preset.description}</p>
       <ul style={{ margin: 0, paddingLeft: '1.1rem', color: tone.text, fontSize: '0.78rem' }}>
         <li>{preset.bookingsToTouch} bookings × {preset.servicesPerBooking} svcs</li>
         <li>Incident rate: {preset.incidentRatePct}%</li>

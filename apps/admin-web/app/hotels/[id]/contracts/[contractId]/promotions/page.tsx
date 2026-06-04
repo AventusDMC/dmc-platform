@@ -339,11 +339,11 @@ export default async function ContractPromotionsPage({ params }: Props) {
                     const updateAction = updatePromotion.bind(null, hotelId, contractId, p.id);
                     const deleteAction = deletePromotion.bind(null, hotelId, contractId, p.id);
                     return (
-                      <tr key={p.id} style={p.isActive ? undefined : { color: '#94a3b8' }}>
+                      <tr key={p.id} style={p.isActive ? undefined : { color: 'var(--ds-color-text-faint, #94A3B8)' }}>
                         <td>
                           <strong>{p.name}</strong>
                           {p.notes ? (
-                            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{p.notes}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ds-color-text-faint, #94A3B8)' }}>{p.notes}</div>
                           ) : null}
                         </td>
                         <td>{TYPE_LABELS[p.type] || p.type}</td>
@@ -443,7 +443,7 @@ export default async function ContractPromotionsPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/promotions — server-rendered. Create / edit
           / delete via Server Actions; applied at quote time by the promotions evaluator.

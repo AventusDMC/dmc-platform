@@ -286,7 +286,7 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
                 >
                   Guided Builder handoff
                 </span>
-                <span style={{ color: '#475467', fontSize: '0.88rem' }}>
+                <span style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem' }}>
                   Pre-filled from the wizard: <strong>{guidedHandoff.initialValues.title}</strong>. Confirm the commercial baseline below — nights,
                   pax, dates, and the city sequence carry through to the day-by-day builder.
                 </span>

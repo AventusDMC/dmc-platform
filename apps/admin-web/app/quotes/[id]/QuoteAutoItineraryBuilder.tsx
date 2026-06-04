@@ -2624,7 +2624,7 @@ export function QuoteAutoItineraryBuilder({
           >
             Guided Builder ready
           </span>
-          <span style={{ color: '#475467', fontSize: '0.88rem' }}>
+          <span style={{ color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.88rem' }}>
             {guidedPrefillBanner.cities.length > 0
               ? `${guidedPrefillBanner.cities.join(' → ')}`
               : 'Route pre-filled from the wizard.'}
@@ -2708,7 +2708,7 @@ export function QuoteAutoItineraryBuilder({
           empty day shells. Plain language up front fixes that. */}
       <p
         className="detail-copy"
-        style={{ marginTop: '0.6rem', marginBottom: '0.3rem', color: '#475467', fontSize: '0.82rem' }}
+        style={{ marginTop: '0.6rem', marginBottom: '0.3rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.82rem' }}
       >
         Pick how much of the itinerary the auto-builder should do for you.
       </p>
@@ -2938,7 +2938,7 @@ export function QuoteAutoItineraryBuilder({
                       >
                         {confidence.label}
                       </span>
-                      {bits.length > 0 ? <span style={{ color: '#475467' }}>{bits.join(' · ')}</span> : null}
+                      {bits.length > 0 ? <span style={{ color: 'var(--ds-color-text-muted, #475569)' }}>{bits.join(' · ')}</span> : null}
                       {standard.notes ? <span style={{ color: '#6b7a6b' }}>· {standard.notes}</span> : null}
                     </em>
                   );

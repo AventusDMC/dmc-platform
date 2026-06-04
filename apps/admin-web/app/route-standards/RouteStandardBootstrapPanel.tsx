@@ -70,7 +70,7 @@ export function RouteStandardBootstrapPanel() {
           >
             Auto-generate from existing routes
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#475467', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Scan your Transfer Routes + Touring Routes and create draft RouteStandard rows for any without one yet.
             Existing standards are <strong>never</strong> overwritten. New rows are tagged{' '}
             <code style={{ background: '#fff', padding: '0 0.3rem', borderRadius: 3 }}>AUTO_BOOTSTRAP</code> so you can refine
@@ -106,7 +106,7 @@ export function RouteStandardBootstrapPanel() {
           >
             Bootstrap summary
           </p>
-          <ul style={{ marginTop: '0.4rem', marginBottom: 0, paddingLeft: '1.1rem', color: '#475467', fontSize: '0.85rem' }}>
+          <ul style={{ marginTop: '0.4rem', marginBottom: 0, paddingLeft: '1.1rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             <li>
               <strong>Scanned:</strong> {summary.touringRoutesScanned} touring + {summary.transferRoutesScanned} transfer ={' '}
               <strong>{summary.touringRoutesScanned + summary.transferRoutesScanned}</strong> operational routes

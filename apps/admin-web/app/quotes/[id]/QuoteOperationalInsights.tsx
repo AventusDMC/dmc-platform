@@ -227,7 +227,7 @@ export function QuoteOperationalInsights({ quoteId }: { quoteId: string }) {
                       <div style={{ flex: 1 }}>
                         <span
                           style={{
-                            color: '#475467',
+                            color: 'var(--ds-color-text-muted, #475569)',
                             fontSize: '0.7rem',
                             fontWeight: 700,
                             letterSpacing: '0.04em',

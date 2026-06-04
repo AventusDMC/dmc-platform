@@ -474,7 +474,7 @@ export function GuidedJourneyComposer({
 
       {/* Section 2 — Pacing intelligence */}
       {loading ? (
-        <p style={{ color: '#64748b', fontSize: '0.88rem', margin: 0 }}>Reading suggestions…</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.88rem', margin: 0 }}>Reading suggestions…</p>
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {data ? <PacingSection pacing={data.pacing} notes={data.notes} /> : null}
@@ -514,7 +514,7 @@ export function GuidedJourneyComposer({
       {/* Section 7 — Quote readiness checklist */}
       <ReadinessSection readiness={readiness} />
 
-      <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.78rem', textAlign: 'center' }}>
+      <p style={{ margin: 0, color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.78rem', textAlign: 'center' }}>
         Guided mode is read-only. To add services, override pricing, or edit dispatch, switch to the
         Advanced Workspace.
       </p>
@@ -532,7 +532,7 @@ function JourneyFlowSection({ destinations, quote }: { destinations: string[]; q
           borderRadius: 10,
           padding: '1.5rem',
           textAlign: 'center',
-          color: '#64748b',
+          color: 'var(--ds-color-text-subtle, #667085)',
         }}
       >
         Add destinations from the Itinerary tab. They'll appear here as a journey flow.
@@ -574,13 +574,13 @@ function JourneyFlowSection({ destinations, quote }: { destinations: string[]; q
         <FlowNode label={startLabel} tone="anchor" />
         {destinations.map((d, i) => (
           <span key={`${d}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
-            <span style={{ color: '#94a3b8' }}>→</span>
+            <span style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>→</span>
             <FlowNode label={d} />
           </span>
         ))}
       </div>
       {nights ? (
-        <p style={{ margin: '0.55rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ margin: '0.55rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           {nights} night{nights === 1 ? '' : 's'} total · {quote.adults || 0} adult{quote.adults === 1 ? '' : 's'}
           {quote.children ? ` + ${quote.children} child${quote.children === 1 ? '' : 'ren'}` : ''}
         </p>
@@ -649,7 +649,7 @@ function PacingSection({ pacing, notes }: { pacing: GuidedSuggestionsResponse['p
         >
           {pacing.label}
         </span>
-        <span style={{ color: '#64748b', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
           {pacing.totalDriveHours}h total drive · longest leg {pacing.longestSingleLegHours}h
         </span>
       </div>
@@ -657,7 +657,7 @@ function PacingSection({ pacing, notes }: { pacing: GuidedSuggestionsResponse['p
         {pacing.explanation}
       </p>
       {notes.length > 0 ? (
-        <ul style={{ margin: '0.55rem 0 0', paddingLeft: '1.25rem', color: '#64748b', fontSize: '0.82rem' }}>
+        <ul style={{ margin: '0.55rem 0 0', paddingLeft: '1.25rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
           {notes.map((note, i) => (
             <li key={i}>{note}</li>
           ))}
@@ -693,7 +693,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
       >
         Suggested touring routes
       </p>
-      <p style={{ margin: '0.2rem 0 0.55rem', color: '#64748b', fontSize: '0.82rem' }}>
+      <p style={{ margin: '0.2rem 0 0.55rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
         Proven operational flows the operations team already runs. Add them from the Advanced Workspace
         if any match what you're building.
       </p>
@@ -740,7 +740,7 @@ function SuggestedTouringRoutesSection({ suggestions }: { suggestions: GuidedSug
                       </code>
                       {tr.name}
                     </p>
-                    <p style={{ margin: '0.1rem 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+                    <p style={{ margin: '0.1rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
                       {tr.durationDays ? `${tr.durationDays}-day · ` : ''}
                       {tr.region ? `${tr.region} · ` : ''}
                       {tr.estimatedDriveHours != null ? `${tr.estimatedDriveHours}h drive` : ''}
@@ -875,7 +875,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
       <span style={{ color, fontSize: '1rem', fontWeight: 700, width: '1.1rem' }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontWeight: 600, fontSize: '0.88rem' }}>{item.label}</p>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '0.82rem' }}>{item.detail}</p>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>{item.detail}</p>
       </div>
     </div>
   );
@@ -920,7 +920,7 @@ function SuggestedHotelsSection({
           >
             Suggested hotels
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
             Per destination, grouped by commercial tier. Each card shows the recommended meal plan,
             operational confidence, and short notes. Adding hotels happens in the Advanced Workspace —
             the link on each card jumps you there with the hotel pre-selected.
@@ -945,13 +945,13 @@ function SuggestedHotelsSection({
       </div>
 
       {loading && !hotelData ? (
-        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.6rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Reading hotel catalog for these destinations…
         </p>
       ) : null}
 
       {!loading && !hotelData ? (
-        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.6rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Could not load hotel suggestions. Open the standard hotel selector to search by name or city.
         </p>
       ) : null}
@@ -997,7 +997,7 @@ function DestinationHotelGroup({
             {group.matchedAreaCode}
           </span>
         ) : null}
-        <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}>
           {group.totalHotelCount} hotel{group.totalHotelCount === 1 ? '' : 's'}
         </span>
       </div>
@@ -1151,7 +1151,7 @@ function HotelCard({
         </p>
       ) : null}
       {hotel.notes.length > 0 ? (
-        <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           {hotel.notes.join(' · ')}
         </p>
       ) : null}
@@ -1203,7 +1203,7 @@ function SuggestedExperiencesSection({
           >
             Suggested experiences
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
             Per destination, grouped by travel mood — Culture, Adventure, Religious, Relaxation,
             Family, Wellness, Food & Local. Each card shows duration, intensity, and operational
             confidence. Adding experiences happens on the Activities tab — the link on each card
@@ -1229,13 +1229,13 @@ function SuggestedExperiencesSection({
       </div>
 
       {loading && !experienceData ? (
-        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.6rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Reading activities catalog for these destinations…
         </p>
       ) : null}
 
       {!loading && !experienceData ? (
-        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.6rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Could not load experience suggestions. Open the standard activity selector to search by name.
         </p>
       ) : null}
@@ -1332,7 +1332,7 @@ function DestinationExperienceGroup({
             {group.matchedAreaCode}
           </span>
         ) : null}
-        <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}>
           {group.totalExperienceCount} experience{group.totalExperienceCount === 1 ? '' : 's'}
         </span>
       </div>
@@ -1517,7 +1517,7 @@ function ExperienceCard({
         </p>
       ) : null}
       {!compact && exp.notes.length > 0 ? (
-        <p style={{ margin: 0, color: '#64748b', fontSize: '0.78rem' }}>
+        <p style={{ margin: 0, color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           {exp.notes.join(' · ')}
         </p>
       ) : null}
@@ -1563,7 +1563,7 @@ function SuggestedTransportSection({
           >
             Suggested transport
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
             Vehicle sizing based on pax count + journey rhythm. Per-leg overlays surface route-specific
             risks (airport timing, mountain road, border crossing, desert logistics). Booking happens
             on the Transport tab — the link below jumps you there.
@@ -1588,7 +1588,7 @@ function SuggestedTransportSection({
       </div>
 
       {loading && !transportData ? (
-        <p style={{ marginTop: '0.6rem', color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ marginTop: '0.6rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem' }}>
           Reading routes + risk overlays for this journey…
         </p>
       ) : null}
@@ -1628,7 +1628,7 @@ function SuggestedTransportSection({
           ) : null}
 
           {transportData.notes.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#64748b', fontSize: '0.82rem' }}>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>
               {transportData.notes.map((note, i) => (
                 <li key={i}>{note}</li>
               ))}
@@ -1677,7 +1677,7 @@ function TransportRecommendationCard({
             <p style={{ margin: 0, color: 'var(--ds-color-text, #0F172A)', fontSize: '1.05rem', fontWeight: 700 }}>
               {recommendation.label}
             </p>
-            <span style={{ color: '#64748b', fontSize: '0.82rem' }}>{recommendation.seatRange}</span>
+            <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.82rem' }}>{recommendation.seatRange}</span>
             {recommendation.preferredOperationalChoice ? (
               <span
                 style={{
@@ -1698,7 +1698,7 @@ function TransportRecommendationCard({
           <p style={{ margin: '0.15rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.85rem' }}>
             Recommended for: <strong>{recommendation.recommendationLine}</strong>
           </p>
-          <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
             Typical examples: {recommendation.typicalExample}
           </p>
           <p style={{ margin: '0.25rem 0 0', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
@@ -1720,7 +1720,7 @@ function TransportRecommendationCard({
                 recommendation.operationalConfidenceLabel === 'Moderate coordination' ? '🔵 ' : '🟡 '}
               {recommendation.operationalConfidenceLabel}
             </span>
-            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>
+            <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.72rem' }}>
               {paxCount} pax
             </span>
           </div>
@@ -1807,7 +1807,7 @@ function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
           ) : null}
         </p>
         {leg.driveHours != null ? (
-          <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+          <span style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.76rem' }}>
             {leg.driveHours}h
             {leg.distanceKm != null ? ` · ${leg.distanceKm} km` : ''}
           </span>
@@ -1836,7 +1836,7 @@ function LegOverlayRow({ leg }: { leg: LegTransportInsight }) {
           })}
         </div>
       ) : (
-        <p style={{ margin: '0.2rem 0 0', color: '#94a3b8', fontSize: '0.76rem' }}>
+        <p style={{ margin: '0.2rem 0 0', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.76rem' }}>
           Standard transfer · no special operational notes
         </p>
       )}

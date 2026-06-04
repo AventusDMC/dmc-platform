@@ -267,7 +267,7 @@ export default async function IntelligencePage() {
             );
           })}
         </div>
-        <p style={{ margin: '0.5rem 0 0', color: '#667085', fontSize: '0.78rem' }}>
+        <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.78rem' }}>
           Top number = services scheduled. D/V = driver / vehicle utilisation %. Green = low, amber = high, red = overloaded.
         </p>
       </Panel>
@@ -277,17 +277,17 @@ export default async function IntelligencePage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '0.35rem 0.5rem', color: '#667085' }}></th>
-              <th style={{ padding: '0.35rem 0.5rem', color: '#667085' }}>Morning</th>
-              <th style={{ padding: '0.35rem 0.5rem', color: '#667085' }}>Afternoon</th>
-              <th style={{ padding: '0.35rem 0.5rem', color: '#667085' }}>Evening</th>
-              <th style={{ padding: '0.35rem 0.5rem', color: '#667085' }}>Late</th>
+              <th style={{ textAlign: 'left', padding: '0.35rem 0.5rem', color: 'var(--ds-color-text-subtle, #667085)' }}></th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--ds-color-text-subtle, #667085)' }}>Morning</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--ds-color-text-subtle, #667085)' }}>Afternoon</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--ds-color-text-subtle, #667085)' }}>Evening</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--ds-color-text-subtle, #667085)' }}>Late</th>
             </tr>
           </thead>
           <tbody>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
               <tr key={day}>
-                <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', color: '#475467', fontWeight: 600 }}>{day}</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', color: 'var(--ds-color-text-muted, #475569)', fontWeight: 600 }}>{day}</th>
                 {(['morning', 'afternoon', 'evening', 'late'] as const).map((bucket) => {
                   const cell = data.heatmap.find((c) => c.dayOfWeek === idx && c.bucket === bucket);
                   const total = cell?.totalServices ?? 0;
@@ -336,8 +336,8 @@ export default async function IntelligencePage() {
                 <td style={{ padding: '0.5rem', fontWeight: 600 }}>{t.weekLabel}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right' }}>{t.dispatchedCount}</td>
                 <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--ds-color-success, #067647)' }}>{t.completedCount}</td>
-                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.delayedCount > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467' }}>{t.delayedCount}</td>
-                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : '#475467', fontWeight: 700 }}>
+                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.delayedCount > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)' }}>{t.delayedCount}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right', color: t.incidentCount > 0 ? 'var(--ds-color-danger, #B42318)' : 'var(--ds-color-text-muted, #475569)', fontWeight: 700 }}>
                   {t.incidentCount}
                 </td>
               </tr>
@@ -378,7 +378,7 @@ export default async function IntelligencePage() {
                   {b.category}
                 </span>
                 <strong>{b.label}</strong>
-                <span style={{ flex: 1, color: '#475467' }}>{b.insight}</span>
+                <span style={{ flex: 1, color: 'var(--ds-color-text-muted, #475569)' }}>{b.insight}</span>
               </li>
             ))}
           </ul>
@@ -441,7 +441,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
   return (
     <Panel title={title} accent={accent}>
       {performers.length === 0 ? (
-        <p style={{ color: '#667085', fontSize: '0.85rem', margin: 0 }}>No assignments in window.</p>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', fontSize: '0.85rem', margin: 0 }}>No assignments in window.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
@@ -462,7 +462,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.incidentRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.incidentRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
+                    color: p.incidentRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.incidentRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)',
                     fontWeight: 600,
                   }}
                 >
@@ -472,7 +472,7 @@ function PerformerTable({ title, accent, performers }: { title: string; accent: 
                   style={{
                     padding: '0.4rem',
                     textAlign: 'right',
-                    color: p.delayedRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.delayedRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : '#475467',
+                    color: p.delayedRatePct >= 20 ? 'var(--ds-color-danger, #B42318)' : p.delayedRatePct > 0 ? 'var(--ds-color-warning, #B54708)' : 'var(--ds-color-text-muted, #475569)',
                   }}
                 >
                   {p.delayedRatePct}%{p.avgDelayMinutes > 0 ? ` · ${p.avgDelayMinutes}m` : ''}

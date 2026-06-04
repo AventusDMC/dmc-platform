@@ -236,7 +236,7 @@ export default async function ContractAllotmentsPage({ params }: Props) {
                           {a.stopSale ? (
                             <span style={{ color: '#b91c1c', fontWeight: 600 }}>Stop sale</span>
                           ) : (
-                            <span style={{ color: '#64748b' }}>—</span>
+                            <span style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>—</span>
                           )}
                         </td>
                         <td>{a.isActive ? 'Yes' : 'No'}</td>
@@ -330,7 +330,7 @@ export default async function ContractAllotmentsPage({ params }: Props) {
 
         <p
           className="table-subcopy"
-          style={{ marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.75rem' }}
+          style={{ marginTop: '1.5rem', color: 'var(--ds-color-text-faint, #94A3B8)', fontSize: '0.75rem' }}
         >
           /hotels/{hotelId}/contracts/{contractId}/allotments — server-rendered. Create /
           edit / delete via Server Actions. Availability is evaluated at quote time from

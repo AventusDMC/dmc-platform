@@ -169,7 +169,7 @@ export default async function ResourceConflictsPage() {
           }}
         >
           <strong style={{ fontSize: '1.1rem' }}>✓ No resource conflicts in the next {conflicts.rangeDays} days.</strong>
-          <p style={{ margin: '0.5rem 0 0', color: '#475467' }}>
+          <p style={{ margin: '0.5rem 0 0', color: 'var(--ds-color-text-muted, #475569)' }}>
             Every assigned driver, vehicle, and guide is scheduled with room to breathe.
           </p>
         </section>
@@ -204,7 +204,7 @@ export default async function ResourceConflictsPage() {
           border: '1px dashed #d0d5dd',
           borderRadius: 10,
           padding: '0.85rem 1rem',
-          color: '#667085',
+          color: 'var(--ds-color-text-subtle, #667085)',
           fontSize: '0.85rem',
           marginBottom: '1rem',
         }}
@@ -307,7 +307,7 @@ function ConflictSection({
           borderRadius: 10,
           padding: '0.75rem 1rem',
           marginBottom: '1rem',
-          color: '#475467',
+          color: 'var(--ds-color-text-muted, #475569)',
           fontSize: '0.85rem',
           display: 'flex',
           justifyContent: 'space-between',
@@ -408,7 +408,7 @@ function ConflictCard({
             <strong style={{ fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem' }}>
               {formatTime(s.startTime) || '—'}
             </strong>
-            <span style={{ color: '#667085', minWidth: '4.5rem' }}>{formatDate(s.serviceDate)}</span>
+            <span style={{ color: 'var(--ds-color-text-subtle, #667085)', minWidth: '4.5rem' }}>{formatDate(s.serviceDate)}</span>
             <span style={{ flex: 1 }}>
               <Link
                 href={`/bookings/${s.bookingId}/operations`}
@@ -422,7 +422,7 @@ function ConflictCard({
             <span
               style={{
                 background: '#f2f4f7',
-                color: '#475467',
+                color: 'var(--ds-color-text-muted, #475569)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,
                 fontSize: '0.72rem',
@@ -434,7 +434,7 @@ function ConflictCard({
             <span
               style={{
                 background: s.executionStatus === 'READY' ? '#f2f4f7' : 'var(--ds-color-info-surface, #EFF8FF)',
-                color: s.executionStatus === 'READY' ? '#475467' : 'var(--ds-color-info, #175CD3)',
+                color: s.executionStatus === 'READY' ? 'var(--ds-color-text-muted, #475569)' : 'var(--ds-color-info, #175CD3)',
                 padding: '0.1rem 0.45rem',
                 borderRadius: 4,
                 fontSize: '0.72rem',

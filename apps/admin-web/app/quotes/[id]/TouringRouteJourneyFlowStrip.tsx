@@ -150,7 +150,7 @@ export function TouringRouteJourneyFlowStrip({
           style={{
             margin: 0,
             fontSize: '0.72rem',
-            color: '#64748b',
+            color: 'var(--ds-color-text-subtle, #667085)',
             fontVariantNumeric: 'tabular-nums',
             lineHeight: 1.4,
           }}

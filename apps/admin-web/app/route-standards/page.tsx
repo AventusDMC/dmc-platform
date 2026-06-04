@@ -103,7 +103,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
           {activeCount} active / {standards.length} total
         </h2>
         {standards.length === 0 ? (
-          <p style={{ color: '#667085' }}>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>
             No route standards yet. Add one above, or import a workbook to seed the catalog in bulk.
           </p>
         ) : (
@@ -229,7 +229,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                             style={{
                               marginLeft: '0.4rem',
                               background: '#f0f4f8',
-                              color: '#475467',
+                              color: 'var(--ds-color-text-muted, #475569)',
                               padding: '0.05rem 0.4rem',
                               borderRadius: 999,
                               fontSize: '0.62rem',
@@ -244,18 +244,18 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                         ) : null}
                       </td>
                       <td style={{ padding: '0.5rem' }}>{s.routeName}</td>
-                      <td style={{ padding: '0.5rem', color: '#475467' }}>
-                        {s.fromCity || <em style={{ color: '#98a2b3' }}>—</em>}
+                      <td style={{ padding: '0.5rem', color: 'var(--ds-color-text-muted, #475569)' }}>
+                        {s.fromCity || <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                         {s.toCity ? ` → ${s.toCity}` : s.destinationArea ? ` → ${s.destinationArea}` : ''}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {s.standardDistanceKm !== null ? `${s.standardDistanceKm} km` : <em style={{ color: '#98a2b3' }}>—</em>}
+                        {s.standardDistanceKm !== null ? `${s.standardDistanceKm} km` : <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {s.standardDurationHours !== null ? `${s.standardDurationHours} h` : <em style={{ color: '#98a2b3' }}>—</em>}
+                        {s.standardDurationHours !== null ? `${s.standardDurationHours} h` : <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {s.operationalBufferMinutes !== null ? `${s.operationalBufferMinutes} min` : <em style={{ color: '#98a2b3' }}>—</em>}
+                        {s.operationalBufferMinutes !== null ? `${s.operationalBufferMinutes} min` : <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                       </td>
                       <td style={{ padding: '0.5rem' }}>
                         <span
@@ -277,7 +277,7 @@ export default async function RouteStandardsPage({ searchParams }: { searchParam
                         <span
                           style={{
                             background: s.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
-                            color: s.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
+                            color: s.isActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,
                             fontSize: '0.72rem',

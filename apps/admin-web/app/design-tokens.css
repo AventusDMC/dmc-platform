@@ -33,6 +33,8 @@
   --ds-color-text: #0F172A;          /* default body ink */
   --ds-color-text-strong: #111827;   /* headings */
   --ds-color-text-muted: #475569;    /* secondary text */
+  --ds-color-text-subtle: #667085;   /* tertiary text — captions, meta (Phase 3 gray-tier consolidation) */
+  --ds-color-text-faint: #94A3B8;    /* faint text — placeholders, disabled labels (Phase 3 gray-tier consolidation) */
 
   /* Feedback — danger (matches the values status banners currently inline) */
   --ds-color-danger: #B42318;

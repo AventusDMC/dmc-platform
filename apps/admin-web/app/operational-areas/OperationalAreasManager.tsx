@@ -320,7 +320,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
         }}
       >
         <h2 style={{ marginTop: 0 }}>{editingId ? 'Edit operational area' : 'Add operational area'}</h2>
-        <p style={{ color: '#667085', marginTop: 0, fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--ds-color-text-subtle, #667085)', marginTop: 0, fontSize: '0.85rem' }}>
           Codes must be unique. UPPER_SNAKE_CASE is enforced server-side. Default flags
           are smart starting values the Route Builder pre-applies when this area is on
           either side of a route — operators can always override per row.
@@ -360,7 +360,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Type *</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Type *</span>
               <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} required>
                 {AREA_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -392,7 +392,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                 multiple areas share the same city + type (e.g. QAIA=1
                 beats Marka=2 for AIRPORT/Amman). Blank = lowest. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>
                 Priority
               </span>
               <input
@@ -404,7 +404,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                 onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
                 title="Lower number wins when multiple areas share the same city + type. Leave blank for default (lowest priority)."
               />
-              <span style={{ fontSize: '0.72rem', color: '#667085', lineHeight: 1.35 }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-subtle, #667085)', lineHeight: 1.35 }}>
                 Lower wins when multiple areas share a city + type.
                 Blank = lowest. e.g. QAIA = 1 beats Marka = 2.
               </span>
@@ -523,7 +523,7 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
           {visibleAreas.length} of {areas.length} areas
         </h2>
         {visibleAreas.length === 0 ? (
-          <p style={{ color: '#667085' }}>No matches. Try adjusting the filters or clearing the search.</p>
+          <p style={{ color: 'var(--ds-color-text-subtle, #667085)' }}>No matches. Try adjusting the filters or clearing the search.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
@@ -558,20 +558,20 @@ export function OperationalAreasManager({ initialAreas }: { initialAreas: Operat
                         <strong>{a.code}</strong>
                       </td>
                       <td style={{ padding: '0.5rem' }}>{a.name}</td>
-                      <td style={{ padding: '0.5rem', color: '#475467' }}>{a.type.replace(/_/g, ' ')}</td>
+                      <td style={{ padding: '0.5rem', color: 'var(--ds-color-text-muted, #475569)' }}>{a.type.replace(/_/g, ' ')}</td>
                       <td style={{ padding: '0.5rem' }}>{a.city}</td>
-                      <td style={{ padding: '0.5rem', color: '#475467' }}>{a.region || <em style={{ color: '#98a2b3' }}>—</em>}</td>
-                      <td style={{ padding: '0.5rem', color: '#475467', textAlign: 'center', fontFamily: 'monospace' }}>
-                        {a.priority != null ? a.priority : <em style={{ color: '#98a2b3' }}>—</em>}
+                      <td style={{ padding: '0.5rem', color: 'var(--ds-color-text-muted, #475569)' }}>{a.region || <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}</td>
+                      <td style={{ padding: '0.5rem', color: 'var(--ds-color-text-muted, #475569)', textAlign: 'center', fontFamily: 'monospace' }}>
+                        {a.priority != null ? a.priority : <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                       </td>
-                      <td style={{ padding: '0.5rem', color: '#475467', fontSize: '0.78rem' }}>
-                        {flags.length > 0 ? flags.join(' · ') : <em style={{ color: '#98a2b3' }}>—</em>}
+                      <td style={{ padding: '0.5rem', color: 'var(--ds-color-text-muted, #475569)', fontSize: '0.78rem' }}>
+                        {flags.length > 0 ? flags.join(' · ') : <em style={{ color: 'var(--ds-color-text-faint, #94A3B8)' }}>—</em>}
                       </td>
                       <td style={{ padding: '0.5rem' }}>
                         <span
                           style={{
                             background: a.isActive ? 'var(--ds-color-success-surface, #ECFDF3)' : '#f2f4f7',
-                            color: a.isActive ? 'var(--ds-color-success, #067647)' : '#475467',
+                            color: a.isActive ? 'var(--ds-color-success, #067647)' : 'var(--ds-color-text-muted, #475569)',
                             padding: '0.1rem 0.5rem',
                             borderRadius: 999,
                             fontSize: '0.72rem',
@@ -675,7 +675,7 @@ function CodeFieldWithPreview({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' }}>
-        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>Code *</span>
+        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>Code *</span>
         {diverged ? (
           <button
             type="button"
@@ -722,13 +722,13 @@ function CodeFieldWithPreview({
         <span>{chipMeta.label}</span>
       </div>
       {preview?.reason && preview.confidence !== 'unique' && preview.confidence !== 'empty' ? (
-        <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: '#475467', lineHeight: 1.35 }}>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--ds-color-text-muted, #475569)', lineHeight: 1.35 }}>
           {preview.reason}
         </p>
       ) : null}
       {preview && preview.alternatives.length > 0 ? (
         <div style={{ marginTop: '0.3rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.72rem', color: '#475467' }}>Try:</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-text-muted, #475569)' }}>Try:</span>
           {preview.alternatives.map((alt) => (
             <button
               key={alt}
@@ -772,7 +772,7 @@ function FieldText({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475467' }}>{label}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ds-color-text-muted, #475569)' }}>{label}</span>
       <input
         required={required}
         value={value}
@@ -831,8 +831,8 @@ function FlagCard({
         style={{ width: 18, height: 18, marginTop: '0.15rem', flexShrink: 0 }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#101828', lineHeight: 1.3 }}>{label}</div>
-        <div style={{ fontSize: '0.76rem', color: '#667085', lineHeight: 1.35, marginTop: '0.1rem' }}>{helper}</div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--ds-color-text, #0F172A)', lineHeight: 1.3 }}>{label}</div>
+        <div style={{ fontSize: '0.76rem', color: 'var(--ds-color-text-subtle, #667085)', lineHeight: 1.35, marginTop: '0.1rem' }}>{helper}</div>
       </div>
     </div>
   );
