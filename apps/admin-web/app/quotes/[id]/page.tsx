@@ -3382,13 +3382,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     </p>
                   </div>
                   <div className="quote-pricing-hero-actions">
-                    <Link href={buildStepHref('services')} className="secondary-button">
-                      Services
+                    <Link
+                      href={buildStepHref('pricing')}
+                      className={activeStep === 'group-pricing' ? 'secondary-button' : 'primary-button'}
+                    >
+                      Service prices
                     </Link>
-                    <Link href={buildStepHref('group-pricing')} className="secondary-button">
+                    <Link
+                      href={buildStepHref('group-pricing')}
+                      className={activeStep === 'group-pricing' ? 'primary-button' : 'secondary-button'}
+                    >
                       Group pricing
                     </Link>
-                    <Link href={buildStepHref('preview')} className="primary-button">
+                    <Link href={buildStepHref('preview')} className="secondary-button">
                       Preview
                     </Link>
                   </div>
