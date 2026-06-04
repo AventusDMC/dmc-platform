@@ -279,6 +279,7 @@ type TouringRouteForQuoteTransport = {
   includedHours?: number | null;
   active?: boolean | null;
   pricings?: NonNullable<RouteOption['touringRoutePricings']>;
+  days?: NonNullable<RouteOption['days']>;
 };
 
 function normalizeTransportSupplierRateRows(payload: unknown): TransportSupplierRateCard[] {
@@ -1003,6 +1004,7 @@ function mapTouringRouteToQuoteTransportRouteOption(route: TouringRouteForQuoteT
     durationDays: route.durationDays ?? null,
     mainDestinations: destinations,
     touringRoutePricings: route.pricings || [],
+    days: Array.isArray(route.days) ? route.days : [],
   };
 }
 

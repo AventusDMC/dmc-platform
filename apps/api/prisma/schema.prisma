@@ -2415,6 +2415,11 @@ model TouringRoute {
   // pricing authority); these legs only describe the movement +
   // timing + risk profile used by quote display and dispatch.
   routeLegs           TouringRouteLeg[]
+  // Per-day itinerary narrative authored on the route and reused on every
+  // quote: title + client-facing description + optional distance/drive-time +
+  // lunch/dinner flags. Copied into QuoteItineraryDay on "generate from route".
+  // Breakfast is derived from the matched hotel meal plan, not stored here.
+  days                TouringRouteDay[]
 
   @@index([active, name])
   @@index([startCity])
@@ -2423,6 +2428,25 @@ model TouringRoute {
   @@index([routeCategory])
   @@index([sicPossible])
   @@map("touring_routes")
+}
+
+model TouringRouteDay {
+  id             String       @id @default(uuid()) @db.Uuid
+  touringRouteId String       @db.Uuid
+  dayNumber      Int
+  title          String?
+  description    String?
+  distanceKm     Float?
+  driveMinutes   Int?
+  lunchIncluded  Boolean      @default(false)
+  dinnerIncluded Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  touringRoute   TouringRoute @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+
+  @@unique([touringRouteId, dayNumber])
+  @@index([touringRouteId])
+  @@map("touring_route_days")
 }
 
 model TouringRouteStop {

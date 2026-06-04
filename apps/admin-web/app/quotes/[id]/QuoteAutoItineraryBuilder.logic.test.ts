@@ -7,6 +7,7 @@ import {
   classifyDailyDayType,
   classifyOvernightCity,
   computeOvernightRuns,
+  deriveTouringRouteBaseCities,
   expandNightStopsToDayCities,
   generateItineraryDays,
   getAutoItineraryDayTitle,
@@ -315,5 +316,61 @@ describe('quote auto itinerary builder logic', () => {
   it('produces no overnight runs when no stop qualifies', () => {
     assert.deepEqual(computeOvernightRuns(['Amman', 'Amman', 'Amman']), []);
     assert.deepEqual(computeOvernightRuns([]), []);
+  });
+});
+
+describe('deriveTouringRouteBaseCities', () => {
+  it('collapses a round-trip day-anchor route to a single base day', () => {
+    // "Amman - Amman City Tour - Jerash - Amman", 1 day → one Amman base.
+    const result = deriveTouringRouteBaseCities({
+      startCity: 'Amman',
+      durationDays: 1,
+      mainDestinations: ['Amman City Tour', 'Jerash'],
+    });
+    assert.deepEqual(result.cities, ['Amman']);
+    assert.equal(result.dayCount, 1);
+  });
+
+  it('maps one distinct base per day for a linear multi-city route', () => {
+    const result = deriveTouringRouteBaseCities({
+      startCity: 'Amman',
+      durationDays: 4,
+      mainDestinations: ['Petra', 'Wadi Rum', 'Aqaba'],
+    });
+    assert.deepEqual(result.cities, ['Amman', 'Petra', 'Wadi Rum', 'Aqaba']);
+    assert.equal(result.dayCount, 4);
+    assert.equal(result.notes.length, 0);
+  });
+
+  it('assigns extra nights to overnight-eligible bases when days exceed bases', () => {
+    // 5 days, bases Amman + Petra + Wadi Rum (3) → 2 extra nights go to the
+    // overnight-eligible bases (Petra, Wadi Rum), not Amman.
+    const result = deriveTouringRouteBaseCities({
+      startCity: 'Amman',
+      durationDays: 5,
+      mainDestinations: ['Petra', 'Wadi Rum'],
+    });
+    assert.equal(result.cities.length, 5);
+    assert.equal(result.cities.filter((c) => c === 'Amman').length, 1);
+    assert.equal(result.cities.filter((c) => c === 'Petra').length, 2);
+    assert.equal(result.cities.filter((c) => c === 'Wadi Rum').length, 2);
+    assert.ok(result.notes.length >= 1);
+  });
+
+  it('clamps and warns when there are more bases than days', () => {
+    const result = deriveTouringRouteBaseCities({
+      startCity: 'Amman',
+      durationDays: 2,
+      mainDestinations: ['Petra', 'Wadi Rum', 'Aqaba'],
+    });
+    assert.equal(result.cities.length, 2);
+    assert.deepEqual(result.cities, ['Amman', 'Petra']);
+    assert.ok(result.notes.length >= 1);
+  });
+
+  it('falls back to the start city when destinations are empty, clamps duration to >=1', () => {
+    const result = deriveTouringRouteBaseCities({ startCity: 'Amman', durationDays: 0, mainDestinations: [] });
+    assert.deepEqual(result.cities, ['Amman']);
+    assert.equal(result.dayCount, 1);
   });
 });

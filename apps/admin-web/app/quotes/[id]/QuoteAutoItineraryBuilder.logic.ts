@@ -308,6 +308,96 @@ export function classifyDailyDayType(
   return 'full'; // Amman + anywhere else: assume a touring day
 }
 
+export type TouringRouteForDerivation = {
+  startCity?: string | null;
+  durationDays?: number | null;
+  mainDestinations?: string[] | null;
+};
+
+export type DerivedTouringDays = {
+  /** Base/overnight city per day. Length === dayCount. */
+  cities: string[];
+  /** Day count, clamped to >= 1 (authoritative = route.durationDays). */
+  dayCount: number;
+  /** Derivation warnings for the operator to review (collapses, clamps). */
+  notes: string[];
+};
+
+// Words that mark a destination entry as an activity/day-trip ANCHOR rather
+// than an overnight base (e.g. "Amman City Tour" is a tour OF the base, not a
+// place you sleep). Stripping them lets us tell "Amman City Tour" (anchor on
+// the Amman base) from "Petra" (a genuine overnight base on the way).
+const TOURING_ANCHOR_WORDS = /\b(city tour|sightseeing|panoramic|tour|excursion|day[ -]?trip|visit)\b/gi;
+
+function stripTouringAnchorWords(value: string): string {
+  return value.replace(TOURING_ANCHOR_WORDS, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Derive a per-day base/overnight city array from a touring route's
+ * startCity + mainDestinations + durationDays, so the generator can title
+ * each day and match an overnight hotel per base. Handles the round-trip
+ * day-anchor case (e.g. "Amman - Amman City Tour - Jerash - Amman", 1 day →
+ * a single Amman base, NOT three days) by dropping anchor-like labels and
+ * collapsing consecutive repeats, then distributing the authoritative
+ * durationDays across the distinct bases. Pure; emits notes for any
+ * collapse/clamp so the operator can correct in the preview.
+ */
+export function deriveTouringRouteBaseCities(route: TouringRouteForDerivation): DerivedTouringDays {
+  const notes: string[] = [];
+  const dayCount = Math.max(1, Math.floor(Number(route.durationDays) || 1));
+  const start = (route.startCity || '').trim();
+  const dests = Array.isArray(route.mainDestinations)
+    ? route.mainDestinations.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
+
+  const bases: string[] = [];
+  for (const raw of [start, ...dests].filter(Boolean)) {
+    const stripped = stripTouringAnchorWords(raw) || raw;
+    const norm = normalizeCityName(stripped);
+    if (!norm) continue;
+    const prevNorm = bases.length ? normalizeCityName(bases[bases.length - 1]) : '';
+    if (norm === prevNorm) continue; // consecutive repeat of the same base
+    // An anchor variant ("Amman City Tour" -> "Amman") of a base already in the
+    // sequence is part of that base's day, not a new overnight.
+    if (stripped !== raw && bases.some((b) => normalizeCityName(b) === norm)) continue;
+    bases.push(stripped);
+  }
+  if (bases.length === 0) bases.push(start || 'To be confirmed');
+
+  let cities: string[];
+  if (bases.length === dayCount) {
+    cities = [...bases];
+  } else if (bases.length > dayCount) {
+    cities = bases.slice(0, dayCount);
+    notes.push(
+      `Route lists ${bases.length} base cities but the duration is ${dayCount} day${dayCount === 1 ? '' : 's'} — extra cities were collapsed. Review the day cities.`,
+    );
+  } else {
+    // Fewer bases than days: one night each, then add the remaining nights to
+    // overnight-eligible bases (Petra/Wadi Rum/Aqaba), else to the home base.
+    const nightsPerBase = bases.map(() => 1);
+    let remaining = dayCount - bases.length;
+    const eligible = bases
+      .map((b, index) => ({ index, eligible: classifyOvernightCity(b, { includeOptional: true }) !== 'none' }))
+      .filter((x) => x.eligible)
+      .map((x) => x.index);
+    const targets = eligible.length ? eligible : [0];
+    let cursor = 0;
+    while (remaining > 0) {
+      nightsPerBase[targets[cursor % targets.length]] += 1;
+      remaining -= 1;
+      cursor += 1;
+    }
+    cities = bases.flatMap((base, index) => Array.from({ length: nightsPerBase[index] }, () => base));
+    notes.push(
+      `Duration (${dayCount} days) exceeds the ${bases.length} distinct base${bases.length === 1 ? '' : 's'} — extra nights were assigned automatically. Review the night distribution.`,
+    );
+  }
+
+  return { cities, dayCount, notes };
+}
+
 export type OvernightRun = { dayNumber: number; city: string; nights: number };
 
 /**

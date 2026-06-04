@@ -51,6 +51,15 @@ export type RouteOption = {
     baseCost?: number | null;
     active?: boolean | null;
   }>;
+  days?: Array<{
+    dayNumber: number;
+    title?: string | null;
+    description?: string | null;
+    distanceKm?: number | null;
+    driveMinutes?: number | null;
+    lunchIncluded?: boolean | null;
+    dinnerIncluded?: boolean | null;
+  }>;
   routeOperations?: {
     region: string | null;
     overnight: boolean;
