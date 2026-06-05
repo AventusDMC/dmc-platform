@@ -253,6 +253,15 @@ const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   svcTransferTo: { en: 'Private Transfer to {location}', pt: 'Traslado privado para {location}', es: 'Traslado privado a {location}', ar: 'تنقّل خاص إلى {location}' },
   svcTransferArrangements: { en: 'Transfer arrangements', pt: 'Detalhes do traslado', es: 'Detalles del traslado', ar: 'ترتيبات التنقل' },
   svcVisit: { en: 'Visit {location}', pt: 'Visita a {location}', es: 'Visita a {location}', ar: 'زيارة {location}' },
+  // Phase 3D.1J — touring-route movement context (only emitted when the day carries
+  // a touring-route transport package whose route path is known). Never invents
+  // breakfast/meals/hotels — see composeDayNarrativeFromPois.
+  moveDepartFrom: { en: 'Depart from {city}', pt: 'Partida de {city}', es: 'Salida desde {city}', ar: 'الانطلاق من {city}' },
+  moveDepartFromHotel: { en: 'Depart from your hotel in {city}', pt: 'Partida do seu hotel em {city}', es: 'Salida desde su hotel en {city}', ar: 'الانطلاق من فندقك في {city}' },
+  moveContinueTo: { en: 'Continue to {location}', pt: 'Siga para {location}', es: 'Continúe hacia {location}', ar: 'المتابعة إلى {location}' },
+  moveReturnTo: { en: 'Return to {city}', pt: 'Regresso a {city}', es: 'Regreso a {city}', ar: 'العودة إلى {city}' },
+  moveReturnToHotel: { en: 'Return to your hotel in {city}', pt: 'Regresso ao seu hotel em {city}', es: 'Regreso a su hotel en {city}', ar: 'العودة إلى فندقك في {city}' },
+  moveOvernightIn: { en: 'Overnight in {city}', pt: 'Pernoite em {city}', es: 'Noche en {city}', ar: 'المبيت في {city}' },
   svcExperienceDetails: { en: 'Experience details', pt: 'Detalhes da experiência', es: 'Detalles de la experiencia', ar: 'تفاصيل التجربة' },
   svcDiningIn: { en: 'Dining in {location}', pt: 'Refeição em {location}', es: 'Comida en {location}', ar: 'تناول الطعام في {location}' },
   svcDiningArrangements: { en: 'Dining arrangements', pt: 'Detalhes das refeições', es: 'Detalles de las comidas', ar: 'ترتيبات الطعام' },

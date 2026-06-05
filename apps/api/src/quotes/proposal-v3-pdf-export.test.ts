@@ -1993,3 +1993,141 @@ test('Phase 3B.2: Arabic composes with RTL document direction preserved', () => 
   const summary = (vm.days.find((d: any) => d.dayNumber === 1) || {}).summary || '';
   assert.match(summary, /زيارة جبل القلعة/); // ar svcVisit = "زيارة {location}"
 });
+
+// ---- Phase 3D.1J: route-movement context for touring-route generated days ----
+
+// A day carrying a touring-route transport package whose pricingDescription holds
+// the ordered city path (the only place the base city is known at render time).
+// Active planner day items are join rows: { isActive, quoteService: <item> }.
+function touringTransportDayItem(path: string, dayCount = 1) {
+  return {
+    id: 'tdi-1',
+    isActive: true,
+    quoteService: {
+      id: 'touring-transport-1',
+      itineraryId: 'day-1',
+      serviceDate: new Date('2026-06-01T09:00:00.000Z'),
+      service: { name: 'Airport Transfer', category: 'Transport', serviceType: { name: 'Transport', code: 'TRANSPORT' }, supplierId: 's1' },
+      pricingDescription: `Excursion origin variant | ${path} | Touring route | Sedan 2 | PER_VEHICLE`,
+      dayCount,
+      touringRouteId: 'tr-1',
+      totalCost: 100,
+      totalSell: 120,
+    },
+  };
+}
+
+function hotelDayItem(city = 'Amman') {
+  return {
+    id: 'hdi-1',
+    isActive: true,
+    quoteService: {
+      id: 'hotel-1',
+      itineraryId: 'day-1',
+      service: { name: 'Hotel stay', category: 'Hotel', serviceType: { name: 'Hotel', code: 'HOTEL' } },
+      hotel: { id: 'h1', name: 'Test Hotel', city },
+      nightCount: 1,
+      totalCost: 0,
+      totalSell: 0,
+    },
+  };
+}
+
+function createMovementQuote(poiAssignments: any[], dayItems: any[]) {
+  return createPdfQuote({
+    quoteItineraryDays: [
+      { id: 'day-1', dayNumber: 1, title: 'Day 1: Amman', notes: 'Stored day notes.', isActive: true, dayItems, poiAssignments },
+    ],
+  });
+}
+
+function jerashAjlounPois() {
+  return [
+    poiRow({ poiId: 'poi-jerash', sortOrder: 0, pointOfInterest: { id: 'poi-jerash', name: 'Jerash', translations: [{ locale: 'en', title: 'Jerash Archaeological Site' }, { locale: 'pt', title: 'Sítio Arqueológico de Jerash' }, { locale: 'es', title: 'Sitio Arqueológico de Jerash' }, { locale: 'ar', title: 'موقع جرش الأثري' }], city: { id: 'c-jerash', name: 'Jerash', country: 'Jordan' } } }),
+    poiRow({ poiId: 'poi-ajloun', sortOrder: 1, pointOfInterest: { id: 'poi-ajloun', name: 'Ajloun', translations: [{ locale: 'en', title: 'Ajloun Castle' }, { locale: 'pt', title: 'Castelo de Ajloun' }, { locale: 'es', title: 'Castillo de Ajloun' }, { locale: 'ar', title: 'قلعة عجلون' }], city: { id: 'c-ajloun', name: 'Ajloun', country: 'Jordan' } } }),
+  ];
+}
+
+test('Phase 3D.1J: Ajloun & Jerash composes Depart → Visit → Continue → Return (English)', () => {
+  const quote = createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]);
+  const summary = day1Summary(quote, 'en') || '';
+  assert.match(summary, /Depart from Amman\./, 'departure from base city');
+  assert.match(summary, /Visit Jerash Archaeological Site/, 'first stop = Visit');
+  assert.match(summary, /Continue to Ajloun Castle/, 'second stop = Continue to');
+  assert.match(summary, /Return to Amman\.?$/, 'single-day circuit returns to base');
+  // Order: depart < jerash < ajloun < return
+  assert.ok(summary.indexOf('Depart') < summary.indexOf('Jerash'));
+  assert.ok(summary.indexOf('Jerash') < summary.indexOf('Ajloun'));
+  assert.ok(summary.indexOf('Ajloun') < summary.indexOf('Return'));
+});
+
+test('Phase 3D.1J: both POIs always appear in the Ajloun & Jerash narrative', () => {
+  const summary = day1Summary(createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]), 'en') || '';
+  assert.match(summary, /Jerash Archaeological Site/);
+  assert.match(summary, /Ajloun Castle/);
+});
+
+test('Phase 3D.1J: NO breakfast/meal is invented when the day has no hotel/meal item', () => {
+  const summary = day1Summary(createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]), 'en') || '';
+  assert.doesNotMatch(summary, /breakfast/i);
+  assert.doesNotMatch(summary, /lunch|dinner/i);
+  // No-hotel wording: plain "Depart from Amman", not "your hotel".
+  assert.doesNotMatch(summary, /your hotel/i);
+});
+
+test('Phase 3D.1J: with a hotel on the day, wording uses "your hotel in {base}"', () => {
+  const quote = createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1), hotelDayItem('Amman')]);
+  const summary = day1Summary(quote, 'en') || '';
+  assert.match(summary, /Depart from your hotel in Amman/);
+  assert.match(summary, /Return to your hotel in Amman/);
+  // Still no invented breakfast even with a hotel present.
+  assert.doesNotMatch(summary, /breakfast/i);
+});
+
+test('Phase 3D.1J: multi-day route day 1 does NOT wrongly Return to base', () => {
+  // Amman → Dana → Petra ON (dayCount 2): day 1 visits Dana; must not "Return to Amman".
+  const danaPoi = [poiRow({ poiId: 'poi-dana', sortOrder: 0, pointOfInterest: { id: 'poi-dana', name: 'Dana', translations: [{ locale: 'en', title: 'Dana Biosphere Reserve' }], city: { id: 'c-dana', name: 'Dana', country: 'Jordan' } } })];
+  const summary = day1Summary(createMovementQuote(danaPoi, [touringTransportDayItem('Amman -> Dana -> Petra -> Amman', 2)]), 'en') || '';
+  assert.match(summary, /Depart from Amman/);
+  assert.match(summary, /Visit Dana Biosphere Reserve/);
+  assert.doesNotMatch(summary, /Return to/, 'multi-day day 1 must not return to base');
+});
+
+test('Phase 3D.1J: no redundant "Depart from X" when the base equals the first stop city', () => {
+  // Petra → Wadi Rum ON day 1: base Petra, first stop Petra → skip departure line.
+  const petraPoi = [poiRow({ poiId: 'poi-petra', sortOrder: 0, pointOfInterest: { id: 'poi-petra', name: 'Petra', translations: [{ locale: 'en', title: 'Petra Archaeological City' }], city: { id: 'c-petra', name: 'Petra', country: 'Jordan' } } })];
+  const summary = day1Summary(createMovementQuote(petraPoi, [touringTransportDayItem('Petra -> Wadi Rum', 2)]), 'en') || '';
+  assert.doesNotMatch(summary, /Depart from Petra/);
+  assert.match(summary, /Visit Petra Archaeological City/);
+});
+
+test('Phase 3D.1J: movement context renders in PT / ES / AR (with RTL)', () => {
+  const pois = jerashAjlounPois();
+  const path = 'Amman -> Jerash -> Ajloun -> Amman';
+  const pt = day1Summary(createMovementQuote(pois, [touringTransportDayItem(path, 1)]), 'pt') || '';
+  assert.match(pt, /Partida de Amman/);
+  assert.match(pt, /Siga para Castelo de Ajloun/);
+  assert.match(pt, /Regresso a Amman/);
+
+  const es = day1Summary(createMovementQuote(pois, [touringTransportDayItem(path, 1)]), 'es') || '';
+  assert.match(es, /Salida desde Amman/);
+  assert.match(es, /Continúe hacia Castillo de Ajloun/);
+  assert.match(es, /Regreso a Amman/);
+
+  const arQuote = createMovementQuote(pois, [touringTransportDayItem(path, 1)]);
+  const arVm = mapQuoteToProposalV3(arQuote, 'ar');
+  assert.equal(arVm.textDirection, 'rtl');
+  const ar = (arVm.days.find((d: any) => d.dayNumber === 1) || {}).summary || '';
+  assert.match(ar, /الانطلاق من Amman/);
+  assert.match(ar, /العودة إلى Amman/);
+});
+
+test('Phase 3D.1J: manual POI day with NO touring transport keeps plain "Visit" (no regression)', () => {
+  // Same two POIs but no touring-route transport item → no movement scaffolding.
+  const summary = day1Summary(createMovementQuote(jerashAjlounPois(), []), 'en') || '';
+  assert.match(summary, /Visit Jerash Archaeological Site/);
+  assert.match(summary, /Visit Ajloun Castle/);
+  assert.doesNotMatch(summary, /Depart from/);
+  assert.doesNotMatch(summary, /Continue to/);
+  assert.doesNotMatch(summary, /Return to/);
+});
