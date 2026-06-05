@@ -14,7 +14,12 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../../lib/auth-client';
-import { formatRouteLabel, type RouteOption } from '../../lib/routes';
+import {
+  formatTouringRouteOptionLabel,
+  formatTouringRouteSecondaryMeta,
+  touringRouteMatchesSearch,
+  type RouteOption,
+} from '../../lib/routes';
 import {
   buildTouringRoutePreview,
   buildTouringRouteApplyPlan,
@@ -44,6 +49,12 @@ function isTouringRoute(route: RouteOption): boolean {
 export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate }: Props) {
   const router = useRouter();
   const touringRoutes = useMemo(() => (routes || []).filter(isTouringRoute), [routes]);
+
+  const [routeSearch, setRouteSearch] = useState('');
+  const filteredTouringRoutes = useMemo(
+    () => touringRoutes.filter((route) => touringRouteMatchesSearch(route, routeSearch)),
+    [touringRoutes, routeSearch],
+  );
 
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [routeDetail, setRouteDetail] = useState<TouringRouteDetailForGen | null>(null);
@@ -242,12 +253,36 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.8rem' }}>
           <span>Touring route</span>
+          <input
+            className="app-input"
+            type="search"
+            value={routeSearch}
+            onChange={(e) => setRouteSearch(e.target.value)}
+            placeholder="Search by route name, code, or destination…"
+            aria-label="Search touring routes"
+            style={{ marginBottom: '0.25rem' }}
+          />
           <select className="app-input" value={selectedRouteId} onChange={(e) => void loadRoute(e.target.value)} aria-label="Touring route">
             <option value="">Select a touring route…</option>
-            {touringRoutes.map((route) => (
-              <option key={route.id} value={route.id}>{formatRouteLabel(route)}</option>
+            {filteredTouringRoutes.map((route) => (
+              <option key={route.id} value={route.id}>{formatTouringRouteOptionLabel(route)}</option>
             ))}
           </select>
+          {routeSearch.trim() && filteredTouringRoutes.length === 0 ? (
+            <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-muted, #475569)' }}>
+              No touring routes match “{routeSearch.trim()}”.
+            </span>
+          ) : null}
+          {selectedRouteId ? (
+            (() => {
+              const sel = touringRoutes.find((r) => r.id === selectedRouteId);
+              return sel ? (
+                <span style={{ fontSize: '0.72rem', color: 'var(--ds-color-muted, #475569)' }}>
+                  {formatTouringRouteSecondaryMeta(sel)}
+                </span>
+              ) : null;
+            })()
+          ) : null}
         </label>
 
         {routeDetail ? (
