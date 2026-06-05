@@ -49,6 +49,40 @@ pricing row."
 
 After saving an active row, re-open the generator preview for that route — Apply becomes available.
 
+### 2.1 Pricing model — confirm before pilot (full package, not per-day)
+
+**Touring-route pricing is treated as the full package price for the selected route, not a per-day
+price.** The generator copies the selected row's `baseCost` into the transport item's `overrideCost`
+and sets `dayCount = durationDays` purely as **metadata** — `dayCount` does **not** multiply
+`baseCost`. The pricing engine (markup, etc.) is unchanged.
+
+Operators must therefore **confirm that each entered pricing row's `baseCost` is the full package
+price for the whole route**, not the price of a single day. This matters most for **multi-day
+routes**, where the base cost must cover the entire trip:
+
+- **Petra → Wadi Rum ON** (`JOR-TR-SOUTH-PETRA-WADI-RUM-ON`, 2 days) — `baseCost` must be the full
+  2-day package price (Petra + overnight + Wadi Rum), not a per-day rate.
+- **Amman → Dana → Petra ON** (`JOR-TR-SOUTH-AMMAN-DANA-PETRA-ON`, 2 days) — `baseCost` must be the
+  full 2-day package price (Amman → Dana → Petra with overnight), not a per-day rate.
+
+If a row was entered as a per-day rate, multiply it out to the full-route package total before
+piloting — otherwise multi-day quotes will under-price.
+
+### 2.2 Translation content gap — Dana Biosphere Reserve (next pack)
+
+**Dana Biosphere Reserve POI content is still English-only** (no PT/ES/AR translations). This is
+**not a blocker** — the proposal composer falls back correctly: PT/ES/AR proposals render the
+localized boilerplate ("Visita a …" / "زيارة …") combined with the **English** Dana title and
+description via the fallback chain. RTL is preserved for Arabic. So **Amman → Dana → Petra ON**
+pilots are fine to run today; the Dana entry will simply appear in English within otherwise-localized
+day narratives.
+
+**Recommendation (document-only, no translations applied this phase):** if **Dana / Petra** routes
+will be sold often, add **Dana Biosphere Reserve** to the **next human translation content pack**
+(PT/ES/AR title + short description), alongside the remaining active POIs. Petra is already fully
+translated in all four languages, so completing Dana would make the whole **Amman → Dana → Petra ON**
+narrative fully localized.
+
 ## 3. Pilot test plan
 
 Pilot order: **Ajloun & Jerash** (works today) → **Amman City Sites**, **Madaba / Mount Nebo**,
@@ -66,8 +100,10 @@ For **each** pilot route:
    composer ("Visit …" / "Visita a …" / "زيارة …").
 8. Confirm **Arabic remains RTL**; for routes with EN-only POIs (e.g. **Dana**), confirm PT/ES/AR show
    localized boilerplate + English POI content (acceptable).
-9. Confirm the **pricing total** reflects the package (selected baseCost × dayCount, via the existing
-   pricing engine — unchanged).
+9. Confirm the **pricing total** reflects the package: the selected row's `baseCost` is the **full
+   package price** for the whole route, carried through the existing pricing engine (markup, etc.)
+   **unchanged**. `dayCount` is metadata and does **not** multiply `baseCost` — a 2-day route is not
+   double a 1-day route unless its `baseCost` already says so. (See §2.1.)
 10. Confirm the operator can then **manually add hotels / activities / entrances** after generation
     (generator adds none of these).
 11. If re-running: the generator **blocks** on a quote that now has itinerary days (expected — no

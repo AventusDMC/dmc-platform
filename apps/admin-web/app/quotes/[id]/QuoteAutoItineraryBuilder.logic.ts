@@ -404,19 +404,37 @@ function clampDurationDays(value: number | null | undefined): number {
  */
 export function deriveTouringRouteBaseCities(route: TouringRouteForGen): string[] {
   const days = clampDurationDays(route.durationDays);
-  let seq = (route.mainDestinations || []).map(cleanStr).filter(Boolean);
-  if (seq.length === 0) {
-    const ordered = [...(route.stops || [])]
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .map((s) => cleanStr(s.city))
-      .filter(Boolean);
-    const collapsed: string[] = [];
-    for (const c of ordered) {
-      if (collapsed.length === 0 || !sameCity(collapsed[collapsed.length - 1], c)) collapsed.push(c);
+  const orderedStops = [...(route.stops || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Collapse consecutive duplicate cities and drop a trailing round-trip return
+  // to the start (e.g. Amman → … → Amman → just the inner sequence + base).
+  const collapse = (cities: Array<string | null | undefined>): string[] => {
+    const out: string[] = [];
+    for (const raw of cities) {
+      const c = cleanStr(raw);
+      if (!c) continue;
+      if (out.length === 0 || !sameCity(out[out.length - 1], c)) out.push(c);
     }
-    if (collapsed.length > 1 && sameCity(collapsed[0], collapsed[collapsed.length - 1])) collapsed.pop();
-    seq = collapsed;
+    if (out.length > 1 && sameCity(out[0], out[out.length - 1])) out.pop();
+    return out;
+  };
+  const fromMain = (route.mainDestinations || []).map(cleanStr).filter(Boolean);
+  const fromContent = collapse(orderedStops.filter((s) => s.poiId && s.pointOfInterest).map((s) => s.city));
+  const fromAllStops = collapse(orderedStops.map((s) => s.city));
+
+  let seq = fromMain;
+  // Phase 3D.1E refinement: for MULTI-DAY routes whose mainDestinations is
+  // SHORTER than durationDays, prefer the ordered content-stop cities when they
+  // form a longer (better-fitting) sequence — BEFORE padding the last
+  // destination. Fixes e.g. Petra → Wadi Rum ON (mainDestinations=["Wadi Rum"],
+  // durationDays 2) → [Petra, Wadi Rum] instead of [Wadi Rum, Wadi Rum].
+  // One-day routes and routes whose mainDestinations already fill the days are
+  // unchanged.
+  if (days > 1 && seq.length < days && fromContent.length > seq.length) {
+    seq = fromContent;
   }
+  // Empty mainDestinations → derive from ALL stop cities (preserves prior
+  // behavior, including the round-trip collapse).
+  if (seq.length === 0) seq = fromAllStops;
   if (seq.length === 0) {
     const start = cleanStr(route.startCity);
     seq = start ? [start] : [];
