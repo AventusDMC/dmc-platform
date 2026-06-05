@@ -520,3 +520,160 @@ export function partitionTouringRoutePoisToDays(route: TouringRouteForGen): Tour
     ambiguityReasons,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3D.1B — preview model + local-edit reducers (PURE; no fetch/DOM/writes).
+// The Generate-from-Touring-Route panel renders `buildTouringRoutePreview(...)`
+// and lets the operator move / reorder / drop POIs via the reducers below — all
+// in local UI state. NOTHING here writes to the DB.
+// ---------------------------------------------------------------------------
+
+export type TouringRoutePricingRow = {
+  id: string;
+  currency?: string | null;
+  baseCost?: number | null;
+  pricingBasis?: string | null;
+  minPax?: number | null;
+  maxPax?: number | null;
+  active?: boolean | null;
+  vehicle?: { name?: string | null } | null;
+  transportServiceType?: { name?: string | null } | null;
+};
+
+export type TouringRouteDetailForGen = TouringRouteForGen & {
+  pricings?: TouringRoutePricingRow[] | null;
+};
+
+export type TouringRoutePreviewDay = {
+  dayNumber: number;
+  date: string | null;
+  title: string;
+  baseCity: string;
+  pois: GeneratedDayPoi[];
+  hasUsablePois: boolean;
+};
+
+export type TouringRouteTransportPreview = {
+  routeId: string;
+  routeName: string;
+  pricingRowId: string | null;
+  pricingLabel: string;
+  currency: string;
+  cost: number | null;
+  dayCount: number;
+} | null;
+
+export type TouringRoutePreview = {
+  routeId: string;
+  routeName: string;
+  days: TouringRoutePreviewDay[];
+  transport: TouringRouteTransportPreview;
+  totalPois: number;
+  skippedStops: number;
+  hasUsablePois: boolean;
+  ambiguous: boolean;
+  ambiguityReasons: string[];
+};
+
+export function formatTouringRoutePricingLabel(row: TouringRoutePricingRow): string {
+  const vehicle = cleanStr(row.vehicle?.name) || 'Vehicle';
+  const basis = cleanStr(row.pricingBasis);
+  const currency = cleanStr(row.currency) || 'USD';
+  const cost = typeof row.baseCost === 'number' ? row.baseCost.toFixed(2) : '—';
+  return [vehicle, basis, `${currency} ${cost}`].filter(Boolean).join(' | ');
+}
+
+export function buildTouringRoutePreview(
+  route: TouringRouteDetailForGen,
+  opts: { pricingRowId?: string | null; startDate?: string | null } = {},
+): TouringRoutePreview {
+  const partition = partitionTouringRoutePoisToDays(route);
+  const days: TouringRoutePreviewDay[] = partition.days.map((day) => ({
+    dayNumber: day.dayNumber,
+    date: addDays(opts.startDate, day.dayNumber - 1),
+    title: day.baseCity || `Day ${day.dayNumber}`,
+    baseCity: day.baseCity,
+    pois: day.pois,
+    hasUsablePois: day.hasUsablePois,
+  }));
+
+  const pricingRows = route.pricings || [];
+  const selected =
+    (opts.pricingRowId && pricingRows.find((r) => r.id === opts.pricingRowId)) ||
+    pricingRows.find((r) => r.active !== false) ||
+    pricingRows[0] ||
+    null;
+
+  const transport: TouringRouteTransportPreview = selected
+    ? {
+        routeId: route.id,
+        routeName: cleanStr(route.name) || 'Touring route',
+        pricingRowId: selected.id,
+        pricingLabel: formatTouringRoutePricingLabel(selected),
+        currency: cleanStr(selected.currency) || 'USD',
+        cost: typeof selected.baseCost === 'number' ? selected.baseCost : null,
+        dayCount: clampDurationDays(route.durationDays),
+      }
+    : null;
+
+  return {
+    routeId: route.id,
+    routeName: cleanStr(route.name) || 'Touring route',
+    days,
+    transport,
+    totalPois: partition.totalPois,
+    skippedStops: partition.skippedStops,
+    hasUsablePois: partition.hasUsablePois,
+    ambiguous: partition.ambiguous,
+    ambiguityReasons: partition.ambiguityReasons,
+  };
+}
+
+function recomputePreviewTotals(preview: TouringRoutePreview, days: TouringRoutePreviewDay[]): TouringRoutePreview {
+  const normalizedDays = days.map((d) => ({ ...d, hasUsablePois: d.pois.length > 0 }));
+  const totalPois = normalizedDays.reduce((sum, d) => sum + d.pois.length, 0);
+  return { ...preview, days: normalizedDays, totalPois, hasUsablePois: totalPois > 0 };
+}
+
+/** Move a POI from one day to the end of another day (local state only). */
+export function movePreviewPoi(
+  preview: TouringRoutePreview,
+  fromDayNumber: number,
+  poiIndex: number,
+  toDayNumber: number,
+): TouringRoutePreview {
+  if (fromDayNumber === toDayNumber) return preview;
+  const days = preview.days.map((d) => ({ ...d, pois: [...d.pois] }));
+  const from = days.find((d) => d.dayNumber === fromDayNumber);
+  const to = days.find((d) => d.dayNumber === toDayNumber);
+  if (!from || !to || poiIndex < 0 || poiIndex >= from.pois.length) return preview;
+  const [moved] = from.pois.splice(poiIndex, 1);
+  to.pois.push(moved);
+  return recomputePreviewTotals(preview, days);
+}
+
+/** Reorder a POI within a single day (local state only). */
+export function reorderPreviewPoi(
+  preview: TouringRoutePreview,
+  dayNumber: number,
+  fromIndex: number,
+  toIndex: number,
+): TouringRoutePreview {
+  const days = preview.days.map((d) => ({ ...d, pois: [...d.pois] }));
+  const day = days.find((d) => d.dayNumber === dayNumber);
+  if (!day) return preview;
+  const n = day.pois.length;
+  if (fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex >= n || fromIndex === toIndex) return preview;
+  const [moved] = day.pois.splice(fromIndex, 1);
+  day.pois.splice(toIndex, 0, moved);
+  return recomputePreviewTotals(preview, days);
+}
+
+/** Drop/remove a POI from a day in the preview (local state only). */
+export function removePreviewPoi(preview: TouringRoutePreview, dayNumber: number, poiIndex: number): TouringRoutePreview {
+  const days = preview.days.map((d) => ({ ...d, pois: [...d.pois] }));
+  const day = days.find((d) => d.dayNumber === dayNumber);
+  if (!day || poiIndex < 0 || poiIndex >= day.pois.length) return preview;
+  day.pois.splice(poiIndex, 1);
+  return recomputePreviewTotals(preview, days);
+}
