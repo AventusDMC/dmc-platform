@@ -19,6 +19,27 @@
 _Phase 4A.0 — **content only, review-first**. Nothing here is applied to the database.
 After you approve this pack, Phase 4A.1 will apply it via an idempotent seed update._
 
+## Native Review Decisions Needed
+
+Only the sensitive or uncertain items are listed here — fill the **Reviewer decision**
+column. Everything else in the pack below is faithful to the English and needs only a
+routine fluency pass. (`☐` = pending.)
+
+| # | POI | Lang | Term / phrase | Current draft | Alternative options | Recommended choice | Reason / note | Reviewer decision |
+|---|-----|------|---------------|---------------|---------------------|--------------------|---------------|-------------------|
+| 1 | Mount Nebo | AR | Honorific after "Moses" | النبي موسى (عليه السلام) | (a) keep honorific (عليه السلام); (b) النبي موسى (no honorific); (c) موسى (match neutral EN) | (a) keep honorific | Customary/respectful for Arabic-speaking audiences; the English is neutral ("Moses"). | ☐ |
+| 2 | Bethany Beyond the Jordan | AR | Site name | المغطس (بيت عنيا عبر الأردن) | (a) المغطس only; (b) بيت عنيا عبر الأردن only; (c) both (current) | (c) both | المغطس is the official local/UNESCO name; biblical name aids recognition. | ☐ |
+| 3 | Bethany Beyond the Jordan | AR | "Jesus Christ" | تعميد السيد المسيح | السيد المسيح / يسوع المسيح | السيد المسيح | Common respectful Arabic form; confirm tone for target audience. | ☐ |
+| 4 | Umm Qais | AR | "Sea of Galilee" | بحيرة طبريا | بحيرة طبريا / بحر الجليل | بحيرة طبريا | Standard regional Arabic usage. Politically sensitive — confirm. | ☐ |
+| 5 | Umm Qais | AR | "Golan Heights" | مرتفعات الجولان | مرتفعات الجولان / هضبة الجولان | مرتفعات الجولان | Standard Arabic; politically sensitive — confirm for audience. | ☐ |
+| 6 | Madaba | AR | "St George's Church" | كنيسة القديس جاورجيوس | كنيسة القديس جورج / كنيسة مار جرجس | كنيسة القديس جاورجيوس | Standard Orthodox Arabic name; "مار جرجس" also widely used. | ☐ |
+| 7 | Wadi Mujib | PT / ES / AR | "RSCN" | PT/ES: "RSCN"; AR: الجمعية الملكية لحماية الطبيعة | (a) spell out in all 3; (b) keep acronym in all 3; (c) current mixed | (a) spell out once per locale (PT "Sociedade Real para a Conservação da Natureza (RSCN)"; ES "Real Sociedad para la Conservación de la Naturaleza (RSCN)"; AR as drafted) | "RSCN" is unfamiliar to PT/ES readers; a spelled-out form is clearer and consistent. | ☐ |
+| 8 | Downtown Amman | PT / ES | Title suffix "(Downtown)" | PT "Centro de Amã (Downtown)"; ES "Centro de Amán (Downtown)" | (a) keep "(Downtown)"; (b) drop → "Centro de Amã / Centro de Amán"; (c) PT "Baixa de Amã" | (b) drop the suffix | "Centro de Amã/Amán" already conveys the meaning; the English word is redundant. | ☐ |
+| 9 | Cross-language consistency | PT / ES / AR | Petra, Wadi Rum, Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais | PT/ES Latin forms (Petra; Wadi Rum; Jerash; Mar Morto/Muerto; Monte Nebo; Betânia/Betania Além do/más allá del Jordão; Umm Qais) · AR البتراء / وادي رم / جرش / البحر الميت / جبل نيبو / المغطس / أم قيس | n/a — verify, don't change unless inconsistent | Keep as drafted; confirm each name is spelled identically everywhere it recurs | Catch any variant spelling that slipped between entries (e.g. Petra vs Pétra, Amã vs Amán mismatch). | ☐ |
+
+> When these rows are decided, tick the matching boxes in the **Review checklist** above.
+> Phase 4A.1 applies only after all decisions are filled and the pack is approved.
+
 ## Purpose
 
 Draft Portuguese, Spanish, and Arabic translations for the 15 highest-value POIs so
@@ -394,10 +415,11 @@ There is one non-real catalog record, `ZZ Verification POI (safe to delete)` (cu
 **inactive**), left over from earlier verification. **Recommendation only — not deleted,
 and not to be deleted yet.**
 
-- **Preferred:** delete it *later*, **only after confirming no references exist** — i.e.
-  it is not linked from any `TouringRouteStop.poiId` and has no `QuoteItineraryDayPoi`
-  rows (and no translations worth keeping). A guarded cleanup step would re-check those
-  references at run time and no-op if any are found.
+- **Preferred:** delete it *later*, **only after a guarded reference check confirms no
+  references exist** — specifically that no `TouringRouteStop.poiId`, no
+  `QuoteItineraryDayPoi.poiId`, and no `QuoteItineraryDayPoi.sourceTouringRouteStopId`
+  (provenance) row points at it (and no translations worth keeping). The cleanup step
+  would re-check those fields at run time and no-op if any reference is found.
 - **Safe alternative:** simply **keep it inactive** — inactive POIs are excluded from the
   assignment picker and never appear in proposals, so it has zero customer impact.
 
