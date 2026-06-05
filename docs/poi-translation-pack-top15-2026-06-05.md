@@ -1,5 +1,21 @@
 # POI translation content pack — Top 15 (PT / ES / AR) — 2026-06-05
 
+> **STATUS: DRAFT — PENDING NATIVE REVIEW.** These are assistant-drafted translations.
+> Nothing here is applied to the database. PR #333 is intentionally kept **open** as a
+> living draft / pending-review record — it is **not** the approved record yet. Phase
+> 4A.1 (idempotent seed apply) must not start until every box below is checked and the
+> pack is approved.
+
+## Review checklist (sign off before DB seed)
+
+- [ ] **Portuguese reviewed** (native/fluent check)
+- [ ] **Spanish reviewed** (native/fluent check)
+- [ ] **Arabic reviewed** (native/fluent check)
+- [ ] **Religious terminology reviewed** (Mount Nebo, Bethany, Madaba)
+- [ ] **Sensitive geographic terminology reviewed** (Umm Qais — Sea of Galilee / Golan Heights)
+- [ ] **Place-name consistency reviewed** across PT/ES/AR (Petra, Wadi Rum, Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais)
+- [ ] **Approved for DB seed** (Phase 4A.1 may proceed)
+
 _Phase 4A.0 — **content only, review-first**. Nothing here is applied to the database.
 After you approve this pack, Phase 4A.1 will apply it via an idempotent seed update._
 
@@ -363,6 +379,10 @@ current localized-boilerplate + English-content fallback).
 - **#15 Umm Qais** — AR geographic names (بحيرة طبريا، مرتفعات الجولان) — politically sensitive; confirm.
 - **#12 Wadi Mujib** — "RSCN" acronym vs. spelled-out across locales.
 - **#13 Downtown Amman** — PT/ES "(Downtown)" suffix in the title — keep or drop.
+- **Place-name consistency (cross-cutting)** — verify the recurring proper names are
+  rendered consistently across PT / ES / AR everywhere they appear: **Petra, Wadi Rum,
+  Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais** (and the related forms البتراء /
+  وادي رم / جرش / البحر الميت / جبل نيبو / المغطس / أم قيس).
 
 General: all translations are assistant-drafted and faithful to the English; a native PT/ES/AR pass is recommended before customer-facing use, but they are already an improvement over English-only fallback.
 
@@ -371,13 +391,18 @@ General: all translations are assistant-drafted and faithful to the English; a n
 ## Cleanup recommendation — `ZZ Verification POI (safe to delete)`
 
 There is one non-real catalog record, `ZZ Verification POI (safe to delete)` (currently
-**inactive**), left over from earlier verification. Recommendation: it can be **safely
-removed**, but since deleting catalog data is irreversible, **do not delete it without
-your approval**. Options:
-- **Keep inactive** (zero proposal impact — inactive POIs are excluded from the picker), or
-- **Delete** once you confirm (a one-line operator action or a guarded seed cleanup step).
+**inactive**), left over from earlier verification. **Recommendation only — not deleted,
+and not to be deleted yet.**
 
-No action taken. Awaiting your decision.
+- **Preferred:** delete it *later*, **only after confirming no references exist** — i.e.
+  it is not linked from any `TouringRouteStop.poiId` and has no `QuoteItineraryDayPoi`
+  rows (and no translations worth keeping). A guarded cleanup step would re-check those
+  references at run time and no-op if any are found.
+- **Safe alternative:** simply **keep it inactive** — inactive POIs are excluded from the
+  assignment picker and never appear in proposals, so it has zero customer impact.
+
+No deletion now. Awaiting your decision; if you choose "delete later," that will be a
+separate, reference-checked step (not part of the translation seed).
 
 ---
 
