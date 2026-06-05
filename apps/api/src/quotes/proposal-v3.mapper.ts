@@ -754,17 +754,25 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
     // service name ("Airport Transfer"). The path lives in the pricingDescription.
     const touringPathCities = isTransportItem(item) ? parseRoutePathCitiesFromDescription(item.pricingDescription) : [];
     const touringPathLabel = touringPathCities.length >= 2 ? formatTouringRoutePathLabel(touringPathCities) : '';
+    const excursionName = item.touringRoute
+      ? cleanText(formatOriginAwareExcursionName({
+          serviceName: item.service.name,
+          overrideReason: item.overrideReason,
+          touringRoute: item.touringRoute,
+        }))
+      : '';
+    // A genuine excursion template keeps its origin-aware name; but when that name is
+    // just the generic transport service ("Airport Transfer — From Amman"), the item
+    // is a generated touring package — use the route-path label instead.
+    const serviceNameLc = cleanText(item.service?.name || '').toLowerCase();
+    const excursionNameIsGenericService = Boolean(excursionName && serviceNameLc && excursionName.toLowerCase().startsWith(serviceNameLc));
     const rawTitle = isExternalPackageItem(item)
       ? cleanText(item.externalPackageCountry || item.service.name || '')
-      : item.touringRoute
-        ? cleanText(formatOriginAwareExcursionName({
-            serviceName: item.service.name,
-            overrideReason: item.overrideReason,
-            touringRoute: item.touringRoute,
-          }))
+      : excursionName && !excursionNameIsGenericService
+        ? excursionName
         : touringPathLabel
           ? touringPathLabel
-          : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
+          : excursionName || cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
     const importedDescription = extractImportedDescription(item);
     const activityDescription = getClientSafeActivityDescription(item);
     let description =

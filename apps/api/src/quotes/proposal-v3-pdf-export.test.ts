@@ -2011,6 +2011,10 @@ function touringTransportDayItem(path: string, dayCount = 1) {
       pricingDescription: `Excursion origin variant | ${path} | Touring route | Sedan 2 | PER_VEHICLE`,
       dayCount,
       touringRouteId: 'tr-1',
+      // Mirror prod: the proposal fetch loads the touringRoute relation, so the
+      // origin-aware name resolves to the generic service ("Airport Transfer — From …")
+      // — the route-path label must still win for the generated package.
+      touringRoute: { id: 'tr-1', name: 'Touring Route', startCity: path.split(/\s*->\s*/)[0] || 'Amman' },
       totalCost: 100,
       totalSell: 120,
     },
