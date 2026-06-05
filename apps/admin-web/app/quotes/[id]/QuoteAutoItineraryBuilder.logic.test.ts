@@ -600,6 +600,7 @@ describe('buildTouringRouteApplyPlan', () => {
       serviceId: SVC,
       touringRouteId: 'amman-city',
       touringRoutePricingId: 'pr-van',
+      currency: 'USD', // Phase 3D.1H: pricing-row currency now included for FX conversion
       overrideCost: 190,
       useOverride: true,
       dayCount: 1,
