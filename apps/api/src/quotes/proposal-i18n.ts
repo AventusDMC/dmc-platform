@@ -74,6 +74,17 @@ const LABELS: Record<string, Record<ProposalLocale, string>> = {
   tableNotes: { en: 'Notes', pt: 'Notas', es: 'Notas', ar: 'ملاحظات' },
   // Day by day
   dayByDay: { en: 'Day by Day', pt: 'Dia a dia', es: 'Día a día', ar: 'يومًا بيوم' },
+  // Phase 3D.1M — day overnight badge prefix. Rendered as "{overnight}: {city}";
+  // EN stays "Overnight" so English output is byte-identical.
+  overnight: { en: 'Overnight', pt: 'Pernoite', es: 'Pernocte', ar: 'المبيت' },
+  // Phase 3D.1M — pricing snapshot labels (eyebrow above the headline price).
+  // EN values exactly match the strings produced by the pricing layer, so the
+  // mapping is a no-op for English. See localizeSnapshotLabel.
+  priceFixed: { en: 'Fixed price', pt: 'Preço fixo', es: 'Precio fijo', ar: 'سعر ثابت' },
+  priceStatus: { en: 'Pricing status', pt: 'Estado do preço', es: 'Estado del precio', ar: 'حالة التسعير' },
+  priceSelectedGroup: { en: 'Selected group size', pt: 'Tamanho de grupo selecionado', es: 'Tamaño de grupo seleccionado', ar: 'حجم المجموعة المحدد' },
+  priceGroup: { en: 'Group pricing', pt: 'Preço de grupo', es: 'Precio de grupo', ar: 'تسعير جماعي' },
+  pricePerPersonPackage: { en: 'Package sell price per person', pt: 'Preço de venda do pacote por pessoa', es: 'Precio de venta del paquete por persona', ar: 'سعر بيع الباقة للشخص' },
   // Closing
   finalDetails: { en: 'Final details', pt: 'Detalhes finais', es: 'Detalles finales', ar: 'تفاصيل ختامية' },
   inclusionsAndPricing: { en: 'Inclusions and Pricing Notes', pt: 'Inclusões e notas de preço', es: 'Inclusiones y notas de precio', ar: 'المشمولات وملاحظات الأسعار' },
@@ -108,6 +119,24 @@ export function proposalLabel(locale: ProposalLocale, key: keyof typeof LABELS):
 }
 
 export type ProposalLabelKey = keyof typeof LABELS;
+
+// Phase 3D.1M — the pricing layer emits English snapshot labels dynamically
+// (e.g. "Fixed price" from a FIXED-mode quote). We do NOT change pricing logic;
+// instead we translate the KNOWN English labels at render time. Unknown,
+// operator-authored labels pass through unchanged (we cannot translate them).
+const SNAPSHOT_LABEL_MAP: Record<string, ProposalLabelKey> = {
+  'fixed price': 'priceFixed',
+  'pricing status': 'priceStatus',
+  'selected group size': 'priceSelectedGroup',
+  'group pricing': 'priceGroup',
+  'package sell price per person': 'pricePerPersonPackage',
+};
+
+export function localizeSnapshotLabel(locale: ProposalLocale, label: string | null | undefined): string {
+  const raw = String(label || '').trim();
+  const key = SNAPSHOT_LABEL_MAP[raw.toLowerCase()];
+  return key ? proposalLabel(locale, key) : raw;
+}
 
 // ---------------------------------------------------------------------------
 // Phase 3A.1 — free-form proposal PROSE (intros, summaries, helper sentences).
@@ -157,6 +186,28 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
   // Phase 3D.1K — placeholders/labels that were previously hard-coded in English.
   datesToBeConfirmed: { en: 'Dates to be confirmed', pt: 'Datas a confirmar', es: 'Fechas por confirmar', ar: 'سيتم تأكيد التواريخ' },
   stayOptionsBelow: { en: 'Hotel options are outlined below for review and selection.', pt: 'As opções de hotel estão descritas abaixo para análise e seleção.', es: 'Las opciones de hotel se detallan a continuación para su revisión y selección.', ar: 'خيارات الفنادق موضّحة أدناه للمراجعة والاختيار.' },
+  // Phase 3D.1M — pricing summary note (under the headline price). EN values are
+  // exact copies of the prior hard-coded strings, so English output is unchanged.
+  pricingSummaryNote: {
+    en: 'A client-facing summary of the current package pricing for the proposed journey.',
+    pt: 'Um resumo, voltado para o cliente, do preço atual do pacote para a viagem proposta.',
+    es: 'Un resumen, orientado al cliente, del precio actual del paquete para el viaje propuesto.',
+    ar: 'ملخّص موجّه للعميل لسعر الباقة الحالي للرحلة المقترحة.',
+  },
+  pricingSummaryNotePending: {
+    en: 'A client-facing summary of the current package pricing once the proposal pricing is confirmed.',
+    pt: 'Um resumo, voltado para o cliente, do preço atual do pacote assim que o preço da proposta for confirmado.',
+    es: 'Un resumen, orientado al cliente, del precio actual del paquete una vez confirmado el precio de la propuesta.',
+    ar: 'ملخّص موجّه للعميل لسعر الباقة الحالي بمجرد تأكيد سعر العرض.',
+  },
+  // Phase 3D.1M — client-safe replacement for internal touring-route transport
+  // descriptions (which carry route paths / vehicle classes / PER_VEHICLE codes).
+  transportTouringSafe: {
+    en: 'Private touring transport as scheduled.',
+    pt: 'Transporte turístico privado conforme o itinerário.',
+    es: 'Transporte turístico privado según el itinerario.',
+    ar: 'نقل سياحي خاص حسب البرنامج.',
+  },
 };
 
 export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRASES): string {

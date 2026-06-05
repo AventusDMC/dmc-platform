@@ -16,6 +16,7 @@ import { deriveDayCountry } from './quote-day-country';
 import {
   intlLocale,
   joinProseList,
+  localizeSnapshotLabel,
   prosePhrase,
   proposalLabel,
   proposalTextDirection,
@@ -574,6 +575,26 @@ function buildOperationalMeta(item: ProposalV3QuoteItem) {
     .join(' · ') || null;
 }
 
+// Phase 3D.1M — internal operational text that must never reach a client PDF.
+// Touring-route transport descriptions carry route paths, vehicle classes, and
+// pricing-basis codes (e.g. "Excursion origin variant, Amman -> Dana -> Petra ->
+// Amman, Touring route, Sedan 2, PER_VEHICLE"). Detect those signals so the
+// description can be replaced with a client-safe sentence.
+const INTERNAL_TRANSPORT_MARKERS = /->|→|\bPER[_\s]?(VEHICLE|PERSON|ROOM|NIGHT)\b|excursion origin variant|touring route/i;
+// Hotel Stay descriptions can surface the internal contract name + rate breakdown
+// (e.g. "Contractual Agreement for Petra Moon Hotel 2026, ..., Rate USD 50.00 x 2
+// pax x 1 night"). The client-facing accommodation table already carries the
+// clean hotel/room/board/location, so this internal text is dropped.
+const INTERNAL_RATE_MARKERS = /contractual agreement|agreement for|\brate\s+(usd|jod|eur|ils|aed|sar)\b|\bx\s*\d+\s*pax\b|\bPER[_\s]?(VEHICLE|PERSON|ROOM|NIGHT)\b/i;
+
+function hasInternalTransportText(text?: string | null): boolean {
+  return Boolean(text) && INTERNAL_TRANSPORT_MARKERS.test(String(text));
+}
+
+function hasInternalContractText(text?: string | null): boolean {
+  return Boolean(text) && INTERNAL_RATE_MARKERS.test(String(text));
+}
+
 function extractImportedDescription(item: ProposalV3QuoteItem) {
   if (item.service.supplierId !== IMPORTED_SERVICE_SUPPLIER_ID) {
     return null;
@@ -612,7 +633,12 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
         location,
         room: cleanText(item.roomCategory?.name || '') || null,
         meals: item.mealPlan ? String(item.mealPlan).toUpperCase() : null,
-        note: cleanText(item.contract?.name || '') || null,
+        // Phase 3D.1M — the contract name is an internal label (e.g. "Contractual
+        // Agreement for Petra Moon Hotel 2026"); never surface it to the client.
+        note: (() => {
+          const contractName = cleanText(item.contract?.name || '');
+          return contractName && !hasInternalContractText(contractName) ? contractName : null;
+        })(),
       });
     }
   }
@@ -807,6 +833,19 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
     }
 
     if (isPlaceholderText(description) || isWeakText(description)) {
+      description = null;
+    }
+
+    // Phase 3D.1M — internal operational text hygiene (applies in every locale,
+    // English included, because this text is never client-facing).
+    if (isTransportItem(item) && (item.touringRoute || touringPathLabel || hasInternalTransportText(description))) {
+      // Touring-route transport package → uniform client-safe description.
+      description = prosePhrase(activeProposalLocale, 'transportTouringSafe');
+    } else if (groupLabel === 'Stay' && hasInternalContractText(description)) {
+      // Contract-name / rate breakdown → drop (accommodation table carries the
+      // client-facing hotel/room/board/location).
+      description = null;
+    } else if (hasInternalContractText(description) || hasInternalTransportText(description)) {
       description = null;
     }
 
@@ -1529,10 +1568,10 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
   if (pending) {
     return {
       title: 'Investment',
-      snapshotLabel: 'Pricing status',
+      snapshotLabel: localizeSnapshotLabel(activeProposalLocale, 'Pricing status'),
       snapshotValue: 'Pricing to be confirmed',
       snapshotHelper: 'Final slab selection depends on confirmed group size',
-      summaryNote: 'A client-facing summary of the current package pricing once the proposal pricing is confirmed.',
+      summaryNote: prosePhrase(activeProposalLocale, 'pricingSummaryNotePending'),
       mode: 'pending' as const,
       basisLines: [],
       noteLines: [],
@@ -1543,10 +1582,10 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
 
   return {
     title: pricing.title,
-    snapshotLabel: pricing.snapshotLabel,
+    snapshotLabel: localizeSnapshotLabel(activeProposalLocale, pricing.snapshotLabel),
     snapshotValue: pricing.snapshotValue,
     snapshotHelper: pricing.snapshotHelper,
-    summaryNote: 'A client-facing summary of the current package pricing for the proposed journey.',
+    summaryNote: prosePhrase(activeProposalLocale, 'pricingSummaryNote'),
     mode: pricing.mode,
     basisLines: pricing.basisLines.filter((line) => !isPlaceholderText(line)),
     noteLines: [

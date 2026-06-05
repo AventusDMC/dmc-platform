@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildRouteIntelligence, mapQuoteToProposalV3, parseTransportRouteSegments } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
+import { localizeSnapshotLabel } from './proposal-i18n';
 
 function createPdfQuote(overrides: Record<string, any> = {}) {
   return {
@@ -2281,4 +2282,107 @@ test('Phase 3D.1L.2: no-POI quote keeps existing hotel/transport destination beh
     ],
   });
   assert.match(mapQuoteToProposalV3(quote).destinationLine, /Petra/, 'falls back to hotel city when no POI days');
+});
+
+// ---- Phase 3D.1M: proposal localization cleanup / internal text hygiene ----
+
+// A hotel item carrying the internal contract name + rate breakdown that prod
+// surfaced ("Contractual Agreement for Petra Moon Hotel 2026, ..., Rate USD ...").
+function internalContractHotelQuote() {
+  return createPdfQuote({
+    quoteItems: [
+      createHotelPdfItem({
+        contract: { name: 'Contractual Agreement for Petra Moon Hotel 2026' },
+        pricingDescription:
+          'Contractual Agreement for Petra Moon Hotel 2026, Jun 1 – Aug 31, Standard Room, DBL, BB, Rate USD 50.00 x 2 pax x 1 night',
+      }),
+    ],
+  });
+}
+
+const INTERNAL_LEAK = /->|→|PER[_\s]?VEHICLE|PER[_\s]?PERSON|excursion origin variant|touring route|contractual agreement|Rate USD/i;
+
+function dayItemDescriptions(vm: any, dayNumber = 1): string[] {
+  const day = vm.days.find((d: any) => d.dayNumber === dayNumber);
+  return (day?.groups || []).flatMap((g: any) => g.items.map((i: any) => i.description || ''));
+}
+
+test('Phase 3D.1M: touring transport description is replaced with a client-safe phrase (EN, no internal leak)', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'en');
+  const descriptions = dayItemDescriptions(vm);
+  assert.ok(descriptions.includes('Private touring transport as scheduled.'), 'client-safe transport sentence present');
+  for (const d of descriptions) assert.doesNotMatch(d, INTERNAL_LEAK, `no internal transport text leaks: "${d}"`);
+});
+
+test('Phase 3D.1M: touring transport description is localized (PT/ES/AR)', () => {
+  const pt = dayItemDescriptions(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'pt'));
+  assert.ok(pt.includes('Transporte turístico privado conforme o itinerário.'), 'PT client-safe transport');
+  const es = dayItemDescriptions(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'es'));
+  assert.ok(es.includes('Transporte turístico privado según el itinerario.'), 'ES client-safe transport');
+  const ar = dayItemDescriptions(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'ar'));
+  assert.ok(ar.includes('نقل سياحي خاص حسب البرنامج.'), 'AR client-safe transport');
+  for (const d of [...pt, ...es, ...ar]) assert.doesNotMatch(d, INTERNAL_LEAK, `no internal leak in any locale: "${d}"`);
+});
+
+test('Phase 3D.1M: internal hotel contract name + rate breakdown never reach the client', () => {
+  const vm = mapQuoteToProposalV3(internalContractHotelQuote(), 'en');
+  // Accommodation table note drops the internal contract label.
+  assert.equal(vm.accommodationRows[0].note, null, 'contract-name note dropped');
+  // Day Stay-card description drops the internal contract/rate breakdown.
+  for (const d of dayItemDescriptions(vm)) assert.doesNotMatch(d, INTERNAL_LEAK, `no contract/rate leak: "${d}"`);
+});
+
+test('Phase 3D.1M: a non-internal contract name is still shown (no over-suppression)', () => {
+  // Default fixture contract "Grand Petra 2026" has no internal markers → kept.
+  const vm = mapQuoteToProposalV3(createPdfQuote(), 'en');
+  assert.equal(vm.accommodationRows[0].note, 'Grand Petra 2026', 'clean contract name preserved');
+});
+
+test('Phase 3D.1M: pricing summary note is localized; EN byte-identical to before', () => {
+  assert.equal(
+    mapQuoteToProposalV3(createPdfQuote(), 'en').investment.summaryNote,
+    'A client-facing summary of the current package pricing for the proposed journey.',
+    'EN summary note unchanged',
+  );
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'pt').investment.summaryNote, /voltado para o cliente/, 'PT localized');
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'es').investment.summaryNote, /orientado al cliente/, 'ES localized');
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'ar').investment.summaryNote, /ملخّص موجّه للعميل/, 'AR localized');
+});
+
+test('Phase 3D.1M: snapshot pricing label is localized for known labels; EN + custom pass through', () => {
+  assert.equal(localizeSnapshotLabel('en', 'Fixed price'), 'Fixed price', 'EN unchanged');
+  assert.equal(localizeSnapshotLabel('pt', 'Fixed price'), 'Preço fixo');
+  assert.equal(localizeSnapshotLabel('es', 'Fixed price'), 'Precio fijo');
+  assert.equal(localizeSnapshotLabel('ar', 'Fixed price'), 'سعر ثابت');
+  assert.equal(localizeSnapshotLabel('pt', 'Pricing status'), 'Estado do preço');
+  // Unknown/operator-authored labels pass through unchanged (cannot translate).
+  assert.equal(localizeSnapshotLabel('pt', 'Custom operator label'), 'Custom operator label');
+});
+
+test('Phase 3D.1M: snapshot label wiring — known label is localized through the view model', () => {
+  const en = mapQuoteToProposalV3(createPdfQuote(), 'en').investment.snapshotLabel;
+  const pt = mapQuoteToProposalV3(createPdfQuote(), 'pt').investment.snapshotLabel;
+  // Default fixture emits "Package sell price per person" → EN unchanged, PT localized.
+  assert.equal(en, 'Package sell price per person');
+  assert.equal(pt, 'Preço de venda do pacote por pessoa');
+});
+
+test('Phase 3D.1M: Overnight badge is localized in rendered HTML (PT "Pernoite:", EN unchanged)', async () => {
+  const service = new ProposalV3Service({} as any);
+  const ptHtml = await (service as any).renderHtml(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'pt'));
+  assert.match(ptHtml, /Pernoite:/, 'PT overnight label');
+  assert.doesNotMatch(ptHtml, /Overnight:/, 'no English overnight label in PT');
+  const enHtml = await (service as any).renderHtml(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'en'));
+  assert.match(enHtml, /Overnight:/, 'EN overnight label unchanged');
+});
+
+test('Phase 3D.1M: Arabic proposal stays RTL with localized overnight + no English UI/internal leak', async () => {
+  const service = new ProposalV3Service({} as any);
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'ar');
+  assert.equal(vm.textDirection, 'rtl');
+  const html = await (service as any).renderHtml(vm);
+  assert.match(html, /dir="rtl"/, 'RTL document direction');
+  assert.match(html, /المبيت:/, 'AR overnight label');
+  assert.doesNotMatch(html, /Overnight:|Fixed price|client-facing summary/i, 'no English UI strings leak in AR');
+  assert.doesNotMatch(html, /PER_VEHICLE|excursion origin variant|Contractual Agreement/i, 'no internal text leaks in AR');
 });
