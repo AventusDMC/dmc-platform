@@ -599,9 +599,13 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
 
   for (const day of sortedDays) {
     const hotelItems = day.items.filter((item) => isHotelItem(item));
-    const location = extractDayLocation(day.title, day.dayNumber);
+    const dayLocation = extractDayLocation(day.title, day.dayNumber);
 
     for (const item of hotelItems) {
+      // Phase 3D.1L — prefer the hotel's own city; fall back to the day's derived
+      // location only when the hotel has no city (so e.g. a Petra hotel on a "Dana"
+      // day shows Location: Petra, not Dana).
+      const location = cleanText(item.hotel?.city || '') || dayLocation;
       rows.push({
         dayLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
         hotelName: cleanText(item.hotel?.name || item.service.name) || 'Accommodation details to be confirmed',
@@ -745,6 +749,11 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
   for (const item of dayItems) {
     const groupLabel = getGroupLabel(item);
     const items = grouped.get(groupLabel) || [];
+    // Phase 3D.1L — a generated touring-route transport package should be titled by
+    // its route path (e.g. "Amman → Dana → Petra"), not the attached transport
+    // service name ("Airport Transfer"). The path lives in the pricingDescription.
+    const touringPathCities = isTransportItem(item) ? parseRoutePathCitiesFromDescription(item.pricingDescription) : [];
+    const touringPathLabel = touringPathCities.length >= 2 ? formatTouringRoutePathLabel(touringPathCities) : '';
     const rawTitle = isExternalPackageItem(item)
       ? cleanText(item.externalPackageCountry || item.service.name || '')
       : item.touringRoute
@@ -753,7 +762,9 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
             overrideReason: item.overrideReason,
             touringRoute: item.touringRoute,
           }))
-        : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
+        : touringPathLabel
+          ? touringPathLabel
+          : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
     const importedDescription = extractImportedDescription(item);
     const activityDescription = getClientSafeActivityDescription(item);
     let description =
@@ -918,7 +929,26 @@ export function buildRouteIntelligence(
     addUniqueRouteAnchor(fallbackDayAnchors, extractDayLocation(day.title, day.dayNumber));
   }
 
+  // Phase 3D.1L — the SELLING destinations are the cities the traveller actually
+  // visits (the POI assignment cities), in day order. This makes the cover/journey
+  // title route-aware: an Amman → Dana → Petra itinerary reads "Dana & Petra"
+  // (Amman is the origin/base — no POI there — so it is naturally excluded), while
+  // an Amman City Sites tour still reads "Amman" (its POIs are in Amman). Quotes
+  // with no POI assignments are unaffected.
+  const poiDestinationAnchors: string[] = [];
+  for (const day of daySources) {
+    const orderedAssignments = [...(day.poiAssignments || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    for (const assignment of orderedAssignments) {
+      const display = resolvePoiAssignmentDisplay(assignment, activeProposalLocale);
+      if (display.city) {
+        addUniqueRouteAnchor(poiDestinationAnchors, display.city);
+      }
+    }
+  }
+
   const routeAnchors: string[] = [];
+  // Visited POI destinations lead the title (the selling destinations).
+  for (const anchor of poiDestinationAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
   for (const anchor of overnightAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
   for (const country of externalCountries) addUniqueRouteAnchor(routeAnchors, country);
   for (const segment of transportSegments) {
@@ -1015,29 +1045,50 @@ type DayMovementContext = {
   dayCount: number; // route duration in days (metadata on the transport item)
 };
 
+// Parse the ordered city path from a touring-route transport package's RAW
+// pricingDescription (cleanText rewrites the "|" delimiters, so we must not clean
+// before splitting). e.g. "… | Amman -> Dana -> Petra -> Amman | …" → ['Amman',
+// 'Dana','Petra','Amman']. Returns [] when no multi-hop path segment is present.
+function parseRoutePathCitiesFromDescription(pricingDescription?: string | null): string[] {
+  const rawDesc = String(pricingDescription || '');
+  if (!rawDesc.trim()) {
+    return [];
+  }
+  const segment = rawDesc
+    .split('|')
+    .map((part) => part.trim())
+    .find((part) => /(?:->|→)/.test(part) && !/general|all routes|any route/i.test(part));
+  if (!segment) {
+    return [];
+  }
+  return segment
+    .split(/\s*(?:->|→)\s*/)
+    .map((city) => cleanRouteAnchor(city))
+    .filter((city): city is string => Boolean(city));
+}
+
+// Phase 3D.1L — a client-facing label for a touring-route transport package, built
+// from its path: dedupe consecutive cities and drop the trailing return-to-origin,
+// then join with arrows. ['Amman','Dana','Petra','Amman'] → "Amman → Dana → Petra".
+function formatTouringRoutePathLabel(cities: string[]): string {
+  const out: string[] = [];
+  for (const city of cities) {
+    if (!out.length || normalizeComparisonText(out[out.length - 1]) !== normalizeComparisonText(city)) {
+      out.push(city);
+    }
+  }
+  if (out.length > 2 && normalizeComparisonText(out[0]) === normalizeComparisonText(out[out.length - 1])) {
+    out.pop();
+  }
+  return out.join(' → ');
+}
+
 function deriveDayMovementContext(items: ProposalV3QuoteItem[]): DayMovementContext | null {
   for (const item of items) {
     if (!isTransportItem(item)) {
       continue;
     }
-    // Use the RAW description: cleanText rewrites the "|" delimiters, which would
-    // merge the path segment with its neighbours.
-    const rawDesc = String(item.pricingDescription || '');
-    if (!rawDesc.trim()) {
-      continue;
-    }
-    // Find the pipe-delimited segment that looks like a multi-hop city path.
-    const segment = rawDesc
-      .split('|')
-      .map((part) => part.trim())
-      .find((part) => /(?:->|→)/.test(part) && !/general|all routes|any route/i.test(part));
-    if (!segment) {
-      continue;
-    }
-    const cities = segment
-      .split(/\s*(?:->|→)\s*/)
-      .map((city) => cleanRouteAnchor(city))
-      .filter((city): city is string => Boolean(city));
+    const cities = parseRoutePathCitiesFromDescription(item.pricingDescription);
     if (cities.length < 2) {
       continue;
     }
@@ -1085,7 +1136,10 @@ function composeDayNarrativeFromPois(day: ProposalV3DaySource, locale: ProposalL
   }
 
   const movement = deriveDayMovementContext(day.items || []);
-  const hasHotelThisDay = (day.items || []).some((item) => isHotelItem(item));
+  // Phase 3D.1L — use the hotel's ACTUAL city (not the route base/end) for "your
+  // hotel"/overnight wording. A hotel item on the day proves an overnight there.
+  const hotelItem = (day.items || []).find((item) => isHotelItem(item));
+  const hotelCity = hotelItem ? cleanText(hotelItem.hotel?.city || '') || null : null;
   const sameCity = (a: string | null | undefined, b: string | null | undefined) =>
     Boolean(a && b && normalizeComparisonText(a) === normalizeComparisonText(b));
 
@@ -1100,9 +1154,11 @@ function composeDayNarrativeFromPois(day: ProposalV3DaySource, locale: ProposalL
   };
 
   // Departure — only with a known base, and only when the base differs from the
-  // first stop's city (avoids "Depart from Petra. Visit Petra...").
+  // first stop's city (avoids "Depart from Petra. Visit Petra..."). Use the
+  // "your hotel in {base}" wording ONLY when the day's hotel is actually in the base.
   if (movement && movement.base && !sameCity(movement.base, visits[0].city)) {
-    const key = hasHotelThisDay ? 'moveDepartFromHotel' : 'moveDepartFrom';
+    const departFromBaseHotel = Boolean(hotelCity && sameCity(hotelCity, movement.base));
+    const key = departFromBaseHotel ? 'moveDepartFromHotel' : 'moveDepartFrom';
     sentences.push(finalize(proseTemplate(locale, key, { city: movement.base })));
   }
 
@@ -1120,15 +1176,18 @@ function composeDayNarrativeFromPois(day: ProposalV3DaySource, locale: ProposalL
 
   if (movement && movement.base) {
     const lastVisitCity = visits[visits.length - 1].city;
-    if (movement.dayCount <= 1 && movement.roundTrip && !sameCity(movement.base, lastVisitCity)) {
-      // Single-day returning circuit (e.g. Amman → Jerash → Ajloun → Amman).
-      const key = hasHotelThisDay ? 'moveReturnToHotel' : 'moveReturnTo';
-      sentences.push(finalize(proseTemplate(locale, key, { city: movement.base })));
-    } else if (hasHotelThisDay) {
-      // Overnight only when a hotel item on the day proves it — never invented.
-      const overnightCity = movement.endCity || lastVisitCity || movement.base;
-      sentences.push(finalize(proseTemplate(locale, 'moveOvernightIn', { city: overnightCity })));
+    if (hotelCity) {
+      // A hotel proves an overnight in the HOTEL's city — never the route base/end.
+      // If that city is neither the last stop nor the base, bridge with "Continue to".
+      if (!sameCity(hotelCity, lastVisitCity) && !sameCity(hotelCity, movement.base)) {
+        sentences.push(finalize(proseTemplate(locale, 'moveContinueTo', { location: hotelCity })));
+      }
+      sentences.push(finalize(proseTemplate(locale, 'moveOvernightIn', { city: hotelCity })));
+    } else if (movement.dayCount <= 1 && movement.roundTrip && !sameCity(movement.base, lastVisitCity)) {
+      // Single-day returning circuit with NO hotel (a day trip) → return to base.
+      sentences.push(finalize(proseTemplate(locale, 'moveReturnTo', { city: movement.base })));
     }
+    // Multi-day day with no hotel: end after the visits — never invent an overnight.
   }
 
   if (sentences.length === 0) {
