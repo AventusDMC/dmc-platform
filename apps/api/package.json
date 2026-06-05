@@ -17,6 +17,7 @@
     "prisma:seed:reset": "prisma db seed -- --reset-demo",
     "seed:touring-routes": "ts-node prisma/seeds/seed-touring-routes.ts",
     "seed:points-of-interest": "ts-node prisma/seeds/seed-points-of-interest.ts",
+    "seed:poi-translations-dana": "ts-node prisma/seeds/seed-poi-translations-dana.ts",
     "seed:activities": "ts-node prisma/seeds/seed-activities.ts",
     "seed:jordan-canonical-places": "ts-node prisma/seeds/seed-jordan-canonical-places.ts",
     "seed:jordan-transfer-routes": "ts-node prisma/seeds/seed-jordan-transfer-routes.ts",
