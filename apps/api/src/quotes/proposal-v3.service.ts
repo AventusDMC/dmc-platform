@@ -615,6 +615,10 @@ export class ProposalV3Service {
     );
     const showCountryGroups = resolvedDayCountries.length >= 2;
 
+    // Phase 3D.1M — localize the "Overnight" badge prefix (EN unchanged).
+    const dayLoc = resolveProposalLanguage(viewModel.language);
+    const overnightLabel = proposalLabel(dayLoc, 'overnight');
+
     return viewModel.days
       .map((day, index, allDays) => {
         const previousCountry = index > 0 ? allDays[index - 1].country : null;
@@ -652,7 +656,7 @@ export class ProposalV3Service {
                   <span class="proposal-day-number">${this.escapeHtml(day.dayNumberLabel || `Day ${String(day.dayNumber).padStart(2, '0')}`)}</span>
                   <h3>${this.escapeHtml(day.title)}</h3>
                 </div>
-                ${day.overnightLocation ? `<p class="proposal-day-overnight">Overnight: ${this.escapeHtml(day.overnightLocation)}</p>` : ''}
+                ${day.overnightLocation ? `<p class="proposal-day-overnight">${this.escapeHtml(overnightLabel)}: ${this.escapeHtml(day.overnightLocation)}</p>` : ''}
               </header>
               ${day.summary ? `<p class="proposal-day-summary">${this.escapeHtml(day.summary)}</p>` : ''}
             </div>
