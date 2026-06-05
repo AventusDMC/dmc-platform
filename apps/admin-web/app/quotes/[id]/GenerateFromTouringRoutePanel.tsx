@@ -298,8 +298,12 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
             <div style={{ fontSize: '0.8rem' }}>
               <strong>Transport package:</strong> {preview.transport.routeName} — {preview.transport.pricingLabel}
               {typeof preview.transport.cost === 'number'
-                ? ` · ${preview.transport.currency} ${preview.transport.cost.toFixed(2)} × ${preview.transport.dayCount} day(s)`
+                ? ` · ${preview.transport.currency} ${preview.transport.cost.toFixed(2)} (full package, ${preview.transport.dayCount} day${preview.transport.dayCount === 1 ? '' : 's'})`
                 : null}
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--ds-color-muted, #475569)' }}>
+                Touring-route pricing is the <strong>full package price</strong> for the route, not a per-day rate. The day
+                count is metadata on the quote item; it does not multiply the base cost.
+              </p>
             </div>
           ) : null}
 

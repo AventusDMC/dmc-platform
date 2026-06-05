@@ -113,4 +113,10 @@ Important limits (current version):
 - **Hotels, activities, entrances, and meals are still added manually** after generation;
   the generator does not create them and does not change pricing.
 
+**Pricing — important:** Touring-route pricing is treated as the **full package price** for
+the selected route, **not** a per-day price. The day count is **metadata** on the quote item;
+it does **not** multiply the base cost. So the selected pricing row's base cost must already
+represent the full route package (for the whole trip), not the price of a single day. The
+preview shows the package cost with the day count in parentheses to make this explicit.
+
 Nothing is written until you click Apply; the preview and your edits are local until then.
