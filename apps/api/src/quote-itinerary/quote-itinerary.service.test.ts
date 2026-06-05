@@ -298,3 +298,38 @@ test('setDayPois with an empty list clears the day (replace-all)', async () => {
   assert.equal(created.length, 0);
   assert.deepEqual(result.poiAssignments, []);
 });
+
+// Phase 3D.1C.1 — removeDay must NOT write an audit row referencing the just-
+// deleted day (FK violation → 500). The DAY_DELETED audit uses dayId: null.
+function createRemoveDayService() {
+  const auditCreates: any[] = [];
+  let deleted = false;
+  const txClient = {
+    quoteItineraryDay: {
+      findMany: async () => (deleted ? [] : [{ id: 'day-1', quoteId: 'quote-1' }]),
+      delete: async () => { deleted = true; return {}; },
+      update: async () => ({}),
+    },
+    quoteItineraryAuditLog: { create: async ({ data }: any) => { auditCreates.push(data); return data; } },
+  };
+  const prisma = {
+    quoteItineraryDay: {
+      findUnique: async () => ({ id: 'day-1', quoteId: 'quote-1', dayNumber: 2, title: 'Jerash', isActive: true, sortOrder: 1, dayItems: [], poiAssignments: [] }),
+    },
+    $transaction: async (cb: any) => cb(txClient),
+  };
+  return { service: new QuoteItineraryService(prisma as any), auditCreates };
+}
+
+test('removeDay writes the DAY_DELETED audit with dayId null (no FK to the deleted day)', async () => {
+  const { service, auditCreates } = createRemoveDayService();
+  const result = await service.removeDay('day-1', ACTOR);
+  assert.deepEqual(result, { id: 'day-1' });
+  assert.equal(auditCreates.length, 1);
+  const audit = auditCreates[0];
+  assert.equal(audit.action, 'DAY_DELETED');
+  assert.equal(audit.dayId, null, 'audit row must not reference the deleted day id');
+  assert.equal(audit.quoteId, 'quote-1');
+  assert.match(audit.oldValue, /day day-1/); // deleted id preserved for traceability
+  assert.equal(audit.actorUserId, (ACTOR as { id: string }).id);
+});
