@@ -204,9 +204,13 @@ export class QuoteItineraryService {
       );
       await this.writeAuditLog(tx, {
         quoteId: existing.quoteId,
-        dayId,
+        // The day no longer exists, so the audit row must NOT reference its id
+        // (QuoteItineraryAuditLog.dayId is a FK; pointing it at a deleted day
+        // violates the constraint → 500). Keep dayId null; the deleted day's
+        // identity is preserved in oldValue + recorded here for traceability.
+        dayId: null,
         action: 'DAY_DELETED',
-        oldValue: this.formatDaySummary(existing),
+        oldValue: `[day ${dayId}] ${this.formatDaySummary(existing) ?? ''}`.trim(),
         newValue: null,
         actor: requiredActor,
       });
