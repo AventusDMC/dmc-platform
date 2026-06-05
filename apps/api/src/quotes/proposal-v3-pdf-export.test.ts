@@ -2251,3 +2251,34 @@ test('Phase 3D.1L: Ajloun & Jerash day-trip still returns to Amman (no hotel = n
   assert.doesNotMatch(summary, /Overnight/);
   assert.doesNotMatch(summary, /breakfast|hotel/i);
 });
+
+// ---- Phase 3D.1L.2: cover destinations from POI-day titles (hotel city must not narrow) ----
+
+test('Phase 3D.1L.2: hotel quote with UNRESOLVED POI cities still covers "Dana · Petra" (from day titles)', () => {
+  // Mirrors the real bug: the POI→city relation is absent (city: null), and a Petra
+  // hotel sits on day 1. The cover must derive from the POI-day TITLES, not the hotel.
+  const danaPoi = poiRow({ poiId: 'poi-dana', sortOrder: 0, pointOfInterest: { id: 'poi-dana', name: 'Dana', translations: [{ locale: 'en', title: 'Dana Biosphere Reserve' }], city: null } });
+  const petraPoi = poiRow({ poiId: 'poi-petra', sortOrder: 0, pointOfInterest: { id: 'poi-petra', name: 'Petra', translations: [{ locale: 'en', title: 'Petra Archaeological City' }], city: null } });
+  const quote = createPdfQuote({
+    quoteItineraryDays: [
+      { id: 'day-1', dayNumber: 1, title: 'Day 1: Dana', notes: '', isActive: true, dayItems: [touringTransportDayItem('Amman -> Dana -> Petra -> Amman', 2), hotelDayItem('Petra / Wadi Musa')], poiAssignments: [danaPoi] },
+      { id: 'day-2', dayNumber: 2, title: 'Day 2: Petra', notes: '', isActive: true, dayItems: [], poiAssignments: [petraPoi] },
+    ],
+  });
+  const dest = mapQuoteToProposalV3(quote).destinationLine;
+  assert.match(dest, /Dana/, 'Dana present (from day-1 title)');
+  assert.match(dest, /Petra/, 'Petra present (from day-2 title)');
+  assert.ok(dest.indexOf('Dana') < dest.indexOf('Petra'), 'day order');
+  assert.doesNotMatch(dest, /Wadi Musa/, 'hotel city must not narrow/override the route-aware title');
+  assert.doesNotMatch(dest, /Amman/, 'origin/base excluded (no POI day there)');
+});
+
+test('Phase 3D.1L.2: no-POI quote keeps existing hotel/transport destination behavior', () => {
+  // A quote with hotels but NO POI assignments: cover still derives from hotel city.
+  const quote = createPdfQuote({
+    quoteItineraryDays: [
+      { id: 'day-1', dayNumber: 1, title: 'Day 1: Petra', notes: '', isActive: true, dayItems: [hotelDayItem('Petra / Wadi Musa')], poiAssignments: [] },
+    ],
+  });
+  assert.match(mapQuoteToProposalV3(quote).destinationLine, /Petra/, 'falls back to hotel city when no POI days');
+});
