@@ -1,7 +1,10 @@
 # Generate from Touring Route — operator handoff & real-use readiness — 2026-06-05
 
-_Phase 3D.1F. Operator-facing handoff for the POI-aware touring-route → quote generator
-shipped in Phase 3D.1 (3D.1A–3D.1E). **Docs/checklist only — no code or pricing changes.**_
+_Phase 3D.1F–3D.1H. Operator-facing handoff for the POI-aware touring-route → quote generator.
+Updated 2026-06-05 after Phase 3D.1H (cross-currency pricing fix, production-verified)._
+
+**Status: production-ready for real operator use**, including JOD-priced routes on USD quotes.
+See the quick readiness summary at the bottom of this file (§6).
 
 This is the go-live packet for Axis operators: a one-page SOP, a real-use pilot checklist,
 a pricing QA checklist, a known-limitations list, and content follow-ups. See also the deeper
@@ -30,6 +33,9 @@ day-by-day narrative is then composed automatically from those POIs in the selec
    - **Pricing is the full package price for the whole route, *not* a per-day price.**
    - **`dayCount` is metadata only** — it does **not** multiply the base cost. The preview shows
      the cost as "… (full package, N days)".
+   - **If the pricing row currency differs from the quote currency** (e.g. JOD pricing on a USD
+     quote), the system **automatically converts** the cost to the quote currency before applying
+     markup. You do not need to do this manually. (Fixed and production-verified 2026-06-05.)
 5. **Set start date + pax.**
 6. **Review the preview.** Confirm the per-day grouping and each day's ordered POIs.
    - For **multi-day routes the per-day POI split is an automatic suggestion** — **review it before
@@ -136,3 +142,29 @@ activities · auto-created entrance fees · meals · TouringRouteDay · PR #321 
 per-locale override UI · machine translation · ZZ Verification cleanup.
 
 _After operator handoff and one real human pilot, decide whether Phase 3D.2 (hotels) is worth planning._
+
+---
+
+## 6. Final operator readiness note (Phase 3D.1H — 2026-06-05)
+
+The generator is **production-ready** for real operator use. The following items were confirmed
+working in production before this note was written:
+
+| Item | Status |
+|---|---|
+| Generator works on empty quotes only | ✅ Ready |
+| Route must have active pricing to apply | ✅ Ready |
+| Pricing row `baseCost` is the full route package cost | ✅ Ready |
+| If pricing currency ≠ quote currency, the system converts before markup | ✅ **Fixed and verified** |
+| `dayCount` is metadata only — does not multiply price | ✅ Ready |
+| Hotels, activities, entrances, meals, and guides are still added manually | ✅ Ready |
+| Operators must review the POI day split before applying (multi-day routes) | ✅ Ready |
+| Proposal renders correctly in EN / PT / ES / AR | ✅ Ready |
+| Arabic is right-to-left | ✅ Ready |
+
+**Cross-currency pricing (Phase 3D.1H):** a bug where JOD-priced routes on USD quotes were
+under-priced 1:1 has been fixed and production-verified. Example: JOD 100 + 20% markup now
+correctly produces USD 169.20 (not the previous wrong USD 120). **No manual workaround is needed.**
+
+**Standard practice:** always review the final quote total before sending to a client. This is
+standard for all quote types, not specific to the generator.

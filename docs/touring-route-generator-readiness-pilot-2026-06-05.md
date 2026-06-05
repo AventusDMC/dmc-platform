@@ -49,7 +49,7 @@ pricing row."
 
 After saving an active row, re-open the generator preview for that route — Apply becomes available.
 
-### 2.1 Pricing model — confirm before pilot (full package, not per-day)
+### 2.1 Pricing model — full package price, not per-day; cross-currency handled automatically
 
 **Touring-route pricing is treated as the full package price for the selected route, not a per-day
 price.** The generator copies the selected row's `baseCost` into the transport item's `overrideCost`
@@ -67,6 +67,19 @@ routes**, where the base cost must cover the entire trip:
 
 If a row was entered as a per-day rate, multiply it out to the full-route package total before
 piloting — otherwise multi-day quotes will under-price.
+
+**Cross-currency pricing — fixed and verified (Phase 3D.1H, 2026-06-05):** if the pricing row
+currency differs from the quote currency (e.g. a JOD pricing row on a USD quote), the system now
+automatically converts `baseCost` to the quote currency before applying markup. No manual
+adjustment is needed. Production-verified examples:
+
+| Pricing | Quote currency | Sell at 20% markup |
+|---|---|---|
+| JOD 100 | USD | USD 169.20 |
+| JOD 70 | USD | USD 118.44 |
+| JOD 145 | USD | USD 245.34 |
+
+As always, review the final quote total before sending to a client.
 
 ### 2.2 Translation content gap — Dana Biosphere Reserve (next pack)
 
