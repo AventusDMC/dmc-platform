@@ -5,7 +5,7 @@ import { resolve } from 'path';
 import { QuotesService } from './quotes.service';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3ViewModel } from './proposal-v3.types';
-import { proposalLabel, resolveProposalLanguage } from './proposal-i18n';
+import { proposalLabel, prosePhrase, resolveProposalLanguage } from './proposal-i18n';
 import { AuthenticatedActor } from '../auth/auth.types';
 
 type TemplateTokens = Record<string, string>;
@@ -287,6 +287,7 @@ export class ProposalV3Service {
       journeySummary: this.escapeHtml(viewModel.journeySummary),
       highlightsHtml: this.renderList(viewModel.highlights),
       accommodationRowsHtml: this.renderAccommodationRows(viewModel),
+      stayOverviewBlockHtml: this.renderStayOverviewBlock(viewModel),
       hotelOptionSetsHtml: this.renderHotelOptionSets(viewModel),
       itineraryDaysHtml: this.renderItineraryDays(viewModel),
       investmentHtml: this.renderInvestment(viewModel),
@@ -348,11 +349,45 @@ export class ProposalV3Service {
     return items.map((item) => `<li>${this.escapeHtml(this.getDisplayText(item))}</li>`).join('');
   }
 
+  // Phase 3D.1K — render the whole Stay Overview block, or NOTHING when the quote
+  // has no accommodation at all (no hotel items and no hotel option sets). This
+  // stops a transport-only quote from showing an empty "accommodation to be
+  // confirmed" section. Labels are localized to the proposal language.
+  private renderStayOverviewBlock(viewModel: ProposalV3ViewModel) {
+    if (viewModel.accommodationRows.length === 0 && viewModel.hotelOptionSets.length === 0) {
+      return '';
+    }
+    const loc = resolveProposalLanguage(viewModel.language);
+    const L = (key: Parameters<typeof proposalLabel>[1]) => this.escapeHtml(proposalLabel(loc, key));
+    return `
+        <div class="proposal-stay-block stay-overview">
+          <header class="proposal-subsection-header">
+            <p class="proposal-eyebrow">${L('accommodation')}</p>
+            <h3>${L('stayOverview')}</h3>
+          </header>
+          <div class="proposal-table-shell">
+            <table class="proposal-table proposal-table-accommodation">
+              <thead>
+                <tr>
+                  <th>${L('tableDay')}</th>
+                  <th>${L('tableHotel')}</th>
+                  <th>${L('tableLocation')}</th>
+                  <th>${L('tableRoom')}</th>
+                  <th>${L('tableNotes')}</th>
+                </tr>
+              </thead>
+              <tbody>${this.renderAccommodationRows(viewModel)}</tbody>
+            </table>
+          </div>
+        </div>`;
+  }
+
   private renderAccommodationRows(viewModel: ProposalV3ViewModel) {
     if (viewModel.accommodationRows.length === 0) {
-      const message = viewModel.hotelOptionSets.length > 0
-        ? 'Hotel options are outlined below for review and selection.'
-        : 'Accommodation details will be confirmed with the final operating revision.';
+      // Reached only when hotel OPTION SETS exist — the whole section is hidden
+      // when there is no accommodation at all (see renderStayOverviewBlock).
+      const loc = resolveProposalLanguage(viewModel.language);
+      const message = prosePhrase(loc, 'stayOptionsBelow');
 
       return `
         <tr class="proposal-table-empty-row">
@@ -614,7 +649,7 @@ export class ProposalV3Service {
             <div class="proposal-day-intro">
               <header class="proposal-day-heading">
                 <div>
-                  <span class="proposal-day-number">Day ${String(day.dayNumber).padStart(2, '0')}</span>
+                  <span class="proposal-day-number">${this.escapeHtml(day.dayNumberLabel || `Day ${String(day.dayNumber).padStart(2, '0')}`)}</span>
                   <h3>${this.escapeHtml(day.title)}</h3>
                 </div>
                 ${day.overnightLocation ? `<p class="proposal-day-overnight">Overnight: ${this.escapeHtml(day.overnightLocation)}</p>` : ''}

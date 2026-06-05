@@ -2131,3 +2131,48 @@ test('Phase 3D.1J: manual POI day with NO touring transport keeps plain "Visit" 
   assert.doesNotMatch(summary, /Continue to/);
   assert.doesNotMatch(summary, /Return to/);
 });
+
+// ---- Phase 3D.1K: localize leftover proposal strings (day label, highlights, dates) ----
+
+test('Phase 3D.1K: day heading label is localized per locale', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: { id: 'c', name: 'Amman' } } }),
+  ]);
+  const label = (q: any, lang?: string) => (mapQuoteToProposalV3(q, lang).days.find((d: any) => d.dayNumber === 1) || {}).dayNumberLabel;
+  assert.equal(label(quote, 'en'), 'Day 01');
+  assert.equal(label(quote, 'pt'), 'Dia 01');
+  assert.equal(label(quote, 'es'), 'Día 01');
+  assert.equal(label(quote, 'ar'), 'اليوم 01');
+});
+
+test('Phase 3D.1K: deterministic cover highlights are localized (PT) and English-stable (EN)', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: { id: 'c', name: 'Amman' } } }),
+  ]);
+  const en = mapQuoteToProposalV3(quote, 'en').highlights.join(' | ');
+  assert.match(en, /Route planned through/, 'EN highlight wording unchanged');
+
+  const pt = mapQuoteToProposalV3(quote, 'pt').highlights.join(' | ');
+  assert.match(pt, /Percurso planeado por/, 'PT highlight localized');
+  assert.doesNotMatch(pt, /Route planned through/, 'no English leak in PT highlights');
+});
+
+test('Phase 3D.1K: Arabic highlights survive the script-aware safety gate', () => {
+  const quote = createComposerQuote([
+    poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: { id: 'c', name: 'Amman' } } }),
+  ]);
+  const ar = mapQuoteToProposalV3(quote, 'ar').highlights;
+  assert.ok(ar.length > 0, 'Arabic highlights must not be dropped by the ASCII filter');
+  assert.ok(ar.some((h: string) => /مسار/.test(h)), 'Arabic route highlight present');
+});
+
+test('Phase 3D.1K: "dates to be confirmed" fallback is localized when no travel date', () => {
+  const quote = createComposerQuote(
+    [poiRow({ pointOfInterest: { id: 'poi-a', name: 'A', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: null } })],
+    'Stored day notes.',
+    { travelStartDate: null },
+  );
+  assert.equal(mapQuoteToProposalV3(quote, 'en').travelDatesLabel, 'Dates to be confirmed');
+  assert.equal(mapQuoteToProposalV3(quote, 'pt').travelDatesLabel, 'Datas a confirmar');
+  assert.equal(mapQuoteToProposalV3(quote, 'es').travelDatesLabel, 'Fechas por confirmar');
+});

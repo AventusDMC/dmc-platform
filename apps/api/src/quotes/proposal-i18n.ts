@@ -154,6 +154,9 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
   focusTransfers: { en: 'smooth transfers', pt: 'traslados sem complicações', es: 'traslados sin contratiempos', ar: 'تنقلات سلسة' },
   focusStays: { en: 'well-placed stays', pt: 'estadias bem localizadas', es: 'estancias bien ubicadas', ar: 'إقامات في مواقع مميزة' },
   focusFallback: { en: 'the confirmed journey flow', pt: 'o fluxo confirmado da viagem', es: 'el flujo confirmado del viaje', ar: 'تسلسل الرحلة المؤكد' },
+  // Phase 3D.1K — placeholders/labels that were previously hard-coded in English.
+  datesToBeConfirmed: { en: 'Dates to be confirmed', pt: 'Datas a confirmar', es: 'Fechas por confirmar', ar: 'سيتم تأكيد التواريخ' },
+  stayOptionsBelow: { en: 'Hotel options are outlined below for review and selection.', pt: 'As opções de hotel estão descritas abaixo para análise e seleção.', es: 'Las opciones de hotel se detallan a continuación para su revisión y selección.', ar: 'خيارات الفنادق موضّحة أدناه للمراجعة والاختيار.' },
 };
 
 export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRASES): string {
@@ -262,6 +265,10 @@ const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   moveReturnTo: { en: 'Return to {city}', pt: 'Regresso a {city}', es: 'Regreso a {city}', ar: 'العودة إلى {city}' },
   moveReturnToHotel: { en: 'Return to your hotel in {city}', pt: 'Regresso ao seu hotel em {city}', es: 'Regreso a su hotel en {city}', ar: 'العودة إلى فندقك في {city}' },
   moveOvernightIn: { en: 'Overnight in {city}', pt: 'Pernoite em {city}', es: 'Noche en {city}', ar: 'المبيت في {city}' },
+  // Phase 3D.1K — day label + deterministic cover highlights (were hard-coded English).
+  dayNumberLabel: { en: 'Day {n}', pt: 'Dia {n}', es: 'Día {n}', ar: 'اليوم {n}' },
+  riRoutePlanned: { en: 'Route planned through {dest}.', pt: 'Percurso planeado por {dest}.', es: 'Ruta planificada por {dest}.', ar: 'مسار مُخطّط عبر {dest}.' },
+  riTimeInProgram: { en: 'Time built into the program for {dest}.', pt: 'Tempo reservado no programa para {dest}.', es: 'Tiempo reservado en el programa para {dest}.', ar: 'وقت مخصّص في البرنامج لزيارة {dest}.' },
   svcExperienceDetails: { en: 'Experience details', pt: 'Detalhes da experiência', es: 'Detalles de la experiencia', ar: 'تفاصيل التجربة' },
   svcDiningIn: { en: 'Dining in {location}', pt: 'Refeição em {location}', es: 'Comida en {location}', ar: 'تناول الطعام في {location}' },
   svcDiningArrangements: { en: 'Dining arrangements', pt: 'Detalhes das refeições', es: 'Detalles de las comidas', ar: 'ترتيبات الطعام' },

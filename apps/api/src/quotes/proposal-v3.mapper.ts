@@ -603,7 +603,7 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
 
     for (const item of hotelItems) {
       rows.push({
-        dayLabel: `Day ${String(day.dayNumber).padStart(2, '0')}`,
+        dayLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
         hotelName: cleanText(item.hotel?.name || item.service.name) || 'Accommodation details to be confirmed',
         location,
         room: cleanText(item.roomCategory?.name || '') || null,
@@ -1164,6 +1164,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 
     return {
       dayNumber: day.dayNumber,
+      dayNumberLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
       summary: summary || null,
       overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
@@ -1221,6 +1222,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 
         days.push({
           dayNumber,
+          dayNumberLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(dayNumber).padStart(2, '0') }),
           title: `Day ${dayNumber}: ${country}`,
           summary: null,
           overnightLocation: cleanText(item.externalPackageCountry || '') || null,
@@ -1368,21 +1370,24 @@ export function buildDeterministicHighlights(
 
   const pushHighlight = (value: string | null | undefined) => {
     const copy = conciseCopy(value, 120);
-    if (isClientSafeCopy(copy)) {
+    // Script-aware gate: isClientSafeCopy is ASCII-based and would discard valid
+    // non-Latin (e.g. Arabic) highlights. isComposedCopyClientSafe only applies the
+    // ASCII filter when Latin script is present, so localized AR highlights survive.
+    if (isComposedCopyClientSafe(copy)) {
       highlights.add(copy);
     }
   };
 
   if (routeSubtitle) {
-    pushHighlight(`Route planned through ${routeSubtitle}.`);
+    pushHighlight(proseTemplate(activeProposalLocale, 'riRoutePlanned', { dest: routeSubtitle }));
   } else if (destinationLine) {
-    pushHighlight(`Route planned through ${destinationLine}.`);
+    pushHighlight(proseTemplate(activeProposalLocale, 'riRoutePlanned', { dest: destinationLine }));
   }
 
   for (const day of days) {
     const destination = extractDayLocation(day.title, day.dayNumber);
     if (destination && !/^Destination\s+\d+$/i.test(destination)) {
-      pushHighlight(`Time built into the program for ${destination}.`);
+      pushHighlight(proseTemplate(activeProposalLocale, 'riTimeInProgram', { dest: destination }));
     }
     if (highlights.size >= 2) {
       break;
@@ -1745,7 +1750,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string |
     coverSubtitle,
     destinationLine,
     durationLabel,
-    travelDatesLabel: formatDate(quote.travelStartDate) || 'Dates to be confirmed',
+    travelDatesLabel: formatDate(quote.travelStartDate) || prosePhrase(activeProposalLocale, 'datesToBeConfirmed'),
     coverIntro,
     coverSignature,
     dayByDayIntro,

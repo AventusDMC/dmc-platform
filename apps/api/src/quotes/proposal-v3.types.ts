@@ -271,6 +271,8 @@ export type ProposalV3DayGroup = {
 
 export type ProposalV3Day = {
   dayNumber: number;
+  /** Localized "Day NN" heading label (Phase 3D.1K) — e.g. "Day 01" / "Dia 01". */
+  dayNumberLabel: string;
   title: string;
   summary: string | null;
   overnightLocation: string | null;
