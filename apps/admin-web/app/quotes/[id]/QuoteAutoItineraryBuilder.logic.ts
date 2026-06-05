@@ -342,3 +342,181 @@ export function computeOvernightRuns(
   if (current) runs.push(current);
   return runs;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3D.1A — POI-aware touring-route → quote generation (PURE helpers).
+//
+// No DB writes, no fetch, no DOM. Pure functions over a touring-route DETAIL
+// payload (GET /touring-routes/:id, which now returns ordered stops with
+// poiId + pointOfInterest{id,code,name,translations}). Used by the generator
+// preview (Phase 3D.1B) and apply (Phase 3D.1C).
+//
+// Rules (conservative, per Phase 3D.0):
+//   - Only stops linked to a POI (poiId + pointOfInterest) become assignments.
+//     Base / operational / null-POI stops are SKIPPED — they never create a
+//     QuoteItineraryDayPoi row.
+//   - One-day route → all content POIs on day 1.
+//   - Multi-day route → an automatic STARTING SUGGESTION, always operator-
+//     adjustable; ambiguity is surfaced (never hidden) via `ambiguous` +
+//     `ambiguityReasons`, and days with no usable POIs are flagged.
+// ---------------------------------------------------------------------------
+
+export type TouringRoutePoiTranslation = { locale: string; title?: string | null; shortDescription?: string | null };
+export type TouringRouteStopPoi = { id: string; code: string; name: string; translations?: TouringRoutePoiTranslation[] | null };
+export type TouringRouteStopForGen = {
+  id?: string | null;
+  order: number;
+  city: string;
+  location?: string | null;
+  poiId?: string | null;
+  pointOfInterest?: TouringRouteStopPoi | null;
+};
+export type TouringRouteForGen = {
+  id: string;
+  name?: string | null;
+  startCity?: string | null;
+  durationDays?: number | null;
+  mainDestinations?: string[] | null;
+  stops?: TouringRouteStopForGen[] | null;
+};
+
+function cleanStr(value: string | null | undefined): string {
+  return String(value || '').trim();
+}
+
+function sameCity(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeCityName(a);
+  return na !== '' && na === normalizeCityName(b);
+}
+
+function clampDurationDays(value: number | null | undefined): number {
+  const v = Math.floor(Number(value) || 0);
+  return v >= 1 ? v : 1;
+}
+
+/**
+ * Derive a base/overnight city per day (length = durationDays). Prefers the
+ * route's explicit `mainDestinations` as the overnight sequence; otherwise
+ * derives from the ordered stop cities (collapsing consecutive duplicates and
+ * dropping a trailing round-trip return to the start); finally falls back to
+ * `startCity`. Maps the sequence onto N days (pad with the last base when
+ * shorter, take the leading bases when longer). Pure + deterministic.
+ */
+export function deriveTouringRouteBaseCities(route: TouringRouteForGen): string[] {
+  const days = clampDurationDays(route.durationDays);
+  let seq = (route.mainDestinations || []).map(cleanStr).filter(Boolean);
+  if (seq.length === 0) {
+    const ordered = [...(route.stops || [])]
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((s) => cleanStr(s.city))
+      .filter(Boolean);
+    const collapsed: string[] = [];
+    for (const c of ordered) {
+      if (collapsed.length === 0 || !sameCity(collapsed[collapsed.length - 1], c)) collapsed.push(c);
+    }
+    if (collapsed.length > 1 && sameCity(collapsed[0], collapsed[collapsed.length - 1])) collapsed.pop();
+    seq = collapsed;
+  }
+  if (seq.length === 0) {
+    const start = cleanStr(route.startCity);
+    seq = start ? [start] : [];
+  }
+  if (seq.length === 0) return Array.from({ length: days }, () => '');
+  if (seq.length === days) return seq;
+  if (seq.length < days) {
+    const last = seq[seq.length - 1];
+    return [...seq, ...Array.from({ length: days - seq.length }, () => last)];
+  }
+  return seq.slice(0, days);
+}
+
+export type GeneratedDayPoi = { poiId: string; code: string; name: string; title: string; sourceStopId: string | null };
+export type GeneratedRouteDay = { dayNumber: number; baseCity: string; pois: GeneratedDayPoi[]; hasUsablePois: boolean };
+export type TouringRoutePartition = {
+  days: GeneratedRouteDay[];
+  totalPois: number;
+  /** Base / operational / null-POI stops that were skipped (never assigned). */
+  skippedStops: number;
+  hasUsablePois: boolean;
+  /** True when the multi-day partition is a suggestion the operator should review. */
+  ambiguous: boolean;
+  ambiguityReasons: string[];
+};
+
+function poiDisplayTitle(poi: TouringRouteStopPoi): string {
+  const en = (poi.translations || []).find((t) => (t.locale || '').toLowerCase() === 'en');
+  return cleanStr(en?.title) || cleanStr(poi.name);
+}
+
+function toGeneratedPoi(stop: TouringRouteStopForGen): GeneratedDayPoi {
+  const poi = stop.pointOfInterest as TouringRouteStopPoi;
+  return {
+    poiId: String(stop.poiId),
+    code: poi.code,
+    name: poi.name,
+    title: poiDisplayTitle(poi),
+    sourceStopId: stop.id ?? null,
+  };
+}
+
+/**
+ * Partition a touring route's POI-linked stops into per-day suggestions for the
+ * quote generator. Pure; no side effects. See module header for the rules.
+ */
+export function partitionTouringRoutePoisToDays(route: TouringRouteForGen): TouringRoutePartition {
+  const N = clampDurationDays(route.durationDays);
+  const bases = deriveTouringRouteBaseCities(route);
+  const orderedStops = [...(route.stops || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const content = orderedStops.filter((s) => s.poiId && s.pointOfInterest);
+  const skippedStops = orderedStops.length - content.length;
+
+  if (content.length === 0) {
+    return {
+      days: Array.from({ length: N }, (_, i) => ({ dayNumber: i + 1, baseCity: bases[i] || '', pois: [], hasUsablePois: false })),
+      totalPois: 0,
+      skippedStops,
+      hasUsablePois: false,
+      ambiguous: false,
+      ambiguityReasons: ['This route has no POI-linked stops — no POI assignments will be generated. Days fall back to manual notes.'],
+    };
+  }
+
+  if (N <= 1) {
+    return {
+      days: [{ dayNumber: 1, baseCity: bases[0] || '', pois: content.map(toGeneratedPoi), hasUsablePois: true }],
+      totalPois: content.length,
+      skippedStops,
+      hasUsablePois: true,
+      ambiguous: false,
+      ambiguityReasons: [],
+    };
+  }
+
+  // Multi-day: assign each content stop to the day whose base city matches its
+  // city; if none matches, fall back to a proportional position split (flagged).
+  const buckets: GeneratedDayPoi[][] = Array.from({ length: N }, () => []);
+  let usedPositionFallback = false;
+  content.forEach((stop, i) => {
+    let idx = bases.findIndex((b) => sameCity(b, stop.city));
+    if (idx < 0) {
+      idx = Math.min(N - 1, Math.floor((i * N) / content.length));
+      usedPositionFallback = true;
+    }
+    buckets[idx].push(toGeneratedPoi(stop));
+  });
+
+  const days = buckets.map((pois, i) => ({ dayNumber: i + 1, baseCity: bases[i] || '', pois, hasUsablePois: pois.length > 0 }));
+  const emptyDays = days.filter((d) => !d.hasUsablePois).length;
+  const ambiguityReasons = ['Multi-day partition is an automatic suggestion — please review and adjust each day’s POIs before applying.'];
+  if (usedPositionFallback) ambiguityReasons.push('Some POI stops did not match an overnight base city and were distributed by position.');
+  if (emptyDays > 0) ambiguityReasons.push(`${emptyDays} generated day(s) have no POIs from this route — review or assign manually.`);
+
+  return {
+    days,
+    totalPois: content.length,
+    skippedStops,
+    hasUsablePois: true,
+    ambiguous: true,
+    ambiguityReasons,
+  };
+}

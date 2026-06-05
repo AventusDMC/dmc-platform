@@ -629,9 +629,27 @@ export class TouringRoutesService {
   }
 
   async findOne(id: string) {
+    // Phase 3D.1A: the route DETAIL additionally returns each stop's POI
+    // translations (for the POI-aware quote generator). The list endpoint
+    // (findAll → include()) stays lean with just id/code/name.
     const route = await (this.prisma as any).touringRoute.findUnique({
       where: { id },
-      include: this.include(),
+      include: {
+        ...this.include(),
+        stops: {
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+          include: {
+            pointOfInterest: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                translations: { select: { locale: true, title: true, shortDescription: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
     return throwIfNotFound(route, 'Touring route');
