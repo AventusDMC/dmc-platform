@@ -338,15 +338,21 @@ export class QuotesController {
   }
 
   @Get(':id/pdf')
-  async downloadPdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
-    console.info('[proposal-v3] controller:pdf-request', { quoteId: id });
+  async downloadPdf(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: any,
+    @Actor() actor: AuthenticatedActor,
+    // Phase 3D.1I.1 — honour the proposal language selector for PDF downloads too.
+    @Query('language') language?: string,
+  ) {
+    console.info('[proposal-v3] controller:pdf-request', { quoteId: id, language });
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor);
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor, language);
 
     if (!pdfBuffer) {
       throw new NotFoundException('Quote not found');
@@ -366,15 +372,22 @@ export class QuotesController {
   }
 
   @Get(':id/export')
-  async exportQuotePdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
-    console.info('[quote-export] controller:pdf-request', { quoteId: id });
+  async exportQuotePdf(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: any,
+    @Actor() actor: AuthenticatedActor,
+    // Phase 3D.1I.1 — the operator "Export quote PDF" button sends ?language=…;
+    // thread it through so the exported PDF matches the chosen language.
+    @Query('language') language?: string,
+  ) {
+    console.info('[quote-export] controller:pdf-request', { quoteId: id, language });
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor);
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor, language);
 
     if (!pdfBuffer) {
       throw new NotFoundException('Quote not found');
