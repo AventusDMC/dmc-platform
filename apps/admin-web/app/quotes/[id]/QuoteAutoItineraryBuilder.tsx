@@ -7,6 +7,7 @@ import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
+import GenerateFromTouringRoutePanel from './GenerateFromTouringRoutePanel';
 import {
   buildRouteStandardLookup,
   lookupRouteStandardByCode,
@@ -2598,6 +2599,17 @@ export function QuoteAutoItineraryBuilder({
         </div>
         <span className="page-tab-badge">{quoteType}</span>
       </div>
+
+      {/* Phase 3D.1B — POI-aware touring-route generator (PREVIEW ONLY, no writes). */}
+      <details className="quote-auto-itinerary-collapsible">
+        <summary>Generate from touring route (preview)</summary>
+        <GenerateFromTouringRoutePanel
+          apiBaseUrl={apiBaseUrl}
+          routes={routes}
+          defaultPax={totalPax}
+          defaultStartDate={travelStartDate || null}
+        />
+      </details>
 
       {guidedPrefillBanner ? (
         <div

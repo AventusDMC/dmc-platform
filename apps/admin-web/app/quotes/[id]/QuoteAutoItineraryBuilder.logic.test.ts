@@ -15,7 +15,12 @@ import {
   mergeExistingItineraryDays,
   partitionTouringRoutePoisToDays,
   reconstructNightStopsFromDayTitles,
+  buildTouringRoutePreview,
+  movePreviewPoi,
+  reorderPreviewPoi,
+  removePreviewPoi,
   type TouringRouteForGen,
+  type TouringRouteDetailForGen,
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
@@ -449,5 +454,122 @@ describe('partitionTouringRoutePoisToDays', () => {
     assert.deepEqual(r.days[0].pois.map((p) => p.code), ['MADABA', 'MOUNT_NEBO']);
     assert.equal(r.totalPois, 2);
     assert.equal(r.skippedStops, 2);
+  });
+});
+
+// Phase 3D.1B — preview model + local-edit reducers (no DB writes).
+const PRICINGS = [
+  { id: 'pr-van', currency: 'USD', baseCost: 190, pricingBasis: 'PER_VEHICLE', active: true, vehicle: { name: 'Mini Van 6' } },
+  { id: 'pr-coaster', currency: 'USD', baseCost: 320, pricingBasis: 'PER_VEHICLE', active: true, vehicle: { name: 'Coaster 17' } },
+];
+
+describe('buildTouringRoutePreview', () => {
+  it('renders one-day Amman City route with all linked POIs on day 1 + transport line', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'amman-city', name: 'Amman City Sites', durationDays: 1, startCity: 'Amman', pricings: PRICINGS,
+      stops: [
+        poiStop(1, 'Amman', 'AMMAN_CITADEL', 'Amman Citadel', 'Amman Citadel'),
+        poiStop(2, 'Amman', 'ROMAN_THEATRE', 'Roman Theatre', 'Roman Theatre'),
+        poiStop(3, 'Amman', 'DOWNTOWN_AMMAN', 'Downtown Amman', 'Downtown Amman'),
+      ],
+    };
+    const p = buildTouringRoutePreview(route, { pricingRowId: 'pr-van', startDate: '2026-06-01' });
+    assert.equal(p.days.length, 1);
+    assert.deepEqual(p.days[0].pois.map((x) => x.code), ['AMMAN_CITADEL', 'ROMAN_THEATRE', 'DOWNTOWN_AMMAN']);
+    assert.equal(p.days[0].date, '2026-06-01');
+    assert.equal(p.ambiguous, false);
+    assert.ok(p.transport);
+    assert.equal(p.transport!.pricingRowId, 'pr-van');
+    assert.equal(p.transport!.cost, 190);
+    assert.equal(p.transport!.dayCount, 1);
+    assert.match(p.transport!.pricingLabel, /Mini Van 6 \| PER_VEHICLE \| USD 190\.00/);
+  });
+
+  it('renders Jerash & Ajloun route with content POIs and skipped Amman bookends', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'jerash-ajloun', name: 'Ajloun & Jerash', durationDays: 1, startCity: 'Amman', pricings: PRICINGS,
+      stops: [baseStop(1, 'Amman'), poiStop(2, 'Jerash', 'JERASH', 'Jerash'), poiStop(3, 'Ajloun', 'AJLOUN_CASTLE', 'Ajloun Castle'), baseStop(4, 'Amman')],
+    };
+    const p = buildTouringRoutePreview(route, {});
+    assert.deepEqual(p.days[0].pois.map((x) => x.code), ['JERASH', 'AJLOUN_CASTLE']);
+    assert.equal(p.skippedStops, 2);
+  });
+
+  it('renders Amman → Dana → Petra multi-day with ambiguity warning', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'amman-dana-petra', name: 'Amman → Dana → Petra', durationDays: 3, mainDestinations: ['Amman', 'Dana', 'Petra'], pricings: PRICINGS,
+      stops: [poiStop(1, 'Amman', 'AMMAN_CITADEL', 'Amman Citadel'), poiStop(2, 'Dana', 'DANA', 'Dana Reserve'), poiStop(3, 'Petra', 'PETRA', 'Petra')],
+    };
+    const p = buildTouringRoutePreview(route, { startDate: '2026-06-01' });
+    assert.equal(p.days.length, 3);
+    assert.deepEqual(p.days.map((d) => d.date), ['2026-06-01', '2026-06-02', '2026-06-03']);
+    assert.equal(p.ambiguous, true);
+    assert.ok(p.ambiguityReasons.length > 0);
+  });
+
+  it('renders Petra → Wadi Rum → Aqaba multi-day', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'petra-rum-aqaba', name: 'Petra → Wadi Rum → Aqaba', durationDays: 3, mainDestinations: ['Petra', 'Wadi Rum', 'Aqaba'], pricings: PRICINGS,
+      stops: [poiStop(1, 'Petra', 'PETRA', 'Petra'), poiStop(2, 'Wadi Rum', 'WADI_RUM', 'Wadi Rum'), poiStop(3, 'Aqaba', 'AQABA', 'Aqaba')],
+    };
+    const p = buildTouringRoutePreview(route, {});
+    assert.deepEqual(p.days.map((d) => d.baseCity), ['Petra', 'Wadi Rum', 'Aqaba']);
+    assert.deepEqual(p.days.map((d) => d.pois.length), [1, 1, 1]);
+  });
+
+  it('handles a no-POI route with a clear warning and no usable POIs', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'no-poi', name: 'No POI route', durationDays: 2, startCity: 'Amman', pricings: PRICINGS,
+      stops: [baseStop(1, 'Amman'), baseStop(2, 'Petra')],
+    };
+    const p = buildTouringRoutePreview(route, {});
+    assert.equal(p.hasUsablePois, false);
+    assert.equal(p.totalPois, 0);
+    assert.ok(p.ambiguityReasons.some((m) => /no POI-linked stops/i.test(m)));
+    assert.ok(p.transport); // transport line still previewable
+  });
+});
+
+describe('preview local-edit reducers (no DB writes)', () => {
+  function multiDayPreview() {
+    const route: TouringRouteDetailForGen = {
+      id: 'r', name: 'R', durationDays: 2, mainDestinations: ['Amman', 'Petra'], pricings: PRICINGS,
+      stops: [
+        poiStop(1, 'Amman', 'A1', 'A1'), poiStop(2, 'Amman', 'A2', 'A2'),
+        poiStop(3, 'Petra', 'P1', 'P1'),
+      ],
+    };
+    return buildTouringRoutePreview(route, {});
+  }
+
+  it('moves a POI from one day to another', () => {
+    const before = multiDayPreview();
+    assert.deepEqual(before.days[0].pois.map((p) => p.code), ['A1', 'A2']);
+    const after = movePreviewPoi(before, 1, 0, 2); // move A1 to day 2
+    assert.deepEqual(after.days[0].pois.map((p) => p.code), ['A2']);
+    assert.deepEqual(after.days[1].pois.map((p) => p.code), ['P1', 'A1']);
+    assert.equal(after.totalPois, 3);
+    assert.notEqual(after, before); // immutable
+    assert.deepEqual(before.days[0].pois.map((p) => p.code), ['A1', 'A2']); // original untouched
+  });
+
+  it('reorders POIs within a day', () => {
+    const before = multiDayPreview();
+    const after = reorderPreviewPoi(before, 1, 0, 1); // A1 <-> A2
+    assert.deepEqual(after.days[0].pois.map((p) => p.code), ['A2', 'A1']);
+  });
+
+  it('drops a POI from a day and flags the day when emptied', () => {
+    const before = multiDayPreview();
+    const after = removePreviewPoi(before, 2, 0); // remove P1 from day 2
+    assert.deepEqual(after.days[1].pois.map((p) => p.code), []);
+    assert.equal(after.days[1].hasUsablePois, false);
+    assert.equal(after.totalPois, 2);
+  });
+
+  it('ignores out-of-range edit indices (returns equivalent preview)', () => {
+    const before = multiDayPreview();
+    assert.equal(removePreviewPoi(before, 1, 99), before);
+    assert.equal(movePreviewPoi(before, 1, 0, 1).totalPois, 3);
   });
 });
