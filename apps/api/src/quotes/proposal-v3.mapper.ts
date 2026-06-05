@@ -15,6 +15,7 @@ import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
 import {
   intlLocale,
+  joinDestinations,
   joinProseList,
   localizeSnapshotLabel,
   prosePhrase,
@@ -247,20 +248,10 @@ function conciseCopy(value: string | null | undefined, maxLength = 130) {
 
 function summarizeDestinations(destinations: string[]) {
   const cleaned = Array.from(new Set(destinations.map((destination) => cleanText(destination)).filter(Boolean)));
-
-  if (cleaned.length === 0) {
-    return '';
-  }
-
-  if (cleaned.length === 1) {
-    return cleaned[0];
-  }
-
-  if (cleaned.length === 2) {
-    return `${cleaned[0]} and ${cleaned[1]}`;
-  }
-
-  return `${cleaned.slice(0, -1).join(', ')}, and ${cleaned[cleaned.length - 1]}`;
+  // Phase 3D.1N — localized connector ("and"/"e"/"y"/"و"); English output is
+  // byte-identical to the prior hardcoded join. The cover subtitle keeps its
+  // language-neutral middle-dot join (formatDestinationSubtitle), unchanged.
+  return joinDestinations(activeProposalLocale, cleaned);
 }
 
 function formatDestinationSubtitle(destinations: string[]) {

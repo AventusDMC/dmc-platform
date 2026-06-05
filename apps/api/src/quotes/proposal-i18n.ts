@@ -164,6 +164,32 @@ export function joinProseList(locale: ProposalLocale, items: Array<string | null
   return `${head} ${connector} ${last}`;
 }
 
+// Phase 3D.1N — destination connector for the journey/heading destination line
+// (e.g. "Dana and Petra"). Distinct from the cover subtitle, which uses a
+// language-neutral middle dot ("Dana · Petra") and is intentionally unchanged.
+//   en: "A and B" / "A, B, and C"  (byte-identical to the prior English output)
+//   pt: "A e B"                    es: "A y B"
+//   ar: "A وB"  (the waw connective attaches to the following word; earlier
+//                items separated by the Arabic comma)
+const DESTINATION_CONNECTOR: Record<ProposalLocale, string> = { en: 'and', pt: 'e', es: 'y', ar: 'و' };
+
+export function joinDestinations(locale: ProposalLocale, items: Array<string | null | undefined>): string {
+  const list = items.map((value) => String(value || '')).filter(Boolean);
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+  const connector = DESTINATION_CONNECTOR[locale] || DESTINATION_CONNECTOR.en;
+  const last = list[list.length - 1];
+  if (locale === 'ar') {
+    const head = list.slice(0, -1).join('، ');
+    return `${head} ${connector}${last}`;
+  }
+  if (list.length === 2) return `${list[0]} ${connector} ${list[1]}`;
+  // 3+ items: English keeps its Oxford comma exactly as before; other Latin
+  // locales use "A, B {connector} C".
+  const head = list.slice(0, -1).join(', ');
+  return locale === 'en' ? `${head}, ${connector} ${last}` : `${head} ${connector} ${last}`;
+}
+
 // Short reusable phrase fragments composed into the sentences above.
 const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
   // Cover-intro program parts

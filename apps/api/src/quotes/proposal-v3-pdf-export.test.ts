@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildRouteIntelligence, mapQuoteToProposalV3, parseTransportRouteSegments } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
-import { localizeSnapshotLabel } from './proposal-i18n';
+import { joinDestinations, localizeSnapshotLabel } from './proposal-i18n';
 
 function createPdfQuote(overrides: Record<string, any> = {}) {
   return {
@@ -2282,6 +2282,39 @@ test('Phase 3D.1L.2: no-POI quote keeps existing hotel/transport destination beh
     ],
   });
   assert.match(mapQuoteToProposalV3(quote).destinationLine, /Petra/, 'falls back to hotel city when no POI days');
+});
+
+// ---- Phase 3D.1N: localized destination connector in the journey heading ----
+
+test('Phase 3D.1N: journey destination connector is localized; cover keeps the middle dot', () => {
+  const q = () => danaPetraTwoDayQuote({ hotelCity: 'Petra' });
+  // EN unchanged
+  const en = mapQuoteToProposalV3(q(), 'en');
+  assert.equal(en.destinationLine, 'Dana and Petra', 'EN journey heading unchanged');
+  assert.equal(en.coverSubtitle, 'Dana · Petra', 'EN cover keeps the middle dot');
+  // PT / ES connectors
+  assert.equal(mapQuoteToProposalV3(q(), 'pt').destinationLine, 'Dana e Petra');
+  assert.equal(mapQuoteToProposalV3(q(), 'es').destinationLine, 'Dana y Petra');
+  // AR connector (waw attaches to the next word) + cover dot preserved + RTL
+  const ar = mapQuoteToProposalV3(q(), 'ar');
+  assert.equal(ar.destinationLine, 'Dana وPetra');
+  assert.equal(ar.coverSubtitle, 'Dana · Petra', 'cover dot is language-neutral in AR too');
+  assert.equal(ar.textDirection, 'rtl');
+  // Cover subtitle never uses a word connector in any locale
+  for (const L of ['en', 'pt', 'es', 'ar'] as const) {
+    assert.doesNotMatch(mapQuoteToProposalV3(q(), L).coverSubtitle, /\b(and|e|y)\b|و/, `cover stays dot-joined (${L})`);
+  }
+});
+
+test('Phase 3D.1N: joinDestinations 3+ items keeps EN Oxford comma; single item unchanged', () => {
+  assert.equal(joinDestinations('en', ['A', 'B', 'C']), 'A, B, and C');
+  assert.equal(joinDestinations('pt', ['A', 'B', 'C']), 'A, B e C');
+  assert.equal(joinDestinations('es', ['A', 'B', 'C']), 'A, B y C');
+  assert.equal(joinDestinations('ar', ['A', 'B', 'C']), 'A، B وC');
+  // Single destination: no connector in any locale (non-multi-destination unchanged).
+  for (const L of ['en', 'pt', 'es', 'ar'] as const) {
+    assert.equal(joinDestinations(L, ['Amman']), 'Amman');
+  }
 });
 
 // ---- Phase 3D.1M: proposal localization cleanup / internal text hygiene ----
