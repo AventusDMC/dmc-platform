@@ -19,6 +19,7 @@ import {
   movePreviewPoi,
   reorderPreviewPoi,
   removePreviewPoi,
+  buildTouringRouteApplyPlan,
   type TouringRouteForGen,
   type TouringRouteDetailForGen,
 } from './QuoteAutoItineraryBuilder.logic';
@@ -571,5 +572,98 @@ describe('preview local-edit reducers (no DB writes)', () => {
     const before = multiDayPreview();
     assert.equal(removePreviewPoi(before, 1, 99), before);
     assert.equal(movePreviewPoi(before, 1, 0, 1).totalPois, 3);
+  });
+});
+
+// Phase 3D.1C — non-destructive apply plan.
+describe('buildTouringRouteApplyPlan', () => {
+  const SVC = 'transport-svc-1';
+  function ammanCityPreview() {
+    const route: TouringRouteDetailForGen = {
+      id: 'amman-city', name: 'Amman City Sites', durationDays: 1, startCity: 'Amman', pricings: PRICINGS,
+      stops: [
+        poiStop(1, 'Amman', 'AMMAN_CITADEL', 'Amman Citadel'),
+        poiStop(2, 'Amman', 'ROMAN_THEATRE', 'Roman Theatre'),
+        baseStop(3, 'Amman'),
+      ],
+    };
+    return buildTouringRoutePreview(route, { pricingRowId: 'pr-van', startDate: '2026-06-01' });
+  }
+
+  it('applies on an empty quote: correct day count + one transport item with the selected pricing/overrideCost', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 3, transportServiceId: SVC, existingDayCount: 0, existingItemCount: 0 });
+    assert.equal(plan.canApply, true);
+    assert.equal(plan.blockedReason, null);
+    assert.equal(plan.days.length, 1);
+    assert.ok(plan.transport);
+    assert.deepEqual(plan.transport, {
+      serviceId: SVC,
+      touringRouteId: 'amman-city',
+      touringRoutePricingId: 'pr-van',
+      overrideCost: 190,
+      useOverride: true,
+      dayCount: 1,
+      paxCount: 3,
+      attachToDayNumber: 1,
+    });
+  });
+
+  it('creates ordered POI assignments and excludes base/null-POI stops', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 2, transportServiceId: SVC });
+    assert.deepEqual(plan.days[0].poiAssignments.map((a) => a.poiId), ['poi-AMMAN_CITADEL', 'poi-ROMAN_THEATRE']);
+    assert.equal(plan.totalPoiAssignments, 2); // the base Amman stop contributes nothing
+    assert.equal(plan.days[0].poiAssignments[0].sourceTouringRouteStopId, 'stop-1');
+  });
+
+  it('no-POI route can still apply days + transport but creates no POI assignments (with warning)', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'no-poi', name: 'No POI', durationDays: 2, startCity: 'Amman', pricings: PRICINGS,
+      stops: [baseStop(1, 'Amman'), baseStop(2, 'Petra')],
+    };
+    const plan = buildTouringRouteApplyPlan(buildTouringRoutePreview(route, {}), { pax: 2, transportServiceId: SVC });
+    assert.equal(plan.canApply, true);
+    assert.equal(plan.totalPoiAssignments, 0);
+    assert.ok(plan.transport);
+    assert.ok(plan.warnings.some((w) => /no POI-linked stops/i.test(w)));
+  });
+
+  it('is BLOCKED when the quote already has itinerary days (never overwrites)', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 2, transportServiceId: SVC, existingDayCount: 3 });
+    assert.equal(plan.canApply, false);
+    assert.match(plan.blockedReason || '', /already has 3 itinerary day/i);
+    assert.equal(plan.transport, null);
+  });
+
+  it('is BLOCKED when existing POI assignments are present', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 2, transportServiceId: SVC, existingDayCount: 0, existingPoiAssignmentCount: 4 });
+    assert.equal(plan.canApply, false);
+  });
+
+  it('warns (but allows) when the quote has existing service items', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 2, transportServiceId: SVC, existingItemCount: 5 });
+    assert.equal(plan.canApply, true);
+    assert.ok(plan.warnings.some((w) => /5 service item/i.test(w)));
+  });
+
+  it('is blocked without a transport service or pricing row', () => {
+    const noSvc = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 2, transportServiceId: null });
+    assert.equal(noSvc.canApply, false);
+    assert.match(noSvc.blockedReason || '', /transport service/i);
+  });
+
+  it('is blocked with invalid pax', () => {
+    const plan = buildTouringRouteApplyPlan(ammanCityPreview(), { pax: 0, transportServiceId: SVC });
+    assert.equal(plan.canApply, false);
+    assert.match(plan.blockedReason || '', /guests|pax/i);
+  });
+
+  it('flags multi-day partitions as a reviewable warning', () => {
+    const route: TouringRouteDetailForGen = {
+      id: 'm', name: 'M', durationDays: 3, mainDestinations: ['Amman', 'Dana', 'Petra'], pricings: PRICINGS,
+      stops: [poiStop(1, 'Amman', 'A', 'A'), poiStop(2, 'Dana', 'D', 'D'), poiStop(3, 'Petra', 'P', 'P')],
+    };
+    const plan = buildTouringRouteApplyPlan(buildTouringRoutePreview(route, {}), { pax: 2, transportServiceId: SVC });
+    assert.equal(plan.canApply, true);
+    assert.ok(plan.warnings.some((w) => /suggestion/i.test(w)));
   });
 });

@@ -1,18 +1,23 @@
 'use client';
 
-// Phase 3D.1B — "Generate from Touring Route" PREVIEW panel.
+// Phase 3D.1B/3D.1C — "Generate from Touring Route" panel.
 //
-// PREVIEW ONLY. This component never creates, updates, or deletes anything.
-// The ONLY network call is a read: GET /touring-routes/:id. There is no Apply/
-// Save button and no call to POST /quotes/{id}/itinerary/day, POST /quotes/{id}/
-// items, or PUT /itinerary/day/:dayId/pois — those arrive in Phase 3D.1C.
-// Operator edits (move / reorder / drop POIs) mutate LOCAL React state only.
+// Reads GET /touring-routes/:id and previews a quote skeleton. Operator edits
+// (move / reorder / drop POIs) mutate LOCAL React state only.
+//
+// Phase 3D.1C adds a NON-DESTRUCTIVE apply: it CREATES itinerary days, ONE
+// touring-route transport package item, and ordered QuoteItineraryDayPoi rows
+// via the existing endpoints. It NEVER deletes or overwrites: apply is blocked
+// unless the quote has zero itinerary days (no replace mode here). Generated
+// days carry NO notes text — the proposal composer remains the narrative source.
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
 import {
   buildTouringRoutePreview,
+  buildTouringRouteApplyPlan,
   formatTouringRoutePricingLabel,
   movePreviewPoi,
   removePreviewPoi,
@@ -25,6 +30,9 @@ import {
 type Props = {
   apiBaseUrl: string;
   routes: RouteOption[];
+  quoteId: string;
+  transportServiceId?: string | null;
+  existingItemCount?: number;
   defaultPax?: number;
   defaultStartDate?: string | null;
 };
@@ -33,7 +41,8 @@ function isTouringRoute(route: RouteOption): boolean {
   return route.canonicalRouteType === 'TOURING_ROUTE';
 }
 
-export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, defaultPax, defaultStartDate }: Props) {
+export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate }: Props) {
+  const router = useRouter();
   const touringRoutes = useMemo(() => (routes || []).filter(isTouringRoute), [routes]);
 
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -46,14 +55,44 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, defa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Existing-state detection for the non-destructive guard (refreshed on route load).
+  const [existingDayCount, setExistingDayCount] = useState(0);
+  const [existingPoiAssignmentCount, setExistingPoiAssignmentCount] = useState(0);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [applySuccess, setApplySuccess] = useState('');
+
+  // READ-ONLY: count existing itinerary days + POI assignments so apply can block
+  // safely (no overwrite / no replace in 3D.1C).
+  async function refreshExistingState() {
+    try {
+      const res = await fetch(`${apiBaseUrl}/quotes/${quoteId}/itinerary`, { method: 'GET', headers: buildAuthHeaders(), cache: 'no-store' });
+      if (!res.ok) return { dayCount: 0, poiCount: 0 };
+      const body = await res.json();
+      const days = (body?.days || []) as Array<{ poiAssignments?: unknown[] }>;
+      const dayCount = days.length;
+      const poiCount = days.reduce((sum, d) => sum + ((d.poiAssignments || []).length), 0);
+      setExistingDayCount(dayCount);
+      setExistingPoiAssignmentCount(poiCount);
+      return { dayCount, poiCount };
+    } catch {
+      return { dayCount: 0, poiCount: 0 };
+    }
+  }
+
   async function loadRoute(routeId: string) {
     setSelectedRouteId(routeId);
     setPreview(null);
     setRouteDetail(null);
     setError('');
+    setApplyError('');
+    setApplySuccess('');
+    setAcknowledged(false);
     if (!routeId) return;
     setLoading(true);
     try {
+      await refreshExistingState();
       // READ-ONLY: fetch the route detail (ordered stops + POI translations).
       const response = await fetch(`${apiBaseUrl}/touring-routes/${routeId}`, {
         method: 'GET',
@@ -92,6 +131,100 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, defa
   function onStartDateChange(value: string) {
     setStartDate(value);
     rebuildPreview(pricingRowId, value);
+  }
+
+  const applyPlan = useMemo(() => {
+    if (!preview) return null;
+    return buildTouringRouteApplyPlan(preview, {
+      pax,
+      transportServiceId: transportServiceId ?? null,
+      existingDayCount,
+      existingItemCount: existingItemCount ?? 0,
+      existingPoiAssignmentCount,
+    });
+  }, [preview, pax, transportServiceId, existingDayCount, existingItemCount, existingPoiAssignmentCount]);
+
+  const needsAck = (applyPlan?.warnings.length ?? 0) > 0;
+  const canSubmit = Boolean(applyPlan?.canApply) && (!needsAck || acknowledged) && !applying;
+
+  // NON-DESTRUCTIVE apply: create-only. Re-checks the quote is empty first, then
+  // creates days, ONE transport package item, and ordered POI rows. No deletes.
+  async function applyGenerated() {
+    if (!preview || !applyPlan || !applyPlan.canApply || !applyPlan.transport) return;
+    setApplying(true);
+    setApplyError('');
+    setApplySuccess('');
+    try {
+      // Defensive pre-flight: confirm the quote still has no itinerary days.
+      const { dayCount } = await refreshExistingState();
+      if (dayCount > 0) {
+        throw new Error('This quote now has itinerary days — refresh and use an empty quote (replace mode is a later phase).');
+      }
+
+      const post = async (path: string, body: unknown) => {
+        const res = await fetch(`${apiBaseUrl}${path}`, {
+          method: 'POST',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(body),
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`Request failed (${res.status}) for ${path}`);
+        return res.json();
+      };
+
+      // 1) Create itinerary days (notes empty — composer is the narrative source).
+      const dayIdByNumber = new Map<number, string>();
+      for (const day of applyPlan.days) {
+        const created = await post(`/quotes/${quoteId}/itinerary/day`, {
+          dayNumber: day.dayNumber,
+          title: day.title || `Day ${day.dayNumber}`,
+          notes: '',
+        });
+        if (created?.id) dayIdByNumber.set(day.dayNumber, created.id);
+      }
+
+      // 2) Create exactly ONE touring-route transport package item on day 1.
+      const t = applyPlan.transport;
+      const day1Id = dayIdByNumber.get(t.attachToDayNumber);
+      const day1Date = preview.days.find((d) => d.dayNumber === t.attachToDayNumber)?.date || null;
+      await post(`/quotes/${quoteId}/items`, {
+        serviceId: t.serviceId,
+        itineraryId: day1Id,
+        serviceDate: day1Date ? new Date(`${day1Date}T09:00:00`).toISOString() : undefined,
+        startTime: '09:00',
+        participantCount: t.paxCount,
+        paxCount: t.paxCount,
+        quantity: 1,
+        dayCount: t.dayCount,
+        markupPercent: 20,
+        touringRouteId: t.touringRouteId,
+        touringRoutePricingId: t.touringRoutePricingId,
+        overrideCost: t.overrideCost,
+        useOverride: t.useOverride,
+      });
+
+      // 3) Assign ordered POIs per generated day (snapshots handled by the endpoint).
+      for (const day of applyPlan.days) {
+        if (day.poiAssignments.length === 0) continue;
+        const dayId = dayIdByNumber.get(day.dayNumber);
+        if (!dayId) continue;
+        const res = await fetch(`${apiBaseUrl}/itinerary/day/${dayId}/pois`, {
+          method: 'PUT',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ assignments: day.poiAssignments }),
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`Could not assign POIs for day ${day.dayNumber} (${res.status}).`);
+      }
+
+      setApplySuccess(`Generated ${applyPlan.days.length} day(s), 1 transport package, and ${applyPlan.totalPoiAssignments} POI assignment(s). The proposal narrative is generated automatically.`);
+      await refreshExistingState();
+      router.refresh();
+    } catch (caught) {
+      setApplyError(caught instanceof Error ? caught.message : 'Could not generate the itinerary.');
+    } finally {
+      setApplying(false);
+    }
   }
 
   return (
@@ -207,9 +340,37 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, defa
             </div>
           ))}
 
-          <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--ds-color-muted, #475569)' }}>
-            Preview only — no Apply yet. Saving the generated itinerary arrives in a later step.
-          </p>
+          {/* Phase 3D.1C — non-destructive apply */}
+          <div style={{ marginTop: '0.4rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {applyPlan && existingDayCount > 0 ? (
+              <p className="form-error" role="status">⚠️ This quote already has {existingDayCount} itinerary day(s){existingPoiAssignmentCount > 0 ? ` and ${existingPoiAssignmentCount} POI assignment(s)` : ''}. Generate into a quote with no itinerary days (replace mode is a later phase).</p>
+            ) : null}
+
+            {applyPlan && applyPlan.warnings.length > 0 ? (
+              <div style={{ background: 'var(--ds-color-warn-bg, #FFF6D6)', border: '1px solid #E6C96B', borderRadius: 6, padding: '0.5rem 0.6rem' }}>
+                <strong style={{ fontSize: '0.78rem' }}>Please confirm before applying:</strong>
+                <ul style={{ margin: '0.3rem 0 0', paddingInlineStart: '1.1rem', fontSize: '0.76rem' }}>
+                  {applyPlan.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+                <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem', fontSize: '0.78rem' }}>
+                  <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+                  <span>I have reviewed these warnings.</span>
+                </label>
+              </div>
+            ) : null}
+
+            {applyError ? <p className="form-error">{applyError}</p> : null}
+            {applySuccess ? <p style={{ color: '#15803d', fontSize: '0.8rem', margin: 0 }}>{applySuccess}</p> : null}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button type="button" className="primary-button" disabled={!canSubmit} onClick={() => void applyGenerated()}>
+                {applying ? 'Generating…' : 'Apply to quote'}
+              </button>
+              <span style={{ fontSize: '0.74rem', color: 'var(--ds-color-muted, #475569)' }}>
+                Creates days + one transport package + POI assignments. Never deletes or overwrites existing days/items.
+              </span>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

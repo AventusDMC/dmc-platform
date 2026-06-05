@@ -2600,12 +2600,15 @@ export function QuoteAutoItineraryBuilder({
         <span className="page-tab-badge">{quoteType}</span>
       </div>
 
-      {/* Phase 3D.1B — POI-aware touring-route generator (PREVIEW ONLY, no writes). */}
+      {/* Phase 3D.1C — POI-aware touring-route generator (non-destructive apply). */}
       <details className="quote-auto-itinerary-collapsible">
-        <summary>Generate from touring route (preview)</summary>
+        <summary>Generate from touring route</summary>
         <GenerateFromTouringRoutePanel
           apiBaseUrl={apiBaseUrl}
           routes={routes}
+          quoteId={quote.id}
+          transportServiceId={transportService?.id ?? null}
+          existingItemCount={(quote as { quoteItems?: unknown[] }).quoteItems?.length ?? 0}
           defaultPax={totalPax}
           defaultStartDate={travelStartDate || null}
         />
