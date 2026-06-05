@@ -84,3 +84,33 @@ Both the on-screen/HTML proposal and the downloadable **PDF** render Arabic corr
 An Arabic web font (Noto Naskh Arabic, SIL OFL) is embedded in the proposal styles, so
 Arabic PDFs display proper glyphs (no boxes/tofu) and keep right-to-left direction
 without relying on server/system fonts. English/Portuguese/Spanish PDFs are unchanged.
+
+## Generate a day skeleton from a touring route (Phase 3D)
+
+In the **Itinerary** step of the quote builder, the Auto Builder has a **"Generate from
+touring route"** panel. It builds a quote skeleton — itinerary days, one touring-route
+transport package, and per-day POI assignments — from a route's POI-linked stops. The
+proposal day narrative is then produced automatically by the POI composer (above).
+
+How to use it:
+1. Open the **Itinerary** step → expand **Generate from touring route**.
+2. Pick a touring route, a **pricing row**, a start date, and pax.
+3. Review the **preview**: generated days, the one transport package + cost, and each
+   day's ordered POIs. You can **move / reorder / drop** POIs before applying.
+4. Click **Apply to quote**.
+
+Important limits (current version):
+- **Empty quotes only.** If the quote already has itinerary days, **Apply is blocked**
+  (no replace/append yet) — generate into a quote with no itinerary days.
+- The route **must have an active pricing row** — otherwise Apply is disabled
+  ("Select a pricing row"). See the pricing-entry checklist if a route has none.
+- The route **should have POI-linked content stops** — otherwise days + transport are
+  created but there are **no** POI assignments and the day narrative falls back to notes.
+- **`day.notes` are left empty on purpose** — the proposal narrative comes from the POIs
+  (the composer), not from stored notes.
+- For **multi-day** routes the per-day POI split is an **automatic suggestion** — review
+  and adjust it in the preview before applying.
+- **Hotels, activities, entrances, and meals are still added manually** after generation;
+  the generator does not create them and does not change pricing.
+
+Nothing is written until you click Apply; the preview and your edits are local until then.
