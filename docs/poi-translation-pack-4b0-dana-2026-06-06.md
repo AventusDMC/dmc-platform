@@ -27,14 +27,18 @@ and must **not** be machine-translated directly into production.
 - **Title:** Dana Biosphere Reserve
 - **Short description (as stored in DB):** Jordan's largest nature reserve, spanning four bio-geographic zones.
 - **Long description (PROPOSED source — ⚠️ confirm against canonical EN before publishing):**
-  > Dramatic escarpments and wadis descending from the highlands to the
-  > desert, with the historic Dana village, hiking trails and abundant
-  > wildlife.
+  > Dana Biosphere Reserve is Jordan's largest nature reserve — a dramatic
+  > landscape of sandstone cliffs, deep wadis, and ancient villages that
+  > descends from the highlands near Tafileh toward the Rift Valley.
+  > Spanning four bio-geographic zones, it shelters a remarkable diversity
+  > of plants, birds, and wildlife, and offers some of the country's finest
+  > scenic walking and eco-tourism experiences.
 
-> This EN long matches the **canonical English row already stored on the POI**
-> (confirmed in `seed-points-of-interest.ts`). The idempotent seed never
-> modifies the English row, so the PT/ES/AR long texts below are translations
-> of this canonical English — keeping all locales consistent.
+> **APPROVED 2026-06-06.** This richer English long was approved over the
+> shorter canonical text. The idempotent seed updates the English long row to
+> match (English **title** and **short** are left unchanged); the PT/ES/AR
+> long texts below are translations of it, so all four locales share this
+> narrative.
 
 ---
 
@@ -43,26 +47,36 @@ and must **not** be machine-translated directly into production.
 - **Título:** Reserva da Biosfera de Dana
 - **Descrição curta:** A maior reserva natural da Jordânia, abrangendo quatro zonas biogeográficas.
 - **Descrição longa:**
-  > Escarpas e wadis dramáticos que descem das terras altas até ao deserto,
-  > com a histórica aldeia de Dana, trilhos de caminhada e vida selvagem
-  > abundante.
+  > A Reserva da Biosfera de Dana é a maior reserva natural da Jordânia —
+  > uma paisagem deslumbrante de falésias de arenito, wadis profundos e
+  > aldeias antigas que desce das terras altas próximas de Tafileh em
+  > direção ao Vale do Rift. Abrangendo quatro zonas biogeográficas, abriga
+  > uma notável diversidade de plantas, aves e vida selvagem, e oferece
+  > algumas das melhores caminhadas paisagísticas e experiências de
+  > ecoturismo do país.
 
 ## 🇪🇸 Spanish (es) — DRAFT
 
 - **Título:** Reserva de la Biosfera de Dana
 - **Descripción corta:** La mayor reserva natural de Jordania, que abarca cuatro zonas biogeográficas.
 - **Descripción larga:**
-  > Espectaculares escarpas y uadis que descienden desde las tierras altas
-  > hasta el desierto, con el histórico pueblo de Dana, senderos de senderismo
-  > y abundante fauna.
+  > La Reserva de la Biosfera de Dana es la mayor reserva natural de Jordania
+  > — un paisaje impresionante de acantilados de arenisca, profundos uadis y
+  > antiguas aldeas que desciende desde las tierras altas cercanas a Tafileh
+  > hacia el valle del Rift. Abarca cuatro zonas biogeográficas y alberga una
+  > notable diversidad de plantas, aves y fauna, además de ofrecer algunas de
+  > las mejores caminatas paisajísticas y experiencias de ecoturismo del país.
 
 ## 🇯🇴 Arabic (ar) — DRAFT (RTL)
 
 - **العنوان:** محمية ضانا للمحيط الحيوي
 - **وصف مختصر:** أكبر محمية طبيعية في الأردن، تمتد عبر أربع مناطق جغرافية حيوية.
 - **وصف مطوّل:**
-  > منحدرات وأودية مهيبة تنحدر من المرتفعات نحو الصحراء، مع قرية ضانا
-  > التاريخية ومسارات المشي والحياة البرية الوفيرة.
+  > محمية ضانا للمحيط الحيوي هي أكبر محمية طبيعية في الأردن — منطقة آسرة من
+  > المنحدرات الرملية والأودية العميقة والقرى القديمة، تنحدر من المرتفعات قرب
+  > الطفيلة نحو وادي الأردن المتصدّع. تمتد المحمية عبر أربع مناطق جغرافية
+  > حيوية، وتضمّ تنوّعاً لافتاً من النباتات والطيور والحياة البرية، وتوفّر
+  > بعضاً من أجمل مسارات المشي الطبيعية وتجارب السياحة البيئية في البلاد.
 
 ---
 

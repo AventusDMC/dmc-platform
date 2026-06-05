@@ -32,13 +32,13 @@ const rows = [
   {
     field: 'Long description',
     en:
-      'Dramatic escarpments and wadis descending from the highlands to the desert, with the historic Dana village, hiking trails and abundant wildlife.',
+      "Dana Biosphere Reserve is Jordan's largest nature reserve — a dramatic landscape of sandstone cliffs, deep wadis, and ancient villages that descends from the highlands near Tafileh toward the Rift Valley. Spanning four bio-geographic zones, it shelters a remarkable diversity of plants, birds, and wildlife, and offers some of the country's finest scenic walking and eco-tourism experiences.",
     pt:
-      'Escarpas e wadis dramáticos que descem das terras altas até ao deserto, com a histórica aldeia de Dana, trilhos de caminhada e vida selvagem abundante.',
+      'A Reserva da Biosfera de Dana é a maior reserva natural da Jordânia — uma paisagem deslumbrante de falésias de arenito, wadis profundos e aldeias antigas que desce das terras altas próximas de Tafileh em direção ao Vale do Rift. Abrangendo quatro zonas biogeográficas, abriga uma notável diversidade de plantas, aves e vida selvagem, e oferece algumas das melhores caminhadas paisagísticas e experiências de ecoturismo do país.',
     es:
-      'Espectaculares escarpas y uadis que descienden desde las tierras altas hasta el desierto, con el histórico pueblo de Dana, senderos de senderismo y abundante fauna.',
+      'La Reserva de la Biosfera de Dana es la mayor reserva natural de Jordania — un paisaje impresionante de acantilados de arenisca, profundos uadis y antiguas aldeas que desciende desde las tierras altas cercanas a Tafileh hacia el valle del Rift. Abarca cuatro zonas biogeográficas y alberga una notable diversidad de plantas, aves y fauna, además de ofrecer algunas de las mejores caminatas paisajísticas y experiencias de ecoturismo del país.',
     ar:
-      'منحدرات وأودية مهيبة تنحدر من المرتفعات نحو الصحراء، مع قرية ضانا التاريخية ومسارات المشي والحياة البرية الوفيرة.',
+      'محمية ضانا للمحيط الحيوي هي أكبر محمية طبيعية في الأردن — منطقة آسرة من المنحدرات الرملية والأودية العميقة والقرى القديمة، تنحدر من المرتفعات قرب الطفيلة نحو وادي الأردن المتصدّع. تمتد المحمية عبر أربع مناطق جغرافية حيوية، وتضمّ تنوّعاً لافتاً من النباتات والطيور والحياة البرية، وتوفّر بعضاً من أجمل مسارات المشي الطبيعية وتجارب السياحة البيئية في البلاد.',
   },
 ];
 
@@ -73,7 +73,7 @@ async function main() {
   ws.mergeCells('A2:G2');
   const sub = ws.getCell('A2');
   sub.value =
-    'EN is the source of truth and matches the English row currently stored on the POI (the seed never modifies English). Edit the PT/ES/AR drafts inline as needed, then set "Reviewer status" (Approve / Edit / Reject).';
+    'APPROVED. The richer EN long below was approved and the seed updates the English long to match (EN title + short unchanged); PT/ES/AR are translations of it. All four locales share this long narrative.';
   sub.font = { italic: true, color: { argb: 'FF555555' }, size: 10 };
   sub.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
   ws.getRow(2).height = 26;
@@ -108,7 +108,7 @@ async function main() {
   ws2.columns = [{ key: 'a', width: 4 }, { key: 'b', width: 110 }];
   const lines = [
     ['', 'PHASE 4B.0 — DANA BIOSPHERE RESERVE TRANSLATION PACK'],
-    ['', 'Status: Content APPROVED 2026-06-06. Apply via the idempotent seed (seed-poi-translations-dana.ts) on explicit go. No machine translation into production.'],
+    ['', 'Status: Content APPROVED 2026-06-06 (richer long; EN long updated to match). PR #353 open; prod apply held until explicit go. No machine translation into production.'],
     ['', ''],
     ['', 'WHY THIS EXISTS'],
     ['', "Dana Biosphere Reserve currently stores only an English (en) POI translation, so the proposal renders Dana in"],
@@ -116,7 +116,7 @@ async function main() {
     ['', 'fallback chain is working as designed; the fix is human-authored PT/ES/AR content — drafted on the first sheet.'],
     ['', ''],
     ['', 'REVIEW CHECKLIST'],
-    ['☐', 'EN long matches the canonical English row stored on the POI; the PT/ES/AR long texts are translations of it.'],
+    ['☑', 'APPROVED richer long: the seed updates the EN long to this text (EN title + short unchanged); PT/ES/AR are translations of it.'],
     ['☐', 'Verify the PT title / short / long read naturally for a client audience.'],
     ['☐', 'Verify the ES title / short / long.'],
     ['☐', 'Verify the AR title / short / long, including RTL rendering and "Dana" (ضانا).'],
