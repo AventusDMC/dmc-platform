@@ -41,7 +41,7 @@ import { deriveDayCountry } from './quote-day-country';
 import { resolveProposalLanguage } from './proposal-i18n';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
-import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
+import { calculateMultiCurrencyQuoteItemPricing, convertCurrency, isSupportedCurrency } from './multi-currency-pricing';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 
@@ -6156,7 +6156,24 @@ export class QuotesService {
       capacityMaxPaxPerUnit,
     });
     const manualOverrideApplied = useOverride && overrideCost !== null;
-    const finalCost = manualOverrideApplied ? Number(overrideCost.toFixed(2)) : basePricing.totalCost;
+    // Phase 3D.1H: when an override cost is supplied, it is in the supplier's cost currency
+    // (e.g. the TouringRoutePricing.currency = "JOD"), NOT necessarily in the quote currency
+    // (e.g. "USD"). Without this conversion the override bypasses the FX step in
+    // calculateMultiCurrencyQuoteItemPricing, making JOD 100 → USD 100 before markup (wrong).
+    // Convert the raw override into quote currency first; same-currency pairs are a no-op.
+    const finalCost = manualOverrideApplied
+      ? (() => {
+          const raw = Number(overrideCost!.toFixed(2));
+          if (
+            isSupportedCurrency(supplierCostCurrency) &&
+            isSupportedCurrency(quoteCurrency) &&
+            supplierCostCurrency !== quoteCurrency
+          ) {
+            return convertCurrency(raw, supplierCostCurrency, quoteCurrency).amount;
+          }
+          return raw;
+        })()
+      : basePricing.totalCost;
     const pricing = this.applyQuoteItemSellingLayer({
       pricing: manualOverrideApplied ? { ...basePricing, totalCost: finalCost } : basePricing,
       cost: finalCost,

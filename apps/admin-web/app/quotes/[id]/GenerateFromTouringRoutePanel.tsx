@@ -210,6 +210,9 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
         markupPercent: 20,
         touringRouteId: t.touringRouteId,
         touringRoutePricingId: t.touringRoutePricingId,
+        // Phase 3D.1H: pass the pricing row's currency so the backend can convert
+        // overrideCost from the source currency into the quote currency before markup.
+        currency: t.currency,
         overrideCost: t.overrideCost,
         useOverride: t.useOverride,
       });

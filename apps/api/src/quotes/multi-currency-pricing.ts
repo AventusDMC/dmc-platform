@@ -41,7 +41,7 @@ const FX_TO_USD: Record<SupportedCurrency, number> = {
   ILS: 0.27,
 };
 
-function isSupportedCurrency(value: string | null | undefined): value is SupportedCurrency {
+export function isSupportedCurrency(value: string | null | undefined): value is SupportedCurrency {
   return Boolean(value && value.trim().toUpperCase() in FX_TO_USD);
 }
 
@@ -87,7 +87,7 @@ function addIncludedPercent(baseAmount: number, percent: number, included: boole
   return baseAmount * (1 + percent / 100);
 }
 
-function convertCurrency(amount: number, fromCurrency: SupportedCurrency, toCurrency: SupportedCurrency) {
+export function convertCurrency(amount: number, fromCurrency: SupportedCurrency, toCurrency: SupportedCurrency) {
   if (fromCurrency === toCurrency) {
     return {
       amount: roundMoney(amount),

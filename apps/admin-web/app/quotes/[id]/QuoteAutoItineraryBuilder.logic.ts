@@ -714,6 +714,10 @@ export type ApplyPlanTransport = {
   serviceId: string;
   touringRouteId: string;
   touringRoutePricingId: string;
+  /** Currency of the selected TouringRoutePricing row (e.g. "JOD"). Sent in the
+   *  POST /items payload so the backend knows the cost currency of overrideCost
+   *  when it performs FX conversion to the quote currency (Phase 3D.1H). */
+  currency: string;
   overrideCost: number;
   useOverride: true;
   dayCount: number;
@@ -784,6 +788,9 @@ export function buildTouringRouteApplyPlan(
           serviceId: opts.transportServiceId,
           touringRouteId: preview.routeId,
           touringRoutePricingId: preview.transport.pricingRowId as string,
+          // Phase 3D.1H: pass the pricing row's currency explicitly so the backend
+          // knows the cost currency of overrideCost and can convert to quote currency.
+          currency: preview.transport.currency,
           overrideCost: preview.transport.cost,
           useOverride: true,
           dayCount: preview.transport.dayCount,
