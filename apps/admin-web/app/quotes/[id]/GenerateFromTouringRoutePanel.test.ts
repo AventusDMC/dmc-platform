@@ -39,3 +39,25 @@ test('apply is gated and blocks when the quote already has itinerary days', () =
   assert.match(src, /existingDayCount/, 'apply must consider existing itinerary days');
   assert.match(src, /\/quotes\/\$\{quoteId\}\/itinerary`/, 'a pre-flight GET on the itinerary must run before writing');
 });
+
+// Phase 3D.1G — route picker shows the real route name + code (not the generic
+// city→city label), and offers a search filter so operators can find a route.
+test('route picker labels options by route name + code (not generic city→city)', () => {
+  const src = readPanelSource();
+  assert.match(src, /formatTouringRouteOptionLabel\(route\)/, 'options must use the touring-route name/code label');
+  assert.ok(!/formatRouteLabel\(/.test(src), 'must not fall back to the generic fromCity→toCity label here');
+});
+
+test('route picker offers a name/code/destination search filter', () => {
+  const src = readPanelSource();
+  assert.match(src, /touringRouteMatchesSearch/, 'a search filter helper must drive the option list');
+  assert.match(src, /filteredTouringRoutes\.map\(/, 'options must render from the filtered list');
+});
+
+test('selection still keys off route.id (apply/fetch behavior unchanged)', () => {
+  const src = readPanelSource();
+  // The <option> value remains route.id and selection still calls loadRoute — the
+  // label change is display-only and does not alter what gets fetched/applied.
+  assert.match(src, /value=\{route\.id\}/, 'option value must remain the route id');
+  assert.match(src, /onChange=\{\(e\) => void loadRoute\(e\.target\.value\)\}/, 'selection must still call loadRoute(id)');
+});
