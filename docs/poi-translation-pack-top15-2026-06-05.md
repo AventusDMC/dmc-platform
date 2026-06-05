@@ -27,12 +27,13 @@ routine fluency pass. (`☐` = pending.)
 
 | # | POI | Lang | Term / phrase | Current draft | Alternative options | Recommended choice | Reason / note | Reviewer decision |
 |---|-----|------|---------------|---------------|---------------------|--------------------|---------------|-------------------|
-| 1 | Mount Nebo | AR | Honorific after "Moses" | النبي موسى (عليه السلام) | (a) keep honorific (عليه السلام); (b) النبي موسى (no honorific); (c) موسى (match neutral EN) | (a) keep honorific | Customary/respectful for Arabic-speaking audiences; the English is neutral ("Moses"). | ☐ |
-| 2 | Bethany Beyond the Jordan | AR | Site name | المغطس (بيت عنيا عبر الأردن) | (a) المغطس only; (b) بيت عنيا عبر الأردن only; (c) both (current) | (c) both | المغطس is the official local/UNESCO name; biblical name aids recognition. | ☐ |
-| 3 | Bethany Beyond the Jordan | AR | "Jesus Christ" | تعميد السيد المسيح | السيد المسيح / يسوع المسيح | السيد المسيح | Common respectful Arabic form; confirm tone for target audience. | ☐ |
+| 1 | Mount Nebo | AR | "Moses" honorific in default copy | النبي موسى (no honorific) | (a) neutral النبي موسى (default); (b) add (عليه السلام) only for an Islamic-market variant | (a) neutral — do **not** force (عليه السلام) into default proposal copy | Per Axis direction: keep neutral tourism style; offer an Islamic-market variant later if wanted. **HLJ ref:** uses "مزار النبي موسى - جبل نيبو" (neutral). | ☐ |
+| 2 | Bethany Beyond the Jordan | AR | Site title | المغطس (موقع معمودية السيد المسيح) | (a) المغطس (موقع معمودية السيد المسيح); (b) المغطس (بيت عنيا عبر الأردن); (c) المغطس only | (a) المغطس (موقع معمودية السيد المسيح); keep "المعروف أيضاً باسم بيت عنيا عبر الأردن" in the long description | **HLJ ref:** "موقع المغطس" / "موقع معمودية السيد المسيح". Official local naming + religious tone; intl. name preserved in long copy. | ☐ |
+| 3 | Bethany Beyond the Jordan | AR | "Jesus Christ" / "baptism" | معمودية السيد المسيح | السيد المسيح / يسوع المسيح; تعميد / معمودية | السيد المسيح + معمودية | **HLJ ref:** uses "معمودية السيد المسيح" → confirms السيد المسيح and معمودية over تعميد. | ☐ |
 | 4 | Umm Qais | AR | "Sea of Galilee" | بحيرة طبريا | بحيرة طبريا / بحر الجليل | بحيرة طبريا | Standard regional Arabic usage. Politically sensitive — confirm. | ☐ |
 | 5 | Umm Qais | AR | "Golan Heights" | مرتفعات الجولان | مرتفعات الجولان / هضبة الجولان | مرتفعات الجولان | Standard Arabic; politically sensitive — confirm for audience. | ☐ |
-| 6 | Madaba | AR | "St George's Church" | كنيسة القديس جاورجيوس | كنيسة القديس جورج / كنيسة مار جرجس | كنيسة القديس جاورجيوس | Standard Orthodox Arabic name; "مار جرجس" also widely used. | ☐ |
+| 6 | Madaba | AR | "St George's Church" / map | كنيسة القديس جاورجيوس للروم الأرثوذكس + خارطة مادبا | كنيسة القديس جاورجيوس / ... للروم الأرثوذكس / كنيسة الخارطة | كنيسة القديس جاورجيوس للروم الأرثوذكس; use "خارطة مادبا" | **HLJ ref:** "خارطة مادبا", "كنيسة الخارطة", "كنيسة جاورجيوس للروم الأرثوذكس" → adopt the fuller official wording for consistency. | ☐ |
+| 6b | Wadi Mujib | AR | Biblical name | (using وادي الموجب) | (a) keep وادي الموجب (nature/adventure context); (b) add biblical "وادي أرنون (وادي الموجب)" | (a) keep وادي الموجب — our copy is reserve/canyon, not Biblical-itinerary | **HLJ ref:** biblical name "وادي أرنون (وادي الموجب)" — relevant only for Biblical-route framing, not our nature/adventure description. | ☐ |
 | 7 | Wadi Mujib | PT / ES / AR | "RSCN" | PT/ES: "RSCN"; AR: الجمعية الملكية لحماية الطبيعة | (a) spell out in all 3; (b) keep acronym in all 3; (c) current mixed | (a) spell out once per locale (PT "Sociedade Real para a Conservação da Natureza (RSCN)"; ES "Real Sociedad para la Conservación de la Naturaleza (RSCN)"; AR as drafted) | "RSCN" is unfamiliar to PT/ES readers; a spelled-out form is clearer and consistent. | ☐ |
 | 8 | Downtown Amman | PT / ES | Title suffix "(Downtown)" | PT "Centro de Amã (Downtown)"; ES "Centro de Amán (Downtown)" | (a) keep "(Downtown)"; (b) drop → "Centro de Amã / Centro de Amán"; (c) PT "Baixa de Amã" | (b) drop the suffix | "Centro de Amã/Amán" already conveys the meaning; the English word is redundant. | ☐ |
 | 9 | Cross-language consistency | PT / ES / AR | Petra, Wadi Rum, Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais | PT/ES Latin forms (Petra; Wadi Rum; Jerash; Mar Morto/Muerto; Monte Nebo; Betânia/Betania Além do/más allá del Jordão; Umm Qais) · AR البتراء / وادي رم / جرش / البحر الميت / جبل نيبو / المغطس / أم قيس | n/a — verify, don't change unless inconsistent | Keep as drafted; confirm each name is spelled identically everywhere it recurs | Catch any variant spelling that slipped between entries (e.g. Petra vs Pétra, Amã vs Amán mismatch). | ☐ |
@@ -59,6 +60,12 @@ current localized-boilerplate + English-content fallback).
 - **These are machine-/assistant-drafted translations for human review.** Items that
   especially warrant a native-speaker or cultural check are flagged per-POI and
   summarized at the end. Please review before Phase 4A.1 applies them.
+- **Official terminology reference:** the Holy Land Jordan site
+  (`holylandjordan.com/ar/BiblicalSites`) is used as a support reference for official
+  naming, Arabic religious tone, and Biblical-site terminology — and, since it offers
+  Portuguese/Spanish versions, as a **secondary** reference for PT/ES place names.
+  **We do not copy its descriptions**; our POI content stays original, concise, and
+  proposal-friendly. Decision rows carrying an **"HLJ ref"** note were aligned to it.
 
 ---
 
@@ -209,10 +216,10 @@ current localized-boilerplate + English-content fallback).
 - **ES — Long:** Un venerado lugar de peregrinación con la Iglesia Memorial de Moisés y vistas panorámicas sobre el Valle del Jordán, el Mar Muerto y, en días despejados, Jerusalén.
 
 - **AR — Title:** جبل نيبو
-- **AR — Short:** حيث أطلّ النبي موسى (عليه السلام) على الأرض الموعودة.
-- **AR — Long:** موقع حجّ مبجَّل يضمّ كنيسة موسى التذكارية وإطلالات بانورامية على وادي الأردن والبحر الميت، وفي الأيام الصافية على القدس.
+- **AR — Short:** حيث أطلّ النبي موسى على الأرض الموعودة.
+- **AR — Long:** مزار النبي موسى في جبل نيبو؛ موقع حجّ مبجَّل يضمّ كنيسة موسى التذكارية وإطلالات بانورامية على وادي الأردن والبحر الميت، وفي الأيام الصافية على القدس.
 
-- **Notes:** ⚠️ Religious phrasing — AR adds the honorific "(عليه السلام)" after Moses, which is customary for Arabic-speaking audiences. Please confirm whether to keep the honorific (recommended for AR client display) or match the neutral English exactly.
+- **Notes:** Updated per **Holy Land Jordan** + Axis direction. Title kept as جبل نيبو; long copy now uses "مزار النبي موسى في جبل نيبو" (HLJ supports "مزار النبي موسى - جبل نيبو"). **Honorific removed** from default copy — neutral tourism style (no forced "(عليه السلام)"); an Islamic-market variant can be added later if Axis wants. See decision row 1.
 
 ---
 
@@ -231,10 +238,10 @@ current localized-boilerplate + English-content fallback).
 - **ES — Long:** Alberga el célebre mapa-mosaico bizantino de Tierra Santa, en la Iglesia de San Jorge, además de numerosos mosaicos repartidos por la ciudad.
 
 - **AR — Title:** مادبا
-- **AR — Short:** "مدينة الفسيفساء" وخريطة مادبا من القرن السادس.
-- **AR — Long:** تضمّ خريطة الفسيفساء البيزنطية الشهيرة للأراضي المقدّسة في كنيسة القديس جاورجيوس، إضافةً إلى العديد من اللوحات الفسيفسائية الأخرى في أنحاء المدينة.
+- **AR — Short:** "مدينة الفسيفساء" وخارطة مادبا من القرن السادس.
+- **AR — Long:** تضمّ خارطة مادبا — خريطة الفسيفساء البيزنطية الشهيرة للأراضي المقدّسة — في كنيسة القديس جاورجيوس للروم الأرثوذكس، إضافةً إلى العديد من اللوحات الفسيفسائية الأخرى في أنحاء المدينة.
 
-- **Notes:** "St George's Church" → كنيسة القديس جاورجيوس (standard Arabic form); confirm if a different church-name spelling is preferred.
+- **Notes:** Updated per **Holy Land Jordan**: uses "خارطة مادبا" and the fuller official church name "كنيسة القديس جاورجيوس للروم الأرثوذكس" (HLJ also calls it "كنيسة الخارطة"). See decision row 6.
 
 ---
 
@@ -322,7 +329,7 @@ current localized-boilerplate + English-content fallback).
 - **AR — Short:** محمية وديان مذهلة تنحدر نحو البحر الميت.
 - **AR — Long:** أخفض محمية طبيعية ارتفاعًا في العالم، تشتهر بمسار "السيق" المائي المغامِر عبر أخدود من الحجر الرملي (موسمي)، وتديرها الجمعية الملكية لحماية الطبيعة.
 
-- **Notes:** "(seasonal)" preserved (the source notes the water trail is seasonal — not an inclusion). RSCN: kept as the acronym in PT/ES; spelled out in AR as الجمعية الملكية لحماية الطبيعة. ⚠️ Confirm preferred treatment of "RSCN" across locales (acronym vs. spelled out).
+- **Notes:** "(seasonal)" preserved (the source notes the water trail is seasonal — not an inclusion). RSCN: kept as the acronym in PT/ES; spelled out in AR as الجمعية الملكية لحماية الطبيعة. ⚠️ Confirm preferred treatment of "RSCN" across locales (acronym vs. spelled out — see decision row 7). **Holy Land Jordan** gives the biblical name "وادي أرنون (وادي الموجب)"; we keep "وادي الموجب" here because this POI's copy is nature/adventure, not a Biblical-route framing (see decision row 6b).
 
 ---
 
@@ -362,11 +369,11 @@ current localized-boilerplate + English-content fallback).
 - **ES — Short:** El lugar del bautismo de Jesucristo (UNESCO).
 - **ES — Long:** Al-Maghtas, en la ribera oriental del río Jordán, es el lugar ampliamente reconocido del bautismo de Jesús y un importante destino de peregrinación.
 
-- **AR — Title:** المغطس (بيت عنيا عبر الأردن)
-- **AR — Short:** موقع تعميد السيد المسيح (اليونسكو).
-- **AR — Long:** المغطس، على الضفة الشرقية لنهر الأردن، هو الموقع المعترف به على نطاق واسع لتعميد السيد المسيح، ووجهة حجّ مهمة.
+- **AR — Title:** المغطس (موقع معمودية السيد المسيح)
+- **AR — Short:** موقع معمودية السيد المسيح (اليونسكو).
+- **AR — Long:** المغطس، على الضفة الشرقية لنهر الأردن، هو الموقع المعترف به على نطاق واسع لمعمودية السيد المسيح، ووجهة حجّ مهمة. ويُعرف أيضاً باسم بيت عنيا عبر الأردن.
 
-- **Notes:** ⚠️ Religious/cultural phrasing — AR title uses the official local name المغطس with the biblical name in parentheses; "Jesus Christ" → السيد المسيح (common respectful Arabic form). Please have a native reviewer confirm tone/terminology for the target audience.
+- **Notes:** Updated per **Holy Land Jordan**: title uses the official "المغطس (موقع معمودية السيد المسيح)"; "baptism" → معمودية and "Jesus Christ" → السيد المسيح (HLJ wording); the international name "بيت عنيا عبر الأردن" is preserved in the long description. See decision rows 2–3.
 
 ---
 
@@ -408,6 +415,18 @@ current localized-boilerplate + English-content fallback).
 General: all translations are assistant-drafted and faithful to the English; a native PT/ES/AR pass is recommended before customer-facing use, but they are already an improvement over English-only fallback.
 
 ---
+
+## Holy Land Jordan terminology — for the NEXT batch (beyond the top-15)
+
+Recorded now so the next translation batch reuses official naming. These POIs are **not
+in this top-15 pack** and are **not changed here** — terminology captured for reference
+only (no content expansion):
+
+- **Mukawir** (`MUKAWIR`) → AR: قلعة مكاور (مكاريوس)
+- **Pella** (`PELLA`) → AR: بيلا (طبقة فحل)
+- **Ajloun / Petra Biblical references**, and Anjara (not currently a POI) → use Holy
+  Land Jordan only to confirm naming/tone; **do not expand** the existing concise POI
+  copy unless a future review finds it necessary.
 
 ## Cleanup recommendation — `ZZ Verification POI (safe to delete)`
 
