@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// Phase 3D.1B guard: the preview panel must be read-only. We assert against the
-// actual fetch()/method code (NOT prose), so the explanatory comment that names
-// the forbidden endpoints doesn't create false positives. Uses cwd-relative
-// paths (no import.meta) to stay CJS-safe for the build.
+// Phase 3D.1C guard: the apply is NON-DESTRUCTIVE. We assert against the actual
+// fetch()/method code (not prose). Uses cwd-relative paths (no import.meta) to
+// stay CJS-safe for the build.
 function readPanelSource(): string {
   const candidates = [
     resolve(process.cwd(), 'app/quotes/[id]/GenerateFromTouringRoutePanel.tsx'),
@@ -16,15 +15,27 @@ function readPanelSource(): string {
   return readFileSync(path, 'utf8');
 }
 
-test('preview panel makes exactly one network call — a GET on the route detail', () => {
+test('panel never issues a destructive method (no DELETE, no PATCH)', () => {
   const src = readPanelSource();
-  const fetchCount = (src.match(/fetch\(/g) || []).length;
-  assert.equal(fetchCount, 1, 'expected exactly one fetch() in the preview panel');
-  assert.match(src, /fetch\(`\$\{apiBaseUrl\}\/touring-routes\/\$\{routeId\}`/, 'the one fetch must target the route detail');
-  assert.match(src, /method:\s*'GET'/, 'the route-detail fetch must be a GET');
+  assert.ok(!/method:\s*'DELETE'/.test(src), 'must not DELETE anything');
+  assert.ok(!/method:\s*'PATCH'/.test(src), 'must not PATCH (no overwrite of existing days/items)');
 });
 
-test('preview panel issues NO write methods (POST/PATCH/PUT/DELETE)', () => {
+test('apply uses only create-style writes: POST days/items + PUT pois', () => {
   const src = readPanelSource();
-  assert.ok(!/method:\s*'(POST|PATCH|PUT|DELETE)'/.test(src), 'preview panel must not issue any write method');
+  assert.match(src, /\/quotes\/\$\{quoteId\}\/itinerary\/day/, 'creates itinerary days');
+  assert.match(src, /\/quotes\/\$\{quoteId\}\/items/, 'creates the transport package item');
+  assert.match(src, /\/itinerary\/day\/\$\{dayId\}\/pois/, 'assigns POIs on the newly-created days');
+});
+
+test('generated days carry empty notes (composer remains the narrative source)', () => {
+  const src = readPanelSource();
+  assert.match(src, /notes:\s*''/, 'days must be created with empty notes — no composed narrative stored');
+});
+
+test('apply is gated and blocks when the quote already has itinerary days', () => {
+  const src = readPanelSource();
+  assert.match(src, /canApply/, 'apply must be gated by the apply plan');
+  assert.match(src, /existingDayCount/, 'apply must consider existing itinerary days');
+  assert.match(src, /\/quotes\/\$\{quoteId\}\/itinerary`/, 'a pre-flight GET on the itinerary must run before writing');
 });

@@ -677,3 +677,102 @@ export function removePreviewPoi(preview: TouringRoutePreview, dayNumber: number
   day.pois.splice(poiIndex, 1);
   return recomputePreviewTotals(preview, days);
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3D.1C — non-destructive APPLY plan (PURE). Turns an (operator-edited)
+// preview into the exact create-only operations the panel will execute against
+// the EXISTING endpoints. Safety: blocks when the quote already has itinerary
+// days (no replace mode in 3D.1C); never describes a delete/overwrite. The
+// composer remains the narrative source — generated days carry NO notes text.
+// ---------------------------------------------------------------------------
+
+export type ApplyPlanDay = {
+  dayNumber: number;
+  title: string;
+  poiAssignments: { poiId: string; sourceTouringRouteStopId: string | null }[];
+};
+
+export type ApplyPlanTransport = {
+  serviceId: string;
+  touringRouteId: string;
+  touringRoutePricingId: string;
+  overrideCost: number;
+  useOverride: true;
+  dayCount: number;
+  paxCount: number;
+  attachToDayNumber: number;
+} | null;
+
+export type TouringRouteApplyPlan = {
+  canApply: boolean;
+  blockedReason: string | null;
+  warnings: string[];
+  days: ApplyPlanDay[];
+  transport: ApplyPlanTransport;
+  totalPoiAssignments: number;
+};
+
+export function buildTouringRouteApplyPlan(
+  preview: TouringRoutePreview,
+  opts: {
+    pax: number;
+    transportServiceId?: string | null;
+    existingDayCount?: number;
+    existingItemCount?: number;
+    existingPoiAssignmentCount?: number;
+  },
+): TouringRouteApplyPlan {
+  const existingDayCount = opts.existingDayCount ?? 0;
+  const existingItemCount = opts.existingItemCount ?? 0;
+  const existingPoiAssignmentCount = opts.existingPoiAssignmentCount ?? 0;
+
+  const days: ApplyPlanDay[] = preview.days.map((day) => ({
+    dayNumber: day.dayNumber,
+    title: day.title,
+    poiAssignments: day.pois.map((poi) => ({ poiId: poi.poiId, sourceTouringRouteStopId: poi.sourceStopId ?? null })),
+  }));
+  const totalPoiAssignments = days.reduce((sum, d) => sum + d.poiAssignments.length, 0);
+
+  // Non-destructive: apply only into a quote with no existing itinerary days.
+  let blockedReason: string | null = null;
+  if (existingDayCount > 0 || existingPoiAssignmentCount > 0) {
+    blockedReason = `This quote already has ${existingDayCount} itinerary day(s). Apply is only available on a quote with no itinerary days — replace mode is a later phase.`;
+  } else if (!preview.transport || !preview.transport.pricingRowId) {
+    blockedReason = 'Select a pricing row before applying.';
+  } else if (typeof preview.transport.cost !== 'number') {
+    blockedReason = 'The selected pricing row has no base cost.';
+  } else if (!opts.transportServiceId) {
+    blockedReason = 'No transport service is configured to attach the package to.';
+  } else if (!(opts.pax >= 1)) {
+    blockedReason = 'Enter a valid number of guests (pax).';
+  }
+
+  const canApply = blockedReason === null;
+
+  const warnings: string[] = [];
+  if (existingItemCount > 0) {
+    warnings.push(`This quote already has ${existingItemCount} service item(s); the transport package will be added alongside them (nothing existing is changed).`);
+  }
+  if (!preview.hasUsablePois) {
+    warnings.push('This route has no POI-linked stops — days and the transport package will be created, but no POI assignments.');
+  }
+  if (preview.ambiguous) {
+    warnings.push('Multi-day POI partition is an automatic suggestion — review the per-day POIs before applying.');
+  }
+
+  const transport: ApplyPlanTransport =
+    canApply && preview.transport && typeof preview.transport.cost === 'number' && opts.transportServiceId
+      ? {
+          serviceId: opts.transportServiceId,
+          touringRouteId: preview.routeId,
+          touringRoutePricingId: preview.transport.pricingRowId as string,
+          overrideCost: preview.transport.cost,
+          useOverride: true,
+          dayCount: preview.transport.dayCount,
+          paxCount: opts.pax,
+          attachToDayNumber: 1,
+        }
+      : null;
+
+  return { canApply, blockedReason, warnings, days, transport, totalPoiAssignments };
+}
