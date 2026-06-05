@@ -2075,11 +2075,14 @@ test('Phase 3D.1J: NO breakfast/meal is invented when the day has no hotel/meal 
   assert.doesNotMatch(summary, /your hotel/i);
 });
 
-test('Phase 3D.1J: with a hotel on the day, wording uses "your hotel in {base}"', () => {
+test('Phase 3D.1L: with a hotel in the base city, depart "your hotel" + overnight in that city', () => {
+  // Updated from 3D.1J: a hotel proves an OVERNIGHT in the hotel's city (here Amman),
+  // so the day ends "Overnight in Amman", not "Return to your hotel".
   const quote = createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1), hotelDayItem('Amman')]);
   const summary = day1Summary(quote, 'en') || '';
-  assert.match(summary, /Depart from your hotel in Amman/);
-  assert.match(summary, /Return to your hotel in Amman/);
+  assert.match(summary, /Depart from your hotel in Amman/, 'hotel in base → "your hotel in Amman"');
+  assert.match(summary, /Overnight in Amman/, 'overnight in the hotel city');
+  assert.doesNotMatch(summary, /Return to/, 'a hotel night replaces the day-trip return');
   // Still no invented breakfast even with a hotel present.
   assert.doesNotMatch(summary, /breakfast/i);
 });
@@ -2175,4 +2178,72 @@ test('Phase 3D.1K: "dates to be confirmed" fallback is localized when no travel 
   assert.equal(mapQuoteToProposalV3(quote, 'en').travelDatesLabel, 'Dates to be confirmed');
   assert.equal(mapQuoteToProposalV3(quote, 'pt').travelDatesLabel, 'Datas a confirmar');
   assert.equal(mapQuoteToProposalV3(quote, 'es').travelDatesLabel, 'Fechas por confirmar');
+});
+
+// ---- Phase 3D.1L: hotel-city movement, accommodation location, route-aware cover, transport label ----
+
+// Amman → Dana → Petra ON (2 days): Day 1 visits Dana with the touring transport
+// package; Day 2 visits Petra. A hotel may sit on Day 1 in Petra/Wadi Musa.
+function danaPetraTwoDayQuote(opts: { hotelCity?: string } = {}) {
+  const danaPoi = poiRow({ poiId: 'poi-dana', sortOrder: 0, pointOfInterest: { id: 'poi-dana', name: 'Dana', translations: [{ locale: 'en', title: 'Dana Biosphere Reserve' }], city: { id: 'c-dana', name: 'Dana' } } });
+  const petraPoi = poiRow({ poiId: 'poi-petra', sortOrder: 0, pointOfInterest: { id: 'poi-petra', name: 'Petra', translations: [{ locale: 'en', title: 'Petra Archaeological City' }], city: { id: 'c-petra', name: 'Petra' } } });
+  const day1Items: any[] = [touringTransportDayItem('Amman -> Dana -> Petra -> Amman', 2)];
+  if (opts.hotelCity) day1Items.push(hotelDayItem(opts.hotelCity));
+  return createPdfQuote({
+    quoteItineraryDays: [
+      { id: 'day-1', dayNumber: 1, title: 'Day 1: Dana', notes: '', isActive: true, dayItems: day1Items, poiAssignments: [danaPoi] },
+      { id: 'day-2', dayNumber: 2, title: 'Day 2: Petra', notes: '', isActive: true, dayItems: [], poiAssignments: [petraPoi] },
+    ],
+  });
+}
+
+test('Phase 3D.1L #2: Day 1 with a Petra hotel — depart Amman, continue+overnight in Petra (not Amman)', () => {
+  const summary = day1Summary(danaPetraTwoDayQuote({ hotelCity: 'Petra' }), 'en') || '';
+  assert.match(summary, /Depart from Amman\b/, 'depart from base (no Amman hotel → plain)');
+  assert.doesNotMatch(summary, /Depart from your hotel in Amman/, 'must not claim a hotel in Amman');
+  assert.match(summary, /Visit Dana Biosphere Reserve/);
+  assert.match(summary, /Continue to Petra/, 'bridge to the hotel city');
+  assert.match(summary, /Overnight in Petra/, 'overnight in the hotel city');
+  assert.doesNotMatch(summary, /Overnight in Amman/, 'must not overnight in the route base/return city');
+});
+
+test('Phase 3D.1L #3: accommodation row location uses the hotel city, not the day location', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }));
+  const row = vm.accommodationRows[0];
+  assert.ok(row, 'an accommodation row exists');
+  assert.equal(row.location, 'Petra', 'Petra hotel on a "Dana" day shows Location: Petra');
+});
+
+test('Phase 3D.1L #4: generated touring transport item is titled by route path, not "Airport Transfer"', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }));
+  const day1 = vm.days.find((d: any) => d.dayNumber === 1);
+  const transferGroup = (day1?.groups || []).find((g: any) => /transfer|transport/i.test(g.label));
+  const title = transferGroup?.items?.[0]?.title || '';
+  assert.equal(title, 'Amman → Dana → Petra', 'route path label (return-to-origin dropped)');
+  assert.doesNotMatch(title, /Airport Transfer/);
+});
+
+test('Phase 3D.1L #1: cover destination is route-aware (Dana & Petra), excluding the Amman base', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra' }));
+  assert.match(vm.destinationLine, /Dana/);
+  assert.match(vm.destinationLine, /Petra/);
+  assert.ok(vm.destinationLine.indexOf('Dana') < vm.destinationLine.indexOf('Petra'), 'day order: Dana before Petra');
+  assert.doesNotMatch(vm.destinationLine, /Amman/, 'origin/base excluded when no POI is there');
+});
+
+test('Phase 3D.1L: Amman City Sites style — Amman IS the destination when POIs are in Amman', () => {
+  const quote = createComposerQuote([
+    poiRow({ poiId: 'poi-cit', sortOrder: 0, pointOfInterest: { id: 'poi-cit', name: 'Citadel', translations: [{ locale: 'en', title: 'Amman Citadel' }], city: { id: 'c-amman', name: 'Amman' } } }),
+  ]);
+  assert.match(mapQuoteToProposalV3(quote).destinationLine, /Amman/, 'Amman kept when it is the visited destination');
+});
+
+test('Phase 3D.1L: Ajloun & Jerash day-trip still returns to Amman (no hotel = no overnight invented)', () => {
+  const summary = day1Summary(createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]), 'en') || '';
+  assert.match(summary, /Depart from Amman/);
+  assert.match(summary, /Visit Jerash Archaeological Site/);
+  assert.match(summary, /Continue to Ajloun Castle/);
+  assert.match(summary, /Return to Amman/);
+  assert.doesNotMatch(summary, /Overnight/);
+  assert.doesNotMatch(summary, /breakfast|hotel/i);
 });

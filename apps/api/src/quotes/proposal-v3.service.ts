@@ -657,7 +657,7 @@ export class ProposalV3Service {
               ${day.summary ? `<p class="proposal-day-summary">${this.escapeHtml(day.summary)}</p>` : ''}
             </div>
             <div class="proposal-day-services">
-              ${groupsHtml || '<p class="proposal-empty-state">Program details will be finalized in the confirmed proposal.</p>'}
+              ${groupsHtml || (day.summary ? '' : '<p class="proposal-empty-state">Program details will be finalized in the confirmed proposal.</p>')}
             </div>
           </section>
         `;
