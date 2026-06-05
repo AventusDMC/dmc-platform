@@ -937,34 +937,40 @@ export function buildRouteIntelligence(
     addUniqueRouteAnchor(fallbackDayAnchors, extractDayLocation(day.title, day.dayNumber));
   }
 
-  // Phase 3D.1L — the SELLING destinations are the cities the traveller actually
-  // visits (the POI assignment cities), in day order. This makes the cover/journey
-  // title route-aware: an Amman → Dana → Petra itinerary reads "Dana & Petra"
-  // (Amman is the origin/base — no POI there — so it is naturally excluded), while
-  // an Amman City Sites tour still reads "Amman" (its POIs are in Amman). Quotes
-  // with no POI assignments are unaffected.
-  const poiDestinationAnchors: string[] = [];
+  // Phase 3D.1L.2 — the SELLING destinations are the cities of the days the traveller
+  // actually visits (days that carry POI assignments), taken from each day's title via
+  // extractDayLocation. Day titles are always present; the POI→city relation is NOT
+  // reliably loaded in the proposal fetch (that earlier approach silently produced
+  // nothing on real quotes, so the hotel city narrowed the title). These destinations
+  // are used EXCLUSIVELY when present so the overnight hotel city never overrides the
+  // route-aware title — Amman → Dana → Petra reads "Dana · Petra" (not "Petra / Wadi
+  // Musa"), while Amman City Sites still reads "Amman" (its POI day is Amman). Quotes
+  // with no POI assignments keep the existing hotel/transport/day fallback behaviour.
+  const poiDayDestinations: string[] = [];
   for (const day of daySources) {
-    const orderedAssignments = [...(day.poiAssignments || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    for (const assignment of orderedAssignments) {
-      const display = resolvePoiAssignmentDisplay(assignment, activeProposalLocale);
-      if (display.city) {
-        addUniqueRouteAnchor(poiDestinationAnchors, display.city);
-      }
+    if (!Array.isArray(day.poiAssignments) || day.poiAssignments.length === 0) {
+      continue;
+    }
+    const dayDestination = extractDayLocation(day.title, day.dayNumber);
+    if (dayDestination && !/^Destination\s+\d+$/i.test(dayDestination)) {
+      addUniqueRouteAnchor(poiDayDestinations, dayDestination);
     }
   }
 
   const routeAnchors: string[] = [];
-  // Visited POI destinations lead the title (the selling destinations).
-  for (const anchor of poiDestinationAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
-  for (const anchor of overnightAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
-  for (const country of externalCountries) addUniqueRouteAnchor(routeAnchors, country);
-  for (const segment of transportSegments) {
-    addUniqueRouteAnchor(routeAnchors, segment.from);
-    addUniqueRouteAnchor(routeAnchors, segment.to);
-  }
-  if (routeAnchors.length === 0) {
-    for (const anchor of fallbackDayAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
+  if (poiDayDestinations.length > 0) {
+    // Route-aware: visited POI-day destinations only (hotel city must not narrow it).
+    for (const anchor of poiDayDestinations) addUniqueRouteAnchor(routeAnchors, anchor);
+  } else {
+    for (const anchor of overnightAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
+    for (const country of externalCountries) addUniqueRouteAnchor(routeAnchors, country);
+    for (const segment of transportSegments) {
+      addUniqueRouteAnchor(routeAnchors, segment.from);
+      addUniqueRouteAnchor(routeAnchors, segment.to);
+    }
+    if (routeAnchors.length === 0) {
+      for (const anchor of fallbackDayAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
+    }
   }
 
   const destinationLine = summarizeDestinations(routeAnchors);
