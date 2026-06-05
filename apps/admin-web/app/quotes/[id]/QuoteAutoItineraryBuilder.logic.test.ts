@@ -7,12 +7,15 @@ import {
   classifyDailyDayType,
   classifyOvernightCity,
   computeOvernightRuns,
+  deriveTouringRouteBaseCities,
   expandNightStopsToDayCities,
   generateItineraryDays,
   getAutoItineraryDayTitle,
   isMiddleDay,
   mergeExistingItineraryDays,
+  partitionTouringRoutePoisToDays,
   reconstructNightStopsFromDayTitles,
+  type TouringRouteForGen,
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
@@ -315,5 +318,136 @@ describe('quote auto itinerary builder logic', () => {
   it('produces no overnight runs when no stop qualifies', () => {
     assert.deepEqual(computeOvernightRuns(['Amman', 'Amman', 'Amman']), []);
     assert.deepEqual(computeOvernightRuns([]), []);
+  });
+});
+
+// Phase 3D.1A — POI-aware touring-route → quote generation helpers.
+function poiStop(order: number, city: string, code: string, name: string, enTitle?: string): any {
+  return {
+    id: `stop-${order}`,
+    order,
+    city,
+    poiId: `poi-${code}`,
+    pointOfInterest: { id: `poi-${code}`, code, name, translations: enTitle ? [{ locale: 'en', title: enTitle }] : [] },
+  };
+}
+function baseStop(order: number, city: string): any {
+  return { id: `stop-${order}`, order, city, poiId: null, pointOfInterest: null };
+}
+
+describe('deriveTouringRouteBaseCities', () => {
+  it('uses mainDestinations as the base sequence when present', () => {
+    const route: TouringRouteForGen = { id: 'r', durationDays: 3, mainDestinations: ['Amman', 'Petra', 'Wadi Rum'], stops: [] };
+    assert.deepEqual(deriveTouringRouteBaseCities(route), ['Amman', 'Petra', 'Wadi Rum']);
+  });
+
+  it('collapses a round-trip day route to a single base city', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', durationDays: 1, stops: [baseStop(1, 'Amman'), poiStop(2, 'Jerash', 'JERASH', 'Jerash'), baseStop(3, 'Amman')],
+    };
+    assert.deepEqual(deriveTouringRouteBaseCities(route), ['Amman']);
+  });
+
+  it('pads with the last base when fewer destinations than days', () => {
+    const route: TouringRouteForGen = { id: 'r', durationDays: 3, mainDestinations: ['Amman', 'Petra'], stops: [] };
+    assert.deepEqual(deriveTouringRouteBaseCities(route), ['Amman', 'Petra', 'Petra']);
+  });
+
+  it('falls back to startCity when nothing else is available', () => {
+    const route: TouringRouteForGen = { id: 'r', durationDays: 1, startCity: 'Amman', stops: [] };
+    assert.deepEqual(deriveTouringRouteBaseCities(route), ['Amman']);
+  });
+});
+
+describe('partitionTouringRoutePoisToDays', () => {
+  it('one-day Amman City route → all content POIs on day 1', () => {
+    const route: TouringRouteForGen = {
+      id: 'amman-city', durationDays: 1, startCity: 'Amman',
+      stops: [
+        poiStop(1, 'Amman', 'AMMAN_CITADEL', 'Amman Citadel', 'Amman Citadel'),
+        poiStop(2, 'Amman', 'ROMAN_THEATRE', 'Roman Theatre', 'Roman Theatre'),
+        poiStop(3, 'Amman', 'DOWNTOWN_AMMAN', 'Downtown Amman', 'Downtown Amman'),
+      ],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.equal(r.days.length, 1);
+    assert.deepEqual(r.days[0].pois.map((p) => p.code), ['AMMAN_CITADEL', 'ROMAN_THEATRE', 'DOWNTOWN_AMMAN']);
+    assert.equal(r.days[0].pois[0].title, 'Amman Citadel');
+    assert.equal(r.totalPois, 3);
+    assert.equal(r.skippedStops, 0);
+    assert.equal(r.ambiguous, false);
+    assert.equal(r.hasUsablePois, true);
+  });
+
+  it('Jerash & Ajloun day route → both POIs on the single day, base stop skipped', () => {
+    const route: TouringRouteForGen = {
+      id: 'jerash-ajloun', durationDays: 1, startCity: 'Amman',
+      stops: [baseStop(1, 'Amman'), poiStop(2, 'Jerash', 'JERASH', 'Jerash'), poiStop(3, 'Ajloun', 'AJLOUN_CASTLE', 'Ajloun Castle'), baseStop(4, 'Amman')],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.equal(r.days.length, 1);
+    assert.deepEqual(r.days[0].pois.map((p) => p.code), ['JERASH', 'AJLOUN_CASTLE']);
+    assert.equal(r.skippedStops, 2); // two Amman base stops
+    assert.equal(r.ambiguous, false);
+  });
+
+  it('Amman → Dana → Petra multi-day → ordered partition by base city; flagged as a suggestion', () => {
+    const route: TouringRouteForGen = {
+      id: 'amman-dana-petra', durationDays: 3, mainDestinations: ['Amman', 'Dana', 'Petra'], startCity: 'Amman',
+      stops: [
+        poiStop(1, 'Amman', 'AMMAN_CITADEL', 'Amman Citadel'),
+        poiStop(2, 'Dana', 'DANA_BIOSPHERE_RESERVE', 'Dana Biosphere Reserve'),
+        poiStop(3, 'Petra', 'PETRA_ARCHAEOLOGICAL_CITY', 'Petra Archaeological City'),
+      ],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.equal(r.days.length, 3);
+    assert.deepEqual(r.days.map((d) => d.pois.map((p) => p.code)), [['AMMAN_CITADEL'], ['DANA_BIOSPHERE_RESERVE'], ['PETRA_ARCHAEOLOGICAL_CITY']]);
+    assert.equal(r.ambiguous, true); // multi-day is always a reviewable suggestion
+    assert.ok(r.ambiguityReasons.some((m) => /suggestion/i.test(m)));
+  });
+
+  it('Petra → Wadi Rum → Aqaba multi-day → one POI per matching base day', () => {
+    const route: TouringRouteForGen = {
+      id: 'petra-rum-aqaba', durationDays: 3, mainDestinations: ['Petra', 'Wadi Rum', 'Aqaba'], startCity: 'Petra',
+      stops: [
+        poiStop(1, 'Petra', 'PETRA_ARCHAEOLOGICAL_CITY', 'Petra Archaeological City'),
+        poiStop(2, 'Wadi Rum', 'WADI_RUM_PROTECTED_AREA', 'Wadi Rum Protected Area'),
+        poiStop(3, 'Aqaba', 'AQABA_MARINE_PARK', 'Aqaba Marine Park'),
+      ],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.deepEqual(r.days.map((d) => d.baseCity), ['Petra', 'Wadi Rum', 'Aqaba']);
+    assert.deepEqual(r.days.map((d) => d.pois.length), [1, 1, 1]);
+    assert.equal(r.days.every((d) => d.hasUsablePois), true);
+  });
+
+  it('no-POI route → no assignments, flagged, days fall back to manual notes', () => {
+    const route: TouringRouteForGen = {
+      id: 'no-poi', durationDays: 2, startCity: 'Amman',
+      stops: [baseStop(1, 'Amman'), baseStop(2, 'Petra')],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.equal(r.totalPois, 0);
+    assert.equal(r.hasUsablePois, false);
+    assert.equal(r.skippedStops, 2);
+    assert.equal(r.days.every((d) => d.pois.length === 0 && !d.hasUsablePois), true);
+    assert.ok(r.ambiguityReasons.some((m) => /no POI-linked stops/i.test(m)));
+  });
+
+  it('mixed base/null stops + content POI stops → only content POIs become assignments', () => {
+    const route: TouringRouteForGen = {
+      id: 'mixed', durationDays: 1, startCity: 'Amman',
+      stops: [
+        baseStop(1, 'Amman'),                                   // base, skipped
+        poiStop(2, 'Madaba', 'MADABA', 'Madaba'),               // content
+        baseStop(3, 'Lunch stop'),                              // operational, skipped
+        poiStop(4, 'Mount Nebo', 'MOUNT_NEBO', 'Mount Nebo'),   // content
+      ],
+    };
+    const r = partitionTouringRoutePoisToDays(route);
+    assert.deepEqual(r.days[0].pois.map((p) => p.code), ['MADABA', 'MOUNT_NEBO']);
+    assert.equal(r.totalPois, 2);
+    assert.equal(r.skippedStops, 2);
   });
 });
