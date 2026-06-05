@@ -1003,39 +1003,131 @@ function isComposedCopyClientSafe(value: string | null | undefined): boolean {
   return true;
 }
 
+// Phase 3D.1J — derive safe route-movement context for a day from its
+// touring-route transport package. The package's pricingDescription carries the
+// ordered city path, e.g. "… | Amman -> Jerash -> Ajloun -> Amman | …". We only
+// produce context when such a path is present, so manually-built POI days (no
+// touring transport) keep the plain "Visit X" narrative unchanged.
+type DayMovementContext = {
+  base: string; // route start/base city (e.g. "Amman")
+  endCity: string; // last city in the path
+  roundTrip: boolean; // base === endCity (a returning circuit)
+  dayCount: number; // route duration in days (metadata on the transport item)
+};
+
+function deriveDayMovementContext(items: ProposalV3QuoteItem[]): DayMovementContext | null {
+  for (const item of items) {
+    if (!isTransportItem(item)) {
+      continue;
+    }
+    // Use the RAW description: cleanText rewrites the "|" delimiters, which would
+    // merge the path segment with its neighbours.
+    const rawDesc = String(item.pricingDescription || '');
+    if (!rawDesc.trim()) {
+      continue;
+    }
+    // Find the pipe-delimited segment that looks like a multi-hop city path.
+    const segment = rawDesc
+      .split('|')
+      .map((part) => part.trim())
+      .find((part) => /(?:->|→)/.test(part) && !/general|all routes|any route/i.test(part));
+    if (!segment) {
+      continue;
+    }
+    const cities = segment
+      .split(/\s*(?:->|→)\s*/)
+      .map((city) => cleanRouteAnchor(city))
+      .filter((city): city is string => Boolean(city));
+    if (cities.length < 2) {
+      continue;
+    }
+    const base = cities[0];
+    const endCity = cities[cities.length - 1];
+    const dayCount = Math.max(1, Math.floor(Number((item as { dayCount?: number | null }).dayCount ?? 1)) || 1);
+    return {
+      base,
+      endCity,
+      roundTrip: normalizeComparisonText(base) === normalizeComparisonText(endCity),
+      dayCount,
+    };
+  }
+  return null;
+}
+
 // Compose a conservative, client-safe day summary from ordered POI assignments
 // in the active locale. Returns null when there is nothing usable (so the caller
-// falls back to day.notes). No breakfast/overnight/departure invention.
-function composeDayNarrativeFromPois(
-  assignments: ProposalV3DayPoiAssignment[] | undefined,
-  locale: ProposalLocale,
-): string | null {
+// falls back to day.notes).
+//
+// Phase 3D.1J: when the day carries a touring-route transport package with a known
+// route path, wrap the visits in safe movement context — "Depart from {base}",
+// "Continue to {poi}" between stops, and (for a single-day returning circuit)
+// "Return to {base}". Wording uses "your hotel in {base}" only when the day
+// actually has a hotel item; an overnight line is added only when a hotel item
+// proves an overnight. Breakfast/lunch/dinner/guide/entrance are NEVER invented.
+function composeDayNarrativeFromPois(day: ProposalV3DaySource, locale: ProposalLocale): string | null {
+  const assignments = day.poiAssignments;
   if (!Array.isArray(assignments) || assignments.length === 0) {
     return null;
   }
 
   const ordered = [...assignments].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  // Resolve the usable visit targets first so movement context only wraps real POIs.
+  const visits = ordered
+    .map((assignment) => {
+      const display = resolvePoiAssignmentDisplay(assignment, locale);
+      return { label: display.title || display.city, short: display.short, city: display.city };
+    })
+    .filter((visit) => Boolean(visit.label));
+
+  if (visits.length === 0) {
+    return null;
+  }
+
+  const movement = deriveDayMovementContext(day.items || []);
+  const hasHotelThisDay = (day.items || []).some((item) => isHotelItem(item));
+  const sameCity = (a: string | null | undefined, b: string | null | undefined) =>
+    Boolean(a && b && normalizeComparisonText(a) === normalizeComparisonText(b));
+
   const sentences: string[] = [];
 
-  for (const assignment of ordered) {
-    const display = resolvePoiAssignmentDisplay(assignment, locale);
-    // The visit target: title, else city. Skip only when a row has no usable
-    // POI, no fallbackTitle, and no fallbackCity (a true operational/empty row).
-    const label = display.title || display.city;
-    if (!label) {
-      continue;
-    }
-
-    let sentence = proseTemplate(locale, 'svcVisit', { location: label });
-    if (display.short && isComposedCopyClientSafe(display.short)) {
-      sentence = `${sentence} — ${display.short}`;
-    }
-    sentence = sentence.trim();
+  const finalize = (raw: string) => {
+    let sentence = raw.trim();
     if (sentence && !/[.!?…]$/.test(sentence)) {
       sentence = `${sentence}.`;
     }
-    if (sentence) {
-      sentences.push(sentence);
+    return sentence;
+  };
+
+  // Departure — only with a known base, and only when the base differs from the
+  // first stop's city (avoids "Depart from Petra. Visit Petra...").
+  if (movement && movement.base && !sameCity(movement.base, visits[0].city)) {
+    const key = hasHotelThisDay ? 'moveDepartFromHotel' : 'moveDepartFrom';
+    sentences.push(finalize(proseTemplate(locale, key, { city: movement.base })));
+  }
+
+  visits.forEach((visit, index) => {
+    // First stop = "Visit X"; subsequent stops use "Continue to X" ONLY when we
+    // have route movement context (a touring day). Without it, every stop stays
+    // "Visit X" exactly as before (no behaviour change for manual POI days).
+    const useContinue = movement !== null && index > 0;
+    let sentence = proseTemplate(locale, useContinue ? 'moveContinueTo' : 'svcVisit', { location: visit.label as string });
+    if (visit.short && isComposedCopyClientSafe(visit.short)) {
+      sentence = `${sentence} — ${visit.short}`;
+    }
+    sentences.push(finalize(sentence));
+  });
+
+  if (movement && movement.base) {
+    const lastVisitCity = visits[visits.length - 1].city;
+    if (movement.dayCount <= 1 && movement.roundTrip && !sameCity(movement.base, lastVisitCity)) {
+      // Single-day returning circuit (e.g. Amman → Jerash → Ajloun → Amman).
+      const key = hasHotelThisDay ? 'moveReturnToHotel' : 'moveReturnTo';
+      sentences.push(finalize(proseTemplate(locale, key, { city: movement.base })));
+    } else if (hasHotelThisDay) {
+      // Overnight only when a hotel item on the day proves it — never invented.
+      const overnightCity = movement.endCity || lastVisitCity || movement.base;
+      sentences.push(finalize(proseTemplate(locale, 'moveOvernightIn', { city: overnightCity })));
     }
   }
 
@@ -1067,7 +1159,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     //   3) none (item-derived fallback happens downstream as today)
     const notesSummary = cleanText(day.description || '');
     const cleanNotes = isPlaceholderText(notesSummary) ? null : notesSummary || null;
-    const composedNarrative = composeDayNarrativeFromPois(day.poiAssignments, activeProposalLocale);
+    const composedNarrative = composeDayNarrativeFromPois(day, activeProposalLocale);
     const summary = composedNarrative ?? cleanNotes;
 
     return {
