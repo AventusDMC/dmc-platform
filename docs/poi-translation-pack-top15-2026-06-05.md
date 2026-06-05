@@ -1,20 +1,21 @@
 # POI translation content pack — Top 15 (PT / ES / AR) — 2026-06-05
 
-> **STATUS: DRAFT — PENDING NATIVE REVIEW.** These are assistant-drafted translations.
-> Nothing here is applied to the database. PR #333 is intentionally kept **open** as a
-> living draft / pending-review record — it is **not** the approved record yet. Phase
-> 4A.1 (idempotent seed apply) must not start until every box below is checked and the
-> pack is approved.
+> **STATUS: APPROVED (2026-06-05).** Native review complete (via the reviewer
+> spreadsheet). Every POI was marked **"Yes — good"** with **no rewrites**; the
+> recommended choices in the decision sheet are **adopted**. The three rows initially
+> left blank (AR Wadi Mujib, AR Downtown Amman, ES Amman Citadel) are **approved as-is**
+> per the operator's "approve all". This pack is now the approved record and Phase 4A.1
+> (idempotent seed upsert, English untouched) may proceed.
 
-## Review checklist (sign off before DB seed)
+## Review checklist (signed off)
 
-- [ ] **Portuguese reviewed** (native/fluent check)
-- [ ] **Spanish reviewed** (native/fluent check)
-- [ ] **Arabic reviewed** (native/fluent check)
-- [ ] **Religious terminology reviewed** (Mount Nebo, Bethany, Madaba)
-- [ ] **Sensitive geographic terminology reviewed** (Umm Qais — Sea of Galilee / Golan Heights)
-- [ ] **Place-name consistency reviewed** across PT/ES/AR (Petra, Wadi Rum, Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais)
-- [ ] **Approved for DB seed** (Phase 4A.1 may proceed)
+- [x] **Portuguese reviewed** — all 15 "Yes — good", no changes
+- [x] **Spanish reviewed** — all 15 "Yes — good" (Amman Citadel blank → approved as-is)
+- [x] **Arabic reviewed** — all 15 "Yes — good" (Wadi Mujib + Downtown Amman blank → approved as-is)
+- [x] **Religious terminology reviewed** (Mount Nebo, Bethany, Madaba) — drafted wording approved
+- [x] **Sensitive geographic terminology reviewed** (Umm Qais — Sea of Galilee / Golan Heights) — approved
+- [x] **Place-name consistency reviewed** across PT/ES/AR — approved
+- [x] **Approved for DB seed** (Phase 4A.1 may proceed)
 
 _Phase 4A.0 — **content only, review-first**. Nothing here is applied to the database.
 After you approve this pack, Phase 4A.1 will apply it via an idempotent seed update._
@@ -38,8 +39,21 @@ routine fluency pass. (`☐` = pending.)
 | 8 | Downtown Amman | PT / ES | Title suffix "(Downtown)" | PT "Centro de Amã (Downtown)"; ES "Centro de Amán (Downtown)" | (a) keep "(Downtown)"; (b) drop → "Centro de Amã / Centro de Amán"; (c) PT "Baixa de Amã" | (b) drop the suffix | "Centro de Amã/Amán" already conveys the meaning; the English word is redundant. | ☐ |
 | 9 | Cross-language consistency | PT / ES / AR | Petra, Wadi Rum, Jerash, Dead Sea, Mount Nebo, Bethany, Umm Qais | PT/ES Latin forms (Petra; Wadi Rum; Jerash; Mar Morto/Muerto; Monte Nebo; Betânia/Betania Além do/más allá del Jordão; Umm Qais) · AR البتراء / وادي رم / جرش / البحر الميت / جبل نيبو / المغطس / أم قيس | n/a — verify, don't change unless inconsistent | Keep as drafted; confirm each name is spelled identically everywhere it recurs | Catch any variant spelling that slipped between entries (e.g. Petra vs Pétra, Amã vs Amán mismatch). | ☐ |
 
-> When these rows are decided, tick the matching boxes in the **Review checklist** above.
-> Phase 4A.1 applies only after all decisions are filled and the pack is approved.
+> **Reviewer outcome (2026-06-05):** every row was marked **"Yes — good"** with **no
+> rewrites**. **Phase 4A.1 will seed the drafted PT/ES/AR text exactly as written in the
+> per-POI entries below** (no edits). Notes on the previously-flagged items, as they
+> stand in the approved draft text:
+> - Mount Nebo — neutral "النبي موسى" (no honorific); long uses "مزار النبي موسى في جبل نيبو". ✔ adopted
+> - Bethany — "المغطس (موقع معمودية السيد المسيح)"; "معمودية / السيد المسيح". ✔ adopted
+> - Madaba — "خارطة مادبا" in "كنيسة القديس جاورجيوس للروم الأرثوذكس". ✔ adopted
+> - Umm Qais — "بحيرة طبريا" / "مرتفعات الجولان". ✔ adopted
+> - Wadi Mujib — AR keeps "وادي الموجب" and the spelled-out "الجمعية الملكية لحماية الطبيعة";
+>   **PT/ES keep the acronym "RSCN"** (the draft text was approved, so the spell-out
+>   alternative was not applied).
+> - Downtown Amman — **PT/ES keep "(Downtown)" in the title** (drafted wording approved;
+>   the drop-the-suffix alternative was not applied).
+> The three rows initially left blank (AR Wadi Mujib, AR Downtown Amman, ES Amman
+> Citadel) are **approved as-is** per the operator's "approve all".
 
 ## Purpose
 
