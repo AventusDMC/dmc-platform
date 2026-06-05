@@ -257,10 +257,15 @@ describe('quote detail page regression', () => {
       '{!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}',
       '<QuotePreviewLink quoteId={quote.id} />',
       '<ShareQuoteButton',
+      // Phase 3D.1I — proposal language selector wired into the main preview surfaces.
+      '<ProposalDocumentActions',
     ]);
 
     assert.equal(getQuoteExportPdfHref('/api', 'quote-123'), '/api/quotes/quote-123/export');
     assert.equal(getDefaultProposalPreviewHref('quote-123'), '/api/quotes/quote-123/proposal-v3/html');
+    // Phase 3D.1I — language override flows through to preview + export hrefs.
+    assert.equal(getQuoteExportPdfHref('/api', 'quote-123', 'pt'), '/api/quotes/quote-123/export?language=pt');
+    assert.equal(getDefaultProposalPreviewHref('quote-123', 'ar'), '/api/quotes/quote-123/proposal-v3/html?language=ar');
   });
 
   it('shows quote conversion progress errors and redirects to the created booking', () => {

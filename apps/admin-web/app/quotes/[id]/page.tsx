@@ -12,6 +12,7 @@ import { TableSectionShell } from '../../components/TableSectionShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuotePreviewLink } from './preview-link';
 import { DownloadPdfButton } from './preview/DownloadPdfButton';
+import { ProposalDocumentActions } from './ProposalDocumentActions';
 import { QuoteOptionsForm } from './QuoteOptionsForm';
 import { QuotePricingTable } from './QuotePricingTable';
 import { QuoteSummaryPanel } from './QuoteSummaryPanel';
@@ -3539,8 +3540,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     Save a snapshot, preview the proposal, download a PDF, or share the public link without changing the quote pricing logic.
                   </p>
                   <div className="workspace-document-actions">
-                    <QuotePreviewLink quoteId={quote.id} />
-                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                    <ProposalDocumentActions
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                    />
                     {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                     <ShareQuoteButton
                       apiBaseUrl={ACTION_API_BASE_URL}
@@ -3594,8 +3598,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 </div>
 
                 <div className="workspace-document-actions">
-                  <QuotePreviewLink quoteId={quote.id} />
-                  <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                  <ProposalDocumentActions
+                    apiBaseUrl={ACTION_API_BASE_URL}
+                    quoteId={quote.id}
+                    initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                  />
                   {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                 </div>
 
@@ -4035,7 +4042,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   <div className="quote-builder-sidebar-actions">
                     {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                     {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
-                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                    <ProposalDocumentActions
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                    />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
                     ) : quoteReadOnly ? (
