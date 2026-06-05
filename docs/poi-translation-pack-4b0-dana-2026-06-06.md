@@ -34,10 +34,11 @@ and must **not** be machine-translated directly into production.
   > of plants, birds, and wildlife, and offers some of the country's finest
   > scenic walking and eco-tourism experiences.
 
-> The DB currently stores only title + short description for Dana. The long
-> description above is a **proposed** English source for review; confirm or
-> replace it before the translations are finalized, since the PT/ES/AR long
-> texts below are derived from it.
+> **APPROVED 2026-06-06.** This richer English long was approved over the
+> shorter canonical text. The idempotent seed updates the English long row to
+> match (English **title** and **short** are left unchanged); the PT/ES/AR
+> long texts below are translations of it, so all four locales share this
+> narrative.
 
 ---
 
