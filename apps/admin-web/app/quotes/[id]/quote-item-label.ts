@@ -1,12 +1,20 @@
-// Phase 3D.2D — pure label helpers for quote item cards (admin display only).
+// Phase 3D.2D / 3D.2D.1 — pure label helpers for quote item cards (admin display
+// only).
 //
 // A touring-route TRANSPORT PACKAGE (created by the "Generate from Touring Route"
-// flow) links a touring route AND carries a touring-route pricing row. Its admin
-// card previously rendered the generic transport service name ("Airport Transfer
-// — From Amman") because the shared excursion-name formatter prioritizes the
-// service name. These helpers produce a route-aware label instead. Touring-route
-// EXCURSIONS (route linked, NO pricing row) are intentionally NOT packages and
-// keep their existing label. No pricing, no item creation, no proposal changes.
+// flow) links a touring route. Its admin card previously rendered the generic
+// transport service name ("Airport Transfer — From Amman") because the shared
+// excursion-name formatter prioritizes the service name. These helpers produce a
+// route-aware label instead.
+//
+// Discriminator (3D.2D.1): a touring-route item is a PACKAGE when it links a
+// route and is NOT an excursion. Excursions come from excursion templates and
+// carry excursionTemplateId / excursionTemplateComponentId or an "Excursion
+// template: …" override reason. We deliberately do NOT key off the touring-route
+// pricing row: touring-route EXCURSIONS also carry a touringRoutePricingId (so it
+// can't discriminate), and that field can be absent from leaner item payloads
+// (which made the package label silently fall back to the old service name).
+// No pricing, no item creation, no proposal changes.
 
 export type TouringRouteLabelInput = {
   name: string;
@@ -17,17 +25,25 @@ export type TouringRouteLabelInput = {
 
 export type TouringRoutePackageDetectInput = {
   touringRoute?: unknown | null;
-  touringRoutePricingId?: string | null;
-  touringRoutePricing?: unknown | null;
+  excursionTemplateId?: string | null;
+  excursionTemplateComponentId?: string | null;
+  overrideReason?: string | null;
 };
 
+function isTouringRouteExcursionItem(item: TouringRoutePackageDetectInput): boolean {
+  if (item.excursionTemplateId || item.excursionTemplateComponentId) return true;
+  return /excursion template/i.test(String(item.overrideReason || ''));
+}
+
 /**
- * True only for a touring-route TRANSPORT PACKAGE line: a quote item that both
- * links a touring route and carries a touring-route pricing row. Touring-route
- * excursions (route linked, no pricing row) return false and keep their label.
+ * True for a touring-route TRANSPORT PACKAGE line: links a touring route and is
+ * NOT an excursion (excursion-template id/component id, or an "Excursion
+ * template: …" override reason). Independent of pricing-row hydration. Items
+ * with no touring route (true airport transfers, regular transfers, disposal)
+ * return false and keep their existing label.
  */
 export function isTouringRoutePackageItem(item: TouringRoutePackageDetectInput): boolean {
-  return Boolean(item.touringRoute) && Boolean(item.touringRoutePricingId || item.touringRoutePricing);
+  return Boolean(item.touringRoute) && !isTouringRouteExcursionItem(item);
 }
 
 const ARROW = ' → '; // " → "
@@ -48,6 +64,10 @@ export function formatTouringRoutePackagePath(route: TouringRouteLabelInput): st
   const fromMain = (route.mainDestinations || []).map(cleanCity).filter(Boolean);
   const fromStops = (route.stops || []).map((s) => cleanCity(s.location) || cleanCity(s.city)).filter(Boolean);
   const dests = fromMain.length > 0 ? fromMain : fromStops;
+
+  // No destinations available (lean payload) → fall back to the route name
+  // rather than showing the lone start city.
+  if (dests.length === 0) return cleanCity(route.name) || start;
 
   const seq: string[] = [];
   for (const city of [start, ...dests]) {
