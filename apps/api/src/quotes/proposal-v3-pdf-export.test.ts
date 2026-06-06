@@ -2563,3 +2563,57 @@ test('Phase 3D.1Q: all four locales embed the logo as a data URI (language-indep
     assert.match(html, /class="proposal-brand-logo"[^>]*src="data:image\/png;base64,/, `logo data URI present (${L})`);
   }
 });
+
+// ---- Phase 3D.1R: brand override + Exclusions section ----
+
+test('Phase 3D.1R: a supplier/agent company NAME never leaks as the brand (AXIS default)', () => {
+  const vm = mapQuoteToProposalV3(createPdfQuote({
+    brandCompany: { name: 'Golden Jordan Activity Operations' },
+    clientCompany: { name: 'Atm Operadora' },
+  }));
+  assert.equal(vm.brandName, 'AXIS Destination Management', 'raw company name not used as brand');
+  assert.doesNotMatch(vm.footerLine, /Golden Jordan Activity Operations|Atm Operadora/, 'no company-name leak in footer');
+});
+
+test('Phase 3D.1R: an explicit brand displayName IS used (intentional white-label override)', () => {
+  const vm = mapQuoteToProposalV3(createPdfQuote({
+    brandCompany: { name: 'Internal Ops Co', branding: { displayName: 'Petra Voyages' } },
+  }));
+  assert.equal(vm.brandName, 'Petra Voyages');
+});
+
+test('Phase 3D.1R: default Exclusions present (EN) — general + Jordan-specific lines', () => {
+  const ex = mapQuoteToProposalV3(createPdfQuote(), 'en').exclusions.join(' | ');
+  assert.match(ex, /International flights/);
+  assert.match(ex, /Personal expenses/);
+  assert.match(ex, /Tips for guide and driver/);
+  assert.match(ex, /Meals and drinks not mentioned/);
+  assert.match(ex, /Optional visits or activities/);
+  assert.match(ex, /Travel insurance/);
+  assert.match(ex, /Any service not specifically mentioned as included/);
+  assert.match(ex, /Border taxes \/ departure taxes where applicable/);
+  assert.match(ex, /Visa fees if not included/);
+  assert.match(ex, /Entrance fees if not included/);
+});
+
+test('Phase 3D.1R: Exclusions are localized in PT/ES/AR', () => {
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'pt').exclusions.join(' | '), /Voos internacionais/);
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'es').exclusions.join(' | '), /Vuelos internacionales/);
+  assert.match(mapQuoteToProposalV3(createPdfQuote(), 'ar').exclusions.join(' | '), /الرحلات الجوية الدولية/);
+});
+
+test('Phase 3D.1R: operator exclusionsText overrides the defaults', () => {
+  const vm = mapQuoteToProposalV3(createPdfQuote({ exclusionsText: 'Custom exclusion one\nCustom exclusion two' }));
+  assert.deepEqual(vm.exclusions, ['Custom exclusion one', 'Custom exclusion two']);
+});
+
+test('Phase 3D.1R: rendered HTML shows the Exclusions section (localized heading + items)', async () => {
+  const service = new ProposalV3Service({} as any);
+  const en = await (service as any).renderHtml(mapQuoteToProposalV3(createPdfQuote(), 'en'));
+  assert.match(en, /Not included/);
+  assert.match(en, /Exclusions/);
+  assert.match(en, /International flights/);
+  const pt = await (service as any).renderHtml(mapQuoteToProposalV3(createPdfQuote(), 'pt'));
+  assert.match(pt, /Exclusões/);
+  assert.match(pt, /Voos internacionais/);
+});

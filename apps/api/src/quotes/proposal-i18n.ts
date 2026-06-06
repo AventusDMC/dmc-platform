@@ -92,6 +92,9 @@ const LABELS: Record<string, Record<ProposalLocale, string>> = {
   inclusions: { en: 'Inclusions', pt: 'Inclusões', es: 'Inclusiones', ar: 'المشمولات' },
   pricingNotesEyebrow: { en: 'Pricing notes', pt: 'Notas de preço', es: 'Notas de precio', ar: 'ملاحظات الأسعار' },
   notes: { en: 'Notes', pt: 'Notas', es: 'Notas', ar: 'ملاحظات' },
+  // Phase 3D.1R — client-facing Exclusions / Not Included section.
+  notIncluded: { en: 'Not included', pt: 'Não incluído', es: 'No incluido', ar: 'غير مشمول' },
+  exclusions: { en: 'Exclusions', pt: 'Exclusões', es: 'Exclusiones', ar: 'الاستثناءات' },
   // Service group labels
   groupStay: { en: 'Stay', pt: 'Estadia', es: 'Estancia', ar: 'الإقامة' },
   groupTransfer: { en: 'Transfer', pt: 'Transporte', es: 'Traslado', ar: 'التنقل' },
@@ -110,6 +113,18 @@ const LABELS: Record<string, Record<ProposalLocale, string>> = {
   noteAvailability: { en: 'Prices are subject to availability and final confirmation at the time of booking.', pt: 'Os preços estão sujeitos a disponibilidade e confirmação final no momento da reserva.', es: 'Los precios están sujetos a disponibilidad y confirmación final en el momento de la reserva.', ar: 'الأسعار خاضعة للتوافر والتأكيد النهائي عند الحجز.' },
   noteAltSimple: { en: 'Alternative arrangements can be prepared on request.', pt: 'Podem ser preparadas alternativas mediante solicitação.', es: 'Se pueden preparar alternativas a solicitud.', ar: 'يمكن إعداد ترتيبات بديلة عند الطلب.' },
   noteRegulations: { en: 'Any government taxes, entrance rules, or local regulations remain subject to change without prior notice.', pt: 'Quaisquer taxas governamentais, regras de entrada ou regulamentos locais permanecem sujeitos a alterações sem aviso prévio.', es: 'Cualquier impuesto gubernamental, norma de entrada o reglamento local queda sujeto a cambios sin previo aviso.', ar: 'تظل أي ضرائب حكومية أو قواعد دخول أو أنظمة محلية عرضة للتغيير دون إشعار مسبق.' },
+  // Phase 3D.1R — default client-facing exclusions (human-authored, NOT machine
+  // translated). Shown only when the operator hasn't entered quote.exclusionsText.
+  exclFlights: { en: 'International flights', pt: 'Voos internacionais', es: 'Vuelos internacionales', ar: 'الرحلات الجوية الدولية' },
+  exclPersonal: { en: 'Personal expenses', pt: 'Despesas pessoais', es: 'Gastos personales', ar: 'النفقات الشخصية' },
+  exclTips: { en: 'Tips for guide and driver', pt: 'Gorjetas para guia e motorista', es: 'Propinas para el guía y el conductor', ar: 'إكراميات المرشد والسائق' },
+  exclMealsDrinks: { en: 'Meals and drinks not mentioned', pt: 'Refeições e bebidas não mencionadas', es: 'Comidas y bebidas no mencionadas', ar: 'الوجبات والمشروبات غير المذكورة' },
+  exclOptional: { en: 'Optional visits or activities', pt: 'Visitas ou atividades opcionais', es: 'Visitas o actividades opcionales', ar: 'الزيارات أو الأنشطة الاختيارية' },
+  exclInsurance: { en: 'Travel insurance', pt: 'Seguro de viagem', es: 'Seguro de viaje', ar: 'تأمين السفر' },
+  exclNotMentioned: { en: 'Any service not specifically mentioned as included', pt: 'Qualquer serviço não mencionado especificamente como incluído', es: 'Cualquier servicio no mencionado específicamente como incluido', ar: 'أي خدمة غير مذكورة تحديدًا ضمن المشمولات' },
+  exclBorderTaxes: { en: 'Border taxes / departure taxes where applicable', pt: 'Taxas de fronteira / taxas de saída quando aplicáveis', es: 'Tasas fronterizas / tasas de salida cuando correspondan', ar: 'رسوم الحدود / رسوم المغادرة حيثما تنطبق' },
+  exclVisa: { en: 'Visa fees if not included', pt: 'Taxas de visto se não incluídas', es: 'Tasas de visado si no están incluidas', ar: 'رسوم التأشيرة إن لم تكن مشمولة' },
+  exclEntrances: { en: 'Entrance fees if not included', pt: 'Bilhetes de entrada se não incluídos', es: 'Entradas si no están incluidas', ar: 'رسوم الدخول إن لم تكن مشمولة' },
 };
 
 export function proposalLabel(locale: ProposalLocale, key: keyof typeof LABELS): string {

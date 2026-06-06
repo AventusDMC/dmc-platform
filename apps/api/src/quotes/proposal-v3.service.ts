@@ -298,6 +298,8 @@ export class ProposalV3Service {
       labelInclusionsAndPricing: L('inclusionsAndPricing'),
       labelIncluded: L('included'),
       labelInclusions: L('inclusions'),
+      labelNotIncluded: L('notIncluded'),
+      labelExclusions: L('exclusions'),
       labelPricingNotesEyebrow: L('pricingNotesEyebrow'),
       labelNotes: L('notes'),
       documentTitle: this.escapeHtml(viewModel.documentTitle),
@@ -331,6 +333,7 @@ export class ProposalV3Service {
       itineraryDaysHtml: this.renderItineraryDays(viewModel),
       investmentHtml: this.renderInvestment(viewModel),
       inclusionsHtml: this.renderList(viewModel.inclusions),
+      exclusionsHtml: this.renderList(viewModel.exclusions),
       notesHtml: this.renderList(viewModel.notes),
     });
   }
