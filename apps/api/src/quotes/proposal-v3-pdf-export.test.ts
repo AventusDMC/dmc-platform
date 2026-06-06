@@ -2475,3 +2475,53 @@ test('Phase 3D.1O: a day with no hotel shows no overnight badge', () => {
   const day1 = mapQuoteToProposalV3(quote, 'en').days.find((d: any) => d.dayNumber === 1);
   assert.equal(day1.overnightLocation, null, 'no hotel → no overnight badge');
 });
+
+// ---- Phase 3D.1P: Arabic PDF font hardening + RTL polish ----
+
+test('Phase 3D.1P: CSS forces Noto Naskh on ALL RTL elements + neutralizes Latin typography', () => {
+  const css = readFileSync(resolve(__dirname, 'proposal-v3.css'), 'utf8');
+  // Blanket RTL font rule covering every element (kills tofu in labels/eyebrows/tables/badges/footers).
+  assert.match(css, /html\[dir="rtl"\]\s*\.proposal-v3\s*\*/, 'blanket [dir=rtl] * rule present');
+  const rtlBlanket = css.slice(css.indexOf('html[dir="rtl"] .proposal-v3,'));
+  assert.match(rtlBlanket, /font-family:\s*"Noto Naskh Arabic"[^;]*!important/, 'Noto Naskh forced on all RTL elements');
+  assert.match(rtlBlanket, /letter-spacing:\s*normal\s*!important/, 'letter-spacing reset under RTL');
+  assert.match(rtlBlanket, /text-transform:\s*none\s*!important/, 'uppercase neutralized under RTL');
+  assert.match(rtlBlanket, /unicode-bidi:\s*isolate/, 'mixed-direction runs isolated');
+  // The fix is strictly RTL-scoped: every new rule is guarded by html[dir="rtl"].
+  assert.ok(!/\n\s*\*\s*\{[^}]*Noto Naskh/.test(css), 'no unscoped global Noto Naskh rule');
+});
+
+test('Phase 3D.1P: rendered Arabic HTML embeds the font + applies the blanket RTL rule', async () => {
+  const service = new ProposalV3Service({} as any);
+  const html = await (service as any).renderHtml(mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'ar'));
+  assert.match(html, /dir="rtl"/, 'document is RTL');
+  assert.match(html, /@font-face[\s\S]*Noto Naskh Arabic/, 'Arabic font embedded');
+  assert.match(html, /html\[dir="rtl"\]\s*\.proposal-v3\s*\*/, 'blanket RTL font rule inlined');
+});
+
+test('Phase 3D.1P: Arabic final pricing/inclusion notes carry NO English system bullets', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'ar');
+  const lines = [...vm.investment.basisLines, ...vm.investment.noteLines, vm.investment.snapshotHelper, ...vm.notes].join(' || ');
+  assert.doesNotMatch(
+    lines,
+    /Based on \d+ guests sharing|Accommodation in double\/twin|Quotation prepared for|Single supplement available on request|rate basis: per (room|person)\/night|No child policy available|Applicable taxes are |Service charge is |Total Package Price/,
+    'no English system bullets in Arabic',
+  );
+});
+
+test('Phase 3D.1P: Arabic overnight badge uses the hotel city (not the day title), or hides', () => {
+  const ar = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'ar');
+  const day1 = ar.days.find((d: any) => d.dayNumber === 1);
+  assert.equal(day1.overnightLocation, 'Petra / Wadi Musa', 'AR overnight = hotel city, not "Dana"');
+  // No-hotel day hides the badge.
+  const noHotel = mapQuoteToProposalV3(createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]), 'ar')
+    .days.find((d: any) => d.dayNumber === 1);
+  assert.equal(noHotel.overnightLocation, null, 'no hotel → no badge');
+});
+
+test('Phase 3D.1P: EN/PT/ES remain LTR and unaffected by the RTL-scoped fix', () => {
+  for (const L of ['en', 'pt', 'es'] as const) {
+    const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), L);
+    assert.equal(vm.textDirection, 'ltr', `${L} stays LTR`);
+  }
+});
