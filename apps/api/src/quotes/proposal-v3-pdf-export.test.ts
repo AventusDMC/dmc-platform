@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { buildRouteIntelligence, mapQuoteToProposalV3, parseTransportRouteSegments } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
 import { joinDestinations, localizePricingLine, localizeSnapshotLabel } from './proposal-i18n';
+import { AXIS_BRAND_LOGO_DATA_URI } from './proposal-brand-logo';
 
 function createPdfQuote(overrides: Record<string, any> = {}) {
   return {
@@ -1265,7 +1266,9 @@ test('proposal PDF brand name falls back to AXIS instead of demo brand labels', 
   );
 
   assert.equal(proposal.brandName, 'AXIS Destination Management');
-  assert.equal(proposal.logoUrl, 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png');
+  // Phase 3D.1Q — the default AXIS logo is now embedded as a data URI (renders in
+  // the headless-Chrome PDF, which has no network) instead of a remote URL.
+  assert.match(proposal.logoUrl, /^data:image\/png;base64,/);
   assert.equal(proposal.footerLine, 'AXIS Destination Management');
 });
 
@@ -2523,5 +2526,40 @@ test('Phase 3D.1P: EN/PT/ES remain LTR and unaffected by the RTL-scoped fix', ()
   for (const L of ['en', 'pt', 'es'] as const) {
     const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), L);
     assert.equal(vm.textDirection, 'ltr', `${L} stays LTR`);
+  }
+});
+
+// ---- Phase 3D.1Q: brand logo renders in PDF (embedded data URI) ----
+
+test('Phase 3D.1Q: AXIS_BRAND_LOGO_DATA_URI is a valid embedded PNG data URI', () => {
+  assert.match(AXIS_BRAND_LOGO_DATA_URI, /^data:image\/png;base64,[A-Za-z0-9+/=]+$/);
+  assert.ok(AXIS_BRAND_LOGO_DATA_URI.length > 2000, 'logo payload embedded');
+});
+
+test('Phase 3D.1Q: default brand logo is the embedded data URI, not a remote URL', () => {
+  const vm = mapQuoteToProposalV3(createPdfQuote());
+  assert.match(vm.logoUrl, /^data:image\/png;base64,/, 'default logo is a data URI');
+  assert.doesNotMatch(vm.logoUrl, /^https?:\/\/|axisdmc\.com/, 'no remote logo URL');
+});
+
+test('Phase 3D.1Q: rendered HTML embeds the logo as a data URI (renders offline in the PDF)', async () => {
+  const service = new ProposalV3Service({} as any);
+  const html = await (service as any).renderHtml(mapQuoteToProposalV3(createPdfQuote()));
+  assert.match(html, /<img[^>]*class="proposal-brand-logo"[^>]*src="data:image\/png;base64,/, 'logo img uses a data URI');
+  assert.doesNotMatch(html, /src="https:\/\/axisdmc\.com/, 'no broken remote logo src');
+});
+
+test('Phase 3D.1Q: resolveLogoForRender passes data URIs / relative / empty through unchanged (no fetch)', async () => {
+  const service = new ProposalV3Service({} as any) as any;
+  assert.equal(await service.resolveLogoForRender('data:image/png;base64,QUJD'), 'data:image/png;base64,QUJD');
+  assert.equal(await service.resolveLogoForRender(''), '');
+  assert.equal(await service.resolveLogoForRender('/brand/logo.png'), '/brand/logo.png');
+});
+
+test('Phase 3D.1Q: all four locales embed the logo as a data URI (language-independent)', async () => {
+  const service = new ProposalV3Service({} as any);
+  for (const L of ['en', 'pt', 'es', 'ar'] as const) {
+    const html = await (service as any).renderHtml(mapQuoteToProposalV3(createPdfQuote(), L));
+    assert.match(html, /class="proposal-brand-logo"[^>]*src="data:image\/png;base64,/, `logo data URI present (${L})`);
   }
 });

@@ -22,9 +22,47 @@ type PuppeteerModule = {
   launch(options?: Record<string, unknown>): Promise<PuppeteerBrowser>;
 };
 
+// Phase 3D.1Q — cache resolved logo data URIs by source URL so repeat renders
+// don't re-fetch a remote (custom company) logo.
+const LOGO_DATA_URI_CACHE = new Map<string, string>();
+
 @Injectable()
 export class ProposalV3Service {
   constructor(private readonly quotesService: QuotesService) {}
+
+  // Phase 3D.1Q — the headless-Chrome PDF context has no network, so a remote
+  // logo URL renders as alt text. The default AXIS logo is already an embedded
+  // data URI (passes straight through here). Custom company logos are remote, so
+  // we fetch + inline them SERVER-side (Node has network) into a data URI, with a
+  // timeout and graceful fallback to the original URL on any failure.
+  private async resolveLogoForRender(logoUrl: string): Promise<string> {
+    const url = String(logoUrl || '').trim();
+    if (!url || url.startsWith('data:')) return url;
+    if (!/^https?:\/\//i.test(url)) return url;
+    if (LOGO_DATA_URI_CACHE.has(url)) return LOGO_DATA_URI_CACHE.get(url) as string;
+    try {
+      if (typeof fetch !== 'function') return url;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      let resolved = url;
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        const contentType = (res.headers.get('content-type') || '').split(';')[0].trim() || 'image/png';
+        if (res.ok && /^image\//i.test(contentType)) {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          if (buffer.byteLength > 0 && buffer.byteLength <= 3_000_000) {
+            resolved = `data:${contentType};base64,${buffer.toString('base64')}`;
+          }
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+      LOGO_DATA_URI_CACHE.set(url, resolved);
+      return resolved;
+    } catch {
+      return url;
+    }
+  }
 
   async getProposalHtml(quoteId: string, actor?: AuthenticatedActor, language?: string) {
     console.info('[proposal-v3] getProposalHtml:start', { quoteId });
@@ -224,6 +262,7 @@ export class ProposalV3Service {
 
     const loc = resolveProposalLanguage(viewModel.language);
     const L = (key: Parameters<typeof proposalLabel>[1]) => this.escapeHtml(proposalLabel(loc, key));
+    const resolvedLogoUrl = await this.resolveLogoForRender(viewModel.logoUrl);
 
     // TODO: Replace this token renderer with full Handlebars runtime if/when the API workspace adds handlebars as a direct dependency.
     return this.renderTemplate(template, {
@@ -263,7 +302,7 @@ export class ProposalV3Service {
       labelNotes: L('notes'),
       documentTitle: this.escapeHtml(viewModel.documentTitle),
       brandName: this.escapeHtml(viewModel.brandName),
-      logoUrl: this.escapeHtml(viewModel.logoUrl),
+      logoUrl: this.escapeHtml(resolvedLogoUrl),
       accentColor: this.escapeHtml(viewModel.accentColor),
       footerLine: this.escapeHtml(viewModel.footerLine),
       contactLine: this.escapeHtml(viewModel.contactLine),
