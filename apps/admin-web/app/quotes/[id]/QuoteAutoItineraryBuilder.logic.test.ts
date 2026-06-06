@@ -22,6 +22,7 @@ import {
   buildTouringRouteApplyPlan,
   findHotelSetup,
   deriveOvernightNights,
+  buildOvernightHotelSuggestions,
   type TouringRouteForGen,
   type TouringRouteDetailForGen,
   type Hotel,
@@ -836,5 +837,110 @@ describe('Phase 3D.2A deriveOvernightNights', () => {
     assert.equal(r.nights[0].city, '');
     assert.equal(r.nights[0].reason, 'no-destination-city');
     assert.equal(r.ambiguous, true);
+  });
+});
+
+describe('Phase 3D.2B buildOvernightHotelSuggestions (preview only, pure)', () => {
+  const poi = (id: string) => ({ id, code: id, name: id });
+  const hotels: Hotel[] = [
+    { id: 'h-petra', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4 star', roomCategories: [] },
+    { id: 'h-wr', name: 'Wadi Rum Bedouin Camp', city: 'Wadi Rum', category: 'camp', roomCategories: [] },
+  ];
+  const hotelContracts: HotelContract[] = [
+    { id: 'c-petra', hotelId: 'h-petra', name: 'Petra 2026', currency: 'USD', validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-petra', name: 'Petra Moon Hotel' } },
+    { id: 'c-wr', hotelId: 'h-wr', name: 'WR 2026', currency: 'USD', validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-wr', name: 'Wadi Rum Bedouin Camp' } },
+  ];
+  const hotelRates: HotelRate[] = [
+    { id: 'r-petra', contractId: 'c-petra', seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB', currency: 'USD', cost: 50, roomCategory: { id: 'rc1', name: 'Standard', code: null } },
+    { id: 'r-wr', contractId: 'c-wr', seasonName: 'Std', roomCategoryId: 'rc2', occupancyType: 'DBL', mealPlan: 'HB', currency: 'USD', cost: 60, roomCategory: { id: 'rc2', name: 'Tent', code: null } },
+  ];
+  const opts = (overrides: Record<number, { city?: string | null; disabled?: boolean }> = {}) => ({
+    hotels, hotelContracts, hotelRates, travelStartDate: '2026-06-10', overrides,
+  });
+
+  const danaPetra: TouringRouteForGen = {
+    id: 'r', name: 'Dana & Petra', startCity: 'Amman', durationDays: 2,
+    stops: [
+      { order: 0, city: 'Amman', poiId: 'p-amman', pointOfInterest: poi('Amman') },
+      { order: 1, city: 'Dana', poiId: 'p-dana', pointOfInterest: poi('Dana') },
+      { order: 2, city: 'Petra / Wadi Musa', poiId: 'p-petra', pointOfInterest: poi('Petra') },
+      { order: 3, city: 'Amman', poiId: null, pointOfInterest: null },
+    ],
+  };
+  const petraWadiRum: TouringRouteForGen = {
+    id: 'r2', name: 'Petra & Wadi Rum', startCity: 'Petra', durationDays: 2, mainDestinations: ['Wadi Rum'],
+    stops: [
+      { order: 0, city: 'Petra', poiId: 'p-petra', pointOfInterest: poi('Petra') },
+      { order: 1, city: 'Wadi Rum', poiId: 'p-wr', pointOfInterest: poi('Wadi Rum') },
+    ],
+  };
+  const ajlounJerash: TouringRouteForGen = {
+    id: 'r3', name: 'Jerash & Ajloun', startCity: 'Amman', durationDays: 1,
+    stops: [
+      { order: 0, city: 'Jerash', poiId: 'p-j', pointOfInterest: poi('Jerash') },
+      { order: 1, city: 'Ajloun', poiId: 'p-a', pointOfInterest: poi('Ajloun') },
+    ],
+  };
+  const aqabaNoHotel: TouringRouteForGen = {
+    id: 'r4', name: 'Aqaba', startCity: 'Amman', durationDays: 2,
+    stops: [
+      { order: 0, city: 'Amman', poiId: 'p-amman', pointOfInterest: poi('Amman') },
+      { order: 1, city: 'Aqaba', poiId: 'p-aqaba', pointOfInterest: poi('Aqaba') },
+    ],
+  };
+
+  it('Amman -> Dana -> Petra suggests the Petra hotel (not Dana)', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(danaPetra, opts());
+    assert.equal(suggestions.length, 1);
+    assert.match(suggestions[0].city, /Petra/);
+    assert.doesNotMatch(suggestions[0].city, /Dana/);
+    assert.equal(suggestions[0].hotelName, 'Petra Moon Hotel');
+    assert.equal(suggestions[0].mealPlan, 'BB');
+    assert.equal(suggestions[0].missingReason, null);
+  });
+
+  it('Petra -> Wadi Rum suggests the Wadi Rum camp', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(petraWadiRum, opts());
+    assert.equal(suggestions.length, 1);
+    assert.match(suggestions[0].city, /Wadi Rum/);
+    assert.equal(suggestions[0].hotelName, 'Wadi Rum Bedouin Camp');
+  });
+
+  it('Ajloun & Jerash one-day route -> no hotel suggestions', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(ajlounJerash, opts());
+    assert.equal(suggestions.length, 0);
+  });
+
+  it('no hotel in the overnight city -> No suitable hotel found (missingReason)', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(aqabaNoHotel, opts());
+    assert.equal(suggestions.length, 1);
+    assert.match(suggestions[0].city, /Aqaba/);
+    assert.equal(suggestions[0].hotelName, null);
+    assert.equal(suggestions[0].missingReason, 'no-hotel-in-city');
+  });
+
+  it('operator disables a suggestion -> no hotel for that night', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(danaPetra, opts({ 1: { disabled: true } }));
+    assert.equal(suggestions[0].disabled, true);
+    assert.equal(suggestions[0].hotelName, null);
+  });
+
+  it('operator changes the overnight city -> re-resolves to the new city hotel', () => {
+    const { suggestions } = buildOvernightHotelSuggestions(danaPetra, opts({ 1: { city: 'Wadi Rum' } }));
+    assert.equal(suggestions[0].city, 'Wadi Rum');
+    assert.equal(suggestions[0].hotelName, 'Wadi Rum Bedouin Camp');
+  });
+});
+
+describe('Phase 3D.2B apply plan still creates NO hotel item', () => {
+  it('buildTouringRouteApplyPlan output carries days + POI only (no hotel field)', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', name: 'Amman City', startCity: 'Amman', durationDays: 1,
+      stops: [{ order: 0, city: 'Amman', poiId: 'p1', pointOfInterest: { id: 'p1', code: 'AMM', name: 'Amman Citadel' } }],
+    };
+    const preview = buildTouringRoutePreview(route, { pricingRowId: null, startDate: null });
+    const plan = buildTouringRouteApplyPlan(preview, { pax: 2, transportServiceId: 'svc-1', existingDayCount: 0, existingItemCount: 0 });
+    assert.doesNotMatch(JSON.stringify(plan), /hotel/i);
+    assert.ok(Array.isArray(plan.days));
   });
 });

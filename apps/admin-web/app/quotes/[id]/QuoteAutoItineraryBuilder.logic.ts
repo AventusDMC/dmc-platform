@@ -1070,3 +1070,96 @@ export function deriveOvernightNights(route: TouringRouteForGen): OvernightNight
 
   return { nights, ambiguous: mappingAmbiguous, reasons };
 }
+
+// Phase 3D.2B — build per-night hotel SUGGESTIONS for the touring-route preview.
+// Suggestions ONLY: the panel renders these, the operator confirms/edits, and
+// NOTHING is created here (no fetch, no writes, no hotel item). Pure; reuses
+// deriveOvernightNights + findHotelSetup. Per-night operator overrides (change
+// overnight city / disable a suggestion) are applied before matching. A disabled
+// night, or a night with no overnight city yet, returns no hotel.
+export type OvernightHotelOverride = { city?: string | null; disabled?: boolean };
+
+export type OvernightHotelSuggestion = {
+  nightNumber: number;
+  city: string;
+  ambiguous: boolean;
+  ambiguityReason: string | null;
+  disabled: boolean;
+  hotelName: string | null;
+  roomName: string | null;
+  mealPlan: string | null;
+  rateCost: number | null;
+  rateCurrency: string | null;
+  missingReason: HotelSetupMissingReason;
+};
+
+export type OvernightHotelSuggestionsResult = {
+  suggestions: OvernightHotelSuggestion[];
+  ambiguous: boolean;
+  reasons: string[];
+};
+
+export function buildOvernightHotelSuggestions(
+  route: TouringRouteForGen,
+  options: {
+    hotels: Hotel[];
+    hotelContracts: HotelContract[];
+    hotelRates: HotelRate[];
+    travelStartDate?: string | null;
+    optimizationMode?: OptimizationMode;
+    overrides?: Record<number, OvernightHotelOverride>;
+  },
+): OvernightHotelSuggestionsResult {
+  const overnight = deriveOvernightNights(route);
+  const mode: OptimizationMode = options.optimizationMode || 'cost';
+  const overrides = options.overrides || {};
+
+  const suggestions: OvernightHotelSuggestion[] = overnight.nights.map((night) => {
+    const override = overrides[night.nightNumber] || {};
+    const disabled = override.disabled === true;
+    const city = cleanStr(override.city != null ? override.city : night.city);
+
+    const base = {
+      nightNumber: night.nightNumber,
+      city,
+      ambiguous: night.ambiguous,
+      ambiguityReason: night.reason,
+    };
+
+    if (disabled || !city) {
+      return {
+        ...base,
+        disabled,
+        hotelName: null,
+        roomName: null,
+        mealPlan: null,
+        rateCost: null,
+        rateCurrency: null,
+        missingReason: null,
+      };
+    }
+
+    const travelDate = addDays(options.travelStartDate || null, night.nightNumber - 1);
+    const setup = findHotelSetup({
+      city,
+      travelDate,
+      hotels: options.hotels,
+      hotelContracts: options.hotelContracts,
+      hotelRates: options.hotelRates,
+      optimizationMode: mode,
+    });
+
+    return {
+      ...base,
+      disabled: false,
+      hotelName: setup.hotel?.name ?? null,
+      roomName: setup.rate?.roomCategory?.name ?? null,
+      mealPlan: setup.rate?.mealPlan ?? null,
+      rateCost: setup.rate?.cost ?? null,
+      rateCurrency: setup.rate?.currency ?? null,
+      missingReason: setup.missingReason,
+    };
+  });
+
+  return { suggestions, ambiguous: overnight.ambiguous, reasons: overnight.reasons };
+}
