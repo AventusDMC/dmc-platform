@@ -4195,7 +4195,7 @@ export class QuotesService {
       const transportMapping = await this.resolvePackageTransportMapping(component, quote);
       return transportMapping
         ? { insertable: true, reason: null, details: this.formatPackageTransportMappingDetails(transportMapping) }
-        : { insertable: false, reason: 'Transport component could not be priced: needs a point-to-point route + rate, a touring route, or — for a FULL_DAY/HALF_DAY/DAILY_PACKAGE service type — an active full-day vehicle rate for that service type and pax' };
+        : { insertable: false, reason: 'Transport component could not be priced: needs a point-to-point route + rate (transfer-style legs must link a route), a touring route, or — for a FULL_DAY/DAILY_PACKAGE service type — an active full-day vehicle rate for that service type and pax' };
     }
 
     if (component.componentType === 'TICKET') {
@@ -4661,23 +4661,29 @@ export class QuotesService {
 
     const transportServiceType = await this.resolvePackageTransportServiceType(component);
 
-    // Phase B / B.1 — FULL_DAY / HALF_DAY / DAILY_PACKAGE transport (daily
-    // disposal / moving touring day) for components with NO route of their own.
-    // The component carries only a transport service type; we resolve the cheapest
-    // fitting active VehicleRate for that service type + pax (+ travel date) and
-    // price through it. findMatchingRate cannot run without a route reference
-    // (buildRouteFilter requires one), so we read the VehicleRate directly here —
-    // no engine change — then carry the rate's OWN real routeId (e.g. the supplier
-    // "Amman -> Amman" / Jordan Program disposal route) so createItem prices via
-    // the vehicleRateId path. We do NOT substitute Daily Full Day, do NOT require
-    // a component route, and do NOT create an artificial route. Stationary/waiting
-    // ADD_ON pricing is intentionally out of scope.
+    // Phase B / B.1 — FULL_DAY / DAILY_PACKAGE transport (daily disposal / touring
+    // program) for components with NO route of their own. The component carries only
+    // a transport service type; we resolve the cheapest fitting active VehicleRate
+    // for that service type + pax (+ travel date) and price through it.
+    // findMatchingRate cannot run without a route reference (buildRouteFilter
+    // requires one), so we read the VehicleRate directly here — no engine change —
+    // then carry the rate's OWN real routeId (e.g. the supplier "Amman -> Amman" /
+    // Jordan Program disposal route) so createItem prices via the vehicleRateId
+    // path. We do NOT substitute Daily Full Day, do NOT require a component route,
+    // and do NOT create an artificial route. Stationary/waiting ADD_ON pricing is
+    // out of scope.
+    //
+    // Phase B.1.1 — HALF_DAY is intentionally EXCLUDED. Its only service type today
+    // is used for transfer-style legs (e.g. Dead Sea -> QAIA), not a dedicated
+    // half-day disposal, so those must price via the route path (routeId), not
+    // routelessly. If a dedicated half-day-disposal service type is added later,
+    // allowlist its classification/code here.
     const classification = (transportServiceType as any)?.classification;
     if (
       transportServiceType?.id &&
       !component.routeId &&
       !component.touringRouteId &&
-      (classification === 'FULL_DAY' || classification === 'HALF_DAY' || classification === 'DAILY_PACKAGE')
+      (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE')
     ) {
       const fullDayService = component.supplierService || (await this.findFallbackSupplierServiceForPackageComponent('TRANSPORT'));
       if (!fullDayService || !this.isTransportService(fullDayService)) {

@@ -93,10 +93,26 @@ test('Phase B.1: routeless FULL_DAY component resolves a real VehicleRate (no co
   assert.equal(rateCalls.length, 0);
 });
 
-test('Phase B.1: HALF_DAY classification also resolves via direct VehicleRate', async () => {
+test('Phase B.1.1: plain HALF_DAY component does NOT enter the routeless branch (transfer-style stays route-gated)', async () => {
+  // D8 "Dead Sea -> QAIA" is HALF_DAY with no route. After B.1.1 it must NOT be
+  // priced routelessly — it falls to the route gate and stays skipped (route-link issue).
+  const { service, vrCalls } = makeService({ vehicleRate: async () => SEDAN_RATE });
+  const mapping = await (service as any).resolvePackageTransportMapping(
+    fullDayComponent({
+      label: 'Dead Sea → QAIA Airport',
+      transportServiceTypeId: 'st-hd',
+      transportServiceType: { id: 'st-hd', name: 'Half Day', classification: 'HALF_DAY' },
+    }),
+    QUOTE,
+  );
+  assert.equal(mapping, null, 'HALF_DAY with no route must not resolve routelessly');
+  assert.equal(vrCalls.length, 0, 'routeless VehicleRate lookup must not run for HALF_DAY');
+});
+
+test('Phase B.1.1: DAILY_PACKAGE still enters the routeless branch', async () => {
   const { service } = makeService({ vehicleRate: async () => SEDAN_RATE });
   const mapping = await (service as any).resolvePackageTransportMapping(
-    fullDayComponent({ transportServiceTypeId: 'st-hd', transportServiceType: { id: 'st-hd', name: 'Half Day', classification: 'HALF_DAY' } }),
+    fullDayComponent({ transportServiceTypeId: 'st-dp', transportServiceType: { id: 'st-dp', name: 'Daily Package', classification: 'DAILY_PACKAGE' } }),
     QUOTE,
   );
   assert.ok(mapping);
