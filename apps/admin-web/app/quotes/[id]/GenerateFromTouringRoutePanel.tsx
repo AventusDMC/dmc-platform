@@ -23,6 +23,7 @@ import {
 import {
   buildTouringRoutePreview,
   buildTouringRouteApplyPlan,
+  buildOvernightHotelSuggestions,
   formatTouringRoutePricingLabel,
   movePreviewPoi,
   removePreviewPoi,
@@ -30,6 +31,11 @@ import {
   type TouringRouteDetailForGen,
   type TouringRoutePreview,
   type TouringRoutePricingRow,
+  type Hotel,
+  type HotelContract,
+  type HotelRate,
+  type OptimizationMode,
+  type OvernightHotelOverride,
 } from './QuoteAutoItineraryBuilder.logic';
 
 type Props = {
@@ -40,13 +46,19 @@ type Props = {
   existingItemCount?: number;
   defaultPax?: number;
   defaultStartDate?: string | null;
+  // Phase 3D.2B — hotel catalogs for SUGGESTIONS only (preview); optional so the
+  // panel still renders if a caller omits them (suggestions just won't appear).
+  hotels?: Hotel[];
+  hotelContracts?: HotelContract[];
+  hotelRates?: HotelRate[];
+  optimizationMode?: OptimizationMode;
 };
 
 function isTouringRoute(route: RouteOption): boolean {
   return route.canonicalRouteType === 'TOURING_ROUTE';
 }
 
-export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate }: Props) {
+export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate, hotels, hotelContracts, hotelRates, optimizationMode }: Props) {
   const router = useRouter();
   const touringRoutes = useMemo(() => (routes || []).filter(isTouringRoute), [routes]);
 
@@ -65,6 +77,9 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
   const [preview, setPreview] = useState<TouringRoutePreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Phase 3D.2B — per-night hotel-suggestion overrides (local only; change
+  // overnight city / disable a suggestion). Never persisted; reset on route load.
+  const [hotelOverrides, setHotelOverrides] = useState<Record<number, OvernightHotelOverride>>({});
 
   // Existing-state detection for the non-destructive guard (refreshed on route load).
   const [existingDayCount, setExistingDayCount] = useState(0);
@@ -96,6 +111,7 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
     setSelectedRouteId(routeId);
     setPreview(null);
     setRouteDetail(null);
+    setHotelOverrides({});
     setError('');
     setApplyError('');
     setApplySuccess('');
@@ -154,6 +170,21 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
       existingPoiAssignmentCount,
     });
   }, [preview, pax, transportServiceId, existingDayCount, existingItemCount, existingPoiAssignmentCount]);
+
+  // Phase 3D.2B — per-night hotel SUGGESTIONS for the preview (pure; no writes).
+  // Recomputed from the route + start date + local overrides. Empty when the
+  // caller didn't pass hotel catalogs, or the route has no overnight nights.
+  const hotelSuggestions = useMemo(() => {
+    if (!routeDetail) return [];
+    return buildOvernightHotelSuggestions(routeDetail, {
+      hotels: hotels ?? [],
+      hotelContracts: hotelContracts ?? [],
+      hotelRates: hotelRates ?? [],
+      travelStartDate: startDate || null,
+      optimizationMode: optimizationMode ?? 'cost',
+      overrides: hotelOverrides,
+    }).suggestions;
+  }, [routeDetail, hotels, hotelContracts, hotelRates, startDate, optimizationMode, hotelOverrides]);
 
   const needsAck = (applyPlan?.warnings.length ?? 0) > 0;
   const canSubmit = Boolean(applyPlan?.canApply) && (!needsAck || acknowledged) && !applying;
@@ -381,6 +412,71 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
               )}
             </div>
           ))}
+
+          {/* Phase 3D.2B — overnight hotel SUGGESTIONS (preview only; nothing saved). */}
+          {hotelSuggestions.length > 0 ? (
+            <div style={{ marginTop: '0.6rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.6rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Suggested overnight hotels</div>
+              <p style={{ margin: '0.2rem 0 0.4rem', fontSize: '0.74rem', color: 'var(--ds-color-muted, #475569)' }}>
+                Suggestions only — nothing is saved. Hotels are still added manually in this phase. Review the overnight city and edit if needed.
+              </p>
+              {hotelSuggestions.map((s) => (
+                <div key={s.nightNumber} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.45rem 0.6rem', marginTop: '0.4rem', opacity: s.disabled ? 0.55 : 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                    <strong style={{ fontSize: '0.78rem' }}>Night {s.nightNumber}</strong>
+                    <label style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', fontSize: '0.74rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={s.disabled}
+                        aria-label={`Skip hotel for night ${s.nightNumber}`}
+                        onChange={(e) => setHotelOverrides((prev) => ({ ...prev, [s.nightNumber]: { ...prev[s.nightNumber], disabled: e.target.checked } }))}
+                      />
+                      <span>Skip / add later</span>
+                    </label>
+                  </div>
+                  <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.3rem', fontSize: '0.76rem' }}>
+                    <span style={{ color: 'var(--ds-color-muted, #475569)' }}>Overnight city</span>
+                    <input
+                      type="text"
+                      className="app-input"
+                      value={s.city}
+                      aria-label={`Overnight city for night ${s.nightNumber}`}
+                      onChange={(e) => setHotelOverrides((prev) => ({ ...prev, [s.nightNumber]: { ...prev[s.nightNumber], city: e.target.value } }))}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                  </label>
+                  {s.ambiguous ? (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#b45309' }}>
+                      ⚠️ Overnight city is uncertain — please confirm.{s.ambiguityReason === 'no-destination-city' ? ' No destination city was derived from the route.' : ''}
+                    </p>
+                  ) : null}
+                  {s.disabled ? (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: 'var(--ds-color-muted, #475569)' }}>No hotel will be suggested for this night.</p>
+                  ) : s.hotelName ? (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.76rem' }}>
+                      <strong>{s.hotelName}</strong>
+                      {s.roomName ? ` · ${s.roomName}` : ''}
+                      {s.mealPlan ? ` · ${s.mealPlan}` : ''}
+                      {typeof s.rateCost === 'number' ? ` · ${(s.rateCurrency || '').trim()} ${s.rateCost.toFixed(2)}`.replace(/\s+/g, ' ') : ''}
+                    </p>
+                  ) : (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: '#b45309' }}>
+                      No suitable hotel found
+                      {s.missingReason === 'no-hotel-in-city'
+                        ? ' — no hotel in this city (add one in Hotels).'
+                        : s.missingReason === 'no-valid-contract'
+                          ? ' — hotel exists but no valid contract (add one in Hotel Contracts).'
+                          : s.missingReason === 'no-rate'
+                            ? ' — contract exists but no rates (add rates).'
+                            : s.city
+                              ? '.'
+                              : ' — choose an overnight city above.'}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {/* Phase 3D.1C — non-destructive apply */}
           <div style={{ marginTop: '0.4rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

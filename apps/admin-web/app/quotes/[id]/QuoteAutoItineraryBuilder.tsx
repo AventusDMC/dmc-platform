@@ -2463,6 +2463,9 @@ export function QuoteAutoItineraryBuilder({
           existingItemCount={(quote as { quoteItems?: unknown[] }).quoteItems?.length ?? 0}
           defaultPax={totalPax}
           defaultStartDate={travelStartDate || null}
+          hotels={hotels}
+          hotelContracts={hotelContracts}
+          hotelRates={hotelRates}
         />
       </details>
 
