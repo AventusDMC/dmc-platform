@@ -20,8 +20,13 @@ import {
   reorderPreviewPoi,
   removePreviewPoi,
   buildTouringRouteApplyPlan,
+  findHotelSetup,
+  deriveOvernightNights,
   type TouringRouteForGen,
   type TouringRouteDetailForGen,
+  type Hotel,
+  type HotelContract,
+  type HotelRate,
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
@@ -729,5 +734,107 @@ describe('partitionTouringRoutePoisToDays — 3D.1E multi-day splits', () => {
     assert.equal(r.totalPois, 0);
     assert.equal(r.hasUsablePois, false);
     assert.ok(r.ambiguityReasons.some((m) => /no POI-linked stops/i.test(m)));
+  });
+});
+
+describe('Phase 3D.2A findHotelSetup (lift-and-shift, byte-for-byte)', () => {
+  const hotels: Hotel[] = [
+    { id: 'h-petra', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4 star', roomCategories: [] },
+    { id: 'h-amman', name: 'Amman Inn', city: 'Amman', category: '3 star', roomCategories: [] },
+  ];
+  const contracts: HotelContract[] = [
+    {
+      id: 'c-petra', hotelId: 'h-petra', name: 'Petra 2026', currency: 'USD',
+      validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-petra', name: 'Petra Moon Hotel' },
+    },
+  ];
+  const rates: HotelRate[] = [
+    { id: 'r-dbl-hb', contractId: 'c-petra', seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'HB', currency: 'USD', cost: 70, roomCategory: { id: 'rc1', name: 'Standard', code: null } },
+    { id: 'r-dbl-bb', contractId: 'c-petra', seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB', currency: 'USD', cost: 50, roomCategory: { id: 'rc1', name: 'Standard', code: null } },
+  ];
+
+  it('matches hotel/contract/rate by city, preferring DBL + BB', () => {
+    const r = findHotelSetup({ city: 'Petra / Wadi Musa', travelDate: '2026-06-10', hotels, hotelContracts: contracts, hotelRates: rates, optimizationMode: 'cost' });
+    assert.equal(r.hotel?.id, 'h-petra');
+    assert.equal(r.contract?.id, 'c-petra');
+    assert.equal(r.rate?.id, 'r-dbl-bb');
+    assert.equal(r.rate?.mealPlan, 'BB');
+    assert.equal(r.missingReason, null);
+  });
+  it('no hotel in the city -> missingReason no-hotel-in-city', () => {
+    const r = findHotelSetup({ city: 'Aqaba', travelDate: null, hotels, hotelContracts: contracts, hotelRates: rates, optimizationMode: 'cost' });
+    assert.equal(r.hotel, null);
+    assert.equal(r.missingReason, 'no-hotel-in-city');
+  });
+  it('hotel present but no contract -> missingReason no-valid-contract', () => {
+    const r = findHotelSetup({ city: 'Amman', travelDate: null, hotels, hotelContracts: contracts, hotelRates: rates, optimizationMode: 'cost' });
+    assert.equal(r.hotel?.id, 'h-amman');
+    assert.equal(r.contract, null);
+    assert.equal(r.missingReason, 'no-valid-contract');
+  });
+});
+
+describe('Phase 3D.2A deriveOvernightNights', () => {
+  const poi = (id: string) => ({ id, code: id, name: id });
+
+  it('one-day route -> zero hotel nights (Ajloun & Jerash)', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', name: 'Jerash & Ajloun', startCity: 'Amman', durationDays: 1,
+      stops: [
+        { order: 0, city: 'Amman', poiId: null, pointOfInterest: null },
+        { order: 1, city: 'Jerash', poiId: 'p-jerash', pointOfInterest: poi('Jerash') },
+        { order: 2, city: 'Ajloun', poiId: 'p-ajloun', pointOfInterest: poi('Ajloun') },
+      ],
+    };
+    const r = deriveOvernightNights(route);
+    assert.equal(r.nights.length, 0);
+    assert.equal(r.ambiguous, false);
+  });
+
+  it('Amman -> Dana -> Petra ON -> one overnight, suggested Petra (not Dana), ambiguity surfaced', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', name: 'Dana & Petra', startCity: 'Amman', durationDays: 2,
+      stops: [
+        { order: 0, city: 'Amman', poiId: 'p-amman', pointOfInterest: poi('Amman') },
+        { order: 1, city: 'Dana', poiId: 'p-dana', pointOfInterest: poi('Dana') },
+        { order: 2, city: 'Petra / Wadi Musa', poiId: 'p-petra', pointOfInterest: poi('Petra') },
+        { order: 3, city: 'Amman', poiId: null, pointOfInterest: null },
+      ],
+    };
+    const r = deriveOvernightNights(route);
+    assert.equal(r.nights.length, 1);
+    assert.match(r.nights[0].city, /Petra/);
+    assert.doesNotMatch(r.nights[0].city, /Dana/);
+    assert.equal(r.ambiguous, true);
+  });
+
+  it('Petra -> Wadi Rum ON -> one overnight, suggested Wadi Rum (origin Petra excluded)', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', name: 'Petra & Wadi Rum', startCity: 'Petra', durationDays: 2,
+      mainDestinations: ['Wadi Rum'],
+      stops: [
+        { order: 0, city: 'Petra', poiId: 'p-petra', pointOfInterest: poi('Petra') },
+        { order: 1, city: 'Wadi Rum', poiId: 'p-wr', pointOfInterest: poi('Wadi Rum') },
+      ],
+    };
+    const r = deriveOvernightNights(route);
+    assert.equal(r.nights.length, 1);
+    assert.match(r.nights[0].city, /Wadi Rum/);
+    assert.equal(r.ambiguous, false);
+  });
+
+  it('base/null-POI stops only -> overnight has no confident city + ambiguity flag', () => {
+    const route: TouringRouteForGen = {
+      id: 'r', startCity: 'Amman', durationDays: 2,
+      stops: [
+        { order: 0, city: 'Amman', poiId: null, pointOfInterest: null },
+        { order: 1, city: 'Transit Town', poiId: null, pointOfInterest: null },
+      ],
+    };
+    const r = deriveOvernightNights(route);
+    assert.equal(r.nights.length, 1);
+    assert.equal(r.nights[0].city, '');
+    assert.equal(r.nights[0].reason, 'no-destination-city');
+    assert.equal(r.ambiguous, true);
   });
 });

@@ -28,8 +28,14 @@ import {
   isMiddleDay,
   mergeExistingItineraryDays,
   reconstructNightStopsFromDayTitles,
+  findHotelSetup,
   type AutoItineraryExistingDay,
   type NightStop,
+  type Hotel,
+  type HotelContract,
+  type HotelRate,
+  type OptimizationMode,
+  type HotelSetupMissingReason,
 } from './QuoteAutoItineraryBuilder.logic';
 
 type SupplierService = {
@@ -49,49 +55,9 @@ type SupplierService = {
   currency: string;
 };
 
-type Hotel = {
-  id: string;
-  name: string;
-  city: string;
-  category: string;
-  hotelCategoryId?: string | null;
-  roomCategories: Array<{
-    id: string;
-    name: string;
-    code: string | null;
-    isActive: boolean;
-  }>;
-};
-
-type HotelContract = {
-  id: string;
-  hotelId: string;
-  name: string;
-  currency: string;
-  validFrom: string;
-  validTo: string;
-  hotel: {
-    id: string;
-    name: string;
-  };
-};
-
-type HotelRate = {
-  id: string;
-  contractId: string;
-  seasonName: string;
-  roomCategoryId: string;
-  occupancyType: 'SGL' | 'DBL' | 'TPL';
-  mealPlan: 'BB' | 'HB' | 'FB';
-  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
-  currency: string;
-  cost: number;
-  roomCategory: {
-    id: string;
-    name: string;
-    code: string | null;
-  };
-};
+// Phase 3D.2A — Hotel, HotelContract, HotelRate types moved to
+// ./QuoteAutoItineraryBuilder.logic (imported below) so the hotel matcher is
+// shared with the touring-route generator. Shapes unchanged.
 
 type TransportServiceType = {
   id: string;
@@ -99,7 +65,7 @@ type TransportServiceType = {
   code: string;
 };
 
-type OptimizationMode = 'cost' | 'comfort';
+// Phase 3D.2A — OptimizationMode moved to ./QuoteAutoItineraryBuilder.logic (imported below).
 
 type TransportPricingAddOn = {
   rateId: string;
@@ -637,123 +603,9 @@ function findMeetAssistService(services: SupplierService[]) {
   return matches.find((service) => service.unitType === 'per_group') || matches[0] || null;
 }
 
-type HotelSetupMissingReason = 'no-hotel-in-city' | 'no-valid-contract' | 'no-rate' | null;
-
-function findHotelSetup(values: {
-  city: string;
-  travelDate: string | null;
-  hotels: Hotel[];
-  hotelContracts: HotelContract[];
-  hotelRates: HotelRate[];
-  optimizationMode: OptimizationMode;
-}): {
-  hotel: Hotel | null;
-  contract: HotelContract | null;
-  rate: HotelRate | null;
-  // missingReason surfaces WHICH piece is absent so the preview UI can
-  // give the operator an actionable cue (e.g., "No Petra hotel in catalog
-  // — add one in /hotels" vs. "Petra hotel exists but no 2026 contract
-  // — add one in /hotel-contracts" vs. "contract exists but no rates —
-  // add rates"). Previously the day card said the generic "Needs hotel
-  // contract and rate" for all three causes and the operator had no
-  // idea what to actually fix.
-  missingReason: HotelSetupMissingReason;
-} {
-  const cityKey = normalizeText(values.city);
-  const cityHotels = values.hotels.filter(
-    (candidate) => normalizeText(candidate.city).includes(cityKey) || cityKey.includes(normalizeText(candidate.city)),
-  );
-
-  if (cityHotels.length === 0) {
-    return { hotel: null, contract: null, rate: null, missingReason: 'no-hotel-in-city' };
-  }
-
-  const travelTime = values.travelDate ? new Date(`${values.travelDate}T00:00:00`).getTime() : null;
-  const setups = cityHotels.map((hotel) => {
-    const contracts = values.hotelContracts.filter((contract) => contract.hotelId === hotel.id);
-    const validContracts = contracts.filter((candidate) => {
-      if (!travelTime) {
-        return true;
-      }
-
-      return new Date(candidate.validFrom).getTime() <= travelTime && new Date(candidate.validTo).getTime() >= travelTime;
-    });
-    const contract = validContracts[0] || contracts[0] || null;
-    const rates = contract ? values.hotelRates.filter((rate) => rate.contractId === contract.id) : [];
-    const rate =
-      rates.find((candidate) => candidate.occupancyType === 'DBL' && candidate.mealPlan === 'BB') ||
-      rates.find((candidate) => candidate.occupancyType === 'DBL') ||
-      rates[0] ||
-      null;
-
-    return { hotel, contract, rate, hasValidContract: validContracts.length > 0 };
-  });
-
-  const best = setups.sort((left, right) => {
-    const leftReady = left.contract && left.rate ? 1 : 0;
-    const rightReady = right.contract && right.rate ? 1 : 0;
-
-    if (leftReady !== rightReady) {
-      return rightReady - leftReady;
-    }
-
-    if (left.hasValidContract !== right.hasValidContract) {
-      return left.hasValidContract ? -1 : 1;
-    }
-
-    if (values.optimizationMode === 'cost') {
-      return (left.rate?.cost ?? Number.MAX_SAFE_INTEGER) - (right.rate?.cost ?? Number.MAX_SAFE_INTEGER);
-    }
-
-    const leftComfort = getHotelComfortScore(left.hotel);
-    const rightComfort = getHotelComfortScore(right.hotel);
-
-    if (leftComfort !== rightComfort) {
-      return rightComfort - leftComfort;
-    }
-
-    return (right.rate?.cost ?? 0) - (left.rate?.cost ?? 0);
-  })[0];
-
-  // Surface WHICH piece is missing so the day-card preview can give the
-  // operator an actionable cue ("Petra hotel has no 2026 contract — add
-  // one in /hotel-contracts") instead of the generic "Needs hotel
-  // contract and rate" message that fired for all three causes equally.
-  let missingReason: HotelSetupMissingReason = null;
-  if (!best?.hotel) missingReason = 'no-hotel-in-city';
-  else if (!best.contract) missingReason = 'no-valid-contract';
-  else if (!best.rate) missingReason = 'no-rate';
-
-  return {
-    hotel: best?.hotel ?? null,
-    contract: best?.contract ?? null,
-    rate: best?.rate ?? null,
-    missingReason,
-  };
-}
-
-function getHotelComfortScore(hotel: Hotel) {
-  const normalized = normalizeText(`${hotel.category} ${hotel.name}`);
-  const starMatch = normalized.match(/\b([1-5])\s*(?:star|stars)\b/);
-
-  if (starMatch?.[1]) {
-    return Number(starMatch[1]);
-  }
-
-  if (normalized.includes('luxury') || normalized.includes('deluxe') || normalized.includes('5')) {
-    return 5;
-  }
-
-  if (normalized.includes('superior') || normalized.includes('4')) {
-    return 4;
-  }
-
-  if (normalized.includes('standard') || normalized.includes('3')) {
-    return 3;
-  }
-
-  return 1;
-}
+// Phase 3D.2A — HotelSetupMissingReason, findHotelSetup, and getHotelComfortScore
+// moved to ./QuoteAutoItineraryBuilder.logic (byte-for-byte) and imported below,
+// so the touring-route generator can reuse the same hotel matcher unchanged.
 
 function getVehicleCategory(vehicleName: string, maxPax: number) {
   const normalized = vehicleName.toLowerCase();
