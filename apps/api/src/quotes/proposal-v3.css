@@ -1007,3 +1007,44 @@ html[dir="rtl"] .proposal-day-heading h3,
 html[dir="rtl"] .investment-card h3 {
   font-family: "Noto Naskh Arabic", "Playfair Display", Georgia, "Times New Roman", serif;
 }
+
+/* ---------- Phase 3D.1P: Arabic PDF hardening ----------
+   The Puppeteer/headless-Chrome PDF has NO system Arabic font, so ANY element
+   whose font stack lacks an embedded Arabic face renders tofu (□) — this is why
+   small labels, eyebrows, kickers, table headers, badges, price/meta cards and
+   footers showed boxes while body text (which already listed Noto Naskh) worked.
+   Force the embedded Noto Naskh Arabic on EVERY element under RTL, and neutralize
+   Latin typography tricks (letter-spacing, uppercase) that break Arabic cursive
+   shaping. Strictly [dir="rtl"]-scoped, so EN/PT/ES (dir="ltr") are unchanged. */
+html[dir="rtl"] .proposal-v3,
+html[dir="rtl"] .proposal-v3 *,
+html[dir="rtl"] .proposal-v3 *::before,
+html[dir="rtl"] .proposal-v3 *::after {
+  font-family: "Noto Naskh Arabic", "Noto Sans Arabic", "Inter", "Helvetica Neue", Arial, sans-serif !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+/* Re-assert an Arabic-first serif fallback on headings (any Latin glyphs keep a
+   display serif; Arabic glyphs use Noto Naskh). Placed after the blanket rule so
+   it wins for headings. */
+html[dir="rtl"] .proposal-v3 h1,
+html[dir="rtl"] .proposal-v3 h2,
+html[dir="rtl"] .proposal-v3 h3,
+html[dir="rtl"] .proposal-v3 h4,
+html[dir="rtl"] .proposal-v3 h5,
+html[dir="rtl"] .proposal-v3 h6 {
+  font-family: "Noto Naskh Arabic", "Playfair Display", Georgia, "Times New Roman", serif !important;
+}
+/* Mixed Arabic + Latin/number runs (city names like "Petra / Wadi Musa",
+   currency "US$", arrows "→", dotted covers "Dana · Petra", day numbers, dates)
+   must not be reordered awkwardly by the bidi algorithm. Isolate the common
+   inline carriers so each keeps its own internal direction. */
+html[dir="rtl"] .proposal-cover-destination,
+html[dir="rtl"] .proposal-day-overnight,
+html[dir="rtl"] .proposal-day-number,
+html[dir="rtl"] .proposal-service-card h5,
+html[dir="rtl"] .investment-card h3,
+html[dir="rtl"] .proposal-table td,
+html[dir="rtl"] .proposal-table th {
+  unicode-bidi: isolate;
+}
