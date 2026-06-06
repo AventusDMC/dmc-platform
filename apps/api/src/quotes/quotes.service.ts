@@ -4195,7 +4195,7 @@ export class QuotesService {
       const transportMapping = await this.resolvePackageTransportMapping(component, quote);
       return transportMapping
         ? { insertable: true, reason: null, details: this.formatPackageTransportMappingDetails(transportMapping) }
-        : { insertable: false, reason: 'Transport component needs route, pricing mode/service type, transport service, and a valid transport rate' };
+        : { insertable: false, reason: 'Transport component could not be priced: needs a point-to-point route + rate, a touring route, or — for a FULL_DAY/HALF_DAY/DAILY_PACKAGE service type — an active full-day vehicle rate for that service type and pax' };
     }
 
     if (component.componentType === 'TICKET') {
@@ -4660,6 +4660,55 @@ export class QuotesService {
     }
 
     const transportServiceType = await this.resolvePackageTransportServiceType(component);
+
+    // Phase B — routeless FULL_DAY / HALF_DAY / DAILY_PACKAGE transport (daily
+    // disposal / moving touring day). Prices from a VehicleRate matched by the
+    // component's OWN service type + pax (+ travel date) with NO routeId — e.g.
+    // the "Daily Full Day" type resolves the cheapest fitting full-day vehicle
+    // rate. We do NOT substitute Daily Full Day and do NOT create or require a
+    // route. Stationary/waiting ADD_ON pricing is intentionally out of scope.
+    const classification = (transportServiceType as any)?.classification;
+    if (
+      transportServiceType?.id &&
+      !component.routeId &&
+      !component.touringRouteId &&
+      (classification === 'FULL_DAY' || classification === 'HALF_DAY' || classification === 'DAILY_PACKAGE')
+    ) {
+      const fullDayService = component.supplierService || (await this.findFallbackSupplierServiceForPackageComponent('TRANSPORT'));
+      if (!fullDayService || !this.isTransportService(fullDayService)) {
+        return null;
+      }
+      const fullDayPax = this.getQuotePaxCount(quote);
+      const travelStartRaw = (quote as any).travelStartDate;
+      try {
+        const fullDayRate = await this.transportPricingService.findMatchingRate({
+          serviceTypeId: transportServiceType.id,
+          paxCount: fullDayPax,
+          travelDate: travelStartRaw ? new Date(travelStartRaw) : undefined,
+          // No routeId — routeless full-day / daily-disposal match.
+        });
+        return {
+          serviceId: fullDayService.id,
+          transportServiceTypeId: transportServiceType.id,
+          vehicleRateId: fullDayRate.id,
+          // The matched rate's own routeName lets createItem's route gate pass
+          // (via normalizedKey) and prices through the vehicleRateId path; the
+          // resolved routeId comes from the rate row, not an invented route.
+          routeName: fullDayRate.routeName || transportServiceType.name || component.label || null,
+          pricingMode: component.pricingMode || transportServiceType.name,
+          serviceName: fullDayService.name,
+          serviceTypeName: transportServiceType.name,
+          transportVehicleId: fullDayRate.vehicle?.id || undefined,
+          vehicleName: fullDayRate.vehicle?.name || null,
+          currency: fullDayRate.currency,
+          dayCount: 1,
+          rateStatus: `${fullDayRate.currency} ${Number(fullDayRate.price).toFixed(2)}`,
+        };
+      } catch {
+        return null;
+      }
+    }
+
     if (!component.routeId || !transportServiceType?.id) {
       return null;
     }
