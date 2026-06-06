@@ -2617,3 +2617,21 @@ test('Phase 3D.1R: rendered HTML shows the Exclusions section (localized heading
   assert.match(pt, /Exclusões/);
   assert.match(pt, /Voos internacionais/);
 });
+
+// ---- Phase 3D.1S: cover title block explicit centering ----
+
+test('Phase 3D.1S: cover title block (title/destination/duration) is explicitly centered', () => {
+  const css = readFileSync(resolve(__dirname, 'proposal-v3.css'), 'utf8');
+  const ruleBody = (selector: string) => {
+    const start = css.indexOf(selector);
+    return start >= 0 ? css.slice(start, css.indexOf('}', start)) : '';
+  };
+  assert.match(ruleBody('.proposal-cover-copy {'), /text-align:\s*center/, 'cover copy block centered');
+  const h1 = ruleBody('.proposal-cover h1 {');
+  assert.match(h1, /margin:\s*0 auto/, 'multi-line title block centered horizontally');
+  assert.match(h1, /text-align:\s*center/, 'title text centered');
+  assert.match(ruleBody('.proposal-cover-destination {'), /text-align:\s*center/, 'destination subtitle centered');
+  assert.match(ruleBody('.proposal-subtitle {'), /text-align:\s*center/, 'duration line centered');
+  // RTL keeps centering (text-align:center is direction-neutral; only bidi-isolate is RTL-scoped).
+  assert.doesNotMatch(ruleBody('html[dir="rtl"] .proposal-cover-destination,'), /text-align:\s*(right|left)/);
+});
