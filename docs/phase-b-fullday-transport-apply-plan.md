@@ -100,7 +100,56 @@ create a full-day transport item from an existing FULL_DAY `VehicleRate`; D1 sti
 works; D8 remains separate/skipped; quote total increases by the four daily
 transport items; no pricing regression on previously-created items.
 
+## 9. Transport day classification + stationary/local handling (added)
+Read-only audit of the transport taxonomy (13 `TransportServiceType` rows):
+- **ADD_ON**: `STATIONARY_WAITING`, `PETRA_OVERNIGHT`, `WADI_RUM_OVERNIGHT`,
+  `DEAD_SEA_OVERNIGHT`, `AQABA_OVERNIGHT`, `EXTRA_KM`, `EXTRA_HOUR`.
+- **ROUTE_TRANSFER**: `POINT_TO_POINT`, `AIRPORT_TRANSFER`, `BORDER_TRANSFER`, `PRIVATE_TRANSFER`.
+- **FULL_DAY**: `DAILY_FULL_DAY`. **HALF_DAY**: `HALF_DAY`.
+
+**Stationary/waiting exists ONLY as `ADD_ON`** (service type `STATIONARY_WAITING`
++ vehicle-rate add-ons `STATIONARY`/`WAITING`/`OVERNIGHT`/`EXTRA_KM`/`EXTRA_HOUR`).
+There is **no standalone "stationary/local full-day" base classification**.
+
+Per-day classification model (A–E):
+- **A point-to-point transfer** → `ROUTE_TRANSFER` (needs route; unchanged branch).
+- **B touring route / moving touring day** → `touringRouteId` (unchanged branch).
+- **C full-day daily disposal / moving touring day** → base `FULL_DAY`/`HALF_DAY`
+  (e.g. `DAILY_FULL_DAY`) — **this is what Phase B prices, by the component's OWN
+  serviceType.**
+- **D stationary / local disposal / waiting day** → modeled as an **`ADD_ON`**
+  (e.g. `STATIONARY_WAITING`) layered on a base engagement, or a cheaper local
+  base rate. **NOT a standalone base full-day.**
+- **E unknown / insufficient data**.
+
+**Phase B rule (clarified):** the new branch triggers on the resolved service
+type's classification ∈ `{FULL_DAY, HALF_DAY, DAILY_PACKAGE}` and prices via the
+component's **own** `transportServiceTypeId` (and the matched `VehicleRate`). It
+**must NOT** auto-substitute `DAILY_FULL_DAY`, and **must NOT** auto-classify a day
+as stationary vs moving — the template author's chosen serviceType is authoritative.
+
+**Jordan Explorer 8 Days — confirmed classification:**
+- D1 QAIA→Amman = **A** (AIRPORT_TRANSFER, route-priced) — works.
+- D2 Amman/Jerash, D3 Madaba/Nebo/Dead Sea, D4 Petra/Wadi Rum, D5 Wadi Rum/Dead
+  Sea = **C** — all `DAILY_FULL_DAY`, genuinely **moving** full-day touring days
+  (Phase B prices these).
+- D6/D7 Dead Sea = leisure, **no transport component** (no stationary component).
+- D8 Dead Sea→QAIA = **A** (separate route-link data item).
+→ **All 4 "Daily FD" components in Jordan Explorer are moving full-day (C), none is
+stationary (D).** So Phase B fully covers this template's transport.
+
+**Documented gap (data/model — do NOT fake):** a true **stationary/local-standby
+day** (e.g. a 2-night Petra stay where Day-N is hotel↔site↔hotel) cannot be priced
+as a standalone PackageTemplate transport component today, because stationary is an
+`ADD_ON` and PackageTemplate apply has **no transport add-on layering**. Options
+for a **future, separate** phase (NOT Phase B): (a) add transport add-on support to
+package apply (STATIONARY_WAITING / overnight / extra-km), or (b) let the supplier
+provide a cheaper local base `HALF_DAY`/`FULL_DAY` rate the operator links. Phase B
+neither solves nor fakes this; it simply prices base FULL_DAY/HALF_DAY components by
+their own serviceType.
+
 ## Out of scope
 guide fields · markup policy · activity variant · D8 route link · Day-7 hotel ·
 hotel grouping · append/replace · rooming · vouchers · supplier confirmations ·
+**transport stationary/waiting/overnight ADD-ON layering (separate future phase)** ·
 PR #321 · TouringRouteDay · manual override UI · machine translation · ZZ cleanup.
