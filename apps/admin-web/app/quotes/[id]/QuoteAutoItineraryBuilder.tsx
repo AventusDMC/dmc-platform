@@ -2466,6 +2466,8 @@ export function QuoteAutoItineraryBuilder({
           hotels={hotels}
           hotelContracts={hotelContracts}
           hotelRates={hotelRates}
+          hotelServiceId={hotelService?.id ?? null}
+          defaultRoomCount={numericRoomCount}
         />
       </details>
 
