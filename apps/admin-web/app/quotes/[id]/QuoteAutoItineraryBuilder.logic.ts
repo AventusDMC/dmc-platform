@@ -801,3 +801,272 @@ export function buildTouringRouteApplyPlan(
 
   return { canApply, blockedReason, warnings, days, transport, totalPoiAssignments };
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3D.2A — hotel matcher (lift-and-shift, byte-for-byte) + overnight-night
+// derivation. `findHotelSetup` and `getHotelComfortScore` were moved here from
+// QuoteAutoItineraryBuilder.tsx UNCHANGED so both the Auto Itinerary Builder and
+// the touring-route generator can reuse the SAME matcher. No logic change. The
+// module-private `normalizeText` below is a byte-identical copy of the .tsx
+// helper the hotel functions call (the .tsx keeps its own copy for route
+// matching); it is intentionally distinct from `normalizeCityName` above
+// (alphanumeric strip). No UI, no writes, no hotel-item creation, no pricing.
+// ---------------------------------------------------------------------------
+
+export type Hotel = {
+  id: string;
+  name: string;
+  city: string;
+  category: string;
+  hotelCategoryId?: string | null;
+  roomCategories: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+    isActive: boolean;
+  }>;
+};
+
+export type HotelContract = {
+  id: string;
+  hotelId: string;
+  name: string;
+  currency: string;
+  validFrom: string;
+  validTo: string;
+  hotel: {
+    id: string;
+    name: string;
+  };
+};
+
+export type HotelRate = {
+  id: string;
+  contractId: string;
+  seasonName: string;
+  roomCategoryId: string;
+  occupancyType: 'SGL' | 'DBL' | 'TPL';
+  mealPlan: 'BB' | 'HB' | 'FB';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
+  currency: string;
+  cost: number;
+  roomCategory: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+};
+
+export type OptimizationMode = 'cost' | 'comfort';
+
+export type HotelSetupMissingReason = 'no-hotel-in-city' | 'no-valid-contract' | 'no-rate' | null;
+
+// Byte-identical copy of the .tsx `normalizeText`, used only by the hotel matcher.
+function normalizeText(value: string | null | undefined) {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getHotelComfortScore(hotel: Hotel) {
+  const normalized = normalizeText(`${hotel.category} ${hotel.name}`);
+  const starMatch = normalized.match(/\b([1-5])\s*(?:star|stars)\b/);
+
+  if (starMatch?.[1]) {
+    return Number(starMatch[1]);
+  }
+
+  if (normalized.includes('luxury') || normalized.includes('deluxe') || normalized.includes('5')) {
+    return 5;
+  }
+
+  if (normalized.includes('superior') || normalized.includes('4')) {
+    return 4;
+  }
+
+  if (normalized.includes('standard') || normalized.includes('3')) {
+    return 3;
+  }
+
+  return 1;
+}
+
+// Moved byte-for-byte from QuoteAutoItineraryBuilder.tsx (Phase 3D.2A). Pure;
+// matches a hotel/contract/rate for a city and returns the best setup + a
+// missingReason that says WHICH piece is absent. Does NOT compute sell price —
+// sell is produced by the pricing engine when a hotel item is created.
+export function findHotelSetup(values: {
+  city: string;
+  travelDate: string | null;
+  hotels: Hotel[];
+  hotelContracts: HotelContract[];
+  hotelRates: HotelRate[];
+  optimizationMode: OptimizationMode;
+}): {
+  hotel: Hotel | null;
+  contract: HotelContract | null;
+  rate: HotelRate | null;
+  missingReason: HotelSetupMissingReason;
+} {
+  const cityKey = normalizeText(values.city);
+  const cityHotels = values.hotels.filter(
+    (candidate) => normalizeText(candidate.city).includes(cityKey) || cityKey.includes(normalizeText(candidate.city)),
+  );
+
+  if (cityHotels.length === 0) {
+    return { hotel: null, contract: null, rate: null, missingReason: 'no-hotel-in-city' };
+  }
+
+  const travelTime = values.travelDate ? new Date(`${values.travelDate}T00:00:00`).getTime() : null;
+  const setups = cityHotels.map((hotel) => {
+    const contracts = values.hotelContracts.filter((contract) => contract.hotelId === hotel.id);
+    const validContracts = contracts.filter((candidate) => {
+      if (!travelTime) {
+        return true;
+      }
+
+      return new Date(candidate.validFrom).getTime() <= travelTime && new Date(candidate.validTo).getTime() >= travelTime;
+    });
+    const contract = validContracts[0] || contracts[0] || null;
+    const rates = contract ? values.hotelRates.filter((rate) => rate.contractId === contract.id) : [];
+    const rate =
+      rates.find((candidate) => candidate.occupancyType === 'DBL' && candidate.mealPlan === 'BB') ||
+      rates.find((candidate) => candidate.occupancyType === 'DBL') ||
+      rates[0] ||
+      null;
+
+    return { hotel, contract, rate, hasValidContract: validContracts.length > 0 };
+  });
+
+  const best = setups.sort((left, right) => {
+    const leftReady = left.contract && left.rate ? 1 : 0;
+    const rightReady = right.contract && right.rate ? 1 : 0;
+
+    if (leftReady !== rightReady) {
+      return rightReady - leftReady;
+    }
+
+    if (left.hasValidContract !== right.hasValidContract) {
+      return left.hasValidContract ? -1 : 1;
+    }
+
+    if (values.optimizationMode === 'cost') {
+      return (left.rate?.cost ?? Number.MAX_SAFE_INTEGER) - (right.rate?.cost ?? Number.MAX_SAFE_INTEGER);
+    }
+
+    const leftComfort = getHotelComfortScore(left.hotel);
+    const rightComfort = getHotelComfortScore(right.hotel);
+
+    if (leftComfort !== rightComfort) {
+      return rightComfort - leftComfort;
+    }
+
+    return (right.rate?.cost ?? 0) - (left.rate?.cost ?? 0);
+  })[0];
+
+  let missingReason: HotelSetupMissingReason = null;
+  if (!best?.hotel) missingReason = 'no-hotel-in-city';
+  else if (!best.contract) missingReason = 'no-valid-contract';
+  else if (!best.rate) missingReason = 'no-rate';
+
+  return {
+    hotel: best?.hotel ?? null,
+    contract: best?.contract ?? null,
+    rate: best?.rate ?? null,
+    missingReason,
+  };
+}
+
+// Phase 3D.2A — derive the overnight NIGHTS for a touring route (suggestions
+// only; consumed later by the preview/apply, never auto-applied). Conservative:
+//   - nights = durationDays - 1 (a one-day route returns 0 nights -> no hotel).
+//   - Overnight cities are the real DESTINATION cities (POI-linked content stops
+//     only; base/operational/null-POI stops never create an overnight city by
+//     themselves), in order, de-duplicated, excluding the origin/start city.
+//     Falls back to mainDestinations when there are no POI-linked stop cities.
+//   - A single-night route sleeps at the FURTHEST destination (e.g. Petra, not
+//     an intermediate Dana). Whenever the destination/night mapping is not 1:1,
+//     or no destination city exists, `ambiguous` is set so the operator confirms
+//     /edits later -- ambiguity is surfaced, never hidden.
+export type OvernightNight = {
+  nightNumber: number;
+  city: string;
+  ambiguous: boolean;
+  reason: string | null;
+};
+
+export type OvernightNightsResult = {
+  nights: OvernightNight[];
+  ambiguous: boolean;
+  reasons: string[];
+};
+
+export function deriveOvernightNights(route: TouringRouteForGen): OvernightNightsResult {
+  const days = clampDurationDays(route.durationDays);
+  const nightCount = Math.max(days - 1, 0);
+  if (nightCount === 0) {
+    return { nights: [], ambiguous: false, reasons: [] };
+  }
+
+  const origin = normalizeCityName(route.startCity);
+  const orderedStops = [...(route.stops || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const pushDistinct = (acc: string[], rawCity: string | null | undefined) => {
+    const city = cleanStr(rawCity);
+    if (!city) return;
+    if (normalizeCityName(city) === origin) return;
+    if (acc.length && sameCity(acc[acc.length - 1], city)) return;
+    acc.push(city);
+  };
+
+  const dests: string[] = [];
+  for (const stop of orderedStops) {
+    if (stop.poiId && stop.pointOfInterest) pushDistinct(dests, stop.city);
+  }
+  if (dests.length === 0) {
+    for (const main of route.mainDestinations || []) pushDistinct(dests, main);
+  }
+
+  const reasons: string[] = [];
+
+  if (dests.length === 0) {
+    const emptyNights: OvernightNight[] = [];
+    for (let n = 1; n <= nightCount; n += 1) {
+      emptyNights.push({ nightNumber: n, city: '', ambiguous: true, reason: 'no-destination-city' });
+    }
+    reasons.push('No POI-linked destination city found for the overnight(s); operator must choose.');
+    return { nights: emptyNights, ambiguous: true, reasons };
+  }
+
+  let perNight: string[];
+  let mappingAmbiguous = false;
+  if (dests.length === nightCount) {
+    perNight = dests.slice();
+  } else if (dests.length > nightCount) {
+    // Sleep at the furthest destination(s).
+    perNight = dests.slice(dests.length - nightCount);
+    mappingAmbiguous = true;
+    reasons.push(
+      `Route visits ${dests.length} destination cities for ${nightCount} overnight(s); suggested the final destination(s). Edit if needed.`,
+    );
+  } else {
+    perNight = [...dests];
+    while (perNight.length < nightCount) perNight.push(dests[dests.length - 1]);
+    mappingAmbiguous = true;
+    reasons.push(
+      `Route has fewer destination cities (${dests.length}) than overnight(s) (${nightCount}); padded with the last. Edit if needed.`,
+    );
+  }
+
+  const nights: OvernightNight[] = perNight.map((city, index) => ({
+    nightNumber: index + 1,
+    city,
+    ambiguous: mappingAmbiguous,
+    reason: mappingAmbiguous ? 'destination-night-count-mismatch' : null,
+  }));
+
+  return { nights, ambiguous: mappingAmbiguous, reasons };
+}
