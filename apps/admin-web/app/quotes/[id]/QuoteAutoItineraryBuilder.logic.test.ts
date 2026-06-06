@@ -932,15 +932,139 @@ describe('Phase 3D.2B buildOvernightHotelSuggestions (preview only, pure)', () =
   });
 });
 
-describe('Phase 3D.2B apply plan still creates NO hotel item', () => {
-  it('buildTouringRouteApplyPlan output carries days + POI only (no hotel field)', () => {
+describe('Phase 3D.2B/3D.2C-A apply plan creates NO hotel item without confirmation', () => {
+  it('buildTouringRouteApplyPlan returns an empty hotels[] when no suggestions/confirmation are passed', () => {
     const route: TouringRouteForGen = {
       id: 'r', name: 'Amman City', startCity: 'Amman', durationDays: 1,
       stops: [{ order: 0, city: 'Amman', poiId: 'p1', pointOfInterest: { id: 'p1', code: 'AMM', name: 'Amman Citadel' } }],
     };
     const preview = buildTouringRoutePreview(route, { pricingRowId: null, startDate: null });
     const plan = buildTouringRouteApplyPlan(preview, { pax: 2, transportServiceId: 'svc-1', existingDayCount: 0, existingItemCount: 0 });
-    assert.doesNotMatch(JSON.stringify(plan), /hotel/i);
+    // 3D.2C-A adds a hotels[] field to the plan, but with no confirmed suggestions
+    // it stays empty — no hotel item is ever created without explicit confirmation.
+    assert.deepEqual(plan.hotels, []);
     assert.ok(Array.isArray(plan.days));
+  });
+});
+
+describe('Phase 3D.2C-A confirmed-hotel apply plan (pure; no writes)', () => {
+  const SVC = 'transport-svc-1';
+  const HSVC = 'hotel-svc-1';
+  const hotels: Hotel[] = [
+    { id: 'h-petra', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4 star', roomCategories: [] },
+    { id: 'h-wr', name: 'Wadi Rum Bedouin Camp', city: 'Wadi Rum', category: 'camp', roomCategories: [] },
+  ];
+  const hotelContracts: HotelContract[] = [
+    { id: 'c-petra', hotelId: 'h-petra', name: 'Petra 2026', currency: 'USD', validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-petra', name: 'Petra Moon Hotel' } },
+    { id: 'c-wr', hotelId: 'h-wr', name: 'WR 2026', currency: 'USD', validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-wr', name: 'Wadi Rum Bedouin Camp' } },
+  ];
+  const hotelRates: HotelRate[] = [
+    { id: 'r-petra', contractId: 'c-petra', seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB', currency: 'USD', cost: 50, roomCategory: { id: 'rc1', name: 'Standard', code: null } },
+    { id: 'r-wr', contractId: 'c-wr', seasonName: 'Std', roomCategoryId: 'rc2', occupancyType: 'DBL', mealPlan: 'HB', currency: 'USD', cost: 60, roomCategory: { id: 'rc2', name: 'Tent', code: null } },
+  ];
+
+  // Routes mirror the live -4gu9 data (3D.2B verification): a 2-day Dana→Petra,
+  // a 2-day Petra→Wadi Rum, and a 1-day Ajloun & Jerash. WITH pricings so the
+  // transport package makes the plan applicable.
+  const danaPetra: TouringRouteDetailForGen = {
+    id: 'dana-petra', name: 'Amman -> Dana -> Petra ON', startCity: 'Amman', durationDays: 2,
+    mainDestinations: ['Dana', 'Petra / Wadi Musa'], pricings: PRICINGS,
+    stops: [baseStop(1, 'Amman'), poiStop(2, 'Dana', 'DANA', 'Dana'), poiStop(3, 'Petra / Wadi Musa', 'PETRA', 'Petra')],
+  };
+  const petraWadiRum: TouringRouteDetailForGen = {
+    id: 'petra-wr', name: 'Petra -> Wadi Rum ON', startCity: 'Petra', durationDays: 2,
+    mainDestinations: ['Wadi Rum'], pricings: PRICINGS,
+    stops: [poiStop(1, 'Petra', 'PETRA', 'Petra'), poiStop(2, 'Wadi Rum', 'WR', 'Wadi Rum')],
+  };
+  const ajlounJerash: TouringRouteDetailForGen = {
+    id: 'ajloun', name: 'Ajloun & Jerash', startCity: 'Ajloun', durationDays: 1,
+    mainDestinations: ['Jerash'], pricings: PRICINGS,
+    stops: [poiStop(1, 'Ajloun', 'AJL', 'Ajloun'), poiStop(2, 'Jerash', 'JER', 'Jerash')],
+  };
+
+  function planFor(
+    route: TouringRouteDetailForGen,
+    o: { confirmedNights?: Record<number, boolean>; overrides?: Record<number, { city?: string | null; disabled?: boolean }>; hotelServiceId?: string | null; pax?: number; roomCount?: number; existingDayCount?: number } = {},
+  ) {
+    const preview = buildTouringRoutePreview(route, { pricingRowId: 'pr-van', startDate: '2026-06-10' });
+    const { suggestions } = buildOvernightHotelSuggestions(route, {
+      hotels, hotelContracts, hotelRates, travelStartDate: '2026-06-10', overrides: o.overrides || {},
+    });
+    return buildTouringRouteApplyPlan(preview, {
+      pax: o.pax ?? 2,
+      transportServiceId: SVC,
+      hotelServiceId: o.hotelServiceId === undefined ? HSVC : o.hotelServiceId,
+      hotelSuggestions: suggestions,
+      confirmedNights: o.confirmedNights || {},
+      roomCount: o.roomCount,
+      existingDayCount: o.existingDayCount ?? 0,
+      existingItemCount: 0,
+    });
+  }
+
+  it('confirmed Petra Moon on Amman -> Dana -> Petra produces exactly one ApplyPlanHotel with correct payload', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, pax: 4, roomCount: 2 });
+    assert.equal(plan.hotels.length, 1);
+    const h = plan.hotels[0];
+    assert.equal(h.serviceId, HSVC);
+    assert.equal(h.hotelId, 'h-petra');
+    assert.equal(h.contractId, 'c-petra');
+    assert.equal(h.roomCategoryId, 'rc1');
+    assert.equal(h.occupancyType, 'DBL');
+    assert.equal(h.seasonName, 'Std');
+    assert.equal(h.mealPlan, 'BB');
+    assert.equal(h.attachToDayNumber, 1);
+    assert.equal(h.nightCount, 1);
+    assert.equal(h.paxCount, 4);
+    assert.equal(h.roomCount, 2);
+    assert.equal(h.markupPercent, 20);
+  });
+
+  it('skip / add-later (disabled) produces hotels = []', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, overrides: { 1: { disabled: true } } });
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('missingReason (overnight city has no hotel) produces hotels = []', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, overrides: { 1: { city: 'Aqaba' } } });
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('unconfirmed suggestion produces hotels = []', () => {
+    const plan = planFor(danaPetra, { confirmedNights: {} });
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('Ajloun & Jerash (one-day, zero nights) produces hotels = []', () => {
+    const plan = planFor(ajlounJerash, { confirmedNights: { 1: true } });
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('Petra -> Wadi Rum confirmed produces one Wadi Rum hotel item', () => {
+    const plan = planFor(petraWadiRum, { confirmedNights: { 1: true } });
+    assert.equal(plan.hotels.length, 1);
+    assert.equal(plan.hotels[0].hotelId, 'h-wr');
+    assert.equal(plan.hotels[0].mealPlan, 'HB');
+  });
+
+  it('no hotel service wired -> hotels = [] even when confirmed', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, hotelServiceId: null });
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('confirmed but blocked quote (existing days) -> hotels = [] (empty-quote gate respected)', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, existingDayCount: 3 });
+    assert.equal(plan.canApply, false);
+    assert.deepEqual(plan.hotels, []);
+  });
+
+  it('transport stays exactly one item and days + POI assignments are unchanged when a hotel is confirmed', () => {
+    const withHotel = planFor(danaPetra, { confirmedNights: { 1: true } });
+    const without = planFor(danaPetra, { confirmedNights: {} });
+    assert.deepEqual(withHotel.transport, without.transport); // transport identical, still one package
+    assert.deepEqual(withHotel.days, without.days);           // days + POI assignments identical
+    assert.equal(withHotel.totalPoiAssignments, without.totalPoiAssignments);
+    assert.equal(withHotel.days.length, 2);
+    assert.equal(withHotel.totalPoiAssignments, 2); // Dana + Petra POIs
   });
 });
