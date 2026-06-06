@@ -725,12 +725,37 @@ export type ApplyPlanTransport = {
   attachToDayNumber: number;
 } | null;
 
+// Phase 3D.2C-A — a hotel item to create on apply, for an OPERATOR-CONFIRMED,
+// valid overnight suggestion. Fields mirror the EXISTING Auto-Builder hotel-item
+// payload (POST /quotes/:id/items) exactly, so the apply runner (3D.2C-B) reuses
+// the unchanged createItem → HotelPricingResolver path. One item per confirmed
+// night (consecutive-night grouping is deferred). 3D.2C-A only BUILDS this list;
+// no POST happens here.
+export type ApplyPlanHotel = {
+  serviceId: string;
+  /** = nightNumber; the check-in day the hotel item attaches to. */
+  attachToDayNumber: number;
+  nightCount: number;
+  hotelId: string;
+  contractId: string;
+  roomCategoryId: string;
+  occupancyType: string;
+  seasonName: string;
+  mealPlan: string;
+  paxCount: number;
+  roomCount: number;
+  markupPercent: number;
+  /** Display-only (messaging / idempotency key); not sent as a pricing input. */
+  city: string;
+};
+
 export type TouringRouteApplyPlan = {
   canApply: boolean;
   blockedReason: string | null;
   warnings: string[];
   days: ApplyPlanDay[];
   transport: ApplyPlanTransport;
+  hotels: ApplyPlanHotel[];
   totalPoiAssignments: number;
 };
 
@@ -742,6 +767,14 @@ export function buildTouringRouteApplyPlan(
     existingDayCount?: number;
     existingItemCount?: number;
     existingPoiAssignmentCount?: number;
+    // Phase 3D.2C-A — optional hotel apply inputs (pure; no writes here).
+    // `hotelSuggestions` is the 3D.2B suggestion list; `confirmedNights` flags
+    // which nightNumbers the operator explicitly confirmed (default: none).
+    // A hotel item is emitted ONLY for a confirmed, valid, enabled suggestion.
+    hotelSuggestions?: OvernightHotelSuggestion[];
+    confirmedNights?: Record<number, boolean>;
+    hotelServiceId?: string | null;
+    roomCount?: number;
   },
 ): TouringRouteApplyPlan {
   const existingDayCount = opts.existingDayCount ?? 0;
@@ -799,7 +832,51 @@ export function buildTouringRouteApplyPlan(
         }
       : null;
 
-  return { canApply, blockedReason, warnings, days, transport, totalPoiAssignments };
+  // Phase 3D.2C-A — confirmed-hotel apply items (one per confirmed night;
+  // consecutive-night grouping deferred). Emitted ONLY when:
+  //   - the plan can apply (empty-quote gate passed), AND a hotel service exists;
+  //   - the operator explicitly confirmed this night (confirmedNights[n] === true);
+  //   - the suggestion is enabled (not skipped) and has no missingReason; AND
+  //   - every id the createItem payload needs is present + a non-empty city.
+  // Unconfirmed / skipped / unmatched nights produce NO item. No POST happens
+  // here — this just describes the create-only operations for the 3D.2C-B runner.
+  const hotelServiceId = opts.hotelServiceId ?? null;
+  const roomCount = opts.roomCount && opts.roomCount > 0 ? opts.roomCount : Math.max(1, Math.ceil(opts.pax / 2));
+  const confirmedNights = opts.confirmedNights || {};
+  const hotels: ApplyPlanHotel[] =
+    canApply && hotelServiceId
+      ? (opts.hotelSuggestions || [])
+          .filter(
+            (s) =>
+              confirmedNights[s.nightNumber] === true &&
+              !s.disabled &&
+              s.missingReason === null &&
+              !!s.hotelId &&
+              !!s.contractId &&
+              !!s.roomCategoryId &&
+              !!s.occupancyType &&
+              !!s.seasonName &&
+              !!s.mealPlan &&
+              cleanStr(s.city) !== '',
+          )
+          .map((s) => ({
+            serviceId: hotelServiceId,
+            attachToDayNumber: s.nightNumber,
+            nightCount: 1,
+            hotelId: s.hotelId as string,
+            contractId: s.contractId as string,
+            roomCategoryId: s.roomCategoryId as string,
+            occupancyType: s.occupancyType as string,
+            seasonName: s.seasonName as string,
+            mealPlan: s.mealPlan as string,
+            paxCount: opts.pax,
+            roomCount,
+            markupPercent: 20,
+            city: cleanStr(s.city),
+          }))
+      : [];
+
+  return { canApply, blockedReason, warnings, days, transport, hotels, totalPoiAssignments };
 }
 
 // ---------------------------------------------------------------------------
@@ -1091,6 +1168,16 @@ export type OvernightHotelSuggestion = {
   rateCost: number | null;
   rateCurrency: string | null;
   missingReason: HotelSetupMissingReason;
+  // Phase 3D.2C-A — apply IDs (passed through from findHotelSetup, additive).
+  // Display fields above are unchanged. These are what the EXISTING hotel-item
+  // payload (POST /quotes/:id/items) needs; null whenever there is no match
+  // (disabled, no overnight city, or missingReason set). 3D.2C-A only carries
+  // them in the model — no item is created here.
+  hotelId: string | null;
+  contractId: string | null;
+  roomCategoryId: string | null;
+  occupancyType: string | null;
+  seasonName: string | null;
 };
 
 export type OvernightHotelSuggestionsResult = {
@@ -1136,6 +1223,11 @@ export function buildOvernightHotelSuggestions(
         rateCost: null,
         rateCurrency: null,
         missingReason: null,
+        hotelId: null,
+        contractId: null,
+        roomCategoryId: null,
+        occupancyType: null,
+        seasonName: null,
       };
     }
 
@@ -1158,6 +1250,11 @@ export function buildOvernightHotelSuggestions(
       rateCost: setup.rate?.cost ?? null,
       rateCurrency: setup.rate?.currency ?? null,
       missingReason: setup.missingReason,
+      hotelId: setup.hotel?.id ?? null,
+      contractId: setup.contract?.id ?? null,
+      roomCategoryId: setup.rate?.roomCategoryId ?? null,
+      occupancyType: setup.rate?.occupancyType ?? null,
+      seasonName: setup.rate?.seasonName ?? null,
     };
   });
 
