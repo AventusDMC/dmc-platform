@@ -10,6 +10,7 @@ import { RouteOption } from '../../lib/routes';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
+import { isTouringRoutePackageItem, formatTouringRoutePackageLabel } from './quote-item-label';
 import {
   ExternalPackageFormState,
   ExternalPackagePricingBasis,
@@ -426,6 +427,12 @@ function getIncompleteOperationalDetails(item: QuoteItem) {
 
 function getQuoteItemServiceName(item: QuoteItem) {
   if (item.touringRoute) {
+    // Phase 3D.2D — touring-route TRANSPORT PACKAGE (route + pricing row) shows a
+    // route-aware label instead of the generic transport service name. Excursions
+    // (route, no pricing row) fall through to the existing origin-aware name.
+    if (isTouringRoutePackageItem(item)) {
+      return formatTouringRoutePackageLabel(item.touringRoute);
+    }
     return getQuoteItemOriginAwareExcursionName({
       serviceName: item.service?.name,
       overrideReason: item.overrideReason,
