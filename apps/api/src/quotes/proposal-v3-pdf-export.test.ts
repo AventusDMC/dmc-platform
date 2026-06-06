@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildRouteIntelligence, mapQuoteToProposalV3, parseTransportRouteSegments } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
-import { joinDestinations, localizeSnapshotLabel } from './proposal-i18n';
+import { joinDestinations, localizePricingLine, localizeSnapshotLabel } from './proposal-i18n';
 
 function createPdfQuote(overrides: Record<string, any> = {}) {
   return {
@@ -2418,4 +2418,60 @@ test('Phase 3D.1M: Arabic proposal stays RTL with localized overnight + no Engli
   assert.match(html, /المبيت:/, 'AR overnight label');
   assert.doesNotMatch(html, /Overnight:|Fixed price|client-facing summary/i, 'no English UI strings leak in AR');
   assert.doesNotMatch(html, /PER_VEHICLE|excursion origin variant|Contractual Agreement/i, 'no internal text leaks in AR');
+});
+
+// ---- Phase 3D.1O: localized pricing/inclusion notes + PT transfer label + overnight city ----
+
+test('Phase 3D.1O: localizePricingLine localizes the system bullets (EN byte-identical)', () => {
+  const cases: Array<[string, string]> = [
+    ['Based on 2 guests sharing.', 'Com base em 2 hóspedes em quarto partilhado.'],
+    ['Accommodation in double/twin sharing room', 'Alojamento em quarto duplo/twin partilhado'],
+    ['Quotation prepared for 2 guests.', 'Cotação preparada para 2 hóspedes.'],
+    ['Single supplement available on request', 'Suplemento individual disponível mediante solicitação'],
+    ['Petra Moon Hotel rate basis: per room/night', 'Petra Moon Hotel base tarifária: por quarto/noite'],
+    ['Child policy: No child policy available', 'Política de crianças: Sem política de crianças disponível'],
+    ['Applicable taxes are included at 7%.', 'Os impostos aplicáveis estão incluídos a 7%.'],
+    ['Service charge is included at 10% where applicable.', 'A taxa de serviço está incluída a 10%, quando aplicável.'],
+  ];
+  for (const [en, pt] of cases) {
+    assert.equal(localizePricingLine('pt', en), pt, `PT: ${en}`);
+    assert.equal(localizePricingLine('en', en), en, `EN unchanged: ${en}`);
+  }
+  // ES / AR spot checks
+  assert.equal(localizePricingLine('es', 'Accommodation in double/twin sharing room'), 'Alojamiento en habitación doble/twin compartida');
+  assert.equal(localizePricingLine('es', 'Applicable taxes are included at 7%.'), 'Los impuestos aplicables están incluidos al 7%.');
+  assert.equal(localizePricingLine('ar', 'Single supplement available on request'), 'ملحق الغرفة الفردية متاح عند الطلب');
+  // Contract-authored child-policy DATA is preserved (only the label is localized).
+  assert.equal(localizePricingLine('pt', 'Child policy: Children 0-5 free'), 'Política de crianças: Children 0-5 free');
+  // Unmatched operator free text passes through untouched.
+  assert.equal(localizePricingLine('pt', 'Custom operator note in English'), 'Custom operator note in English');
+});
+
+test('Phase 3D.1O: PT proposal investment notes carry no English system bullets', () => {
+  const vm = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'pt');
+  const lines = [...vm.investment.basisLines, ...vm.investment.noteLines, vm.investment.snapshotHelper].join(' || ');
+  assert.doesNotMatch(lines, /\brate basis: per (room|person)\/night\b/, 'no English rate-basis bullet');
+  assert.doesNotMatch(lines, /No child policy available|Based on \d+ guests sharing|Quotation prepared for|Single supplement available on request/, 'no English system bullets');
+  assert.match(lines, /base tarifária/, 'localized rate basis present');
+});
+
+test('Phase 3D.1O: PT transfer group label reads "Transporte" (EN "Transfer")', () => {
+  const ptDay1 = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'pt').days.find((d: any) => d.dayNumber === 1);
+  const enDay1 = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'en').days.find((d: any) => d.dayNumber === 1);
+  assert.ok((ptDay1?.groups || []).some((g: any) => g.label === 'Transporte'), 'PT label Transporte');
+  assert.ok(!(ptDay1?.groups || []).some((g: any) => g.label === 'Transfere'), 'no leftover Transfere');
+  assert.ok((enDay1?.groups || []).some((g: any) => g.label === 'Transfer'), 'EN label Transfer unchanged');
+});
+
+test('Phase 3D.1O: overnight badge uses the hotel city, not the day-title location', () => {
+  const day1 = (lang: string) => mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), lang).days.find((d: any) => d.dayNumber === 1);
+  // Day title is "Day 1: Dana" but the hotel is in Petra / Wadi Musa.
+  assert.equal(day1('en').overnightLocation, 'Petra / Wadi Musa', 'EN overnight = hotel city');
+  assert.equal(day1('pt').overnightLocation, 'Petra / Wadi Musa', 'PT overnight = hotel city');
+});
+
+test('Phase 3D.1O: a day with no hotel shows no overnight badge', () => {
+  const quote = createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]);
+  const day1 = mapQuoteToProposalV3(quote, 'en').days.find((d: any) => d.dayNumber === 1);
+  assert.equal(day1.overnightLocation, null, 'no hotel → no overnight badge');
 });

@@ -94,7 +94,7 @@ const LABELS: Record<string, Record<ProposalLocale, string>> = {
   notes: { en: 'Notes', pt: 'Notas', es: 'Notas', ar: 'ملاحظات' },
   // Service group labels
   groupStay: { en: 'Stay', pt: 'Estadia', es: 'Estancia', ar: 'الإقامة' },
-  groupTransfer: { en: 'Transfer', pt: 'Transfere', es: 'Traslado', ar: 'التنقل' },
+  groupTransfer: { en: 'Transfer', pt: 'Transporte', es: 'Traslado', ar: 'التنقل' },
   groupExperience: { en: 'Experience', pt: 'Experiência', es: 'Experiencia', ar: 'تجربة' },
   groupMeal: { en: 'Meal', pt: 'Refeição', es: 'Comida', ar: 'وجبة' },
   groupGuide: { en: 'Guide', pt: 'Guia', es: 'Guía', ar: 'مرشد' },
@@ -136,6 +136,123 @@ export function localizeSnapshotLabel(locale: ProposalLocale, label: string | nu
   const raw = String(label || '').trim();
   const key = SNAPSHOT_LABEL_MAP[raw.toLowerCase()];
   return key ? proposalLabel(locale, key) : raw;
+}
+
+// Phase 3D.1O — localize the system-generated pricing / inclusion note lines at
+// render time. The pricing layer + PDF-consistency builder emit these in English
+// (we do NOT change pricing logic); here we recognize the known system templates
+// and re-emit them in the active locale, preserving dynamic values (counts,
+// money, %, hotel name). EN is returned byte-identical (short-circuit). Operator
+// free text and contract-authored data (child-policy descriptions, supplement
+// type names) are NOT matched and pass through unchanged — those must be
+// translated by the operator at the source (contract/quote text fields).
+const PRICING_PHRASES: Record<string, Record<ProposalLocale, string>> = {
+  doubleTwin: {
+    en: 'Accommodation in double/twin sharing room',
+    pt: 'Alojamento em quarto duplo/twin partilhado',
+    es: 'Alojamiento en habitación doble/twin compartida',
+    ar: 'إقامة في غرفة مزدوجة/توأم مشتركة',
+  },
+  singleSuppRequest: {
+    en: 'Single supplement available on request',
+    pt: 'Suplemento individual disponível mediante solicitação',
+    es: 'Suplemento individual disponible bajo petición',
+    ar: 'ملحق الغرفة الفردية متاح عند الطلب',
+  },
+  ratesPerPayingGuest: {
+    en: 'Rates are shown per paying guest unless noted otherwise.',
+    pt: 'As tarifas são apresentadas por hóspede pagante, salvo indicação em contrário.',
+    es: 'Las tarifas se muestran por huésped de pago, salvo indicación en contrario.',
+    ar: 'تُعرض الأسعار لكل ضيف دافع ما لم يُذكر خلاف ذلك.',
+  },
+  rateBasisLabel: { en: 'rate basis', pt: 'base tarifária', es: 'base tarifaria', ar: 'أساس التسعير' },
+  basisPerRoom: { en: 'per room/night', pt: 'por quarto/noite', es: 'por habitación/noche', ar: 'لكل غرفة/ليلة' },
+  basisPerPerson: { en: 'per person/night', pt: 'por pessoa/noite', es: 'por persona/noche', ar: 'لكل شخص/ليلة' },
+  childPolicyLabel: { en: 'Child policy', pt: 'Política de crianças', es: 'Política de niños', ar: 'سياسة الأطفال' },
+  noChildPolicy: {
+    en: 'No child policy available',
+    pt: 'Sem política de crianças disponível',
+    es: 'Sin política de niños disponible',
+    ar: 'لا تتوفر سياسة للأطفال',
+  },
+  totalPackagePrice: { en: 'Total Package Price', pt: 'Preço total do pacote', es: 'Precio total del paquete', ar: 'إجمالي سعر الباقة' },
+  finalSlab: {
+    en: 'Final slab selection depends on the confirmed group size.',
+    pt: 'A seleção final do escalão depende do tamanho de grupo confirmado.',
+    es: 'La selección final del tramo depende del tamaño de grupo confirmado.',
+    ar: 'يعتمد اختيار الشريحة النهائي على حجم المجموعة المؤكد.',
+  },
+};
+
+function pricingPhrase(locale: ProposalLocale, key: keyof typeof PRICING_PHRASES): string {
+  const entry = PRICING_PHRASES[key];
+  return (entry && (entry[locale] || entry.en)) || '';
+}
+
+export function localizePricingLine(locale: ProposalLocale, line: string | null | undefined): string {
+  const raw = String(line || '');
+  if (locale === 'en' || !raw) return raw;
+  let m: RegExpMatchArray | null;
+
+  if ((m = raw.match(/^Based on (\d+) guests? sharing(\.?)$/))) {
+    const n = m[1];
+    const dot = m[2];
+    const base = { pt: `Com base em ${n} hóspedes em quarto partilhado`, es: `Según ${n} huéspedes en habitación compartida`, ar: `بناءً على ${n} ضيوف في غرفة مشتركة` }[locale as 'pt' | 'es' | 'ar'];
+    return base + dot;
+  }
+  if (raw === PRICING_PHRASES.doubleTwin.en) return pricingPhrase(locale, 'doubleTwin');
+  if ((m = raw.match(/^Quotation prepared for (\d+) guests?\.$/))) {
+    const n = m[1];
+    return { pt: `Cotação preparada para ${n} hóspedes.`, es: `Cotización preparada para ${n} huéspedes.`, ar: `عرض السعر مُعدّ لـ ${n} ضيوف.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if (raw === PRICING_PHRASES.singleSuppRequest.en) return pricingPhrase(locale, 'singleSuppRequest');
+  if ((m = raw.match(/^Single supplement: (.+) per person$/))) {
+    const x = m[1];
+    return { pt: `Suplemento individual: ${x} por pessoa`, es: `Suplemento individual: ${x} por persona`, ar: `ملحق الغرفة الفردية: ${x} للشخص` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if (raw === PRICING_PHRASES.ratesPerPayingGuest.en) return pricingPhrase(locale, 'ratesPerPayingGuest');
+  if ((m = raw.match(/^(.*) rate basis: (per room\/night|per person\/night)$/))) {
+    const hotel = m[1];
+    const basis = m[2] === 'per room/night' ? pricingPhrase(locale, 'basisPerRoom') : pricingPhrase(locale, 'basisPerPerson');
+    return `${hotel} ${pricingPhrase(locale, 'rateBasisLabel')}: ${basis}`;
+  }
+  if ((m = raw.match(/^Child policy: (.+)$/))) {
+    const rest = m[1] === PRICING_PHRASES.noChildPolicy.en ? pricingPhrase(locale, 'noChildPolicy') : m[1];
+    return `${pricingPhrase(locale, 'childPolicyLabel')}: ${rest}`;
+  }
+  if ((m = raw.match(/^Total Package Price: (.+)$/))) {
+    return `${pricingPhrase(locale, 'totalPackagePrice')}: ${m[1]}`;
+  }
+  if ((m = raw.match(/^Applicable taxes are included at ([\d.]+)%\.$/))) {
+    const p = m[1];
+    return { pt: `Os impostos aplicáveis estão incluídos a ${p}%.`, es: `Los impuestos aplicables están incluidos al ${p}%.`, ar: `الضرائب المطبَّقة مشمولة بنسبة ${p}%.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if ((m = raw.match(/^Applicable taxes are not included and may apply at ([\d.]+)%\.$/))) {
+    const p = m[1];
+    return { pt: `Os impostos aplicáveis não estão incluídos e podem ser aplicados a ${p}%.`, es: `Los impuestos aplicables no están incluidos y pueden aplicarse al ${p}%.`, ar: `الضرائب المطبَّقة غير مشمولة وقد تُطبَّق بنسبة ${p}%.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if ((m = raw.match(/^Service charge is included at ([\d.]+)% where applicable\.$/))) {
+    const p = m[1];
+    return { pt: `A taxa de serviço está incluída a ${p}%, quando aplicável.`, es: `El cargo por servicio está incluido al ${p}%, cuando corresponda.`, ar: `رسوم الخدمة مشمولة بنسبة ${p}% حيثما ينطبق.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if ((m = raw.match(/^Service charge is not included and may apply at ([\d.]+)% where applicable\.$/))) {
+    const p = m[1];
+    return { pt: `A taxa de serviço não está incluída e pode ser aplicada a ${p}%, quando aplicável.`, es: `El cargo por servicio no está incluido y puede aplicarse al ${p}%, cuando corresponda.`, ar: `رسوم الخدمة غير مشمولة وقد تُطبَّق بنسبة ${p}% حيثما ينطبق.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if ((m = raw.match(/^Tourism fee paid to hotel is charged (per night per guest|per night per room) where applicable\.$/))) {
+    const basisLoc = m[1] === 'per night per guest'
+      ? { pt: 'por noite por hóspede', es: 'por noche por huésped', ar: 'لكل ليلة لكل ضيف' }[locale as 'pt' | 'es' | 'ar']
+      : { pt: 'por noite por quarto', es: 'por noche por habitación', ar: 'لكل ليلة لكل غرفة' }[locale as 'pt' | 'es' | 'ar'];
+    return { pt: `A taxa de turismo paga ao hotel é cobrada ${basisLoc}, quando aplicável.`, es: `La tasa de turismo pagada al hotel se cobra ${basisLoc}, cuando corresponda.`, ar: `رسوم السياحة المدفوعة للفندق تُحتسب ${basisLoc} حيثما ينطبق.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  if (raw === PRICING_PHRASES.finalSlab.en || raw === 'Final slab selection depends on confirmed group size') {
+    return pricingPhrase(locale, 'finalSlab');
+  }
+  if ((m = raw.match(/^Current quote matches (.+)\.$/))) {
+    const label = m[1];
+    return { pt: `A cotação atual corresponde a ${label}.`, es: `La cotización actual corresponde a ${label}.`, ar: `يطابق العرض الحالي ${label}.` }[locale as 'pt' | 'es' | 'ar'];
+  }
+  return raw; // unmatched → operator/contract-authored text; passes through
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import {
   intlLocale,
   joinDestinations,
   joinProseList,
+  localizePricingLine,
   localizeSnapshotLabel,
   prosePhrase,
   proposalLabel,
@@ -1265,12 +1266,20 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     const composedNarrative = composeDayNarrativeFromPois(day, activeProposalLocale);
     const summary = composedNarrative ?? cleanNotes;
 
+    // Phase 3D.1O — the overnight badge must reflect the actual overnight city
+    // (the hotel's own city), not the day-title location. A "Dana" day whose
+    // hotel is in Petra / Wadi Musa must read "Overnight: Petra / Wadi Musa".
+    const overnightHotelItem = dayItems.find((item) => isHotelItem(item));
+    const overnightLocation = overnightHotelItem
+      ? cleanText(overnightHotelItem.hotel?.city || '') || location
+      : null;
+
     return {
       dayNumber: day.dayNumber,
       dayNumberLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
       summary: summary || null,
-      overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
+      overnightLocation,
       // A stored manual override (day.country) wins; otherwise derive from services.
       country:
         (typeof day.country === 'string' && day.country.trim()) ||
@@ -1561,7 +1570,7 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
       title: 'Investment',
       snapshotLabel: localizeSnapshotLabel(activeProposalLocale, 'Pricing status'),
       snapshotValue: 'Pricing to be confirmed',
-      snapshotHelper: 'Final slab selection depends on confirmed group size',
+      snapshotHelper: localizePricingLine(activeProposalLocale, 'Final slab selection depends on confirmed group size'),
       summaryNote: prosePhrase(activeProposalLocale, 'pricingSummaryNotePending'),
       mode: 'pending' as const,
       basisLines: [],
@@ -1575,14 +1584,18 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
     title: pricing.title,
     snapshotLabel: localizeSnapshotLabel(activeProposalLocale, pricing.snapshotLabel),
     snapshotValue: pricing.snapshotValue,
-    snapshotHelper: pricing.snapshotHelper,
+    snapshotHelper: localizePricingLine(activeProposalLocale, pricing.snapshotHelper),
     summaryNote: prosePhrase(activeProposalLocale, 'pricingSummaryNote'),
     mode: pricing.mode,
-    basisLines: pricing.basisLines.filter((line) => !isPlaceholderText(line)),
+    // Phase 3D.1O — localize the system-generated pricing/inclusion lines at
+    // render time (EN unchanged); operator/contract text passes through.
+    basisLines: pricing.basisLines
+      .filter((line) => !isPlaceholderText(line))
+      .map((line) => localizePricingLine(activeProposalLocale, line)),
     noteLines: [
       ...pricing.noteLines.filter((line) => isSafeInvestmentNote(line) && !isPlaceholderText(line)),
       ...pdfConsistencyLines.filter((line) => !isPlaceholderText(line)),
-    ],
+    ].map((line) => localizePricingLine(activeProposalLocale, line)),
     slabRows,
     isPending: false,
   };
@@ -1768,7 +1781,8 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
     proposalLabel(activeProposalLocale, 'noteAvailability'),
     altNote,
     proposalLabel(activeProposalLocale, 'noteRegulations'),
-    ...pricingNotes,
+    // Phase 3D.1O — localize the system-generated tax/service/tourism notes (EN unchanged).
+    ...pricingNotes.map((line) => localizePricingLine(activeProposalLocale, line)),
   ];
 
   return notes.map((note) => cleanText(note)).filter(Boolean);
