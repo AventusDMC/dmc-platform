@@ -369,17 +369,19 @@ function getTravelerName(quote: ProposalV3Quote) {
 }
 
 function getBrandName(quote: ProposalV3Quote) {
-  const candidates = [
-    quote.brandCompany?.branding?.displayName,
-    quote.brandCompany?.name,
-    quote.clientCompany?.branding?.displayName,
-    quote.clientCompany?.name,
-  ];
-  const cleaned = candidates
-    .map((value) => cleanText(value).replace(/^brand\s*-\s*/i, ''))
-    .find((value) => value && !isWeakText(value) && !/desert compass|demo|test|placeholder/i.test(value));
+  // Phase 3D.1R — the client-facing header/footer brand must be an INTENTIONAL
+  // override: the brand company's explicit branding.displayName. Raw company
+  // names are NOT used as the brand, because they may be a supplier or the
+  // recipient agent (e.g. the supplier "Golden Jordan Activity Operations" or the
+  // agent "Atm Operadora") and leaking those into a client proposal is wrong.
+  // To white-label, set the brand company's branding.displayName. Otherwise the
+  // brand defaults to AXIS Destination Management.
+  const displayName = cleanText(quote.brandCompany?.branding?.displayName).replace(/^brand\s*-\s*/i, '');
+  if (displayName && !isWeakText(displayName) && !/desert compass|demo|test|placeholder/i.test(displayName)) {
+    return displayName;
+  }
 
-  return cleaned || AXIS_BRAND_NAME;
+  return AXIS_BRAND_NAME;
 }
 
 function getBrandCompanyCandidates(quote: ProposalV3Quote): ProposalBrandCompany[] {
@@ -1751,6 +1753,26 @@ function buildDefaultInclusions(quote: ProposalV3Quote) {
   return Array.from(lines);
 }
 
+// Phase 3D.1R — client-facing default exclusions (B2B tour-quote standard +
+// Jordan-specific lines). Shown only when the operator hasn't entered
+// quote.exclusionsText. Localized (human-authored), display-only — does not
+// touch pricing/entrances/meals/activities logic.
+function buildDefaultExclusions(_quote: ProposalV3Quote) {
+  const loc = activeProposalLocale;
+  return [
+    proposalLabel(loc, 'exclFlights'),
+    proposalLabel(loc, 'exclPersonal'),
+    proposalLabel(loc, 'exclTips'),
+    proposalLabel(loc, 'exclMealsDrinks'),
+    proposalLabel(loc, 'exclOptional'),
+    proposalLabel(loc, 'exclInsurance'),
+    proposalLabel(loc, 'exclNotMentioned'),
+    proposalLabel(loc, 'exclBorderTaxes'),
+    proposalLabel(loc, 'exclVisa'),
+    proposalLabel(loc, 'exclEntrances'),
+  ];
+}
+
 function buildDefaultNotes(quote: ProposalV3Quote) {
   const pricingNotes = Array.from(
     new Set(
@@ -1894,6 +1916,9 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string |
     inclusions: parseSupportTextList(quote.inclusionsText).length
       ? parseSupportTextList(quote.inclusionsText)
       : buildDefaultInclusions(quote),
+    exclusions: parseSupportTextList(quote.exclusionsText).length
+      ? parseSupportTextList(quote.exclusionsText)
+      : buildDefaultExclusions(quote),
     notes: parseSupportTextList(quote.termsNotesText).length
       ? parseSupportTextList(quote.termsNotesText)
       : buildDefaultNotes(quote),

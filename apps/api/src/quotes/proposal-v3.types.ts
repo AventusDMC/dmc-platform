@@ -377,5 +377,6 @@ export type ProposalV3ViewModel = {
     isPending: boolean;
   };
   inclusions: string[];
+  exclusions: string[];
   notes: string[];
 };
