@@ -23,6 +23,8 @@ import {
   findHotelSetup,
   deriveOvernightNights,
   buildOvernightHotelSuggestions,
+  executeTouringRouteApply,
+  buildHotelItemPayload,
   type TouringRouteForGen,
   type TouringRouteDetailForGen,
   type Hotel,
@@ -1066,5 +1068,140 @@ describe('Phase 3D.2C-A confirmed-hotel apply plan (pure; no writes)', () => {
     assert.equal(withHotel.totalPoiAssignments, without.totalPoiAssignments);
     assert.equal(withHotel.days.length, 2);
     assert.equal(withHotel.totalPoiAssignments, 2); // Dana + Petra POIs
+  });
+});
+
+describe('Phase 3D.2C-B executeTouringRouteApply (apply runner; injected executors, no DOM/network)', () => {
+  const SVC = 'transport-svc-1';
+  const HSVC = 'hotel-svc-1';
+  const hotels: Hotel[] = [
+    { id: 'h-petra', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4 star', roomCategories: [] },
+  ];
+  const hotelContracts: HotelContract[] = [
+    { id: 'c-petra', hotelId: 'h-petra', name: 'Petra 2026', currency: 'USD', validFrom: '2026-01-01', validTo: '2026-12-31', hotel: { id: 'h-petra', name: 'Petra Moon Hotel' } },
+  ];
+  const hotelRates: HotelRate[] = [
+    { id: 'r-petra', contractId: 'c-petra', seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB', currency: 'USD', cost: 50, roomCategory: { id: 'rc1', name: 'Standard', code: null } },
+  ];
+  const danaPetra: TouringRouteDetailForGen = {
+    id: 'dana-petra', name: 'Amman -> Dana -> Petra ON', startCity: 'Amman', durationDays: 2,
+    mainDestinations: ['Dana', 'Petra / Wadi Musa'], pricings: PRICINGS,
+    stops: [baseStop(1, 'Amman'), poiStop(2, 'Dana', 'DANA', 'Dana'), poiStop(3, 'Petra / Wadi Musa', 'PETRA', 'Petra')],
+  };
+  const ajlounJerash: TouringRouteDetailForGen = {
+    id: 'ajloun', name: 'Ajloun & Jerash', startCity: 'Ajloun', durationDays: 1,
+    mainDestinations: ['Jerash'], pricings: PRICINGS,
+    stops: [poiStop(1, 'Ajloun', 'AJL', 'Ajloun'), poiStop(2, 'Jerash', 'JER', 'Jerash')],
+  };
+
+  function planFor(
+    route: TouringRouteDetailForGen,
+    o: { confirmedNights?: Record<number, boolean>; overrides?: Record<number, { city?: string | null; disabled?: boolean }>; hotelServiceId?: string | null; pax?: number; roomCount?: number; existingDayCount?: number } = {},
+  ) {
+    const preview = buildTouringRoutePreview(route, { pricingRowId: 'pr-van', startDate: '2026-06-10' });
+    const { suggestions } = buildOvernightHotelSuggestions(route, { hotels, hotelContracts, hotelRates, travelStartDate: '2026-06-10', overrides: o.overrides || {} });
+    return buildTouringRouteApplyPlan(preview, {
+      pax: o.pax ?? 2,
+      transportServiceId: SVC,
+      hotelServiceId: o.hotelServiceId === undefined ? HSVC : o.hotelServiceId,
+      hotelSuggestions: suggestions,
+      confirmedNights: o.confirmedNights || {},
+      roomCount: o.roomCount,
+      existingDayCount: o.existingDayCount ?? 0,
+      existingItemCount: 0,
+    });
+  }
+
+  // Recording fakes: day POSTs return an id keyed by dayNumber so transport/hotels
+  // attach to the right created day. Only `post` (POST) and `putPois` (PUT) exist —
+  // there is no delete/patch executor by construction.
+  async function runWith(plan: ReturnType<typeof buildTouringRouteApplyPlan>) {
+    const posts: Array<{ path: string; body: any }> = [];
+    const poiPuts: Array<{ dayId: string; assignments: any[] }> = [];
+    const result = await executeTouringRouteApply(
+      plan,
+      { quoteId: 'q1', dateByDay: { 1: '2026-06-10', 2: '2026-06-11' } },
+      {
+        post: async (path: string, body: any) => {
+          posts.push({ path, body });
+          return path.endsWith('/itinerary/day') ? { id: `day-${body.dayNumber}` } : {};
+        },
+        putPois: async (dayId: string, assignments: any[]) => { poiPuts.push({ dayId, assignments }); },
+      },
+    );
+    const itemPosts = posts.filter((p) => p.path === '/quotes/q1/items');
+    return {
+      result, posts, poiPuts,
+      dayPosts: posts.filter((p) => p.path === '/quotes/q1/itinerary/day'),
+      transportPosts: itemPosts.filter((p) => p.body.touringRouteId),
+      hotelPosts: itemPosts.filter((p) => p.body.hotelId),
+    };
+  }
+
+  it('confirmed Petra Moon -> exactly ONE hotel POST with the existing payload shape', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, pax: 4, roomCount: 2 });
+    const { hotelPosts, transportPosts, dayPosts, poiPuts, result } = await runWith(plan);
+    assert.equal(hotelPosts.length, 1);
+    assert.deepEqual(hotelPosts[0].body, {
+      serviceId: HSVC, itineraryId: 'day-1', quantity: 2, paxCount: 4, roomCount: 2,
+      nightCount: 1, markupPercent: 20, hotelId: 'h-petra', contractId: 'c-petra',
+      seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB',
+    });
+    assert.equal(transportPosts.length, 1);   // transport still exactly once
+    assert.equal(dayPosts.length, 2);          // 2 days created
+    assert.ok(poiPuts.length >= 1);            // POI assignments still happen
+    assert.equal(result.hotelsCreated, 1);
+  });
+
+  it('skip / add-later -> no hotel POST (transport still once)', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, overrides: { 1: { disabled: true } } });
+    const { hotelPosts, transportPosts } = await runWith(plan);
+    assert.equal(hotelPosts.length, 0);
+    assert.equal(transportPosts.length, 1);
+  });
+
+  it('missingReason (overnight city has no hotel) -> no hotel POST', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, overrides: { 1: { city: 'Aqaba' } } });
+    const { hotelPosts } = await runWith(plan);
+    assert.equal(hotelPosts.length, 0);
+  });
+
+  it('unconfirmed default -> no hotel POST (transport + POIs still happen)', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: {} });
+    const { hotelPosts, transportPosts, poiPuts } = await runWith(plan);
+    assert.equal(hotelPosts.length, 0);
+    assert.equal(transportPosts.length, 1);
+    assert.ok(poiPuts.length >= 1);
+  });
+
+  it('Ajloun & Jerash (one-day, zero nights) -> no hotel POST', async () => {
+    const plan = planFor(ajlounJerash, { confirmedNights: { 1: true } });
+    const { hotelPosts } = await runWith(plan);
+    assert.equal(hotelPosts.length, 0);
+  });
+
+  it('empty-quote gate (blocked plan) -> NO writes at all', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, existingDayCount: 3 });
+    const { posts, poiPuts, result } = await runWith(plan);
+    assert.equal(posts.length, 0);
+    assert.equal(poiPuts.length, 0);
+    assert.deepEqual(result, { daysCreated: 0, transportCreated: 0, poiAssignmentsCreated: 0, hotelsCreated: 0 });
+  });
+
+  it('all writes are create-only (POST to /quotes/q1/...; POIs via PUT) — no delete/patch', async () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true } });
+    const { posts } = await runWith(plan);
+    assert.ok(posts.length > 0);
+    assert.ok(posts.every((p) => p.path.startsWith('/quotes/q1/')));
+  });
+
+  it('buildHotelItemPayload maps an ApplyPlanHotel to the exact existing item payload', () => {
+    const plan = planFor(danaPetra, { confirmedNights: { 1: true }, pax: 3, roomCount: 2 });
+    assert.equal(plan.hotels.length, 1);
+    assert.deepEqual(buildHotelItemPayload(plan.hotels[0], 'day-1'), {
+      serviceId: HSVC, itineraryId: 'day-1', quantity: 2, paxCount: 3, roomCount: 2,
+      nightCount: 1, markupPercent: 20, hotelId: 'h-petra', contractId: 'c-petra',
+      seasonName: 'Std', roomCategoryId: 'rc1', occupancyType: 'DBL', mealPlan: 'BB',
+    });
   });
 });

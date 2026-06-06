@@ -880,6 +880,119 @@ export function buildTouringRouteApplyPlan(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3D.2C-B — apply RUNNER (testable orchestrator). Executes the create-only
+// write sequence the plan describes, against injected executors so it can be unit
+// tested without the DOM/network. The component supplies real fetch-backed
+// executors; tests supply recording fakes. Order: days → ONE transport package →
+// POI assignments → confirmed hotel items. CREATE-ONLY (POST for days/items, PUT
+// for POIs); never DELETE/PATCH. When the plan cannot apply (empty-quote gate),
+// NOTHING is written. Hotel items use the EXACT existing Auto-Builder payload, so
+// pricing flows through the unchanged createItem → HotelPricingResolver path.
+// ---------------------------------------------------------------------------
+
+// Exact hotel-item payload shape from the Auto Itinerary Builder (unchanged).
+// `quantity` mirrors roomCount, as the existing path expects. No serviceDate is
+// sent for hotels (the season is resolved server-side from seasonName).
+export function buildHotelItemPayload(hotel: ApplyPlanHotel, itineraryId: string) {
+  return {
+    serviceId: hotel.serviceId,
+    itineraryId,
+    quantity: hotel.roomCount,
+    paxCount: hotel.paxCount,
+    roomCount: hotel.roomCount,
+    nightCount: hotel.nightCount,
+    markupPercent: hotel.markupPercent,
+    hotelId: hotel.hotelId,
+    contractId: hotel.contractId,
+    seasonName: hotel.seasonName,
+    roomCategoryId: hotel.roomCategoryId,
+    occupancyType: hotel.occupancyType,
+    mealPlan: hotel.mealPlan,
+  };
+}
+
+export type TouringRouteApplyExecutors = {
+  /** POST a JSON body to `${apiBaseUrl}${path}`; resolves the parsed response
+   *  (used to read a created day's id). Must reject on a non-OK response. */
+  post: (path: string, body: unknown) => Promise<{ id?: string } | null | undefined>;
+  /** PUT ordered POI assignments for a created day. Must reject on non-OK. */
+  putPois: (dayId: string, assignments: ApplyPlanDay['poiAssignments']) => Promise<void>;
+};
+
+export type TouringRouteApplyResult = {
+  daysCreated: number;
+  transportCreated: number;
+  poiAssignmentsCreated: number;
+  hotelsCreated: number;
+};
+
+export async function executeTouringRouteApply(
+  plan: TouringRouteApplyPlan,
+  args: { quoteId: string; dateByDay?: Record<number, string | null> },
+  exec: TouringRouteApplyExecutors,
+): Promise<TouringRouteApplyResult> {
+  const result: TouringRouteApplyResult = { daysCreated: 0, transportCreated: 0, poiAssignmentsCreated: 0, hotelsCreated: 0 };
+  // Empty-quote / readiness gate: never write when the plan cannot apply.
+  if (!plan.canApply || !plan.transport) return result;
+
+  const dateByDay = args.dateByDay || {};
+
+  // 1) Create itinerary days (notes empty — composer is the narrative source).
+  const dayIdByNumber = new Map<number, string>();
+  for (const day of plan.days) {
+    const created = await exec.post(`/quotes/${args.quoteId}/itinerary/day`, {
+      dayNumber: day.dayNumber,
+      title: day.title || `Day ${day.dayNumber}`,
+      notes: '',
+    });
+    if (created?.id) dayIdByNumber.set(day.dayNumber, created.id);
+  }
+  result.daysCreated = dayIdByNumber.size;
+
+  // 2) Exactly ONE touring-route transport package item, on its anchor day.
+  const t = plan.transport;
+  const transportDayId = dayIdByNumber.get(t.attachToDayNumber);
+  const transportDate = dateByDay[t.attachToDayNumber] || null;
+  await exec.post(`/quotes/${args.quoteId}/items`, {
+    serviceId: t.serviceId,
+    itineraryId: transportDayId,
+    serviceDate: transportDate ? new Date(`${transportDate}T09:00:00`).toISOString() : undefined,
+    startTime: '09:00',
+    participantCount: t.paxCount,
+    paxCount: t.paxCount,
+    quantity: 1,
+    dayCount: t.dayCount,
+    markupPercent: 20,
+    touringRouteId: t.touringRouteId,
+    touringRoutePricingId: t.touringRoutePricingId,
+    currency: t.currency,
+    overrideCost: t.overrideCost,
+    useOverride: t.useOverride,
+  });
+  result.transportCreated = 1;
+
+  // 3) Ordered POI assignments per generated day (snapshots handled server-side).
+  for (const day of plan.days) {
+    if (day.poiAssignments.length === 0) continue;
+    const dayId = dayIdByNumber.get(day.dayNumber);
+    if (!dayId) continue;
+    await exec.putPois(dayId, day.poiAssignments);
+    result.poiAssignmentsCreated += day.poiAssignments.length;
+  }
+
+  // 4) Phase 3D.2C-B — ONE hotel item per CONFIRMED overnight (plan.hotels is
+  // already filtered to confirmed + valid; nothing here if none were confirmed).
+  for (const hotel of plan.hotels) {
+    const dayId = dayIdByNumber.get(hotel.attachToDayNumber);
+    if (!dayId) continue;
+    await exec.post(`/quotes/${args.quoteId}/items`, buildHotelItemPayload(hotel, dayId));
+    result.hotelsCreated += 1;
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3D.2A — hotel matcher (lift-and-shift, byte-for-byte) + overnight-night
 // derivation. `findHotelSetup` and `getHotelComfortScore` were moved here from
 // QuoteAutoItineraryBuilder.tsx UNCHANGED so both the Auto Itinerary Builder and

@@ -24,6 +24,7 @@ import {
   buildTouringRoutePreview,
   buildTouringRouteApplyPlan,
   buildOvernightHotelSuggestions,
+  executeTouringRouteApply,
   formatTouringRoutePricingLabel,
   movePreviewPoi,
   removePreviewPoi,
@@ -52,13 +53,17 @@ type Props = {
   hotelContracts?: HotelContract[];
   hotelRates?: HotelRate[];
   optimizationMode?: OptimizationMode;
+  // Phase 3D.2C-B — needed only to CREATE a confirmed hotel item on apply. When
+  // omitted, suggestions still preview but the confirm control creates nothing.
+  hotelServiceId?: string | null;
+  defaultRoomCount?: number;
 };
 
 function isTouringRoute(route: RouteOption): boolean {
   return route.canonicalRouteType === 'TOURING_ROUTE';
 }
 
-export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate, hotels, hotelContracts, hotelRates, optimizationMode }: Props) {
+export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quoteId, transportServiceId, existingItemCount, defaultPax, defaultStartDate, hotels, hotelContracts, hotelRates, optimizationMode, hotelServiceId, defaultRoomCount }: Props) {
   const router = useRouter();
   const touringRoutes = useMemo(() => (routes || []).filter(isTouringRoute), [routes]);
 
@@ -80,6 +85,10 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
   // Phase 3D.2B — per-night hotel-suggestion overrides (local only; change
   // overnight city / disable a suggestion). Never persisted; reset on route load.
   const [hotelOverrides, setHotelOverrides] = useState<Record<number, OvernightHotelOverride>>({});
+  // Phase 3D.2C-B — per-night confirmation. DEFAULT UNCHECKED: a hotel item is
+  // created on apply only for nights the operator explicitly confirms here.
+  // Local only; reset on route load.
+  const [confirmedHotels, setConfirmedHotels] = useState<Record<number, boolean>>({});
 
   // Existing-state detection for the non-destructive guard (refreshed on route load).
   const [existingDayCount, setExistingDayCount] = useState(0);
@@ -112,6 +121,7 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
     setPreview(null);
     setRouteDetail(null);
     setHotelOverrides({});
+    setConfirmedHotels({});
     setError('');
     setApplyError('');
     setApplySuccess('');
@@ -160,17 +170,6 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
     rebuildPreview(pricingRowId, value);
   }
 
-  const applyPlan = useMemo(() => {
-    if (!preview) return null;
-    return buildTouringRouteApplyPlan(preview, {
-      pax,
-      transportServiceId: transportServiceId ?? null,
-      existingDayCount,
-      existingItemCount: existingItemCount ?? 0,
-      existingPoiAssignmentCount,
-    });
-  }, [preview, pax, transportServiceId, existingDayCount, existingItemCount, existingPoiAssignmentCount]);
-
   // Phase 3D.2B — per-night hotel SUGGESTIONS for the preview (pure; no writes).
   // Recomputed from the route + start date + local overrides. Empty when the
   // caller didn't pass hotel catalogs, or the route has no overnight nights.
@@ -185,6 +184,24 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
       overrides: hotelOverrides,
     }).suggestions;
   }, [routeDetail, hotels, hotelContracts, hotelRates, startDate, optimizationMode, hotelOverrides]);
+
+  const roomCount = defaultRoomCount && defaultRoomCount > 0 ? defaultRoomCount : Math.max(1, Math.ceil(pax / 2));
+
+  const applyPlan = useMemo(() => {
+    if (!preview) return null;
+    return buildTouringRouteApplyPlan(preview, {
+      pax,
+      transportServiceId: transportServiceId ?? null,
+      existingDayCount,
+      existingItemCount: existingItemCount ?? 0,
+      existingPoiAssignmentCount,
+      // Phase 3D.2C-B — confirmed hotel items (empty unless explicitly confirmed).
+      hotelSuggestions,
+      confirmedNights: confirmedHotels,
+      hotelServiceId: hotelServiceId ?? null,
+      roomCount,
+    });
+  }, [preview, pax, transportServiceId, existingDayCount, existingItemCount, existingPoiAssignmentCount, hotelSuggestions, confirmedHotels, hotelServiceId, roomCount]);
 
   const needsAck = (applyPlan?.warnings.length ?? 0) > 0;
   const canSubmit = Boolean(applyPlan?.canApply) && (!needsAck || acknowledged) && !applying;
@@ -213,56 +230,27 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
         if (!res.ok) throw new Error(`Request failed (${res.status}) for ${path}`);
         return res.json();
       };
-
-      // 1) Create itinerary days (notes empty — composer is the narrative source).
-      const dayIdByNumber = new Map<number, string>();
-      for (const day of applyPlan.days) {
-        const created = await post(`/quotes/${quoteId}/itinerary/day`, {
-          dayNumber: day.dayNumber,
-          title: day.title || `Day ${day.dayNumber}`,
-          notes: '',
-        });
-        if (created?.id) dayIdByNumber.set(day.dayNumber, created.id);
-      }
-
-      // 2) Create exactly ONE touring-route transport package item on day 1.
-      const t = applyPlan.transport;
-      const day1Id = dayIdByNumber.get(t.attachToDayNumber);
-      const day1Date = preview.days.find((d) => d.dayNumber === t.attachToDayNumber)?.date || null;
-      await post(`/quotes/${quoteId}/items`, {
-        serviceId: t.serviceId,
-        itineraryId: day1Id,
-        serviceDate: day1Date ? new Date(`${day1Date}T09:00:00`).toISOString() : undefined,
-        startTime: '09:00',
-        participantCount: t.paxCount,
-        paxCount: t.paxCount,
-        quantity: 1,
-        dayCount: t.dayCount,
-        markupPercent: 20,
-        touringRouteId: t.touringRouteId,
-        touringRoutePricingId: t.touringRoutePricingId,
-        // Phase 3D.1H: pass the pricing row's currency so the backend can convert
-        // overrideCost from the source currency into the quote currency before markup.
-        currency: t.currency,
-        overrideCost: t.overrideCost,
-        useOverride: t.useOverride,
-      });
-
-      // 3) Assign ordered POIs per generated day (snapshots handled by the endpoint).
-      for (const day of applyPlan.days) {
-        if (day.poiAssignments.length === 0) continue;
-        const dayId = dayIdByNumber.get(day.dayNumber);
-        if (!dayId) continue;
+      const putPois = async (dayId: string, assignments: { poiId: string; sourceTouringRouteStopId: string | null }[]) => {
         const res = await fetch(`${apiBaseUrl}/itinerary/day/${dayId}/pois`, {
           method: 'PUT',
           headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ assignments: day.poiAssignments }),
+          body: JSON.stringify({ assignments }),
           cache: 'no-store',
         });
-        if (!res.ok) throw new Error(`Could not assign POIs for day ${day.dayNumber} (${res.status}).`);
-      }
+        if (!res.ok) throw new Error(`Could not assign POIs for day ${dayId} (${res.status}).`);
+      };
 
-      setApplySuccess(`Generated ${applyPlan.days.length} day(s), 1 transport package, and ${applyPlan.totalPoiAssignments} POI assignment(s). The proposal narrative is generated automatically.`);
+      // Day-number → date, for the transport package's service date.
+      const dateByDay: Record<number, string | null> = {};
+      for (const d of preview.days) dateByDay[d.dayNumber] = d.date || null;
+
+      // Execute the CREATE-ONLY sequence (days → ONE transport package → POI
+      // assignments → confirmed hotel items) via the tested orchestrator. Nothing
+      // is deleted or overwritten; hotels are created only for confirmed nights.
+      const result = await executeTouringRouteApply(applyPlan, { quoteId, dateByDay }, { post, putPois });
+
+      const hotelMsg = result.hotelsCreated > 0 ? `, and ${result.hotelsCreated} confirmed hotel${result.hotelsCreated === 1 ? '' : 's'}` : '';
+      setApplySuccess(`Generated ${result.daysCreated} day(s), 1 transport package, ${result.poiAssignmentsCreated} POI assignment(s)${hotelMsg}. The proposal narrative is generated automatically.`);
       await refreshExistingState();
       router.refresh();
     } catch (caught) {
@@ -418,7 +406,7 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
             <div style={{ marginTop: '0.6rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.6rem' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Suggested overnight hotels</div>
               <p style={{ margin: '0.2rem 0 0.4rem', fontSize: '0.74rem', color: 'var(--ds-color-muted, #475569)' }}>
-                Suggestions only — nothing is saved. Hotels are still added manually in this phase. Review the overnight city and edit if needed.
+                Review the overnight city and edit if needed. Tick “Add this hotel to the quote” to include a hotel on apply — nothing is added unless you confirm it.
               </p>
               {hotelSuggestions.map((s) => (
                 <div key={s.nightNumber} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.45rem 0.6rem', marginTop: '0.4rem', opacity: s.disabled ? 0.55 : 1 }}>
@@ -473,6 +461,24 @@ export default function GenerateFromTouringRoutePanel({ apiBaseUrl, routes, quot
                               : ' — choose an overnight city above.'}
                     </p>
                   )}
+                  {/* Phase 3D.2C-B — explicit opt-in. Default unchecked; disabled
+                      when skipped, unmatched (missingReason), or any apply id is
+                      missing. Only confirmed nights create a hotel item on apply. */}
+                  {(() => {
+                    const bookable = !s.disabled && s.missingReason === null && !!s.hotelId && !!s.contractId && !!s.roomCategoryId;
+                    return (
+                      <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem', fontSize: '0.76rem', opacity: bookable ? 1 : 0.5 }}>
+                        <input
+                          type="checkbox"
+                          checked={bookable && confirmedHotels[s.nightNumber] === true}
+                          disabled={!bookable}
+                          aria-label={`Add hotel to the quote for night ${s.nightNumber}`}
+                          onChange={(e) => setConfirmedHotels((prev) => ({ ...prev, [s.nightNumber]: e.target.checked }))}
+                        />
+                        <span>Add this hotel to the quote</span>
+                      </label>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
