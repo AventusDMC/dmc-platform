@@ -4,6 +4,7 @@ import {
   isTouringRoutePackageItem,
   formatTouringRoutePackagePath,
   formatTouringRoutePackageLabel,
+  resolveTouringRoutePackageLabel,
 } from './quote-item-label';
 
 describe('Phase 3D.2D.1 quote-item-label — touring-route package detection (pricing-independent)', () => {
@@ -66,5 +67,23 @@ describe('Phase 3D.2D quote-item-label — route-aware package label', () => {
       stops: [{ city: 'Amman' }, { city: 'Dana' }, { city: 'Petra' }],
     };
     assert.equal(formatTouringRoutePackagePath(route), 'Amman → Petra');
+  });
+});
+
+describe('Phase 3D.2D.1 quote-item-label — resolveTouringRoutePackageLabel (shared admin entry point)', () => {
+  const danaRoute = { id: 'r', name: 'Amman -> Dana -> Petra ON', startCity: 'Amman', mainDestinations: ['Dana', 'Petra'] };
+
+  it('returns the route-aware label for a touring-route package', () => {
+    assert.equal(resolveTouringRoutePackageLabel({ touringRoute: danaRoute }), 'Touring Route — Amman → Dana → Petra');
+  });
+
+  it('returns null for an excursion (caller keeps its existing label)', () => {
+    assert.equal(resolveTouringRoutePackageLabel({ touringRoute: danaRoute, excursionTemplateId: 'tmpl-1' }), null);
+    assert.equal(resolveTouringRoutePackageLabel({ touringRoute: danaRoute, overrideReason: 'Excursion template: Petra Full Day' }), null);
+  });
+
+  it('returns null for non-touring items (airport transfer / regular / disposal)', () => {
+    assert.equal(resolveTouringRoutePackageLabel({ touringRoute: null }), null);
+    assert.equal(resolveTouringRoutePackageLabel({}), null);
   });
 });

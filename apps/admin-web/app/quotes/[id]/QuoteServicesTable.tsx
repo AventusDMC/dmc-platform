@@ -13,6 +13,7 @@ import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
+import { resolveTouringRoutePackageLabel } from './quote-item-label';
 
 type SupplierService = {
   id: string;
@@ -416,6 +417,10 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
 
 function getQuoteItemServiceDisplayName(item: QuoteItem) {
   if (item.touringRoute) {
+    // Phase 3D.2D.1 — touring-route PACKAGE shows a route-aware label; excursions
+    // keep the origin-aware name.
+    const packageLabel = resolveTouringRoutePackageLabel(item);
+    if (packageLabel) return packageLabel;
     return getQuoteItemOriginAwareExcursionName({
       serviceName: item.service?.name,
       overrideReason: item.overrideReason,

@@ -1,4 +1,5 @@
 import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
+import { resolveTouringRoutePackageLabel } from './quote-item-label';
 
 type QuoteSummaryItem = {
   id: string;
@@ -110,11 +111,12 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
   const groupedItems = groupItemsByDay(items);
   const getDisplayName = (item: QuoteSummaryItem) =>
     item.touringRoute
-      ? getQuoteItemOriginAwareExcursionName({
+      ? (resolveTouringRoutePackageLabel(item) ??
+        getQuoteItemOriginAwareExcursionName({
           serviceName: item.service.name,
           overrideReason: item.overrideReason,
           touringRoute: item.touringRoute,
-        })
+        }))
       : item.service.name;
 
   return (

@@ -86,3 +86,15 @@ export function formatTouringRoutePackageLabel(route: TouringRouteLabelInput): s
   const path = formatTouringRoutePackagePath(route);
   return path ? `Touring Route — ${path}` : 'Touring Route'; // "Touring Route — …"
 }
+
+/**
+ * Shared entry point for the several admin item-title functions: returns the
+ * route-aware package label when `item` is a touring-route PACKAGE, else null so
+ * the caller keeps its existing label (excursion / transfer / disposal). Lets
+ * every admin title path opt in with one guard instead of duplicating the logic.
+ */
+export function resolveTouringRoutePackageLabel(item: TouringRoutePackageDetectInput): string | null {
+  if (!isTouringRoutePackageItem(item)) return null;
+  const route = item.touringRoute as TouringRouteLabelInput | null | undefined;
+  return route ? formatTouringRoutePackageLabel(route) : null;
+}
