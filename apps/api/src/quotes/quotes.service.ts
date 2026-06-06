@@ -4661,12 +4661,17 @@ export class QuotesService {
 
     const transportServiceType = await this.resolvePackageTransportServiceType(component);
 
-    // Phase B — routeless FULL_DAY / HALF_DAY / DAILY_PACKAGE transport (daily
-    // disposal / moving touring day). Prices from a VehicleRate matched by the
-    // component's OWN service type + pax (+ travel date) with NO routeId — e.g.
-    // the "Daily Full Day" type resolves the cheapest fitting full-day vehicle
-    // rate. We do NOT substitute Daily Full Day and do NOT create or require a
-    // route. Stationary/waiting ADD_ON pricing is intentionally out of scope.
+    // Phase B / B.1 — FULL_DAY / HALF_DAY / DAILY_PACKAGE transport (daily
+    // disposal / moving touring day) for components with NO route of their own.
+    // The component carries only a transport service type; we resolve the cheapest
+    // fitting active VehicleRate for that service type + pax (+ travel date) and
+    // price through it. findMatchingRate cannot run without a route reference
+    // (buildRouteFilter requires one), so we read the VehicleRate directly here —
+    // no engine change — then carry the rate's OWN real routeId (e.g. the supplier
+    // "Amman -> Amman" / Jordan Program disposal route) so createItem prices via
+    // the vehicleRateId path. We do NOT substitute Daily Full Day, do NOT require
+    // a component route, and do NOT create an artificial route. Stationary/waiting
+    // ADD_ON pricing is intentionally out of scope.
     const classification = (transportServiceType as any)?.classification;
     if (
       transportServiceType?.id &&
@@ -4680,33 +4685,41 @@ export class QuotesService {
       }
       const fullDayPax = this.getQuotePaxCount(quote);
       const travelStartRaw = (quote as any).travelStartDate;
-      try {
-        const fullDayRate = await this.transportPricingService.findMatchingRate({
+      const fullDayDate = travelStartRaw ? new Date(travelStartRaw) : new Date();
+      // Cheapest fitting active rate for this service type: smallest capacity that
+      // fits, then lowest price — matches the engine's own candidate ordering.
+      const fullDayRate = await (this.prisma as any).vehicleRate.findFirst({
+        where: {
           serviceTypeId: transportServiceType.id,
-          paxCount: fullDayPax,
-          travelDate: travelStartRaw ? new Date(travelStartRaw) : undefined,
-          // No routeId — routeless full-day / daily-disposal match.
-        });
-        return {
-          serviceId: fullDayService.id,
-          transportServiceTypeId: transportServiceType.id,
-          vehicleRateId: fullDayRate.id,
-          // The matched rate's own routeName lets createItem's route gate pass
-          // (via normalizedKey) and prices through the vehicleRateId path; the
-          // resolved routeId comes from the rate row, not an invented route.
-          routeName: fullDayRate.routeName || transportServiceType.name || component.label || null,
-          pricingMode: component.pricingMode || transportServiceType.name,
-          serviceName: fullDayService.name,
-          serviceTypeName: transportServiceType.name,
-          transportVehicleId: fullDayRate.vehicle?.id || undefined,
-          vehicleName: fullDayRate.vehicle?.name || null,
-          currency: fullDayRate.currency,
-          dayCount: 1,
-          rateStatus: `${fullDayRate.currency} ${Number(fullDayRate.price).toFixed(2)}`,
-        };
-      } catch {
-        return null;
+          active: true,
+          minPax: { lte: fullDayPax },
+          maxPax: { gte: fullDayPax },
+          validFrom: { lte: fullDayDate },
+          validTo: { gte: fullDayDate },
+        },
+        include: { vehicle: true, supplier: true, serviceType: true },
+        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
+      });
+      if (!fullDayRate) {
+        return null; // no active full-day rate for this service type/pax/date → clean skip
       }
+      return {
+        serviceId: fullDayService.id,
+        transportServiceTypeId: transportServiceType.id,
+        vehicleRateId: fullDayRate.id,
+        // The rate's OWN real route (from the rate row) — lets createItem's route
+        // gate pass and price via the vehicleRateId path. Never an invented route.
+        routeId: fullDayRate.routeId || undefined,
+        routeName: fullDayRate.routeName || transportServiceType.name || component.label || null,
+        pricingMode: component.pricingMode || transportServiceType.name,
+        serviceName: fullDayService.name,
+        serviceTypeName: transportServiceType.name,
+        transportVehicleId: fullDayRate.vehicleId || fullDayRate.vehicle?.id || undefined,
+        vehicleName: fullDayRate.vehicle?.name || null,
+        currency: fullDayRate.currency,
+        dayCount: 1,
+        rateStatus: `${fullDayRate.currency} ${Number(fullDayRate.price).toFixed(2)}`,
+      };
     }
 
     if (!component.routeId || !transportServiceType?.id) {
