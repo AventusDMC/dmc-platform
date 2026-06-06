@@ -17,6 +17,7 @@ import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
 import { formatOriginAwareExcursionName, getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
+import { resolveTouringRoutePackageLabel } from './quote-item-label';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
@@ -1123,6 +1124,10 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 
 function getItemServiceName(item: QuoteItem) {
   if (item.touringRoute) {
+    // Phase 3D.2D.1 — touring-route PACKAGE shows a route-aware label; excursions
+    // keep the origin-aware name.
+    const packageLabel = resolveTouringRoutePackageLabel(item);
+    if (packageLabel) return packageLabel;
     return getQuoteItemOriginAwareExcursionName({
       serviceName: item.service?.name,
       overrideReason: item.overrideReason,
