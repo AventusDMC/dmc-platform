@@ -168,3 +168,21 @@ correctly produces USD 169.20 (not the previous wrong USD 120). **No manual work
 
 **Standard practice:** always review the final quote total before sending to a client. This is
 standard for all quote types, not specific to the generator.
+
+## Set a client-facing proposal title before export (Phase 3D.1S)
+
+The proposal **cover title is the quote's title, verbatim** (it is now always
+centered, in EN/PT/ES/AR). Test/internal titles like **"7"** or
+**"Jordan Tour #7"** will show on the client PDF as-is. **Before sending,
+replace the quote title with a proper client-facing title.**
+
+Examples:
+
+- Dana & Petra Journey
+- Jordan Discovery
+- Dana and Petra Private Journey
+- Viagem Dana e Petra (PT)
+- Circuito Dana e Petra (ES)
+
+(Numeric/very-short titles are accepted by the system today; a future optional
+polish may auto-fall-back to a destination-based title when the title is weak.)

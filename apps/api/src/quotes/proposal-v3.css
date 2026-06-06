@@ -280,6 +280,11 @@ body {
 
 .proposal-cover-copy {
   min-width: 0;
+  /* Phase 3D.1S — explicitly center the cover title block (title, destination,
+     duration) rather than relying on inherited alignment. Direction-neutral, so
+     EN/PT/ES (LTR) and AR (RTL) all stay centered. Does not affect the header
+     logo/metadata cards (.proposal-meta-list) or pricing panel (outside this block). */
+  text-align: center;
 }
 
 .proposal-cover h1,
@@ -300,7 +305,10 @@ body {
   font-size: 46px;
   line-height: 1.04;
   letter-spacing: -0.02em;
-  margin-bottom: 10px;
+  /* Phase 3D.1S — center the (max-width-constrained) title block horizontally so
+     multi-line titles like "Jordan Tour #7" stay centered, not left-aligned. */
+  margin: 0 auto 10px;
+  text-align: center;
 }
 
 .proposal-cover-destination {
@@ -308,12 +316,14 @@ body {
   font-size: 21px;
   line-height: 1.2;
   color: var(--proposal-ink);
+  text-align: center; /* Phase 3D.1S — explicit center for the route/destination subtitle */
 }
 
 .proposal-subtitle {
   margin: 16px 0 0;
   font-size: 15px;
   line-height: 1.5;
+  text-align: center; /* Phase 3D.1S — explicit center for the duration line */
 }
 
 .proposal-cover-intro {
