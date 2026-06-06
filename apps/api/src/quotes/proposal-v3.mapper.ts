@@ -13,6 +13,7 @@ import {
 } from './proposal-v3.types';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
+import { AXIS_BRAND_LOGO_DATA_URI } from './proposal-brand-logo';
 import {
   intlLocale,
   joinDestinations,
@@ -105,7 +106,11 @@ function stripInternalTitleDecorations(value: string) {
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
-const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png';
+// Phase 3D.1Q — embed the default logo as a base64 data URI so it renders in the
+// headless-Chrome PDF (which has no network); a remote URL previously failed →
+// alt text. Custom company logos (remote) are inlined at render time by the
+// service (resolveLogoForRender), with graceful fallback to the URL.
+const AXIS_LOGO_URL = AXIS_BRAND_LOGO_DATA_URI;
 const AXIS_PRIMARY_COLOR = '#1F9ACF';
 
 type ProposalBrandCompany = NonNullable<ProposalV3Quote['brandCompany']>;
