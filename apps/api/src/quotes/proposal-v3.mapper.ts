@@ -650,12 +650,13 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
         location,
         room: cleanText(item.roomCategory?.name || '') || null,
         meals: item.mealPlan ? String(item.mealPlan).toUpperCase() : null,
-        // Phase 3D.1M — the contract name is an internal label (e.g. "Contractual
-        // Agreement for Petra Moon Hotel 2026"); never surface it to the client.
-        note: (() => {
-          const contractName = cleanText(item.contract?.name || '');
-          return contractName && !hasInternalContractText(contractName) ? contractName : null;
-        })(),
+        // Phase M — the rate-contract/agreement name is an internal label
+        // ("TRAVEL AGENT AGREEMENT 2026", "Travel Agent Contracted Rates 2026/27",
+        // "2026 contract", etc.); the pattern-based filter let several through, so
+        // the client accommodation row now never surfaces it. Client-safe fields
+        // are hotel name, room category, meal plan, and city; the contract stays
+        // on the QuoteItem for admin/debug.
+        note: null,
       });
     }
   }

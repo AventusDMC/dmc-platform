@@ -2368,10 +2368,17 @@ test('Phase 3D.1M: internal hotel contract name + rate breakdown never reach the
   for (const d of dayItemDescriptions(vm)) assert.doesNotMatch(d, INTERNAL_LEAK, `no contract/rate leak: "${d}"`);
 });
 
-test('Phase 3D.1M: a non-internal contract name is still shown (no over-suppression)', () => {
-  // Default fixture contract "Grand Petra 2026" has no internal markers → kept.
+test('Phase M: the rate-contract name is never surfaced on the client accommodation row', () => {
+  // Supersedes the earlier 3D.1M "show clean contract names" behavior: deciding
+  // which contract names are client-safe via text heuristics was fragile and
+  // leaked. The accommodation row now never carries the contract name (it stays
+  // on the QuoteItem for admin/debug); the client sees hotel/room/meal/city only.
   const vm = mapQuoteToProposalV3(createPdfQuote(), 'en');
-  assert.equal(vm.accommodationRows[0].note, 'Grand Petra 2026', 'clean contract name preserved');
+  assert.equal(vm.accommodationRows[0].note, null, 'contract name not surfaced even when "clean"');
+  // ...but the hotel's client-safe identity still renders.
+  assert.equal(vm.accommodationRows[0].hotelName, 'Grand Petra Hotel');
+  assert.equal(vm.accommodationRows[0].room, 'Deluxe');
+  assert.equal(vm.accommodationRows[0].meals, 'BB');
 });
 
 test('Phase 3D.1M: pricing summary note is localized; EN byte-identical to before', () => {
