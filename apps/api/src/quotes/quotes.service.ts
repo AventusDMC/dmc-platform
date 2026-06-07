@@ -6092,6 +6092,12 @@ export class QuotesService {
 
       baseCost = GUIDE_RATES[guideType][guideDuration] + (overnight ? GUIDE_OVERNIGHT_SUPPLEMENT : 0);
       currency = effectiveService.currency;
+      // K.3: propagate the computed guide rate to the cost base used by final
+      // pricing (mirrors the transport/activity/meal branches). Without this the
+      // item costs the linked service baseCost instead of the guide rate — e.g.
+      // escort/full_day would store 120 (service baseCost) rather than 200.
+      supplierCostBaseAmount = baseCost;
+      supplierCostCurrency = currency;
       pricingDescription = `Guide | ${this.formatGuideType(guideType)} | ${this.formatGuideDuration(guideDuration)} | Overnight: ${overnight ? 'Yes' : 'No'}`;
     } else if (data.guideType !== undefined || data.guideDuration !== undefined || data.overnight !== undefined) {
       throw new BadRequestException('Selected service is not guide-compatible. Choose a service with a guide service type or category.');
