@@ -4856,7 +4856,12 @@ export class QuotesService {
       itineraryId: values.quoteDay.id,
       quantity: 1,
       paxCount,
-      markupPercent: 0,
+      // Born-with per-item markup so PackageTemplate apply no longer yields
+      // sell == cost. This is the ERP's standard pricing model (every other
+      // create path already applies a default markup); operators can still edit
+      // it after apply, and manual sell/markupAmount overrides keep their
+      // existing precedence in createItem. The pricing formula is unchanged.
+      markupPercent: this.defaultPackageComponentMarkupPercent(component.componentType),
     };
 
     if (component.componentType === 'HOTEL') {
@@ -4900,6 +4905,31 @@ export class QuotesService {
     }
 
     return null;
+  }
+
+  /**
+   * Default per-item markup (%) stamped on items created by PackageTemplate
+   * apply. Hotels use a more conservative 15% (they are typically the largest
+   * cost line); every other component type uses the ERP's standard 20% default.
+   * This is applied only at creation time — the pricing engine and any later
+   * manual override are untouched.
+   */
+  private defaultPackageComponentMarkupPercent(componentType: string | null | undefined): number {
+    switch (componentType) {
+      case 'HOTEL':
+        return 15;
+      case 'TRANSPORT':
+      case 'TICKET':
+      case 'ENTRANCE':
+      case 'ACTIVITY':
+      case 'GUIDE':
+      case 'SERVICE':
+      case 'DINING':
+      case 'MEAL':
+      case 'OTHER':
+      default:
+        return 20;
+    }
   }
 
   private async getExcursionTemplateComponentMappingStatus(component: any, quote: { adults?: number | null; children?: number | null }): Promise<PackageComponentMappingStatus> {
