@@ -4512,6 +4512,22 @@ export class QuotesService {
     return this.addDays(quote.travelStartDate, itineraryDay.dayNumber - 1);
   }
 
+  // Hotel contract seasons are stored with noon (12:00:00Z) boundaries, while
+  // operational dates inherit the quote's end-of-day travelStartDate time
+  // (23:59:59.999Z). A full-timestamp season comparison therefore drops any
+  // overnight that lands on a season boundary into a ~12h gap. Normalizing the
+  // season-match date to noon of the same calendar day aligns with the noon
+  // convention (inclusive at both edges) and also stays safely inside full-day
+  // ranges, so it is robust regardless of how a contract stores its boundaries.
+  // Scope: hotel season matching only — stored dates, pricing, and contracts
+  // are untouched.
+  private normalizeHotelSeasonMatchDate(value: Date | null | undefined): Date | null {
+    if (!value || !(value instanceof Date) || Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 12, 0, 0, 0));
+  }
+
   private async resolvePackageHotelMapping(component: any) {
     if (!component.hotelContractId) {
       return null;
@@ -4522,7 +4538,7 @@ export class QuotesService {
       return null;
     }
 
-    const today = new Date();
+    const today = this.normalizeHotelSeasonMatchDate(new Date()) ?? new Date();
     const currentRates = await this.prisma.hotelRate.findMany({
       where: {
         contractId: component.hotelContractId,
@@ -5602,13 +5618,18 @@ export class QuotesService {
         );
       }
 
+      // Match seasons against noon of the service date's calendar day so a
+      // boundary-day overnight (whose time is end-of-day) does not fall into the
+      // noon-boundary gap. Only this lookup is affected; the stored serviceDate
+      // is unchanged.
+      const hotelSeasonMatchDate = this.normalizeHotelSeasonMatchDate(serviceDate);
       const hotelRateCandidates = await this.prisma.hotelRate.findMany({
         where: {
           contractId: data.contractId,
-          ...(serviceDate
+          ...(hotelSeasonMatchDate
             ? {
-                seasonFrom: { lte: serviceDate },
-                seasonTo: { gte: serviceDate },
+                seasonFrom: { lte: hotelSeasonMatchDate },
+                seasonTo: { gte: hotelSeasonMatchDate },
               }
             : { seasonName: requestedSeasonName }),
           roomCategoryId: data.roomCategoryId,
