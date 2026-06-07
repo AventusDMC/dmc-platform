@@ -53,6 +53,7 @@ type PackageTemplateComponentBody = {
   operationalNotes?: string | null;
   excursionTemplateId?: string | null;
   activityId?: string | null;
+  activityRateVariantId?: string | null;
   hotelContractId?: string | null;
   routeId?: string | null;
   touringRouteId?: string | null;
