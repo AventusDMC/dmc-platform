@@ -441,6 +441,7 @@ model ActivityRateVariant {
   updatedAt           DateTime                  @updatedAt
   activity            Activity                  @relation(fields: [activityId], references: [id], onDelete: Cascade)
   quoteItems          QuoteItem[]
+  packageTemplateComponents PackageTemplateComponent[]
 
   @@index([activityId, active, sortOrder])
   @@index([supplierCompanyId])
@@ -2355,6 +2356,7 @@ model PackageTemplateComponent {
   operationalNotes       String?
   excursionTemplateId    String?                      @db.Uuid
   activityId             String?                      @db.Uuid
+  activityRateVariantId  String?                      @db.Uuid
   hotelContractId        String?                      @db.Uuid
   routeId                String?                      @db.Uuid
   touringRouteId         String?                      @db.Uuid
@@ -2364,6 +2366,7 @@ model PackageTemplateComponent {
   createdAt              DateTime                     @default(now())
   updatedAt              DateTime                     @updatedAt
   activity               Activity?                    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  activityRateVariant    ActivityRateVariant?         @relation(fields: [activityRateVariantId], references: [id], onDelete: SetNull)
   excursionTemplate      ExcursionTemplate?           @relation(fields: [excursionTemplateId], references: [id], onDelete: SetNull)
   hotelContract          HotelContract?               @relation(fields: [hotelContractId], references: [id], onDelete: SetNull)
   packageTemplate        PackageTemplate              @relation(fields: [packageTemplateId], references: [id], onDelete: Cascade)
@@ -2378,6 +2381,7 @@ model PackageTemplateComponent {
   @@index([componentType])
   @@index([excursionTemplateId])
   @@index([activityId])
+  @@index([activityRateVariantId])
   @@index([hotelContractId])
   @@index([routeId])
   @@index([touringRouteId])

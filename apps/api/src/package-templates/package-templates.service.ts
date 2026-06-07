@@ -45,6 +45,7 @@ type PackageTemplateComponentInput = {
   operationalNotes?: string | null;
   excursionTemplateId?: string | null;
   activityId?: string | null;
+  activityRateVariantId?: string | null;
   hotelContractId?: string | null;
   routeId?: string | null;
   touringRouteId?: string | null;
@@ -228,6 +229,7 @@ export class PackageTemplatesService {
       componentType: 'OTHER' as PackageTemplateComponentType,
       excursionTemplateId: null as string | null,
       activityId: null as string | null,
+      activityRateVariantId: null as string | null,
       hotelContractId: null as string | null,
       routeId: null as string | null,
       touringRouteId: null as string | null,
@@ -240,7 +242,7 @@ export class PackageTemplatesService {
       return { ...base, componentType: 'EXCURSION_TEMPLATE', excursionTemplateId: item.excursionTemplateId, label: item.pricingDescription || 'Excursion' };
     }
     if (item.activityId) {
-      return { ...base, componentType: 'ACTIVITY', activityId: item.activityId, label: item.activity?.name || item.pricingDescription || 'Activity' };
+      return { ...base, componentType: 'ACTIVITY', activityId: item.activityId, activityRateVariantId: item.activityRateVariantId || null, label: item.activity?.name || item.pricingDescription || 'Activity' };
     }
     if (item.contractId) {
       const hotelLabel = [item.contract?.hotel?.name, item.contract?.name].filter(Boolean).join(' - ');
@@ -752,6 +754,7 @@ export class PackageTemplatesService {
       operationalNotes: normalizeOptionalString(data.operationalNotes),
       excursionTemplateId: componentType === 'EXCURSION_TEMPLATE' ? normalizeOptionalString(data.excursionTemplateId) : null,
       activityId: componentType === 'ACTIVITY' ? normalizeOptionalString(data.activityId) : null,
+      activityRateVariantId: componentType === 'ACTIVITY' ? normalizeOptionalString(data.activityRateVariantId) : null,
       hotelContractId: componentType === 'HOTEL' ? normalizeOptionalString(data.hotelContractId) : null,
       routeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.routeId) : null,
       touringRouteId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.touringRouteId) : null,
@@ -827,6 +830,7 @@ export class PackageTemplatesService {
     return {
       excursionTemplate: true,
       activity: true,
+      activityRateVariant: true,
       hotelContract: {
         include: {
           hotel: true,

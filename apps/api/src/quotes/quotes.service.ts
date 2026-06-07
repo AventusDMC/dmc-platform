@@ -4208,6 +4208,13 @@ export class QuotesService {
       return component.supplierServiceId ? { insertable: true, reason: null } : { insertable: false, reason: 'No linked service record' };
     }
 
+    if (component.componentType === 'ACTIVITY') {
+      const activityMapping = await this.resolvePackageActivityMapping(component);
+      return activityMapping
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: 'Activity component needs an explicitly linked active rate variant that belongs to its activity' };
+    }
+
     return { insertable: false, reason: 'This package component does not yet have enough quote item mapping data for safe insertion' };
   }
 
@@ -4526,6 +4533,24 @@ export class QuotesService {
       return null;
     }
     return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 12, 0, 0, 0));
+  }
+
+  // Resolve a PackageTemplate ACTIVITY component to a deterministic, explicitly
+  // linked rate variant. No auto-pick: the component must carry an
+  // activityRateVariantId, and that variant must be active and belong to the
+  // component's activity. Pricing then flows through the existing createItem
+  // activity path (no activity-engine change).
+  private async resolvePackageActivityMapping(component: any) {
+    if (component.componentType !== 'ACTIVITY' || !component.activityId || !component.activityRateVariantId) {
+      return null;
+    }
+    const variant =
+      component.activityRateVariant ||
+      (await (this.prisma as any).activityRateVariant.findUnique({ where: { id: component.activityRateVariantId } }));
+    if (!variant || variant.activityId !== component.activityId || variant.active === false) {
+      return null;
+    }
+    return { activityId: component.activityId, activityRateVariantId: variant.id };
   }
 
   private async resolvePackageHotelMapping(component: any) {
@@ -4917,6 +4942,19 @@ export class QuotesService {
       return {
         ...common,
         serviceId: component.supplierServiceId,
+      };
+    }
+
+    if (component.componentType === 'ACTIVITY') {
+      const activityMapping = await this.resolvePackageActivityMapping(component);
+      if (!activityMapping) {
+        return null;
+      }
+      return {
+        ...common,
+        activityId: activityMapping.activityId,
+        activityRateVariantId: activityMapping.activityRateVariantId,
+        participantCount: paxCount,
       };
     }
 
