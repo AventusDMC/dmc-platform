@@ -3438,7 +3438,12 @@ export class QuotesService {
   }
 
   async previewPackageTemplateAssembly(quoteId: string, packageTemplateId: string, actor?: CompanyScopedActor) {
-    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    // K.2.1: load the real quote context so pax/room/date-dependent apply logic
+    // (pax-band gating, vehicle sizing, room/night counts, full-day rate date)
+    // works instead of defaulting to 1 pax / 1 room.
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor, {
+      select: { id: true, adults: true, children: true, roomCount: true, nightCount: true, travelStartDate: true, quoteCurrency: true },
+    });
     const template = await this.getPackageTemplateForAssembly(packageTemplateId);
     const existingPackageUse = await this.findExistingPackageAssembly(quoteId, packageTemplateId);
     const days = this.getPackageAssemblyDays(template);
@@ -3484,7 +3489,12 @@ export class QuotesService {
   }
 
   async applyPackageTemplateToQuote(quoteId: string, data: ApplyPackageTemplateToQuoteInput, actor?: CompanyScopedActor) {
-    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    // K.2.1: load the real quote context so pax/room/date-dependent apply logic
+    // (pax-band gating, vehicle sizing, room/night counts, full-day rate date)
+    // works instead of defaulting to 1 pax / 1 room.
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor, {
+      select: { id: true, adults: true, children: true, roomCount: true, nightCount: true, travelStartDate: true, quoteCurrency: true },
+    });
     const template = await this.getPackageTemplateForAssembly(data.packageTemplateId);
     const existingPackageUse = await this.findExistingPackageAssembly(quote.id, template.id);
 
