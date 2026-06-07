@@ -2363,6 +2363,13 @@ model PackageTemplateComponent {
   transportServiceTypeId String?                      @db.Uuid
   pricingMode            String?
   supplierServiceId      String?                      @db.Uuid
+  guideType              String?
+  guideDuration          String?
+  guideOvernight         Boolean?
+  overnightCity          String?
+  minPax                 Int?
+  maxPax                 Int?
+  requiresOperatorConfirmation Boolean?
   createdAt              DateTime                     @default(now())
   updatedAt              DateTime                     @updatedAt
   activity               Activity?                    @relation(fields: [activityId], references: [id], onDelete: SetNull)

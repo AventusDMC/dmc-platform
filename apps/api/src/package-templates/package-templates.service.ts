@@ -52,6 +52,13 @@ type PackageTemplateComponentInput = {
   transportServiceTypeId?: string | null;
   pricingMode?: string | null;
   supplierServiceId?: string | null;
+  guideType?: string | null;
+  guideDuration?: string | null;
+  guideOvernight?: boolean | null;
+  overnightCity?: string | null;
+  minPax?: number | null;
+  maxPax?: number | null;
+  requiresOperatorConfirmation?: boolean | null;
 };
 
 type PackageTemplateDayInput = {
@@ -761,6 +768,15 @@ export class PackageTemplatesService {
       transportServiceTypeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.transportServiceTypeId) : null,
       pricingMode: componentType === 'TRANSPORT' ? normalizeOptionalString(data.pricingMode) : null,
       supplierServiceId: this.componentTypeSupportsSupplierService(componentType) ? normalizeOptionalString(data.supplierServiceId) : null,
+      // Phase K: pax-band + explicit guide policy (cross-cutting, nullable).
+      guideType: normalizeOptionalString(data.guideType),
+      guideDuration: normalizeOptionalString(data.guideDuration),
+      guideOvernight: data.guideOvernight === undefined || data.guideOvernight === null ? null : Boolean(data.guideOvernight),
+      overnightCity: normalizeOptionalString(data.overnightCity),
+      minPax: data.minPax === undefined || data.minPax === null ? null : this.normalizeNonNegativeInteger(data.minPax, 'minPax'),
+      maxPax: data.maxPax === undefined || data.maxPax === null ? null : this.normalizeNonNegativeInteger(data.maxPax, 'maxPax'),
+      requiresOperatorConfirmation:
+        data.requiresOperatorConfirmation === undefined || data.requiresOperatorConfirmation === null ? null : Boolean(data.requiresOperatorConfirmation),
     };
   }
 

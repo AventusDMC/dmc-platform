@@ -60,6 +60,13 @@ type PackageTemplateComponentBody = {
   transportServiceTypeId?: string | null;
   pricingMode?: string | null;
   supplierServiceId?: string | null;
+  guideType?: string | null;
+  guideDuration?: string | null;
+  guideOvernight?: boolean | null;
+  overnightCity?: string | null;
+  minPax?: number | null;
+  maxPax?: number | null;
+  requiresOperatorConfirmation?: boolean | null;
 };
 
 type PackageTemplateDayBody = {

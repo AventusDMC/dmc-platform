@@ -4164,6 +4164,15 @@ export class QuotesService {
   }
 
   private async getPackageComponentMappingStatus(component: any, quote: { adults?: number | null; children?: number | null }): Promise<PackageComponentMappingStatus> {
+    // Phase K: pax-band applicability. A component with minPax/maxPax set is only
+    // applicable when the quote pax falls inside the band (null bounds = unbounded).
+    // Out-of-band is a clean "not applicable" skip, not a data error. Existing
+    // components have null bounds, so behaviour is unchanged for them.
+    const paxBandSkip = this.checkPackageComponentPaxBand(component, quote);
+    if (paxBandSkip) {
+      return paxBandSkip;
+    }
+
     if (component.componentType === 'EXCURSION_TEMPLATE') {
       const requiredComponents = (component.excursionTemplate?.components || []).filter((entry: any) => entry.active !== false && !entry.isOptional);
       if (requiredComponents.length === 0) {
@@ -4205,7 +4214,20 @@ export class QuotesService {
     }
 
     if (component.componentType === 'SERVICE') {
-      return component.supplierServiceId ? { insertable: true, reason: null } : { insertable: false, reason: 'No linked service record' };
+      if (!component.supplierServiceId) {
+        return { insertable: false, reason: 'No linked service record' };
+      }
+      // Guide services price via guideType/guideDuration (createItem GUIDE_RATES),
+      // so a guide-service component is only insertable when both are set. No
+      // silent default — the operator must choose local/escort + half/full day.
+      if (component.supplierService && this.isGuideService(component.supplierService)) {
+        const guideType = this.normalizeGuideType(component.guideType);
+        const guideDuration = this.normalizeGuideDuration(component.guideDuration);
+        return guideType && guideDuration
+          ? { insertable: true, reason: null }
+          : { insertable: false, reason: 'Guide service component needs guideType (local or escort) and guideDuration (half_day or full_day)' };
+      }
+      return { insertable: true, reason: null };
     }
 
     if (component.componentType === 'ACTIVITY') {
@@ -4880,6 +4902,27 @@ export class QuotesService {
     return Math.max(1, Number(quote.adults ?? 0) + Number(quote.children ?? 0));
   }
 
+  // Phase K: returns a benign "not applicable" skip status when a component's
+  // pax band excludes the quote's pax count; null when applicable. minPax/maxPax
+  // are optional — a null bound is unbounded, so components without a band
+  // (everything pre-K) always pass.
+  private checkPackageComponentPaxBand(
+    component: { minPax?: number | null; maxPax?: number | null },
+    quote: { adults?: number | null; children?: number | null },
+  ): PackageComponentMappingStatus | null {
+    const minPax = component.minPax ?? null;
+    const maxPax = component.maxPax ?? null;
+    if (minPax === null && maxPax === null) {
+      return null;
+    }
+    const paxCount = this.getQuotePaxCount(quote);
+    if ((minPax !== null && paxCount < minPax) || (maxPax !== null && paxCount > maxPax)) {
+      const band = `${minPax ?? 1}–${maxPax ?? '∞'}`;
+      return { insertable: false, reason: `Component applies to ${band} pax; this quote has ${paxCount} pax (not applicable)` };
+    }
+    return null;
+  }
+
   private async buildPackageComponentQuoteItemPayload(values: {
     quote: { id: string; adults?: number | null; children?: number | null; roomCount?: number | null; nightCount?: number | null };
     packageTemplate: { id: string };
@@ -4939,6 +4982,23 @@ export class QuotesService {
     }
 
     if (component.componentType === 'SERVICE' && component.supplierServiceId) {
+      // Guide-service components must carry explicit guideType + guideDuration so
+      // createItem's GUIDE_RATES path can price them. Overnight supplement only
+      // when escort AND guideOvernight is explicitly true — never automatic.
+      if (component.supplierService && this.isGuideService(component.supplierService)) {
+        const guideType = this.normalizeGuideType(component.guideType);
+        const guideDuration = this.normalizeGuideDuration(component.guideDuration);
+        if (!guideType || !guideDuration) {
+          return null;
+        }
+        return {
+          ...common,
+          serviceId: component.supplierServiceId,
+          guideType,
+          guideDuration,
+          overnight: guideType === 'escort' && component.guideOvernight === true,
+        };
+      }
       return {
         ...common,
         serviceId: component.supplierServiceId,
