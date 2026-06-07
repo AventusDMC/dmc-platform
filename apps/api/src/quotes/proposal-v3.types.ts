@@ -50,6 +50,9 @@ export type ProposalV3QuoteItem = {
     description?: string | null;
     durationMinutes?: number | null;
   } | null;
+  activityRateVariant?: {
+    name?: string | null;
+  } | null;
   service: {
     name: string;
     category: string;

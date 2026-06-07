@@ -464,11 +464,18 @@ type ProposalV3DaySource = {
 };
 
 function isPresentQuoteItem(item: NullableProposalV3QuoteItem): item is ProposalV3QuoteItem {
-  return Boolean(item && item.service);
+  // An activity item is service-less (it links activity/activityRateVariant, not a
+  // SupplierService). Treat it as present so it isn't dropped from the day render.
+  return Boolean(item && (item.service || item.activity));
 }
 
 function getItemServiceClassification(item: NullableProposalV3QuoteItem) {
-  return normalizeComparisonText(item?.service?.serviceType?.code || item?.service?.serviceType?.name || item?.service?.category);
+  return normalizeComparisonText(
+    item?.service?.serviceType?.code ||
+      item?.service?.serviceType?.name ||
+      item?.service?.category ||
+      (item?.activity ? 'activity' : ''),
+  );
 }
 
 function sanitizeQuoteItems(quote: ProposalV3Quote): ProposalV3QuoteItem[] {
@@ -512,6 +519,17 @@ function isActivityItem(item: NullableProposalV3QuoteItem) {
     normalized.includes('entrance') ||
     normalized.includes('ticket')
   );
+}
+
+// Title for a service-less activity item: activity name + variant, e.g.
+// "Wadi Rum Jeep Tour — 2 Hours – Rum Area". Empty when there is no activity.
+function buildActivityServiceTitle(item: NullableProposalV3QuoteItem) {
+  const name = cleanText(item?.activity?.name || '');
+  if (!name) {
+    return '';
+  }
+  const variant = cleanText(item?.activityRateVariant?.name || '');
+  return variant ? `${name} — ${variant}` : name;
 }
 
 function isExternalPackageItem(item: NullableProposalV3QuoteItem) {
@@ -595,7 +613,7 @@ function hasInternalContractText(text?: string | null): boolean {
 }
 
 function extractImportedDescription(item: ProposalV3QuoteItem) {
-  if (item.service.supplierId !== IMPORTED_SERVICE_SUPPLIER_ID) {
+  if (item.service?.supplierId !== IMPORTED_SERVICE_SUPPLIER_ID) {
     return null;
   }
 
@@ -797,7 +815,7 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
         ? excursionName
         : touringPathLabel
           ? touringPathLabel
-          : excursionName || cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
+          : excursionName || cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service?.name || buildActivityServiceTitle(item) || '');
     const importedDescription = extractImportedDescription(item);
     const activityDescription = getClientSafeActivityDescription(item);
     let description =
