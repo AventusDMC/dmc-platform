@@ -2785,11 +2785,11 @@ function DayNarrativePanel({
     <section className="quote-day-narrative-panel">
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Day Description</p>
-          <h4>Client-facing narrative</h4>
+          <p className="eyebrow">Day title &amp; narrative</p>
+          <h4>{day.title?.trim() || `Day ${day.dayNumber}`}</h4>
         </div>
         <button type="button" className="secondary-button" onClick={onDescriptionEdit}>
-          Edit
+          Edit title &amp; narrative
         </button>
       </div>
       {hasDescription ? (
@@ -2833,20 +2833,22 @@ function DayDescriptionDrawer({
   item,
   isSaving,
   onChange,
+  onTitleChange,
   onSave,
 }: {
-  item: { day: QuoteReadinessDay; draft: string } | null;
+  item: { day: QuoteReadinessDay; draft: string; titleDraft: string } | null;
   isSaving: boolean;
   onChange: (draft: string) => void;
+  onTitleChange: (titleDraft: string) => void;
   onSave: () => void;
 }) {
-  const drawerDayLabel = item ? formatDayHeading(item.day) : 'Day description';
+  const drawerDayLabel = item ? formatDayHeading(item.day) : 'Day title & narrative';
 
   return (
     <DrawerPanel
       open={Boolean(item)}
       title={drawerDayLabel}
-      description="Day description - client-facing day narrative"
+      description="Edit the day title and client-facing narrative"
       onClose={onSave}
       closeLabel={isSaving ? 'Saving...' : 'Save'}
       className="quote-timeline-drawer"
@@ -2854,17 +2856,27 @@ function DayDescriptionDrawer({
       {item ? (
         <div className="quote-timeline-drawer-form">
           <label>
-            Description
+            Day title
+            <input
+              className="quote-day-title-input"
+              value={item.titleDraft}
+              onChange={(event) => onTitleChange(event.target.value)}
+              placeholder={`e.g. Day ${String(item.day.dayNumber).padStart(2, '0')} — Amman / Madaba / Mount Nebo / Petra`}
+            />
+          </label>
+          <label>
+            Day narrative / notes
             <textarea
               className="quote-day-description-textarea"
               value={item.draft}
               onChange={(event) => onChange(event.target.value)}
+              rows={6}
               placeholder={`Describe Day ${item.day.dayNumber} for the client proposal.`}
             />
           </label>
           <div className="quote-timeline-drawer-actions">
             <button type="button" className="primary-button" onClick={onSave} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save description'}
+              {isSaving ? 'Saving...' : 'Save title & narrative'}
             </button>
           </div>
         </div>
@@ -3025,7 +3037,7 @@ function ScopePlanner({
   const [dayContentError, setDayContentError] = useState('');
   const [savingCountryDayId, setSavingCountryDayId] = useState<string | null>(null);
   const [dayCountryError, setDayCountryError] = useState('');
-  const [activeDayDescription, setActiveDayDescription] = useState<{ day: QuoteReadinessDay; draft: string } | null>(null);
+  const [activeDayDescription, setActiveDayDescription] = useState<{ day: QuoteReadinessDay; draft: string; titleDraft: string } | null>(null);
   const [activeTimelineItem, setActiveTimelineItem] = useState<{ day: QuoteReadinessDay; index: number; draft: DayTimelineItem } | null>(null);
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
@@ -3179,8 +3191,11 @@ function ScopePlanner({
     }
   }
 
-  async function saveDayContent(day: QuoteReadinessDay, contentOverride?: string) {
+  async function saveDayContent(day: QuoteReadinessDay, contentOverride?: string, titleOverride?: string) {
     const nextContent = contentOverride ?? dayContentDrafts[day.id] ?? day.description ?? '';
+    // Only the day's own title is editable here; default to the existing title
+    // when no override is supplied (e.g. the timeline drawer save path).
+    const nextTitle = titleOverride === undefined ? day.title : titleOverride.trim();
 
     setSavingDayId(day.id);
     setDayContentError('');
@@ -3193,7 +3208,7 @@ function ScopePlanner({
         }),
         body: JSON.stringify({
           dayNumber: day.dayNumber,
-          title: day.title,
+          title: nextTitle,
           notes: nextContent,
         }),
       });
@@ -3893,7 +3908,7 @@ function ScopePlanner({
                   error={dayContentError}
                   onDescriptionEdit={() => {
                     const parsed = parseDayContent(getDayContent(summary.day));
-                    setActiveDayDescription({ day: summary.day, draft: parsed.description });
+                    setActiveDayDescription({ day: summary.day, draft: parsed.description, titleDraft: summary.day.title || '' });
                   }}
                   onTimelineAdd={() => {
                     const parsed = parseDayContent(getDayContent(summary.day));
@@ -4013,6 +4028,7 @@ function ScopePlanner({
         item={activeDayDescription}
         isSaving={activeDayDescription ? savingDayId === activeDayDescription.day.id : false}
         onChange={(draft) => setActiveDayDescription((current) => (current ? { ...current, draft } : current))}
+        onTitleChange={(titleDraft) => setActiveDayDescription((current) => (current ? { ...current, titleDraft } : current))}
         onSave={() => {
           if (!activeDayDescription) {
             return;
@@ -4021,7 +4037,7 @@ function ScopePlanner({
           const parsed = parseDayContent(getDayContent(activeDayDescription.day));
           const nextContent = serializeDayContent(activeDayDescription.draft, parsed.timeline);
           setDayContent(activeDayDescription.day.id, nextContent);
-          void saveDayContent(activeDayDescription.day, nextContent).then((saved) => {
+          void saveDayContent(activeDayDescription.day, nextContent, activeDayDescription.titleDraft).then((saved) => {
             if (saved) {
               setActiveDayDescription(null);
             }
