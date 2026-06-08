@@ -72,6 +72,10 @@ const LABELS: Record<string, Record<ProposalLocale, string>> = {
   tableLocation: { en: 'Location', pt: 'Local', es: 'Ubicación', ar: 'الموقع' },
   tableRoom: { en: 'Room', pt: 'Quarto', es: 'Habitación', ar: 'الغرفة' },
   tableNotes: { en: 'Notes', pt: 'Notas', es: 'Notas', ar: 'ملاحظات' },
+  // Phase P — the accommodation table's last column carries the meal plan
+  // (BB/HB/…), not free-text notes (the contract note was dropped in Phase M);
+  // label it accordingly.
+  tableMeals: { en: 'Meals', pt: 'Refeições', es: 'Comidas', ar: 'الوجبات' },
   // Day by day
   dayByDay: { en: 'Day by Day', pt: 'Dia a dia', es: 'Día a día', ar: 'يومًا بيوم' },
   // Phase 3D.1M — day overnight badge prefix. Rendered as "{overnight}: {city}";

@@ -612,6 +612,25 @@ function hasInternalContractText(text?: string | null): boolean {
   return Boolean(text) && INTERNAL_RATE_MARKERS.test(String(text));
 }
 
+// Phase P — the machine-built pricingDescription uses a " | "-delimited internal
+// descriptor (e.g. "Guide | Local | Full day | Overnight: No",
+// "Daily Full Day | Jordan Program | Sedan 2"). Client prose never uses that
+// separator, and "Overnight: No/Yes" is an internal flag. Detect it so such text
+// is dropped from client-facing service descriptions.
+const INTERNAL_SERVICE_DESCRIPTOR = /\s\|\s|Overnight:\s*(?:No|Yes)\b/i;
+function hasInternalServiceDescriptor(text?: string | null): boolean {
+  return Boolean(text) && INTERNAL_SERVICE_DESCRIPTOR.test(String(text));
+}
+
+// Phase P — a vehicle-rate routeName is only a good client title when it
+// describes a route between places ("QAIA to Petra", "Petra → Wadi Rum").
+// Internal package/program labels ("Jordan Program", "General / All Routes",
+// "Daily Full Day") are not route-like and must not become a client title.
+function isClientFriendlyRouteName(name?: string | null): boolean {
+  const n = cleanText(name || '');
+  return Boolean(n) && /(\sto\s|\s-\s|\s–\s|\s→\s|->|→)/i.test(n);
+}
+
 function extractImportedDescription(item: ProposalV3QuoteItem) {
   if (item.service?.supplierId !== IMPORTED_SERVICE_SUPPLIER_ID) {
     return null;
@@ -627,7 +646,12 @@ export function getClientSafeActivityDescription(item: ProposalV3QuoteItem) {
     item.externalClientDescription,
     item.pricingDescription,
   ];
-  const description = candidates.map((candidate) => conciseCopy(candidate)).find((candidate) => isClientSafeCopy(candidate));
+  // Phase P — also reject the machine-built internal pricing descriptor
+  // ("Guide | Local | Full day | Overnight: No"), which would otherwise surface
+  // as a day-card description or a "Key moments" highlight.
+  const description = candidates
+    .map((candidate) => conciseCopy(candidate))
+    .find((candidate) => isClientSafeCopy(candidate) && !hasInternalServiceDescriptor(candidate));
   return description || null;
 }
 
@@ -816,7 +840,7 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
         ? excursionName
         : touringPathLabel
           ? touringPathLabel
-          : excursionName || cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service?.name || buildActivityServiceTitle(item) || '');
+          : excursionName || cleanText(item.hotel?.name || (isClientFriendlyRouteName(item.appliedVehicleRate?.routeName) ? item.appliedVehicleRate?.routeName : '') || item.service?.name || buildActivityServiceTitle(item) || '');
     const importedDescription = extractImportedDescription(item);
     const activityDescription = getClientSafeActivityDescription(item);
     let description =
@@ -854,14 +878,21 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       description = null;
     }
 
-    // Phase 3D.1M — internal operational text hygiene (applies in every locale,
-    // English included, because this text is never client-facing).
-    if (isTransportItem(item) && (item.touringRoute || touringPathLabel || hasInternalTransportText(description))) {
-      // Touring-route transport package → uniform client-safe description.
+    // Phase 3D.1M / Phase P — internal operational text hygiene (applies in every
+    // locale, English included, because this text is never client-facing).
+    if (isTransportItem(item)) {
+      // Phase P — every transport line shows the uniform client-safe sentence.
+      // Transport descriptions are machine-built pricing descriptors (route path,
+      // vehicle class, pricing mode, internal program names like "Jordan Program")
+      // that must never reach the client; the title already carries the route.
       description = prosePhrase(activeProposalLocale, 'transportTouringSafe');
     } else if (groupLabel === 'Stay' && hasInternalContractText(description)) {
       // Contract-name / rate breakdown → drop (accommodation table carries the
       // client-facing hotel/room/board/location).
+      description = null;
+    } else if (isGuideItem(item) && hasInternalServiceDescriptor(description)) {
+      // Phase P — the guide pricingDescriptor ("Guide | Local | Full day |
+      // Overnight: No") is internal; drop it. The guide title conveys the service.
       description = null;
     } else if (hasInternalContractText(description) || hasInternalTransportText(description)) {
       description = null;
