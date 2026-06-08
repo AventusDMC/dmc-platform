@@ -226,3 +226,54 @@ test('R.2b: limit caps candidates per stay', () => {
   const many = Array.from({ length: 9 }, (_, i) => ({ id: `x${i}`, name: `Amman Hotel ${i}`, city: 'Amman', activeContracts: [] }));
   assert.equal(matchHotelCandidatesForStay('Amman', many, { limit: 3 }).length, 3);
 });
+
+// ---- Phase R.3: transport suggestions (pure, descriptive) ----
+
+import { deriveTransportSuggestions } from './tailor-made-draft';
+
+test('R.3: standard 8-day draft classifies transport per day', () => {
+  const sugg = deriveTransportSuggestions(persistedDays(CLASSIC));
+  const byDay = Object.fromEntries(sugg.map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[1].suggestedTransportType, 'ARRIVAL_TRANSFER');
+  assert.equal(byDay[1].routeLabel, 'QAIA → Amman');
+  assert.equal(byDay[1].pricingModeSuggestion, 'POINT_TO_POINT');
+  assert.equal(byDay[2].suggestedTransportType, 'TOURING_FULL_DAY'); // Amman / Jerash / Amman
+  assert.equal(byDay[3].suggestedTransportType, 'TOURING_FULL_DAY'); // … / Petra
+  assert.equal(byDay[4].suggestedTransportType, 'TOURING_FULL_DAY'); // Petra / Wadi Rum
+  assert.equal(byDay[5].suggestedTransportType, 'TOURING_FULL_DAY'); // Wadi Rum / Dead Sea
+  assert.equal(byDay[6].suggestedTransportType, 'NONE');             // Dead Sea leisure
+  assert.equal(byDay[7].suggestedTransportType, 'TOURING_FULL_DAY'); // Bethany / Dead Sea
+  assert.equal(byDay[8].suggestedTransportType, 'DEPARTURE_TRANSFER');
+  assert.equal(byDay[8].routeLabel, 'Dead Sea → QAIA');
+  assert.equal(byDay[8].pricingModeSuggestion, 'POINT_TO_POINT');
+  // touring days carry FULL_DAY hint + a route label
+  assert.equal(byDay[3].pricingModeSuggestion, 'FULL_DAY');
+  assert.match(byDay[3].routeLabel, /Amman \/ Madaba \/ Mount Nebo \/ Petra/);
+});
+
+test('R.3: a pure leisure day (no Bethany) suggests no transport', () => {
+  const noBethany = persistedDays({ ...CLASSIC, optionalPlaces: ['Madaba', 'Mount Nebo'], requiredPlaces: ['Petra', 'Wadi Rum', 'Dead Sea', 'Jerash'] });
+  const byDay = Object.fromEntries(deriveTransportSuggestions(noBethany).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[7].suggestedTransportType, 'NONE'); // Day 7 "Dead Sea" only
+  assert.equal(byDay[6].suggestedTransportType, 'NONE');
+});
+
+test('R.3: touring move-day records origin/destination/stops', () => {
+  const byDay = Object.fromEntries(deriveTransportSuggestions(persistedDays(CLASSIC)).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[3].origin, 'Amman');
+  assert.equal(byDay[3].destination, 'Petra');
+  assert.deepEqual(byDay[3].stops, ['Madaba', 'Mount Nebo']);
+});
+
+test('R.3: descriptive only — no matched route, no candidates, no pricing fields', () => {
+  const sugg = deriveTransportSuggestions(persistedDays(CLASSIC));
+  assert.ok(sugg.every((s) => s.matchedRouteId === null && s.candidateTransport.length === 0));
+  // no vehicle class / rate / price leaks in the planning payload
+  assert.doesNotMatch(JSON.stringify(sugg), /Sedan|Coaster|\bprice\b|markup|totalSell|\brate\b/i);
+});
+
+test('R.3: inactive days and empty input are handled', () => {
+  assert.deepEqual(deriveTransportSuggestions([]), []);
+  const onlyDeparture = deriveTransportSuggestions([{ dayNumber: 1, title: 'Departure', notes: 'Transfer from Dead Sea to QAIA for your departure flight.', isActive: true }]);
+  assert.equal(onlyDeparture[0].suggestedTransportType, 'DEPARTURE_TRANSFER');
+});

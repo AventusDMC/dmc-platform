@@ -47,6 +47,16 @@ type HotelStay = {
   notes: string;
 };
 
+type TransportSuggestion = {
+  dayNumber: number;
+  title: string;
+  routeLabel: string | null;
+  suggestedTransportType: string;
+  pricingModeSuggestion: string | null;
+  reason: string;
+  confidence: string;
+};
+
 type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -89,6 +99,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [hotelStays, setHotelStays] = useState<HotelStay[] | null>(null);
   const [stayMessage, setStayMessage] = useState('');
   const [suggesting, setSuggesting] = useState(false);
+
+  // Phase R.3 — read-only transport suggestions (no apply, no pricing).
+  const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
+  const [transportMessage, setTransportMessage] = useState('');
+  const [suggestingTransport, setSuggestingTransport] = useState(false);
 
   function buildInput() {
     return {
@@ -181,6 +196,39 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
     }
   }
 
+  // Phase R.3 — read-only transport suggestions (no apply, no pricing).
+  async function handleSuggestTransport() {
+    setSuggestingTransport(true);
+    setError('');
+    setTransportMessage('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/tailor-made-draft/transport-suggestions`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not generate transport suggestions.'));
+      }
+      const result = await response.json();
+      setTransport(Array.isArray(result?.suggestions) ? result.suggestions : []);
+      setTransportMessage(typeof result?.message === 'string' ? result.message : '');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not generate transport suggestions.');
+    } finally {
+      setSuggestingTransport(false);
+    }
+  }
+
+  // Human-friendly admin label for a transport type (never client proposal text).
+  const transportTypeLabel = (t: string): string =>
+    ({
+      ARRIVAL_TRANSFER: 'Arrival transfer',
+      DEPARTURE_TRANSFER: 'Departure transfer',
+      TOURING_FULL_DAY: 'Touring (full day)',
+      NONE: 'No transfer needed',
+    } as Record<string, string>)[t] || t;
+
   return (
     <section className="tailor-made-draft-panel entity-form" aria-label="Tailor-Made Draft Builder">
       <header>
@@ -270,6 +318,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
         <button type="button" onClick={handleSuggestHotels} disabled={suggesting} className="secondary">
           {suggesting ? 'Loading…' : 'Preview Hotel Suggestions'}
         </button>
+        <button type="button" onClick={handleSuggestTransport} disabled={suggestingTransport} className="secondary">
+          {suggestingTransport ? 'Loading…' : 'Preview Transport Suggestions'}
+        </button>
         <label className="checkbox-inline">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
           Replace existing itinerary days
@@ -340,6 +391,32 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
               </ol>
               <p className="form-help">
                 Read-only suggestions grouped by overnight city. No hotels have been applied and no pricing has run.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {transport ? (
+        <div className="tailor-made-transport-suggestions">
+          <h4>Suggested Transport</h4>
+          {transport.length === 0 ? (
+            <p className="form-help">{transportMessage || 'No itinerary days yet — apply a tailor-made draft first.'}</p>
+          ) : (
+            <>
+              <ol className="tailor-made-transport-days">
+                {transport.map((t) => (
+                  <li key={t.dayNumber} className="tailor-made-transport-day">
+                    <strong>Day {t.dayNumber}</strong>
+                    {t.routeLabel ? ` — ${t.routeLabel}` : ` — ${t.title}`}
+                    {' • '}
+                    {transportTypeLabel(t.suggestedTransportType)}
+                    <span className="form-help"> — {t.reason}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="form-help">
+                Read-only planning hints. No transport has been applied and no pricing has run.
               </p>
             </>
           )}

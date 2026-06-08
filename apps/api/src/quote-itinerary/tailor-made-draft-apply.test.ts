@@ -226,3 +226,38 @@ test('R.2b: each stay is enriched with city-matched candidate hotels, read-only,
   assert.equal(corp.hasActiveContract, true);
   assert.equal(corp.reason, 'Verified contract');
 });
+
+// ---- Phase R.3: transport suggestions (read-only) ----
+
+test('R.3: transport suggestions classify each day, read-only, no QuoteItems/pricing/hotel reads', async () => {
+  const { prisma, calls } = makeFakePrisma(persistedDayRows());
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeTransport('quote-1', { companyId: 'co-1' });
+
+  const byDay = Object.fromEntries(result.suggestions.map((s: any) => [s.dayNumber, s.suggestedTransportType]));
+  assert.equal(byDay[1], 'ARRIVAL_TRANSFER');
+  assert.equal(byDay[2], 'TOURING_FULL_DAY');
+  assert.equal(byDay[3], 'TOURING_FULL_DAY');
+  assert.equal(byDay[4], 'TOURING_FULL_DAY');
+  assert.equal(byDay[5], 'TOURING_FULL_DAY');
+  assert.equal(byDay[6], 'NONE');
+  assert.equal(byDay[8], 'DEPARTURE_TRANSFER');
+  assert.equal(result.transportDayCount, 7); // D1-D5 + D7 (Bethany) + D8; only D6 (leisure) excluded
+  // strictly read-only — no writes, no hotel master read, no QuoteItem/pricing
+  assert.equal(calls.dayCreate.length, 0);
+  assert.equal(calls.dayDeleteMany, 0);
+  assert.equal(calls.auditCreate.length, 0);
+  assert.equal(calls.hotelFindMany, 0, 'transport does not read the hotel master');
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
+  // no vehicle/rate/price leaks in the planning payload
+  assert.doesNotMatch(JSON.stringify(result), /Sedan|Coaster|\bprice\b|markup|totalSell/i);
+});
+
+test('R.3: no days → empty suggestions with a clear message', async () => {
+  const { prisma } = makeFakePrisma([]);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeTransport('quote-1', { companyId: 'co-1' });
+  assert.deepEqual(result.suggestions, []);
+  assert.match(result.message, /no active itinerary days/i);
+});
