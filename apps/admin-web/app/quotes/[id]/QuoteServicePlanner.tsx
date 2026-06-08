@@ -18,6 +18,7 @@ import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
 import { formatOriginAwareExcursionName, getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
 import { resolveTouringRoutePackageLabel } from './quote-item-label';
+import { CUSTOM_DAY_PRESET_KEY, DAY_ROUTE_PRESETS, getDayRoutePreset, type DayRoutePreset } from './day-route-presets';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
@@ -2768,6 +2769,7 @@ function DayNarrativePanel({
   value,
   error,
   onDescriptionEdit,
+  onPresetSelect,
   onTimelineEdit,
   onTimelineAdd,
 }: {
@@ -2775,6 +2777,7 @@ function DayNarrativePanel({
   value: string;
   error: string;
   onDescriptionEdit: () => void;
+  onPresetSelect: (preset: DayRoutePreset) => void;
   onTimelineEdit: (item: DayTimelineItem, index: number) => void;
   onTimelineAdd: () => void;
 }) {
@@ -2792,6 +2795,34 @@ function DayNarrativePanel({
           Edit title &amp; narrative
         </button>
       </div>
+
+      {/* Phase R.4b-1 — pick a structured route/day plan to prefill the title +
+          narrative editor. Selecting a preset opens the editor pre-filled; it
+          does NOT save until "Save title & narrative" is clicked, and "Custom"
+          leaves the day as free text. No services applied, no pricing. */}
+      <label className="quote-day-route-preset">
+        <span className="eyebrow">Route / Day Plan</span>
+        <select
+          className="quote-day-route-preset-select"
+          value={CUSTOM_DAY_PRESET_KEY}
+          onChange={(event) => {
+            const preset = getDayRoutePreset(event.target.value);
+            // Reset back to "Custom" — this is a one-shot prefill action, not a
+            // persisted selection (we don't store a preset key in this phase).
+            event.target.value = CUSTOM_DAY_PRESET_KEY;
+            if (preset) {
+              onPresetSelect(preset);
+            }
+          }}
+        >
+          <option value={CUSTOM_DAY_PRESET_KEY}>Custom (free text)</option>
+          {DAY_ROUTE_PRESETS.map((preset) => (
+            <option key={preset.key} value={preset.key}>
+              {preset.label}
+            </option>
+          ))}
+        </select>
+      </label>
       {hasDescription ? (
         <p className="quote-day-description-copy">{parsed.description}</p>
       ) : (
@@ -3909,6 +3940,15 @@ function ScopePlanner({
                   onDescriptionEdit={() => {
                     const parsed = parseDayContent(getDayContent(summary.day));
                     setActiveDayDescription({ day: summary.day, draft: parsed.description, titleDraft: summary.day.title || '' });
+                  }}
+                  onPresetSelect={(preset) => {
+                    // Prefill the title + narrative editor from the chosen route
+                    // preset (preserves any existing timeline). Operator reviews
+                    // and clicks "Save title & narrative" to persist.
+                    const parsed = parseDayContent(getDayContent(summary.day));
+                    const prefillContent = serializeDayContent(preset.narrative, parsed.timeline);
+                    const draft = parseDayContent(prefillContent).description;
+                    setActiveDayDescription({ day: summary.day, draft, titleDraft: preset.defaultTitle });
                   }}
                   onTimelineAdd={() => {
                     const parsed = parseDayContent(getDayContent(summary.day));
