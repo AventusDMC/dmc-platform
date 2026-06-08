@@ -1,0 +1,146 @@
+import { test } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { QuoteItineraryService } from './quote-itinerary.service';
+
+// Phase R.1b — preview/apply of the tailor-made draft create editable
+// QuoteItineraryDay rows only: no QuoteItems, no pricing. A fake Prisma records
+// every model call so we can assert exactly what was (and wasn't) written.
+
+const ACTOR = { id: 'user-1', auditLabel: 'Operator', companyId: 'co-1' };
+
+const INPUT = {
+  durationDays: 8,
+  arrivalCity: 'Amman',
+  departureCity: 'Dead Sea',
+  requiredPlaces: ['Petra', 'Wadi Rum', 'Dead Sea', 'Jerash'],
+  optionalPlaces: ['Madaba', 'Mount Nebo', 'Bethany'],
+};
+
+function makeFakePrisma(existingDays: any[] = []) {
+  const calls = {
+    dayCreate: [] as any[],
+    dayDeleteMany: 0,
+    auditCreate: [] as any[],
+    quoteItemCalls: 0,
+    pricingCalls: 0,
+  };
+  const store: any[] = [...existingDays];
+
+  const dayModel = {
+    findMany: async () => store.slice(),
+    create: async ({ data }: any) => {
+      const row = { id: `day-${data.dayNumber}`, createdAt: new Date('2026-06-01T00:00:00.000Z'), updatedAt: new Date('2026-06-01T00:00:00.000Z'), dayItems: [], poiAssignments: [], ...data };
+      calls.dayCreate.push(data);
+      store.push(row);
+      return row;
+    },
+    deleteMany: async () => {
+      calls.dayDeleteMany += 1;
+      store.length = 0;
+      return { count: 0 };
+    },
+  };
+  const auditModel = { create: async ({ data }: any) => { calls.auditCreate.push(data); return data; } };
+
+  // A Proxy traps any access to a model we did NOT explicitly define and flags
+  // it — so if the service ever touched quoteItem / pricing, the test would catch it.
+  const base: any = {
+    quote: { findUnique: async () => ({ id: 'quote-1' }), findFirst: async () => ({ id: 'quote-1' }) },
+    quoteItineraryDay: dayModel,
+    quoteItineraryAuditLog: auditModel,
+    $transaction: async (cb: any) => cb({ quoteItineraryDay: dayModel, quoteItineraryAuditLog: auditModel }),
+  };
+  const prisma = new Proxy(base, {
+    get(target, prop: string) {
+      if (prop in target) return target[prop];
+      if (prop === 'quoteItem' || prop === 'quoteService') { calls.quoteItemCalls += 1; }
+      if (/pricing|hotelRate|vehicleRate|markup/i.test(prop)) { calls.pricingCalls += 1; }
+      // Return a benign no-op model so an unexpected access doesn't crash but is counted.
+      return new Proxy({}, { get: () => async () => { throw new Error(`Unexpected prisma access: ${prop}`); } });
+    },
+  });
+
+  return { prisma, calls, store };
+}
+
+function activeDay(dayNumber: number) {
+  return { id: `existing-${dayNumber}`, quoteId: 'quote-1', dayNumber, title: `Manual Day ${dayNumber}`, notes: 'manual', country: null, sortOrder: dayNumber - 1, isActive: true, dayItems: [], poiAssignments: [] };
+}
+
+// ---- PREVIEW ----
+
+test('preview returns an 8-day / 7-overnight draft and writes nothing', async () => {
+  const { prisma, calls } = makeFakePrisma();
+  const service = new QuoteItineraryService(prisma as any);
+  const draft = await service.previewTailorMadeDraft('quote-1', INPUT, { companyId: 'co-1' });
+  assert.equal(draft.days.length, 8);
+  assert.equal(draft.overnightCount, 7);
+  assert.deepEqual(draft.unplacedRequiredPlaces, []);
+  // no DB writes at all
+  assert.equal(calls.dayCreate.length, 0, 'no days created');
+  assert.equal(calls.dayDeleteMany, 0, 'no deletes');
+  assert.equal(calls.auditCreate.length, 0, 'no audit writes');
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+});
+
+// ---- APPLY (empty quote) ----
+
+test('apply on an empty quote creates 8 active QuoteItineraryDay rows with the right fields', async () => {
+  const { prisma, calls } = makeFakePrisma([]);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.applyTailorMadeDraft('quote-1', INPUT, {}, ACTOR, { companyId: 'co-1' });
+
+  assert.equal(calls.dayCreate.length, 8, '8 days created');
+  assert.equal(calls.dayDeleteMany, 0, 'nothing deleted on an empty quote');
+  // editable fields map correctly
+  calls.dayCreate.forEach((data, i) => {
+    assert.equal(data.dayNumber, i + 1);
+    assert.equal(data.sortOrder, i, 'sortOrder = dayNumber - 1');
+    assert.equal(data.country, 'Jordan');
+    assert.equal(data.isActive, true);
+    assert.equal(typeof data.title, 'string');
+    assert.equal(typeof data.notes, 'string');
+    assert.ok(data.notes.length > 0, 'narrative stored in notes');
+  });
+  assert.equal(calls.dayCreate[0].title, 'Arrival Amman');
+  assert.equal(calls.dayCreate[7].title, 'Departure');
+  // no QuoteItems / pricing touched
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
+  // returns the saved itinerary + the draft echo
+  assert.ok(result.draft);
+  assert.equal(result.draft.days.length, 8);
+  assert.equal(result.days.length, 8);
+});
+
+// ---- APPLY conflict ----
+
+test('apply conflicts (409) when active days exist and replaceExisting is not set', async () => {
+  const { prisma, calls } = makeFakePrisma([activeDay(1), activeDay(2), activeDay(3)]);
+  const service = new QuoteItineraryService(prisma as any);
+  await assert.rejects(
+    () => service.applyTailorMadeDraft('quote-1', INPUT, {}, ACTOR, { companyId: 'co-1' }),
+    /already has 3 itinerary day/i,
+  );
+  assert.equal(calls.dayCreate.length, 0, 'no days created on conflict');
+  assert.equal(calls.dayDeleteMany, 0, 'nothing deleted on conflict');
+});
+
+// ---- APPLY replaceExisting ----
+
+test('apply with replaceExisting:true replaces day rows (deleteMany) and creates 8, touching no QuoteItems', async () => {
+  const { prisma, calls } = makeFakePrisma([activeDay(1), activeDay(2)]);
+  const service = new QuoteItineraryService(prisma as any);
+  await service.applyTailorMadeDraft('quote-1', INPUT, { replaceExisting: true }, ACTOR, { companyId: 'co-1' });
+
+  assert.equal(calls.dayDeleteMany, 1, 'existing day rows deleted once');
+  assert.equal(calls.dayCreate.length, 8, '8 new days created');
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+  // each removed day was audited, each created day was audited
+  const replaced = calls.auditCreate.filter((a) => a.action === 'DAY_REPLACED_BY_TAILOR_MADE_DRAFT');
+  const created = calls.auditCreate.filter((a) => a.action === 'DAY_CREATED_FROM_TAILOR_MADE_DRAFT');
+  assert.equal(replaced.length, 2);
+  assert.equal(created.length, 8);
+});

@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { buildTailorMadeJordanDraft, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -136,6 +137,93 @@ export class QuoteItineraryService {
     });
 
     return this.findDayOrThrow(createdDay.id);
+  }
+
+  // Phase R.1b — Tailor-made draft PREVIEW. Pure read: validates the quote
+  // exists, then returns the generated day-by-day draft. Writes nothing.
+  async previewTailorMadeDraft(
+    quoteId: string,
+    input: TailorMadeDraftInput,
+    actor?: CompanyScopedActor,
+  ): Promise<TailorMadeDraft> {
+    await this.ensureQuoteExists(quoteId, actor);
+    return buildTailorMadeJordanDraft(input || {});
+  }
+
+  // Phase R.1b — Tailor-made draft APPLY. Persists the generated draft as
+  // editable QuoteItineraryDay rows ONLY (no QuoteItems, no pricing). Safety:
+  //  - If the quote already has itinerary days, returns 409 Conflict unless
+  //    replaceExisting:true is provided (never silently clobbers manual days).
+  //  - replaceExisting:true replaces ONLY the itinerary-day rows (their
+  //    day↔item links + POI assignments cascade away); saved QuoteItems and
+  //    their pricing are untouched.
+  async applyTailorMadeDraft(
+    quoteId: string,
+    input: TailorMadeDraftInput,
+    options: { replaceExisting?: boolean } | undefined,
+    actor: QuoteItineraryAuditActor,
+    companyActor?: CompanyScopedActor,
+  ) {
+    await this.ensureQuoteExists(quoteId, companyActor);
+    const requiredActor = this.requireActor(actor);
+    const replaceExisting = options?.replaceExisting === true;
+    const draft = buildTailorMadeJordanDraft(input || {});
+
+    await this.prisma.$transaction(async (tx) => {
+      const txDayModel = (tx as any).quoteItineraryDay;
+      const existing = await txDayModel.findMany({
+        where: { quoteId },
+        orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }, { createdAt: 'asc' }],
+      });
+      const activeExisting = existing.filter((day: any) => day.isActive);
+
+      if (activeExisting.length > 0 && !replaceExisting) {
+        throw new ConflictException(
+          `This quote already has ${activeExisting.length} itinerary day(s). Pass replaceExisting: true to replace the itinerary-day structure. Saved services, items and pricing are not affected.`,
+        );
+      }
+
+      if (replaceExisting && existing.length > 0) {
+        for (const day of existing) {
+          await this.writeAuditLog(tx, {
+            quoteId,
+            dayId: day.id,
+            action: 'DAY_REPLACED_BY_TAILOR_MADE_DRAFT',
+            oldValue: this.formatDaySummary(day),
+            newValue: null,
+            actor: requiredActor,
+          });
+        }
+        // Deletes day shells (+ cascades their day-item links and POI
+        // assignments). Does NOT touch QuoteItem rows or their pricing.
+        await txDayModel.deleteMany({ where: { quoteId } });
+      }
+
+      for (const day of draft.days) {
+        const created = await txDayModel.create({
+          data: {
+            quoteId,
+            dayNumber: day.dayNumber,
+            title: day.title,
+            notes: day.narrative,
+            country: 'Jordan',
+            isActive: true,
+            sortOrder: day.dayNumber - 1,
+          },
+        });
+        await this.writeAuditLog(tx, {
+          quoteId,
+          dayId: created.id,
+          action: 'DAY_CREATED_FROM_TAILOR_MADE_DRAFT',
+          oldValue: null,
+          newValue: this.formatDaySummary(created),
+          actor: requiredActor,
+        });
+      }
+    });
+
+    const saved = await this.findByQuoteId(quoteId, companyActor as CompanyScopedActor);
+    return { draft, ...saved };
   }
 
   async updateDay(dayId: string, data: UpdateQuoteItineraryDayDto, actor?: QuoteItineraryAuditActor) {
