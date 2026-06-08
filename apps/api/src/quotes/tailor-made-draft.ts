@@ -811,6 +811,24 @@ export interface ActivityMasterRecord {
 // ticket are preferred. (The ACTIVITY branch has its own specific matching.)
 const ENTRANCE_NEGATIVE_RE = /by night|\bnight\b|\boptional\b|\bactivity\b/i;
 const ENTRANCE_POSITIVE_RE = /\bentrance\b|\barchaeolog|\bsite\b|\bticket\b/i;
+// Phase R.4d — a main SITE / ENTRANCE record (incl. "site & museum") should beat
+// a museum-only record for the same place (e.g. the Jerash site entrance over
+// "Jerash Archaeological Museum"). Museum-only is penalized, not excluded, so it
+// still wins when it is the only record available.
+const MAIN_ENTRANCE_RE = /\bsite\b|\bentrance\b/i;
+const MUSEUM_ONLY_RE = /\bmuseum\b/i;
+
+/**
+ * Phase R.4c/R.4d — score a term-matched master record for an ENTRANCE/TICKET
+ * suggestion. Higher is better; main-site/entrance records outrank museum-only.
+ */
+function scoreEntranceRecord(recordText: string): number {
+  let score = 0;
+  if (MAIN_ENTRANCE_RE.test(recordText)) score += 2; // main site / entrance signal
+  if (ENTRANCE_POSITIVE_RE.test(recordText)) score += 1; // any entrance-like signal (archaeolog/ticket/…)
+  if (MUSEUM_ONLY_RE.test(recordText) && !MAIN_ENTRANCE_RE.test(recordText)) score -= 2; // museum-only penalty
+  return score;
+}
 
 /**
  * Phase R.4 — best-effort, read-only enrichment: attach the matched master
@@ -856,17 +874,18 @@ export function enrichExperienceMatches(
     // SERVICE (entrance/ticket): rank the term-matched records.
     //  1. exclude optional / "by Night" / activity variants (a daytime entrance
     //     must not resolve to "… by Night" or an optional add-on);
-    //  2. prefer records that read like a main entrance / site / ticket;
+    //  2. score the rest — a main site/entrance record (incl. "site & museum")
+    //     outranks a museum-only record (R.4d); stable on ties;
     //  3. if every candidate is excluded, leave the suggestion descriptive.
     const svc =
       services
         .filter((m) => hit(m.siteName || '', s.matchTerms) || hit(m.name, s.matchTerms))
-        .map((m) => {
+        .map((m, index) => {
           const recordText = `${clean(m.siteName || '')} ${clean(m.name)}`;
-          return { m, negative: ENTRANCE_NEGATIVE_RE.test(recordText), positive: ENTRANCE_POSITIVE_RE.test(recordText) };
+          return { m, index, negative: ENTRANCE_NEGATIVE_RE.test(recordText), score: scoreEntranceRecord(recordText) };
         })
         .filter((c) => !c.negative)
-        .sort((a, b) => (b.positive ? 1 : 0) - (a.positive ? 1 : 0))[0]?.m || null;
+        .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.m || null;
     if (svc) {
       return { ...s, matchedServiceId: svc.serviceId, matchedName: clean(svc.siteName || svc.name) || null };
     }
