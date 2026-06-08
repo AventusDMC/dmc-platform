@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { buildTailorMadeJordanDraft } from './tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveOvernightCityFromDay } from './tailor-made-draft';
 
 // Phase R.1 — the tailor-made draft generator produces an editable 8-day /
 // 7-overnight Jordan classic itinerary structure with no pricing/DB side effects.
@@ -110,4 +110,78 @@ test('a custom arrival city flows into Day 1 and the city-tour title', () => {
   const draft = buildTailorMadeJordanDraft({ ...CLASSIC, arrivalCity: 'Aqaba', optionalPlaces: [] });
   assert.match(draft.days[0].title, /Arrival Aqaba/);
   assert.equal(draft.days[0].overnightCity, 'Aqaba');
+});
+
+// ---- Phase R.2: overnight-stay grouping (read-only hotel suggestions) ----
+
+// Map a generated draft into the day shells as APPLY persists them
+// (title + notes=narrative), to prove grouping works on stored rows.
+function persistedDays(input: any) {
+  return buildTailorMadeJordanDraft(input).days.map((d) => ({
+    dayNumber: d.dayNumber,
+    title: d.title,
+    notes: d.narrative,
+    isActive: true,
+  }));
+}
+
+test('R.2: standard 8-day draft groups into Amman×2, Petra×1, Wadi Rum×1, Dead Sea×3', () => {
+  const stays = deriveOvernightStays(persistedDays(CLASSIC), '4-star');
+  assert.deepEqual(
+    stays.map((s) => `${s.city} x${s.nights} (D${s.startDay}-${s.endDay})`),
+    ['Amman x2 (D1-2)', 'Petra x1 (D3-3)', 'Wadi Rum x1 (D4-4)', 'Dead Sea x3 (D5-7)'],
+  );
+  // hotel category echoed, candidates intentionally empty (grouping-only), no pricing fields
+  assert.ok(stays.every((s) => s.hotelCategory === '4-star'));
+  assert.ok(stays.every((s) => Array.isArray(s.candidateHotels) && s.candidateHotels.length === 0));
+  assert.doesNotMatch(JSON.stringify(stays), /price|cost|total|amount|rate/i);
+});
+
+test('R.2: the departure day produces no stay', () => {
+  const stays = deriveOvernightStays(persistedDays(CLASSIC));
+  const totalNights = stays.reduce((n, s) => n + s.nights, 0);
+  assert.equal(totalNights, 7, '7 overnight nights across 8 days');
+  assert.ok(!stays.some((s) => /departure/i.test(s.city)));
+});
+
+test('R.2: overnight city derives from narrative, falling back to the title', () => {
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 1, title: 'Arrival Amman', notes: 'Meet & assist at QAIA, transfer to Amman, overnight Amman.' }), 'Amman');
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 6, title: 'Dead Sea', notes: 'Free day at the Dead Sea, overnight Dead Sea.' }), 'Dead Sea');
+  // title fallback when notes carry no "overnight" sentence
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 4, title: 'Petra Visit / Wadi Rum', notes: 'Edited note without overnight keyword' }), 'Wadi Rum');
+  // departure day → no overnight
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 8, title: 'Departure', notes: 'Transfer from Dead Sea to QAIA for your departure flight.' }), null);
+});
+
+test('R.2: consecutive same-city days merge; non-consecutive do not', () => {
+  const days = [
+    { dayNumber: 1, title: 'Amman', notes: 'overnight Amman.', isActive: true },
+    { dayNumber: 2, title: 'Petra', notes: 'overnight Petra.', isActive: true },
+    { dayNumber: 3, title: 'Amman', notes: 'overnight Amman.', isActive: true },
+  ];
+  const stays = deriveOvernightStays(days);
+  // Amman on D1 and D3 are NOT consecutive → two separate Amman stays
+  assert.deepEqual(stays.map((s) => `${s.city}:${s.startDay}-${s.endDay}`), ['Amman:1-1', 'Petra:2-2', 'Amman:3-3']);
+});
+
+test('R.2: narrative fallback derives the city when the title is blank', () => {
+  const days = [
+    { dayNumber: 1, title: '', notes: 'Arrival and transfer, overnight Amman.', isActive: true },
+    { dayNumber: 2, title: '', notes: 'Leisure day, overnight Amman.', isActive: true },
+  ];
+  // blank titles → narrative "…, overnight Amman." fallback → one merged 2-night stay
+  assert.deepEqual(deriveOvernightStays(days).map((s) => `${s.city}:${s.nights}`), ['Amman:2']);
+});
+
+test('R.2: no days → empty stays (clear empty state, no throw)', () => {
+  assert.deepEqual(deriveOvernightStays([]), []);
+  assert.deepEqual(deriveOvernightStays([{ dayNumber: 1, title: 'Departure', notes: '' }]), []);
+});
+
+test('R.2: inactive days are ignored', () => {
+  const days = [
+    { dayNumber: 1, title: 'Amman', notes: 'overnight Amman.', isActive: false },
+    { dayNumber: 2, title: 'Petra', notes: 'overnight Petra.', isActive: true },
+  ];
+  assert.deepEqual(deriveOvernightStays(days).map((s) => s.city), ['Petra']);
 });

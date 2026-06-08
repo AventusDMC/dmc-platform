@@ -27,6 +27,16 @@ type Draft = {
   unplacedRequiredPlaces: string[];
 };
 
+type HotelStay = {
+  city: string;
+  nights: number;
+  startDay: number;
+  endDay: number;
+  hotelCategory: string | null;
+  candidateHotels: string[];
+  notes: string;
+};
+
 type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -64,6 +74,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
   const [success, setSuccess] = useState('');
+
+  // Phase R.2 — read-only hotel-stay suggestions (grouping only; no apply).
+  const [hotelStays, setHotelStays] = useState<HotelStay[] | null>(null);
+  const [stayMessage, setStayMessage] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
 
   function buildInput() {
     return {
@@ -129,6 +144,30 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
       setError(caught instanceof Error ? caught.message : 'Could not apply the tailor-made draft.');
     } finally {
       setApplying(false);
+    }
+  }
+
+  // Phase R.2 — read-only hotel-stay suggestions (no apply, no pricing).
+  async function handleSuggestHotels() {
+    setSuggesting(true);
+    setError('');
+    setStayMessage('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/tailor-made-draft/hotel-suggestions`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ hotelCategory, currency }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not generate hotel suggestions.'));
+      }
+      const result = await response.json();
+      setHotelStays(Array.isArray(result?.stays) ? result.stays : []);
+      setStayMessage(typeof result?.message === 'string' ? result.message : '');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not generate hotel suggestions.');
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -218,6 +257,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
         <button type="button" onClick={handleApply} disabled={applying} className="secondary">
           {applying ? 'Applying…' : 'Apply to Quote'}
         </button>
+        <button type="button" onClick={handleSuggestHotels} disabled={suggesting} className="secondary">
+          {suggesting ? 'Loading…' : 'Preview Hotel Suggestions'}
+        </button>
         <label className="checkbox-inline">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
           Replace existing itinerary days
@@ -255,6 +297,33 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
           <p className="form-help">
             Preview only — no itinerary days, hotels, transport, tickets, guides, or pricing have been created yet.
           </p>
+        </div>
+      ) : null}
+
+      {hotelStays ? (
+        <div className="tailor-made-hotel-suggestions">
+          <h4>Suggested Hotel Stays</h4>
+          {hotelStays.length === 0 ? (
+            <p className="form-help">{stayMessage || 'No itinerary days yet — apply a tailor-made draft first.'}</p>
+          ) : (
+            <>
+              <ol className="tailor-made-hotel-stays">
+                {hotelStays.map((stay) => (
+                  <li key={`${stay.city}-${stay.startDay}`} className="tailor-made-hotel-stay">
+                    <strong>{stay.city}</strong> — {stay.nights} night{stay.nights === 1 ? '' : 's'} —{' '}
+                    {stay.startDay === stay.endDay ? `Day ${stay.startDay}` : `Days ${stay.startDay}–${stay.endDay}`}
+                    {stay.hotelCategory ? ` • ${stay.hotelCategory}` : ''}
+                    {stay.candidateHotels && stay.candidateHotels.length ? (
+                      <span className="form-help"> • {stay.candidateHotels.join(', ')}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+              <p className="form-help">
+                Read-only suggestions grouped by overnight city. No hotels have been applied and no pricing has run.
+              </p>
+            </>
+          )}
         </div>
       ) : null}
     </section>
