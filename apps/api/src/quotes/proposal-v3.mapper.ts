@@ -1627,10 +1627,6 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
   };
 }
 
-function formatPricingBasisLabel(value: unknown) {
-  return String(value || '').trim().toUpperCase() === 'PER_PERSON' ? 'per person/night' : 'per room/night';
-}
-
 function formatDisplayNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -1707,7 +1703,10 @@ function buildPdfExportConsistencyLines(quote: ProposalV3Quote, currency: string
       continue;
     }
 
-    lines.push(`${cleanText(item.hotel?.name || item.service.name) || 'Hotel'} rate basis: ${formatPricingBasisLabel(item.pricingBasis)}`);
+    // Phase O — the per-hotel "<Hotel> rate basis: per room/night" line was
+    // internal pricing-mechanics noise repeated once per hotel night. It is no
+    // longer surfaced to the client; the pricing basis still drives the saved
+    // QuoteItem math and remains available in admin/debug.
 
     const ratePolicies = Array.isArray(item.ratePolicies) ? item.ratePolicies : [];
     const childPolicies = ratePolicies
@@ -1794,29 +1793,36 @@ function buildDefaultExclusions(_quote: ProposalV3Quote) {
 }
 
 function buildDefaultNotes(quote: ProposalV3Quote) {
-  const pricingNotes = Array.from(
+  // Phase O — consolidate tax/service-charge notes into a single clean
+  // client-facing line instead of repeating a per-hotel percentage bullet
+  // (7%, 8%, 5%, 10%…). The percentages remain in the saved QuoteItem /
+  // pricing math and admin/debug; the client only needs the included vs
+  // additional signal. Tourism-fee notes keep their existing wording (deduped).
+  const taxOrServiceItems = quote.quoteItems.filter(
+    (item) => item.salesTaxPercent || item.serviceChargePercent,
+  );
+  const anyTaxOrServiceExcluded = taxOrServiceItems.some(
+    (item) =>
+      (item.salesTaxPercent && item.salesTaxIncluded === false) ||
+      (item.serviceChargePercent && item.serviceChargeIncluded === false),
+  );
+  const taxServiceNote =
+    taxOrServiceItems.length === 0
+      ? null
+      : anyTaxOrServiceExcluded
+        ? 'Taxes and service charges may apply where applicable.'
+        : 'Taxes and service charges are included where applicable.';
+  const tourismFeeNotes = Array.from(
     new Set(
-      quote.quoteItems.flatMap((item) => {
-        const notes = [
-          item.salesTaxPercent
-            ? item.salesTaxIncluded
-              ? `Applicable taxes are included at ${item.salesTaxPercent}%.`
-              : `Applicable taxes are not included and may apply at ${item.salesTaxPercent}%.`
-            : null,
-          item.serviceChargePercent
-            ? item.serviceChargeIncluded
-              ? `Service charge is included at ${item.serviceChargePercent}% where applicable.`
-              : `Service charge is not included and may apply at ${item.serviceChargePercent}% where applicable.`
-            : null,
-          item.tourismFeeAmount
-            ? `Tourism fee paid to hotel is charged ${item.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? 'per night per guest' : 'per night per room'} where applicable.`
-            : null,
-        ].filter(Boolean);
-
-        return notes as string[];
-      }),
+      quote.quoteItems
+        .filter((item) => item.tourismFeeAmount)
+        .map(
+          (item) =>
+            `Tourism fee paid to hotel is charged ${item.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? 'per night per guest' : 'per night per room'} where applicable.`,
+        ),
     ),
   );
+  const pricingNotes = [taxServiceNote, ...tourismFeeNotes].filter(Boolean) as string[];
   // Phase 3A localizes the three always-present fixed notes. The conditional
   // "N additional options" suffix and the computed tax/service/tourism pricing
   // notes remain English for now (dynamic copy — a later copy pass).

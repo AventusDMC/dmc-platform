@@ -197,6 +197,19 @@ const PRICING_PHRASES: Record<string, Record<ProposalLocale, string>> = {
     es: 'La selección final del tramo depende del tamaño de grupo confirmado.',
     ar: 'يعتمد اختيار الشريحة النهائي على حجم المجموعة المؤكد.',
   },
+  // Phase O — single consolidated tax/service-charge note (no per-hotel percentages).
+  taxesServiceIncluded: {
+    en: 'Taxes and service charges are included where applicable.',
+    pt: 'Impostos e taxas de serviço estão incluídos quando aplicável.',
+    es: 'Los impuestos y cargos por servicio están incluidos cuando corresponda.',
+    ar: 'الضرائب ورسوم الخدمة مشمولة حيثما ينطبق.',
+  },
+  taxesServiceMayApply: {
+    en: 'Taxes and service charges may apply where applicable.',
+    pt: 'Impostos e taxas de serviço podem ser aplicados quando aplicável.',
+    es: 'Pueden aplicarse impuestos y cargos por servicio cuando corresponda.',
+    ar: 'قد تُطبَّق الضرائب ورسوم الخدمة حيثما ينطبق.',
+  },
 };
 
 function pricingPhrase(locale: ProposalLocale, key: keyof typeof PRICING_PHRASES): string {
@@ -238,6 +251,9 @@ export function localizePricingLine(locale: ProposalLocale, line: string | null 
   if ((m = raw.match(/^Total Package Price: (.+)$/))) {
     return `${pricingPhrase(locale, 'totalPackagePrice')}: ${m[1]}`;
   }
+  // Phase O — consolidated tax/service-charge notes (fixed strings, no percentage).
+  if (raw === PRICING_PHRASES.taxesServiceIncluded.en) return pricingPhrase(locale, 'taxesServiceIncluded');
+  if (raw === PRICING_PHRASES.taxesServiceMayApply.en) return pricingPhrase(locale, 'taxesServiceMayApply');
   if ((m = raw.match(/^Applicable taxes are included at ([\d.]+)%\.$/))) {
     const p = m[1];
     return { pt: `Os impostos aplicáveis estão incluídos a ${p}%.`, es: `Los impuestos aplicables están incluidos al ${p}%.`, ar: `الضرائب المطبَّقة مشمولة بنسبة ${p}%.` }[locale as 'pt' | 'es' | 'ar'];

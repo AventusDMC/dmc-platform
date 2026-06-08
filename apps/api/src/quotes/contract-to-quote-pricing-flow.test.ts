@@ -437,7 +437,8 @@ test('regression: imported contract approval drives quote pricing and proposal e
     ],
   });
 
-  assert.ok(proposal.investment.noteLines.includes('Grand Petra Hotel rate basis: per person/night'));
+  // Phase O — the per-hotel rate-basis line is no longer surfaced to the client.
+  assert.ok(!proposal.investment.noteLines.some((line) => /rate basis:/i.test(line)));
   assert.ok(proposal.investment.noteLines.includes('Child policy: Children 6-11 pay 50%'));
   assert.match(proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '', /Gala Dinner \$30\.00 per person/);
   assert.ok(proposal.investment.noteLines.includes('Total Package Price: $372.00'));
@@ -749,7 +750,8 @@ test('explicit quote recalculation refreshes pricing basis supplements and child
   assert.match(supplementsLine, /Extra Dinner \$20\.00 per room/);
   assert.match(supplementsLine, /Gala Dinner \$40\.00 per person/);
   assert.doesNotMatch(supplementsLine, /Extra Bed/);
-  assert.ok(proposal.investment.noteLines.includes('Grand Petra Hotel rate basis: per room/night'));
+  // Phase O — the per-hotel rate-basis line is no longer surfaced to the client.
+  assert.ok(!proposal.investment.noteLines.some((line) => /rate basis:/i.test(line)));
   assert.ok(proposal.investment.noteLines.includes('Child policy: Children 0-11 free'));
   assert.ok(proposal.investment.noteLines.includes('Total Package Price: $336.00'));
 });
@@ -786,7 +788,9 @@ test('recalculated quote contains no mixed old and new contract data in API summ
   assert.equal(recalculated.totalCost, 200);
   assert.equal(recalculated.pricingBasis, 'PER_ROOM');
   assert.equal(recalculated.supplements.map((supplement: any) => supplement.id).join(','), 'new-dinner');
-  assert.match(pdfLines, /per room\/night/);
+  // Phase O — the per-hotel rate-basis line is no longer surfaced to the client
+  // (the recalculated pricingBasis is still verified on the data side above).
+  assert.doesNotMatch(pdfLines, /rate basis: per (room|person)\/night/);
   assert.match(pdfLines, /Extra Dinner \$20\.00 per room/);
   assert.match(pdfLines, /Total Package Price: \$240\.00/);
   assert.doesNotMatch(pdfLines, /PDF total cost|PDF margin/);
