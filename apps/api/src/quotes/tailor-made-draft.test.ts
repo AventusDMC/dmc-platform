@@ -185,3 +185,44 @@ test('R.2: inactive days are ignored', () => {
   ];
   assert.deepEqual(deriveOvernightStays(days).map((s) => s.city), ['Petra']);
 });
+
+// ---- Phase R.2b: contract-backed candidate matching (pure) ----
+
+import { matchHotelCandidatesForStay } from './tailor-made-draft';
+
+const HOTELS = [
+  { id: 'h-corp', name: 'Corp Amman Hotel', city: 'Amman', category: '4-star', preferenceRank: 1, activeContracts: [{ id: 'c1', verified: true }] },
+  { id: 'h-hyatt', name: 'Grand Hyatt Amman', city: 'Amman', category: '5-star', preferenceRank: null, activeContracts: [{ id: 'c2', verified: false }] },
+  { id: 'h-noc', name: 'No Contract Amman Inn', city: 'Amman', category: '3-star', preferenceRank: null, activeContracts: [] },
+  { id: 'h-moon', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4-star', preferenceRank: null, activeContracts: [{ id: 'c3', verified: true }] },
+  { id: 'h-sun', name: 'Sun City Camp', city: 'Wadi Rum', category: '4-star', preferenceRank: null, activeContracts: [{ id: 'c4', verified: true }] },
+];
+
+test('R.2b: candidates match by city (fuzzy) and rank preferred→verified→active→alpha', () => {
+  const amman = matchHotelCandidatesForStay('Amman', HOTELS);
+  assert.deepEqual(amman.map((c) => c.hotelName), ['Corp Amman Hotel', 'Grand Hyatt Amman', 'No Contract Amman Inn']);
+  // preferred (rank 1) first; reasons reflect the strongest signal
+  assert.equal(amman[0].reason, 'Verified contract'); // verified takes the label even with rank
+  assert.equal(amman.find((c) => c.hotelName === 'No Contract Amman Inn')!.reason, 'City match');
+});
+
+test('R.2b: "Petra" fuzzy-matches a "Petra / Wadi Musa" hotel; Wadi Rum exact', () => {
+  assert.deepEqual(matchHotelCandidatesForStay('Petra', HOTELS).map((c) => c.hotelName), ['Petra Moon Hotel']);
+  assert.deepEqual(matchHotelCandidatesForStay('Wadi Rum', HOTELS).map((c) => c.hotelName), ['Sun City Camp']);
+});
+
+test('R.2b: candidates carry no contract NAME or pricing, only safe planning fields', () => {
+  const c = matchHotelCandidatesForStay('Amman', HOTELS)[0];
+  assert.deepEqual(Object.keys(c).sort(), ['category', 'city', 'contractId', 'hasActiveContract', 'hotelId', 'hotelName', 'reason', 'verified']);
+  assert.doesNotMatch(JSON.stringify(matchHotelCandidatesForStay('Amman', HOTELS)), /price|cost|total|amount|rate|agreement/i);
+});
+
+test('R.2b: no city match → empty candidates (clear, no throw)', () => {
+  assert.deepEqual(matchHotelCandidatesForStay('Aqaba', HOTELS), []);
+  assert.deepEqual(matchHotelCandidatesForStay('', HOTELS), []);
+});
+
+test('R.2b: limit caps candidates per stay', () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ id: `x${i}`, name: `Amman Hotel ${i}`, city: 'Amman', activeContracts: [] }));
+  assert.equal(matchHotelCandidatesForStay('Amman', many, { limit: 3 }).length, 3);
+});

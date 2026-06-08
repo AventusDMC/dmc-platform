@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, deriveOvernightStays, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, matchHotelCandidatesForStay, type HotelMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -247,6 +247,37 @@ export class QuoteItineraryService {
     const hotelCategory = normalizeOptionalString(options?.hotelCategory) || '4-star';
     const currency = (normalizeOptionalString(options?.currency) || 'USD').toUpperCase();
     const stays = deriveOvernightStays(days || [], hotelCategory);
+
+    // Phase R.2b — enrich each stay with read-only candidate hotels from the
+    // hotel master. ONE read query; active contracts filtered by date; we read
+    // only id + confidence (never the contract name). No pricing, no writes.
+    if (stays.length > 0) {
+      const today = new Date();
+      const hotels = await (this.prisma as any).hotel.findMany({
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          category: true,
+          preferenceRank: true,
+          contracts: {
+            where: { validFrom: { lte: today }, validTo: { gte: today } },
+            select: { id: true, confidence: true },
+          },
+        },
+      });
+      const normalized: HotelMasterRecord[] = (hotels || []).map((h: any) => ({
+        id: h.id,
+        name: h.name,
+        city: h.city,
+        category: h.category ?? null,
+        preferenceRank: h.preferenceRank ?? null,
+        activeContracts: (h.contracts || []).map((c: any) => ({ id: c.id, verified: c.confidence === 'VERIFIED' })),
+      }));
+      for (const stay of stays) {
+        stay.candidateHotels = matchHotelCandidatesForStay(stay.city, normalized, { limit: 5 });
+      }
+    }
 
     return {
       quoteId,

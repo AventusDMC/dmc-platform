@@ -27,13 +27,23 @@ type Draft = {
   unplacedRequiredPlaces: string[];
 };
 
+type HotelCandidate = {
+  hotelId: string;
+  hotelName: string;
+  city: string;
+  category: string | null;
+  hasActiveContract: boolean;
+  verified: boolean;
+  reason: string;
+};
+
 type HotelStay = {
   city: string;
   nights: number;
   startDay: number;
   endDay: number;
   hotelCategory: string | null;
-  candidateHotels: string[];
+  candidateHotels: HotelCandidate[];
   notes: string;
 };
 
@@ -314,8 +324,17 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
                     {stay.startDay === stay.endDay ? `Day ${stay.startDay}` : `Days ${stay.startDay}–${stay.endDay}`}
                     {stay.hotelCategory ? ` • ${stay.hotelCategory}` : ''}
                     {stay.candidateHotels && stay.candidateHotels.length ? (
-                      <span className="form-help"> • {stay.candidateHotels.join(', ')}</span>
-                    ) : null}
+                      <ul className="tailor-made-hotel-candidates">
+                        {stay.candidateHotels.map((c) => (
+                          <li key={c.hotelId}>
+                            {c.hotelName}
+                            <span className="form-help"> — {c.reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="form-help"> • No candidate hotels found for this city.</span>
+                    )}
                   </li>
                 ))}
               </ol>

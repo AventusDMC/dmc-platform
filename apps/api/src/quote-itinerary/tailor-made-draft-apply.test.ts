@@ -16,15 +16,20 @@ const INPUT = {
   optionalPlaces: ['Madaba', 'Mount Nebo', 'Bethany'],
 };
 
-function makeFakePrisma(existingDays: any[] = []) {
+function makeFakePrisma(existingDays: any[] = [], hotels: any[] = []) {
   const calls = {
     dayCreate: [] as any[],
     dayDeleteMany: 0,
     auditCreate: [] as any[],
     quoteItemCalls: 0,
     pricingCalls: 0,
+    hotelFindMany: 0,
   };
   const store: any[] = [...existingDays];
+
+  // Phase R.2b — read-only hotel master. The candidate lookup reads it; reading
+  // the hotel master is allowed (it is NOT a pricing/QuoteItem access).
+  const hotelModel = { findMany: async () => { calls.hotelFindMany += 1; return hotels.slice(); } };
 
   const dayModel = {
     findMany: async () => store.slice(),
@@ -48,6 +53,7 @@ function makeFakePrisma(existingDays: any[] = []) {
     quote: { findUnique: async () => ({ id: 'quote-1' }), findFirst: async () => ({ id: 'quote-1' }) },
     quoteItineraryDay: dayModel,
     quoteItineraryAuditLog: auditModel,
+    hotel: hotelModel,
     $transaction: async (cb: any) => cb({ quoteItineraryDay: dayModel, quoteItineraryAuditLog: auditModel }),
   };
   const prisma = new Proxy(base, {
@@ -185,4 +191,38 @@ test('hotel suggestions on a quote with no days return a clear empty state', asy
   assert.match(result.message, /no active itinerary days/i);
   assert.equal(calls.quoteItemCalls, 0);
   assert.equal(calls.pricingCalls, 0);
+});
+
+// ---- Phase R.2b: candidate hotels enrich each stay (read-only) ----
+
+test('R.2b: each stay is enriched with city-matched candidate hotels, read-only, no contract names', async () => {
+  const hotels = [
+    { id: 'h-corp', name: 'Corp Amman Hotel', city: 'Amman', category: '4-star', preferenceRank: 1, contracts: [{ id: 'c1', confidence: 'VERIFIED' }] },
+    { id: 'h-hyatt', name: 'Grand Hyatt Amman', city: 'Amman', category: '5-star', preferenceRank: null, contracts: [{ id: 'c2', confidence: 'IMPORTED_UNVERIFIED' }] },
+    { id: 'h-moon', name: 'Petra Moon Hotel', city: 'Petra / Wadi Musa', category: '4-star', preferenceRank: null, contracts: [{ id: 'c3', confidence: 'VERIFIED' }] },
+    { id: 'h-sun', name: 'Sun City Camp', city: 'Wadi Rum', category: '4-star', preferenceRank: null, contracts: [{ id: 'c4', confidence: 'VERIFIED' }] },
+    { id: 'h-dss', name: 'Dead Sea Spa Hotel', city: 'Dead Sea', category: '4-star', preferenceRank: null, contracts: [{ id: 'c5', confidence: 'VERIFIED' }] },
+    { id: 'h-secret', name: 'Should Not Appear', city: 'Aqaba', category: '5-star', preferenceRank: null, contracts: [{ id: 'c6', confidence: 'VERIFIED', name: 'TRAVEL AGENT AGREEMENT 2026' }] },
+  ];
+  const { prisma, calls } = makeFakePrisma(persistedDayRows(), hotels);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeHotels('quote-1', { hotelCategory: '4-star' }, { companyId: 'co-1' });
+
+  const byCity = Object.fromEntries(result.stays.map((s: any) => [s.city, s.candidateHotels.map((c: any) => c.hotelName)]));
+  assert.deepEqual(byCity['Amman'], ['Corp Amman Hotel', 'Grand Hyatt Amman']);
+  assert.deepEqual(byCity['Petra'], ['Petra Moon Hotel']);
+  assert.deepEqual(byCity['Wadi Rum'], ['Sun City Camp']);
+  assert.deepEqual(byCity['Dead Sea'], ['Dead Sea Spa Hotel']);
+  // one read of the hotel master, strictly read-only
+  assert.equal(calls.hotelFindMany, 1);
+  assert.equal(calls.dayCreate.length, 0);
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+  // no contract NAME / agreement leaks anywhere in the response
+  assert.doesNotMatch(JSON.stringify(result), /AGREEMENT|price|markup|totalSell|totalCost|supplierCost/i);
+  // candidate carries safe planning fields + a reason
+  const corp = result.stays.find((s: any) => s.city === 'Amman').candidateHotels[0];
+  assert.equal(corp.verified, true);
+  assert.equal(corp.hasActiveContract, true);
+  assert.equal(corp.reason, 'Verified contract');
 });

@@ -241,14 +241,29 @@ export interface DraftDayShell {
   isActive?: boolean | null;
 }
 
+// Phase R.2b — read-only candidate hotel for an overnight stay. Operational
+// planning data only: NO contract NAME is exposed (contractId is internal),
+// and NO pricing is included.
+export interface HotelCandidate {
+  hotelId: string;
+  hotelName: string;
+  city: string;
+  category: string | null;
+  hasActiveContract: boolean;
+  verified: boolean;
+  /** Internal reference only — never used as a display label. */
+  contractId: string | null;
+  reason: string;
+}
+
 export interface SuggestedHotelStay {
   city: string;
   nights: number;
   startDay: number;
   endDay: number;
   hotelCategory: string | null;
-  /** Candidate hotels are intentionally empty in R.2 (grouping-only). */
-  candidateHotels: string[];
+  /** Candidate hotels — empty until enriched by the service (R.2b). */
+  candidateHotels: HotelCandidate[];
   notes: string;
 }
 
@@ -323,4 +338,79 @@ export function deriveOvernightStays(days: DraftDayShell[], hotelCategory?: stri
     }
   }
   return stays;
+}
+
+// Phase R.2b — a normalized hotel-master record (as the service selects it
+// from Prisma) for pure, testable candidate matching.
+export interface HotelMasterRecord {
+  id: string;
+  name: string;
+  city: string;
+  category?: string | null;
+  preferenceRank?: number | null;
+  /** Currently-active contracts only (filtered by date in the query). */
+  activeContracts?: Array<{ id: string; verified: boolean }>;
+}
+
+/**
+ * Phase R.2b — rank read-only candidate hotels for a stay city. Pure: takes a
+ * pre-fetched hotel list (no DB, no pricing). City match is fuzzy (handles
+ * "Petra" ↔ "Petra / Wadi Musa"). Sort mirrors the Guided builder convention:
+ * operator preferenceRank (lower wins) → VERIFIED contract → any active
+ * contract → alphabetical. Never exposes the contract name.
+ */
+export function matchHotelCandidatesForStay(
+  city: string,
+  hotels: HotelMasterRecord[],
+  options?: { limit?: number },
+): HotelCandidate[] {
+  const target = clean(city).toLowerCase();
+  if (!target) {
+    return [];
+  }
+  const matched = (hotels || []).filter((h) => {
+    const hc = clean(h.city).toLowerCase();
+    return Boolean(hc) && (hc === target || hc.includes(target) || target.includes(hc));
+  });
+
+  const ranked = matched
+    .map((h) => {
+      const contracts = h.activeContracts || [];
+      const hasActiveContract = contracts.length > 0;
+      const verified = contracts.some((c) => c.verified);
+      const reason = verified
+        ? 'Verified contract'
+        : h.preferenceRank != null
+          ? 'Preferred hotel'
+          : hasActiveContract
+            ? 'Active contract'
+            : 'City match';
+      return {
+        candidate: {
+          hotelId: h.id,
+          hotelName: clean(h.name),
+          city: clean(h.city),
+          category: clean(h.category || '') || null,
+          hasActiveContract,
+          verified,
+          contractId: contracts[0]?.id ?? null,
+          reason,
+        } as HotelCandidate,
+        rank: h.preferenceRank,
+        verified,
+        hasActiveContract,
+      };
+    })
+    .sort((a, b) => {
+      if (a.rank != null || b.rank != null) {
+        if (a.rank == null) return 1;
+        if (b.rank == null) return -1;
+        if (a.rank !== b.rank) return a.rank - b.rank;
+      }
+      if (a.verified !== b.verified) return a.verified ? -1 : 1;
+      if (a.hasActiveContract !== b.hasActiveContract) return a.hasActiveContract ? -1 : 1;
+      return a.candidate.hotelName.localeCompare(b.candidate.hotelName);
+    });
+
+  return ranked.slice(0, options?.limit ?? 5).map((r) => r.candidate);
 }

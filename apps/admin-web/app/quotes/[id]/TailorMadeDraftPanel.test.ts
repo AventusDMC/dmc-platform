@@ -82,4 +82,17 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
     assert.ok(!/applyHotel|hotelItem/i.test(panelSource), 'no hotel-apply wiring in R.2');
   });
+
+  it('R.2b: candidate hotels render by name + reason under each stay (no contract names, no Apply Hotels)', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-hotel-candidates',
+      '{c.hotelName}',
+      '{c.reason}',
+      'No candidate hotels found for this city.',
+    ]);
+    // still read-only: no Apply Hotels button, no contract-name display, no pricing fields
+    assert.ok(!/Apply Hotels/i.test(panelSource), 'no Apply Hotels button in R.2b');
+    assert.ok(!/contractName|contract\.name|agreement/i.test(panelSource), 'no contract-name display');
+    assert.ok(!/markup|totalSell|totalCost|overrideCost/i.test(panelSource), 'no pricing fields');
+  });
 });
