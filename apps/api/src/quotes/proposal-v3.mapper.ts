@@ -1713,11 +1713,12 @@ function buildPdfExportConsistencyLines(quote: ProposalV3Quote, currency: string
     const childPolicies = ratePolicies
       .map((policy) => formatChildPolicyForPdf(policy, currency))
       .filter(Boolean);
-    lines.push(
-      childPolicies.length > 0
-        ? `Child policy: ${childPolicies.join('; ')}`
-        : 'Child policy: No child policy available',
-    );
+    // Phase N — only surface a child-policy line when a meaningful policy exists.
+    // The old "No child policy available" fallback was client-facing noise that
+    // repeated once per hotel; suppress it entirely when there is nothing to say.
+    if (childPolicies.length > 0) {
+      lines.push(`Child policy: ${childPolicies.join('; ')}`);
+    }
 
     const supplements = Array.isArray(item.supplements) ? item.supplements : [];
     if (supplements.length > 0) {
