@@ -523,6 +523,22 @@ test('R.4d: a plain "Jerash Entrance" still beats museum-only', () => {
   assert.equal(enriched.find((s) => s.place === 'Jerash')!.matchedServiceId, 'svc-jerash-entrance');
 });
 
+test('R.4d.1: real-world — "Jerash Archaeological Site & Museum" beats "… Museum Entrance Fee"', () => {
+  // The museum record carries a generic "Entrance Fee" suffix (the R.4d failure):
+  // "site" must dominate so the museum record no longer ties.
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      // museum-with-"Entrance Fee" listed FIRST, exactly as in the live data
+      { serviceId: 'svc-jerash-museum', name: 'Jerash Archaeological Museum Entrance Fee', siteName: 'Jerash Archaeological Museum' },
+      { serviceId: 'svc-jerash-site', name: 'Jerash And Amman Touring', siteName: 'Jerash Archaeological Site & Museum' },
+    ],
+    activities: [],
+  });
+  const jerash = enriched.find((s) => s.place === 'Jerash')!;
+  assert.equal(jerash.matchedServiceId, 'svc-jerash-site', 'site record wins despite the museum "Entrance Fee" suffix');
+  assert.equal(jerash.matchedName, 'Jerash Archaeological Site & Museum');
+});
+
 // ---- Phase R.5: guide suggestions (pure, descriptive) ----
 
 import { deriveGuideSuggestions } from './tailor-made-draft';
