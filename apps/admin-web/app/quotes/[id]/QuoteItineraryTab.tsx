@@ -250,6 +250,7 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
                     deletePath={`/itinerary/day/${day.id}`}
                     deleteLabel="itinerary day"
                     confirmMessage={`Delete day ${day.dayNumber}?`}
+                    editLabel="Edit title & narrative"
                   >
                     <QuoteItineraryDayForm
                       apiBaseUrl={apiBaseUrl}
