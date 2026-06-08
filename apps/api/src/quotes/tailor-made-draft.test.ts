@@ -488,6 +488,41 @@ test('R.4c: when only a night/optional Petra variant exists, the suggestion stay
   assert.equal(petra.displayName, 'Petra — entrance', 'descriptive suggestion preserved');
 });
 
+test('R.4d: Jerash prefers the main site/site+museum entrance over a museum-only record', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      // museum-only listed FIRST so a naive matcher would pick it
+      { serviceId: 'svc-jerash-museum', name: 'Jerash Tour', siteName: 'Jerash Archaeological Museum' },
+      { serviceId: 'svc-jerash-site', name: 'Jerash Entrance', siteName: 'Jerash Archaeological Site & Museum' },
+    ],
+    activities: [],
+  });
+  const jerash = enriched.find((s) => s.place === 'Jerash')!;
+  assert.equal(jerash.matchedServiceId, 'svc-jerash-site', 'main site (& museum) entrance wins');
+  assert.equal(jerash.matchedName, 'Jerash Archaeological Site & Museum');
+});
+
+test('R.4d: a museum-only Jerash record is still used as a fallback when it is the only option', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [{ serviceId: 'svc-jerash-museum', name: 'Jerash Tour', siteName: 'Jerash Archaeological Museum' }],
+    activities: [],
+  });
+  const jerash = enriched.find((s) => s.place === 'Jerash')!;
+  assert.equal(jerash.matchedServiceId, 'svc-jerash-museum', 'museum-only is kept when nothing better exists');
+  assert.equal(jerash.matchedName, 'Jerash Archaeological Museum');
+});
+
+test('R.4d: a plain "Jerash Entrance" still beats museum-only', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      { serviceId: 'svc-jerash-museum', name: 'Jerash Museum', siteName: 'Jerash Archaeological Museum' },
+      { serviceId: 'svc-jerash-entrance', name: 'Jerash', siteName: 'Jerash Entrance' },
+    ],
+    activities: [],
+  });
+  assert.equal(enriched.find((s) => s.place === 'Jerash')!.matchedServiceId, 'svc-jerash-entrance');
+});
+
 // ---- Phase R.5: guide suggestions (pure, descriptive) ----
 
 import { deriveGuideSuggestions } from './tailor-made-draft';
