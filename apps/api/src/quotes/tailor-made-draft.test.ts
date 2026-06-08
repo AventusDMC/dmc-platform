@@ -277,3 +277,83 @@ test('R.3: inactive days and empty input are handled', () => {
   const onlyDeparture = deriveTransportSuggestions([{ dayNumber: 1, title: 'Departure', notes: 'Transfer from Dead Sea to QAIA for your departure flight.', isActive: true }]);
   assert.equal(onlyDeparture[0].suggestedTransportType, 'DEPARTURE_TRANSFER');
 });
+
+// ---- Phase R.3b: draft day / overnight / route derivation cleanup ----
+//
+// The STANDARD input has NO Jerash (so Day 2 is the broad "Amman City Tour"
+// activity title) and NO explicit departureCity — exactly the two cases that
+// previously misderived: a leaked "Amman City Tour" stay city, and an
+// "Amman → QAIA" departure. CLASSIC pinned both, so the old tests masked them.
+const STANDARD = {
+  durationDays: 8,
+  arrivalCity: 'Amman',
+  arrivalAirport: 'QAIA',
+  departureAirport: 'QAIA',
+  // departureCity intentionally omitted → engine should resolve last overnight.
+  requiredPlaces: ['Petra', 'Wadi Rum', 'Dead Sea'],
+  optionalPlaces: [],
+};
+
+test('R.3b: standard draft hotel suggestions never return "Amman City Tour" as a stay city', () => {
+  const stays = deriveOvernightStays(persistedDays(STANDARD), '4-star');
+  const cities = stays.map((s) => s.city);
+  assert.ok(!cities.some((c) => /city tour/i.test(c)), `no activity-title city among ${JSON.stringify(cities)}`);
+  assert.ok(cities.includes('Amman'), 'the Amman overnight resolves to the base city');
+  // Day 2 really is the "Amman City Tour" activity title in this draft.
+  assert.equal(persistedDays(STANDARD)[1].title, 'Amman City Tour');
+});
+
+test('R.3b: standard grouping stays Amman×2, Petra×1, Wadi Rum×1, Dead Sea×3', () => {
+  const stays = deriveOvernightStays(persistedDays(STANDARD), '4-star');
+  assert.deepEqual(
+    stays.map((s) => `${s.city} x${s.nights} (D${s.startDay}-${s.endDay})`),
+    ['Amman x2 (D1-2)', 'Petra x1 (D3-3)', 'Wadi Rum x1 (D4-4)', 'Dead Sea x3 (D5-7)'],
+  );
+});
+
+test('R.3b: overnight city is narrative-first; activity titles fall back to the base city', () => {
+  // narrative wins even when the title is a broad activity label
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 2, title: 'Amman City Tour', notes: 'Visit Amman highlights, overnight Amman.' }), 'Amman');
+  // title fallback (blank notes) strips the activity qualifier
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 2, title: 'Amman City Tour', notes: '' }), 'Amman');
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 3, title: 'Petra Day Tour', notes: '' }), 'Petra');
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 4, title: 'Aqaba Highlights', notes: '' }), 'Aqaba');
+});
+
+test('R.3b: standard draft departure uses the previous overnight (Dead Sea → QAIA), not Amman', () => {
+  const draft = buildTailorMadeJordanDraft(STANDARD);
+  const d8 = draft.days[7];
+  assert.equal(d8.title, 'Departure');
+  assert.match(d8.narrative, /Transfer from Dead Sea to QAIA/);
+  assert.equal(draft.input.departureCity, 'Dead Sea', 'echoed departure origin is the resolved last overnight');
+  const byDay = Object.fromEntries(deriveTransportSuggestions(persistedDays(STANDARD)).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[8].suggestedTransportType, 'DEPARTURE_TRANSFER');
+  assert.equal(byDay[8].routeLabel, 'Dead Sea → QAIA');
+});
+
+test('R.3b: an explicit departureCity is preserved', () => {
+  const draft = buildTailorMadeJordanDraft({ ...STANDARD, departureCity: 'Amman' });
+  assert.match(draft.days[7].narrative, /Transfer from Amman to QAIA/);
+  const byDay = Object.fromEntries(deriveTransportSuggestions(persistedDays({ ...STANDARD, departureCity: 'Amman' })).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[8].routeLabel, 'Amman → QAIA');
+});
+
+test('R.3b: departure-origin safety net fills from the previous overnight when notes omit it', () => {
+  const byDay = Object.fromEntries(
+    deriveTransportSuggestions([
+      { dayNumber: 1, title: 'Arrival Amman', notes: 'Transfer to Amman, overnight Amman.', isActive: true },
+      { dayNumber: 2, title: 'Dead Sea', notes: 'Leisure day, overnight Dead Sea.', isActive: true },
+      { dayNumber: 3, title: 'Departure', notes: 'Departure day — flight home.', isActive: true },
+    ]).map((s) => [s.dayNumber, s]),
+  );
+  assert.equal(byDay[3].suggestedTransportType, 'DEPARTURE_TRANSFER');
+  assert.equal(byDay[3].origin, 'Dead Sea', 'origin backfilled from the last overnight');
+  assert.match(byDay[3].routeLabel, /Dead Sea → /);
+});
+
+test('R.3b: derivation changes introduce no pricing/cost fields', () => {
+  const draft = buildTailorMadeJordanDraft(STANDARD);
+  assert.doesNotMatch(JSON.stringify(draft), /price|cost|total|amount|markup|rate/i);
+  assert.doesNotMatch(JSON.stringify(deriveOvernightStays(persistedDays(STANDARD))), /price|cost|total|amount|markup/i);
+  assert.doesNotMatch(JSON.stringify(deriveTransportSuggestions(persistedDays(STANDARD))), /price|cost|markup|totalSell/i);
+});

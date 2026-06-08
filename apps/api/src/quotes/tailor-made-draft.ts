@@ -80,7 +80,11 @@ const has = (list: string[] | undefined, name: string): boolean =>
 export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): TailorMadeDraft {
   const travelStyle: TravelStyle = input.travelStyle || 'classic';
   const arrivalCity = clean(input.arrivalCity) || 'Amman';
-  const departureCity = clean(input.departureCity) || 'Amman';
+  // Phase R.3b — only treat the departure city as EXPLICIT when the caller
+  // actually provided one. When it is left unset, the safe default is the
+  // program's last overnight city (resolved below), NOT a hardcoded 'Amman' —
+  // so the standard route departs from the Dead Sea, not back through Amman.
+  const departureCityProvided = clean(input.departureCity);
   const arrivalAirport = clean(input.arrivalAirport) || 'QAIA';
   const departureAirport = clean(input.departureAirport) || 'QAIA';
   const currency = (clean(input.currency) || 'USD').toUpperCase();
@@ -99,6 +103,14 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
   const days: DraftItineraryDay[] = [];
   const placed = new Set<string>();
   const place = (...names: string[]) => names.forEach((n) => placed.add(n.toLowerCase()));
+
+  // The previous overnight city — the safe default departure origin when the
+  // caller didn't pin one explicitly. Read off the already-built days, so it
+  // tracks whatever route was generated.
+  const lastOvernight = (): string =>
+    [...days].reverse().find((d) => d.overnightCity)?.overnightCity || arrivalCity;
+  // Resolved at the departure day; explicit caller value wins, else last overnight.
+  let resolvedDepartureCity = departureCityProvided || arrivalCity;
 
   if (durationDays === 8) {
     // ---- Day 1: Arrival ----
@@ -177,12 +189,13 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
     }
 
     // ---- Day 8: Departure ----
+    resolvedDepartureCity = departureCityProvided || lastOvernight();
     days.push({
       dayNumber: 8,
       title: 'Departure',
-      narrative: `Transfer from ${departureCity} to ${departureAirport} for your departure flight.`,
+      narrative: `Transfer from ${resolvedDepartureCity} to ${departureAirport} for your departure flight.`,
       overnightCity: null,
-      places: [departureCity],
+      places: [resolvedDepartureCity],
     });
   } else {
     // Non-standard durations: a generic editable shell (arrival → leisure → departure).
@@ -192,7 +205,8 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
       if (d === 1) {
         days.push({ dayNumber: 1, title: `Arrival ${arrivalCity}`, narrative: `Meet & assist at ${arrivalAirport}, transfer to ${arrivalCity}, overnight ${arrivalCity}.`, overnightCity: arrivalCity, places: [arrivalCity] });
       } else if (d === durationDays) {
-        days.push({ dayNumber: d, title: 'Departure', narrative: `Transfer from ${departureCity} to ${departureAirport} for your departure flight.`, overnightCity: null, places: [departureCity] });
+        resolvedDepartureCity = departureCityProvided || lastOvernight();
+        days.push({ dayNumber: d, title: 'Departure', narrative: `Transfer from ${resolvedDepartureCity} to ${departureAirport} for your departure flight.`, overnightCity: null, places: [resolvedDepartureCity] });
       } else {
         days.push({ dayNumber: d, title: `Day ${d}`, narrative: 'To be planned.', overnightCity: arrivalCity, places: [] });
       }
@@ -211,7 +225,9 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
     overnightCount,
     input: {
       arrivalCity,
-      departureCity,
+      // Echo the departure city actually used (explicit value, or the resolved
+      // last-overnight default), so downstream consumers see the real origin.
+      departureCity: resolvedDepartureCity,
       arrivalAirport,
       departureAirport,
       currency,
@@ -273,23 +289,45 @@ const tidyCity = (value: string): string =>
     .replace(/\s{2,}/g, ' ')
     .trim();
 
+// Activity/route qualifiers that can trail a base city in a day title
+// ("Amman City Tour", "Amman Highlights", "Petra Day Tour"). Stripping these
+// keeps the title fallback from leaking an activity label as an overnight city.
+const TITLE_QUALIFIER_RE = /\s+(?:city\s+tour|day\s+tour|half[-\s]?day\s+tour|highlights?|sightseeing|tour|excursion|leisure)\b/gi;
+
 /**
  * Best-effort overnight city for a single day shell.
- *  1. The day title's final destination segment (split on "/") — the reliable
- *     overnight signal for the generated route titles ("Amman / Jerash / Amman"
- *     → Amman; "Petra Visit / Wadi Rum" → Wadi Rum; "Arrival Amman" → Amman).
- *     "Departure" days carry no overnight.
- *  2. Fallback (vague/edited title): a genuine "…, overnight <City>." sentence
- *     in the narrative.
- * Returns null when no overnight can be derived (e.g. the departure day).
+ *  1. PREFERRED — the generated narrative's "… overnight <City>." sentence. This
+ *     is the stable, structured overnight signal and survives broad/activity
+ *     day titles (e.g. "Amman City Tour" still resolves to Amman because the
+ *     narrative reads "…, overnight Amman.").
+ *  2. Fallback (edited/blank narrative) — the day title's final destination
+ *     segment (split on "/"), after stripping arrival/visit/activity qualifiers
+ *     so "Amman City Tour" → Amman and "Petra Visit / Wadi Rum" → Wadi Rum.
+ * "Departure" days carry no overnight. Returns null when none can be derived.
  */
 export function deriveOvernightCityFromDay(day: DraftDayShell): string | null {
   const title = clean(day.title || '');
   if (/^departure\b/i.test(title)) {
     return null;
   }
+
+  // 1. Narrative-first: a genuine "… overnight <City>[.,;]" phrase. The city
+  //    must start with a capital letter — generated narratives capitalize place
+  //    names ("overnight Amman."), so this ignores incidental lowercase words
+  //    after "overnight" in free-form edits (e.g. "no overnight needed").
+  const notes = String(day.notes || '');
+  const m = notes.match(/\bovernight\s+(?:in\s+|at\s+)?(?:the\s+)?([A-Z][A-Za-z'\- ]*?)\s*(?:[.,;]|$)/);
+  if (m && tidyCity(m[1])) {
+    return tidyCity(m[1]);
+  }
+
+  // 2. Title fallback — strip arrival/visit/activity qualifiers, then take the
+  //    final "/"-separated destination segment.
   if (title) {
-    const cleaned = title.replace(/^arrival\s+/i, '').replace(/\s+visit\b/i, '');
+    const cleaned = title
+      .replace(/^arrival\s+/i, '')
+      .replace(/\s+visit\b/i, '')
+      .replace(TITLE_QUALIFIER_RE, '');
     const segments = cleaned.split('/').map((s) => s.trim()).filter(Boolean);
     const last = segments.length ? segments[segments.length - 1] : cleaned;
     const city = tidyCity(last);
@@ -297,10 +335,7 @@ export function deriveOvernightCityFromDay(day: DraftDayShell): string | null {
       return city;
     }
   }
-  // Title gave nothing usable — fall back to a real "…, overnight <City>." note.
-  const notes = String(day.notes || '');
-  const m = notes.match(/,\s*overnight\s+(?:in\s+|at\s+)?(?:the\s+)?([A-Za-z][A-Za-z'\- /]*?)\s*\.?\s*$/i);
-  return m && tidyCity(m[1]) ? tidyCity(m[1]) : null;
+  return null;
 }
 
 /**
@@ -540,9 +575,31 @@ function transportForDay(day: DraftDayShell): SuggestedTransport {
  * type NONE (the caller may surface or hide them).
  */
 export function deriveTransportSuggestions(days: DraftDayShell[]): SuggestedTransport[] {
-  return (days || [])
+  const active = (days || [])
     .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
     .slice()
-    .sort((a, b) => a.dayNumber - b.dayNumber)
-    .map((d) => transportForDay(d));
+    .sort((a, b) => a.dayNumber - b.dayNumber);
+
+  const suggestions = active.map((d) => transportForDay(d));
+
+  // Departure-origin safety net: if a departure day's notes don't yield an
+  // origin city, fall back to the previous day's overnight city (the program's
+  // last stay) rather than leaving it blank. The generator already writes the
+  // correct origin into the narrative, so this only fills gaps for edited or
+  // sparse departure days — it never overrides an origin the notes provided.
+  suggestions.forEach((s, i) => {
+    if (s.suggestedTransportType !== 'DEPARTURE_TRANSFER' || s.origin) {
+      return;
+    }
+    for (let j = i - 1; j >= 0; j--) {
+      const prevOvernight = deriveOvernightCityFromDay(active[j]);
+      if (prevOvernight) {
+        s.origin = prevOvernight;
+        s.routeLabel = `${prevOvernight} → ${s.destination || 'Airport'}`;
+        break;
+      }
+    }
+  });
+
+  return suggestions;
 }
