@@ -95,4 +95,18 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/contractName|contract\.name|agreement/i.test(panelSource), 'no contract-name display');
     assert.ok(!/markup|totalSell|totalCost|overrideCost/i.test(panelSource), 'no pricing fields');
   });
+
+  it('R.3: a read-only "Suggested Transport" section calls the transport-suggestions proxy (no apply/pricing)', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-draft/transport-suggestions',
+      'Preview Transport Suggestions',
+      'Suggested Transport',
+      'Read-only planning hints. No transport has been applied and no pricing has run.',
+      'Arrival transfer',
+      'Touring (full day)',
+    ]);
+    assert.ok(!/Apply Transport/i.test(panelSource), 'no Apply Transport button in R.3');
+    // no raw vehicle-class / pricing leakage in client-style display
+    assert.ok(!/Sedan 2|Coaster \d|Daily Full Day \|/i.test(panelSource), 'no raw vehicle/pricing labels');
+  });
 });

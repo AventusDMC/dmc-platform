@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, deriveOvernightStays, matchHotelCandidatesForStay, type HotelMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveTransportSuggestions, matchHotelCandidatesForStay, type HotelMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -290,6 +290,32 @@ export class QuoteItineraryService {
         stays.length === 0
           ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
           : 'Suggested hotel stays grouped by overnight city. Read-only — no hotels applied and no pricing.',
+    };
+  }
+
+  // Phase R.3 — read-only TRANSPORT suggestions. Reads the quote's active
+  // itinerary days and classifies the transport need per day (arrival/departure
+  // transfer, touring/full-day, or none). Descriptive only: no route/contract/
+  // rate lookup, no QuoteItems, no pricing, no writes.
+  async suggestTailorMadeTransport(quoteId: string, actor?: CompanyScopedActor) {
+    await this.ensureQuoteExists(quoteId, actor);
+    const days = await this.dayModel.findMany({
+      where: { quoteId, isActive: true },
+      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+    });
+
+    const suggestions = deriveTransportSuggestions(days || []);
+    const withTransport = suggestions.filter((s) => s.suggestedTransportType !== 'NONE');
+
+    return {
+      quoteId,
+      suggestions,
+      transportDayCount: withTransport.length,
+      message:
+        suggestions.length === 0
+          ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
+          : 'Suggested transport per day. Read-only planning hints — no transport applied and no pricing.',
     };
   }
 

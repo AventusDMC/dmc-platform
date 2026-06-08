@@ -108,6 +108,14 @@ export class QuoteItineraryController {
     );
   }
 
+  // Phase R.3 — read-only transport suggestions per itinerary day
+  // (no writes, no QuoteItems, no pricing, no route/rate lookup).
+  @Post('quotes/:quoteId/tailor-made-draft/transport-suggestions')
+  @Roles('admin', 'viewer', 'finance')
+  async suggestTailorMadeTransport(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    return this.quoteItineraryService.suggestTailorMadeTransport(quoteId, this.toCompanyActor(actor));
+  }
+
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
   // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
   @Post('quotes/:quoteId/tailor-made-draft/apply')

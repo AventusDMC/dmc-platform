@@ -414,3 +414,135 @@ export function matchHotelCandidatesForStay(
 
   return ranked.slice(0, options?.limit ?? 5).map((r) => r.candidate);
 }
+
+// ---------------------------------------------------------------------------
+// Phase R.3 — read-only TRANSPORT SUGGESTIONS derived from itinerary days.
+// Pure classification only: reads day shells (title + notes), works out the
+// transport NEED per day (arrival/departure transfer, touring/full-day, or
+// none). It performs NO route/contract/rate lookup, NO pricing, and NO writes.
+// pricingModeSuggestion is admin planning metadata (a hint), not client text.
+// ---------------------------------------------------------------------------
+
+export type SuggestedTransportType =
+  | 'ARRIVAL_TRANSFER'
+  | 'DEPARTURE_TRANSFER'
+  | 'TOURING_FULL_DAY'
+  | 'NONE';
+
+export interface SuggestedTransport {
+  dayNumber: number;
+  title: string;
+  routeLabel: string | null;
+  origin: string | null;
+  destination: string | null;
+  stops: string[];
+  suggestedTransportType: SuggestedTransportType;
+  /** Admin planning hint only (e.g. POINT_TO_POINT / FULL_DAY) — never client text. */
+  pricingModeSuggestion: 'POINT_TO_POINT' | 'FULL_DAY' | null;
+  reason: string;
+  /** R.3 is descriptive-only: no route match, no candidate products. */
+  matchedRouteId: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  candidateTransport: string[];
+}
+
+const AIRPORT_RE = /\b([A-Z]{3,4})\b/; // e.g. QAIA
+
+function transportForDay(day: DraftDayShell): SuggestedTransport {
+  const dayNumber = day.dayNumber;
+  const title = clean(day.title || '');
+  const notes = String(day.notes || '');
+  const base = (extra: Partial<SuggestedTransport>): SuggestedTransport => ({
+    dayNumber,
+    title,
+    routeLabel: null,
+    origin: null,
+    destination: null,
+    stops: [],
+    suggestedTransportType: 'NONE',
+    pricingModeSuggestion: null,
+    reason: '',
+    matchedRouteId: null,
+    confidence: 'medium',
+    candidateTransport: [],
+    ...extra,
+  });
+
+  // Arrival day → airport → city transfer.
+  if (/^arrival\b/i.test(title)) {
+    const city = tidyCity(title.replace(/^arrival\s+/i, '')) || tidyCity(title);
+    const airportMatch = notes.match(/\bat\s+([A-Z]{3,4})\b/) || notes.match(AIRPORT_RE);
+    const airport = airportMatch ? airportMatch[1] : 'Airport';
+    return base({
+      origin: airport,
+      destination: city,
+      routeLabel: `${airport} → ${city}`,
+      suggestedTransportType: 'ARRIVAL_TRANSFER',
+      pricingModeSuggestion: 'POINT_TO_POINT',
+      reason: 'Airport arrival transfer.',
+      confidence: 'high',
+    });
+  }
+
+  // Departure day → city → airport transfer (narrative: "Transfer from X to Y").
+  if (/^departure\b/i.test(title)) {
+    const m = notes.match(/from\s+(.+?)\s+to\s+([A-Za-z][A-Za-z'\- /]*?)(?:\s+for\b|\.|$)/i);
+    const origin = m ? tidyCity(m[1]) : null;
+    const destination = m ? tidyCity(m[2]) : 'Airport';
+    return base({
+      origin,
+      destination,
+      routeLabel: origin ? `${origin} → ${destination}` : null,
+      suggestedTransportType: 'DEPARTURE_TRANSFER',
+      pricingModeSuggestion: 'POINT_TO_POINT',
+      reason: 'Airport departure transfer.',
+      confidence: 'high',
+    });
+  }
+
+  // Otherwise infer from the route title. Multi-stop (or a City Tour) → a
+  // private vehicle for the day; a bare single overnight city → leisure/no move.
+  const cleanedTitle = title.replace(/\s+visit\b/i, '');
+  const segments = cleanedTitle.split('/').map((s) => tidyCity(s)).filter(Boolean);
+  const distinct = segments.filter((s, i) => segments.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i);
+
+  if (segments.length >= 2 || /\btour\b/i.test(title)) {
+    const origin = segments[0] || null;
+    const destination = segments.length >= 2 ? segments[segments.length - 1] : origin;
+    const stops = segments.slice(1, Math.max(segments.length - 1, 1));
+    return base({
+      origin,
+      destination,
+      stops,
+      routeLabel: cleanedTitle || (origin ? `${origin}${destination && destination !== origin ? ` → ${destination}` : ''}` : null),
+      suggestedTransportType: 'TOURING_FULL_DAY',
+      pricingModeSuggestion: 'FULL_DAY',
+      reason:
+        distinct.length >= 2 && destination && origin && destination.toLowerCase() !== origin.toLowerCase()
+          ? 'Touring day with an intercity move — private vehicle for the day.'
+          : 'Touring day — private vehicle for the day.',
+      confidence: 'medium',
+    });
+  }
+
+  // Single overnight city, no tour/visit → leisure day, no transfer needed.
+  return base({
+    destination: segments[0] || null,
+    suggestedTransportType: 'NONE',
+    reason: 'Leisure day — no transfer required.',
+    confidence: 'medium',
+  });
+}
+
+/**
+ * Phase R.3 — classify the transport need for each active itinerary day.
+ * Read-only and descriptive; days needing no transport are returned with
+ * type NONE (the caller may surface or hide them).
+ */
+export function deriveTransportSuggestions(days: DraftDayShell[]): SuggestedTransport[] {
+  return (days || [])
+    .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
+    .slice()
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .map((d) => transportForDay(d));
+}
