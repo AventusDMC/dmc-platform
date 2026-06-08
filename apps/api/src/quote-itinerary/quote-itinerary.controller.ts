@@ -116,6 +116,14 @@ export class QuoteItineraryController {
     return this.quoteItineraryService.suggestTailorMadeTransport(quoteId, this.toCompanyActor(actor));
   }
 
+  // Phase R.4 — read-only entrance/ticket/activity suggestions per itinerary day
+  // (no writes, no QuoteItems, no pricing; best-effort master match only).
+  @Post('quotes/:quoteId/tailor-made-draft/experience-suggestions')
+  @Roles('admin', 'viewer', 'finance')
+  async suggestTailorMadeExperiences(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    return this.quoteItineraryService.suggestTailorMadeExperiences(quoteId, this.toCompanyActor(actor));
+  }
+
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
   // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
   @Post('quotes/:quoteId/tailor-made-draft/apply')

@@ -16,7 +16,7 @@ const INPUT = {
   optionalPlaces: ['Madaba', 'Mount Nebo', 'Bethany'],
 };
 
-function makeFakePrisma(existingDays: any[] = [], hotels: any[] = []) {
+function makeFakePrisma(existingDays: any[] = [], hotels: any[] = [], masters: { services?: any[]; activities?: any[] } = {}) {
   const calls = {
     dayCreate: [] as any[],
     dayDeleteMany: 0,
@@ -24,12 +24,18 @@ function makeFakePrisma(existingDays: any[] = [], hotels: any[] = []) {
     quoteItemCalls: 0,
     pricingCalls: 0,
     hotelFindMany: 0,
+    serviceFindMany: 0,
+    activityFindMany: 0,
   };
   const store: any[] = [...existingDays];
 
   // Phase R.2b — read-only hotel master. The candidate lookup reads it; reading
   // the hotel master is allowed (it is NOT a pricing/QuoteItem access).
   const hotelModel = { findMany: async () => { calls.hotelFindMany += 1; return hotels.slice(); } };
+
+  // Phase R.4 — read-only service/activity masters for entrance/activity matching.
+  const serviceModel = { findMany: async () => { calls.serviceFindMany += 1; return (masters.services || []).slice(); } };
+  const activityModel = { findMany: async () => { calls.activityFindMany += 1; return (masters.activities || []).slice(); } };
 
   const dayModel = {
     findMany: async () => store.slice(),
@@ -54,6 +60,8 @@ function makeFakePrisma(existingDays: any[] = [], hotels: any[] = []) {
     quoteItineraryDay: dayModel,
     quoteItineraryAuditLog: auditModel,
     hotel: hotelModel,
+    supplierService: serviceModel,
+    activity: activityModel,
     $transaction: async (cb: any) => cb({ quoteItineraryDay: dayModel, quoteItineraryAuditLog: auditModel }),
   };
   const prisma = new Proxy(base, {
@@ -260,4 +268,66 @@ test('R.3: no days → empty suggestions with a clear message', async () => {
   const result = await service.suggestTailorMadeTransport('quote-1', { companyId: 'co-1' });
   assert.deepEqual(result.suggestions, []);
   assert.match(result.message, /no active itinerary days/i);
+});
+
+// ---- Phase R.4: entrance/ticket/activity suggestions (read-only) ----
+
+test('R.4: experience suggestions classify per day + best-effort master match, strictly read-only', async () => {
+  const masters = {
+    services: [
+      { id: 'svc-jerash', name: 'Jerash & Amman Touring', entranceFee: { siteName: 'Jerash Archaeological Site' } },
+      { id: 'svc-petra', name: 'Petra Entrance', entranceFee: { siteName: 'Petra Entrance Ticket' } },
+    ],
+    activities: [
+      { id: 'act-wr', name: 'Wadi Rum Jeep Experiences', city: 'Wadi Rum', rateVariants: [{ id: 'var-2h', name: '2h Jeep Tour' }] },
+    ],
+  };
+  const { prisma, calls } = makeFakePrisma(persistedDayRows(), [], masters);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeExperiences('quote-1', { companyId: 'co-1' });
+
+  const byPlace = Object.fromEntries(result.suggestions.map((s: any) => [s.place, s]));
+  assert.equal(byPlace['Jerash'].dayNumber, 2);
+  assert.equal(byPlace['Jerash'].matchedServiceId, 'svc-jerash');
+  assert.equal(byPlace['Jerash'].matchedName, 'Jerash Archaeological Site');
+  assert.equal(byPlace['Petra'].dayNumber, 4, 'Petra entrance on the visit day only');
+  assert.equal(byPlace['Petra'].matchedServiceId, 'svc-petra');
+  assert.equal(byPlace['Wadi Rum'].suggestedItemType, 'ACTIVITY');
+  assert.equal(byPlace['Wadi Rum'].matchedActivityId, 'act-wr');
+  assert.equal(byPlace['Wadi Rum'].matchedActivityRateVariantId, 'var-2h');
+  // grouped by day is present
+  assert.ok(result.byDay['2'] || result.byDay[2]);
+  // masters were READ only (no writes), and NO QuoteItem/pricing access at all
+  assert.equal(calls.serviceFindMany, 1);
+  assert.equal(calls.activityFindMany, 1);
+  assert.equal(calls.dayCreate.length, 0);
+  assert.equal(calls.dayDeleteMany, 0);
+  assert.equal(calls.auditCreate.length, 0);
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+  // internal lookup hints are stripped from the payload; no pricing-value leak
+  assert.doesNotMatch(JSON.stringify(result), /matchTerms|variantTerms|matchKind/);
+  assert.doesNotMatch(JSON.stringify(result), /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell/i);
+});
+
+test('R.4: master-read failure degrades to descriptive-only (still read-only, no throw)', async () => {
+  // No supplierService/activity models wired here would normally crash; instead
+  // provide empty masters so enrichment runs but matches nothing.
+  const { prisma, calls } = makeFakePrisma(persistedDayRows(), [], { services: [], activities: [] });
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeExperiences('quote-1', { companyId: 'co-1' });
+  assert.ok(result.suggestions.length > 0, 'descriptive suggestions still returned');
+  assert.ok(result.suggestions.every((s: any) => s.matchedServiceId === null && s.matchedActivityId === null));
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
+});
+
+test('R.4: no days → empty experience suggestions with a clear message', async () => {
+  const { prisma, calls } = makeFakePrisma([]);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeExperiences('quote-1', { companyId: 'co-1' });
+  assert.deepEqual(result.suggestions, []);
+  assert.match(result.message, /generate and apply a tailor-made draft/i);
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
 });

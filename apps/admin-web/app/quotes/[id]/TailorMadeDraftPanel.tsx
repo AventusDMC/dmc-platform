@@ -57,6 +57,16 @@ type TransportSuggestion = {
   confidence: string;
 };
 
+type ExperienceSuggestion = {
+  dayNumber: number;
+  place: string;
+  suggestedItemType: string;
+  displayName: string;
+  reason: string;
+  confidence: string;
+  matchedName: string | null;
+};
+
 type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -104,6 +114,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
   const [transportMessage, setTransportMessage] = useState('');
   const [suggestingTransport, setSuggestingTransport] = useState(false);
+
+  // Phase R.4 — read-only entrance/ticket/activity suggestions (no apply, no pricing).
+  const [experiences, setExperiences] = useState<ExperienceSuggestion[] | null>(null);
+  const [experienceMessage, setExperienceMessage] = useState('');
+  const [suggestingExperiences, setSuggestingExperiences] = useState(false);
 
   function buildInput() {
     return {
@@ -229,6 +244,34 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
       NONE: 'No transfer needed',
     } as Record<string, string>)[t] || t;
 
+  // Phase R.4 — read-only entrance/ticket/activity suggestions (no apply, no pricing).
+  async function handleSuggestExperiences() {
+    setSuggestingExperiences(true);
+    setError('');
+    setExperienceMessage('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/tailor-made-draft/experience-suggestions`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not generate entrance/activity suggestions.'));
+      }
+      const result = await response.json();
+      setExperiences(Array.isArray(result?.suggestions) ? result.suggestions : []);
+      setExperienceMessage(typeof result?.message === 'string' ? result.message : '');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not generate entrance/activity suggestions.');
+    } finally {
+      setSuggestingExperiences(false);
+    }
+  }
+
+  // Human-friendly admin label for a suggested experience type (never client text).
+  const experienceTypeLabel = (t: string): string =>
+    ({ ENTRANCE: 'Entrance', TICKET: 'Ticket', ACTIVITY: 'Activity' } as Record<string, string>)[t] || t;
+
   return (
     <section className="tailor-made-draft-panel entity-form" aria-label="Tailor-Made Draft Builder">
       <header>
@@ -320,6 +363,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
         </button>
         <button type="button" onClick={handleSuggestTransport} disabled={suggestingTransport} className="secondary">
           {suggestingTransport ? 'Loading…' : 'Preview Transport Suggestions'}
+        </button>
+        <button type="button" onClick={handleSuggestExperiences} disabled={suggestingExperiences} className="secondary">
+          {suggestingExperiences ? 'Loading…' : 'Preview Entrances & Activities'}
         </button>
         <label className="checkbox-inline">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
@@ -417,6 +463,34 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
               </ol>
               <p className="form-help">
                 Read-only planning hints. No transport has been applied and no pricing has run.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {experiences ? (
+        <div className="tailor-made-experience-suggestions">
+          <h4>Suggested Entrances &amp; Activities</h4>
+          {experiences.length === 0 ? (
+            <p className="form-help">{experienceMessage || 'No entrance/activity suggestions — apply a tailor-made draft first.'}</p>
+          ) : (
+            <>
+              <ol className="tailor-made-experience-days">
+                {experiences.map((e, i) => (
+                  <li key={`${e.dayNumber}-${e.place}-${i}`} className="tailor-made-experience-day">
+                    <strong>Day {e.dayNumber}</strong>
+                    {' — '}
+                    {e.displayName}
+                    {' • '}
+                    {experienceTypeLabel(e.suggestedItemType)}
+                    {e.matchedName ? <span className="form-help"> — matched: {e.matchedName}</span> : null}
+                    <span className="form-help"> — {e.reason}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="form-help">
+                Read-only planning hints. No tickets, entrances, or activities have been applied and no pricing has run.
               </p>
             </>
           )}
