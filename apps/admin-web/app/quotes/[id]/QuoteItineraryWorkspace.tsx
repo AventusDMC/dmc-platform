@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
 import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
+import { TailorMadeDraftPanel } from './TailorMadeDraftPanel';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import styles from './QuoteItineraryWorkspace.module.css';
 
@@ -16,6 +17,7 @@ type QuoteItineraryWorkspaceQuote = {
   id: string;
   passengers: QuotePassenger[];
   singleSupplement: number | null;
+  quoteCurrency?: string | null;
 };
 
 type QuoteItineraryWorkspaceProps = {
@@ -123,6 +125,17 @@ export function QuoteItineraryWorkspace({
             roomingGroups={quoteRoomingGroups}
             singleSupplement={quote.singleSupplement}
           />
+        </details>
+
+        <details className="quote-operational-collapsible quote-operational-collapsible-tailor-made">
+          <summary>
+            <div>
+              <span className="eyebrow">Tailor-Made Draft</span>
+              <strong>Generate an editable day-by-day itinerary draft</strong>
+            </div>
+            <em>Days only — no pricing</em>
+          </summary>
+          <TailorMadeDraftPanel apiBaseUrl={apiBaseUrl} quoteId={quote.id} quoteCurrency={quote.quoteCurrency} />
         </details>
 
         {servicePlanner}
