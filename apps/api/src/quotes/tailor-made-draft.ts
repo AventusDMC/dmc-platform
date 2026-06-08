@@ -810,23 +810,30 @@ export interface ActivityMasterRecord {
 // like one of these are excluded; records that read like a main entrance/site/
 // ticket are preferred. (The ACTIVITY branch has its own specific matching.)
 const ENTRANCE_NEGATIVE_RE = /by night|\bnight\b|\boptional\b|\bactivity\b/i;
-const ENTRANCE_POSITIVE_RE = /\bentrance\b|\barchaeolog|\bsite\b|\bticket\b/i;
-// Phase R.4d — a main SITE / ENTRANCE record (incl. "site & museum") should beat
-// a museum-only record for the same place (e.g. the Jerash site entrance over
-// "Jerash Archaeological Museum"). Museum-only is penalized, not excluded, so it
-// still wins when it is the only record available.
-const MAIN_ENTRANCE_RE = /\bsite\b|\bentrance\b/i;
-const MUSEUM_ONLY_RE = /\bmuseum\b/i;
+// Phase R.4d/R.4d.1 — a main SITE record (incl. "site & museum") must beat a
+// museum-only record for the same place (e.g. the Jerash site entrance over
+// "Jerash Archaeological Museum Entrance Fee"). "site" is the DOMINANT signal:
+// a generic "Entrance Fee" suffix on a museum record (the R.4d failure) no
+// longer ties with a real site record. Museum-only is penalized — not excluded —
+// so it still wins when it is the only record available.
+const SITE_RE = /\bsite\b/i;
+const ENTRANCE_RE = /\bentrance\b/i;
+const ENTRANCE_POSITIVE_RE = /\barchaeolog|\bticket\b/i;
+const MUSEUM_RE = /\bmuseum\b/i;
 
 /**
- * Phase R.4c/R.4d — score a term-matched master record for an ENTRANCE/TICKET
- * suggestion. Higher is better; main-site/entrance records outrank museum-only.
+ * Phase R.4c/R.4d/R.4d.1 — score a term-matched master record for an
+ * ENTRANCE/TICKET suggestion. Higher is better; a "site" record dominates, and
+ * a museum-only record (no "site") is penalized regardless of an "Entrance Fee"
+ * suffix.
  */
 function scoreEntranceRecord(recordText: string): number {
+  const hasSite = SITE_RE.test(recordText);
   let score = 0;
-  if (MAIN_ENTRANCE_RE.test(recordText)) score += 2; // main site / entrance signal
-  if (ENTRANCE_POSITIVE_RE.test(recordText)) score += 1; // any entrance-like signal (archaeolog/ticket/…)
-  if (MUSEUM_ONLY_RE.test(recordText) && !MAIN_ENTRANCE_RE.test(recordText)) score -= 2; // museum-only penalty
+  if (hasSite) score += 3; // dominant main-site signal
+  if (ENTRANCE_RE.test(recordText)) score += 1; // generic entrance signal
+  if (ENTRANCE_POSITIVE_RE.test(recordText)) score += 1; // archaeological / ticket
+  if (MUSEUM_RE.test(recordText) && !hasSite) score -= 2; // museum-only penalty
   return score;
 }
 
