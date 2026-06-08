@@ -41,6 +41,25 @@ type SetDayPoisBody = {
   assignments?: DayPoiAssignmentBody[];
 };
 
+// Phase R.1b — tailor-made draft input (mirrors TailorMadeDraftInput). The
+// generator sanitizes/defaults every field, so the body is intentionally loose.
+type TailorMadeDraftBody = {
+  durationDays?: number | string;
+  arrivalCity?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  departureAirport?: string;
+  pax?: number | string;
+  hotelCategory?: string;
+  travelStyle?: string;
+  requiredPlaces?: string[];
+  optionalPlaces?: string[];
+  guideType?: string;
+  currency?: string;
+  /** APPLY only — replace the existing itinerary-day structure (never items/pricing). */
+  replaceExisting?: boolean;
+};
+
 @Controller()
 export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
@@ -60,6 +79,35 @@ export class QuoteItineraryController {
   @Roles('admin', 'viewer', 'finance')
   async updateDay(@Param('dayId') dayId: string, @Body() body: UpdateDayBody, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.updateDay(dayId, this.toUpdateDayDto(body), this.toActor(actor));
+  }
+
+  // Phase R.1b — generate a tailor-made draft itinerary (read-only; no writes).
+  @Post('quotes/:quoteId/tailor-made-draft/preview')
+  @Roles('admin', 'viewer', 'finance')
+  async previewTailorMadeDraft(
+    @Param('quoteId') quoteId: string,
+    @Body() body: TailorMadeDraftBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.quoteItineraryService.previewTailorMadeDraft(quoteId, this.toDraftInput(body), this.toCompanyActor(actor));
+  }
+
+  // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
+  // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
+  @Post('quotes/:quoteId/tailor-made-draft/apply')
+  @Roles('admin', 'viewer', 'finance')
+  async applyTailorMadeDraft(
+    @Param('quoteId') quoteId: string,
+    @Body() body: TailorMadeDraftBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.quoteItineraryService.applyTailorMadeDraft(
+      quoteId,
+      this.toDraftInput(body),
+      { replaceExisting: body?.replaceExisting === true },
+      this.toActor(actor),
+      this.toCompanyActor(actor),
+    );
   }
 
   @Delete('itinerary/day/:dayId')
@@ -163,6 +211,23 @@ export class QuoteItineraryController {
         fallbackTitle: entry?.fallbackTitle ?? null,
         fallbackCity: entry?.fallbackCity ?? null,
       })),
+    };
+  }
+
+  private toDraftInput(body: TailorMadeDraftBody) {
+    return {
+      durationDays: body?.durationDays === undefined ? undefined : Number(body.durationDays),
+      arrivalCity: body?.arrivalCity,
+      arrivalAirport: body?.arrivalAirport,
+      departureCity: body?.departureCity,
+      departureAirport: body?.departureAirport,
+      pax: body?.pax === undefined ? undefined : Number(body.pax),
+      hotelCategory: body?.hotelCategory,
+      travelStyle: body?.travelStyle as any,
+      requiredPlaces: Array.isArray(body?.requiredPlaces) ? body.requiredPlaces : undefined,
+      optionalPlaces: Array.isArray(body?.optionalPlaces) ? body.optionalPlaces : undefined,
+      guideType: body?.guideType,
+      currency: body?.currency,
     };
   }
 
