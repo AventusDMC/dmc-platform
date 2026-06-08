@@ -415,7 +415,7 @@ export class ProposalV3Service {
                   <th>${L('tableHotel')}</th>
                   <th>${L('tableLocation')}</th>
                   <th>${L('tableRoom')}</th>
-                  <th>${L('tableNotes')}</th>
+                  <th>${L('tableMeals')}</th>
                 </tr>
               </thead>
               <tbody>${this.renderAccommodationRows(viewModel)}</tbody>
@@ -446,7 +446,7 @@ export class ProposalV3Service {
             <td>${this.escapeHtml(this.getDisplayText(row.hotelName, 'Stay'))}</td>
             <td>${this.escapeHtml(row.location || 'To be confirmed')}</td>
             <td>${this.escapeHtml(row.room || 'To be confirmed')}</td>
-            <td>${this.escapeHtml(this.joinInlineParts([row.meals, row.note]) || 'To be confirmed')}</td>
+            <td>${this.escapeHtml(row.meals || 'To be confirmed')}</td>
           </tr>
         `,
       )
