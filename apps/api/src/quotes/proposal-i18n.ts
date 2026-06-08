@@ -386,6 +386,20 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
     es: 'Transporte turístico privado según el itinerario.',
     ar: 'نقل سياحي خاص حسب البرنامج.',
   },
+  // Phase Q — client-safe guide descriptions composed from the guide TYPE
+  // (local/escort) since no guide-language field exists in the data model.
+  guideLocalLicensed: {
+    en: 'Licensed local guide.',
+    pt: 'Guia local licenciado.',
+    es: 'Guía local autorizado.',
+    ar: 'مرشد محلي مرخّص.',
+  },
+  guideEscort: {
+    en: 'Escort guide as scheduled.',
+    pt: 'Guia acompanhante conforme o itinerário.',
+    es: 'Guía acompañante según el itinerario.',
+    ar: 'مرشد مرافق حسب البرنامج.',
+  },
 };
 
 export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRASES): string {
@@ -502,6 +516,8 @@ const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   svcDiningIn: { en: 'Dining in {location}', pt: 'Refeição em {location}', es: 'Comida en {location}', ar: 'تناول الطعام في {location}' },
   svcDiningArrangements: { en: 'Dining arrangements', pt: 'Detalhes das refeições', es: 'Detalles de las comidas', ar: 'ترتيبات الطعام' },
   svcGuidedTourOf: { en: 'Guided Tour of {location}', pt: 'Visita guiada a {location}', es: 'Visita guiada de {location}', ar: 'جولة بصحبة مرشد في {location}' },
+  // Phase Q — location-aware local guide description.
+  guideLocalFor: { en: 'Local guide for {location}', pt: 'Guia local para {location}', es: 'Guía local para {location}', ar: 'مرشد محلي في {location}' },
   svcGuideArrangements: { en: 'Guide arrangements', pt: 'Detalhes do guia', es: 'Detalles del guía', ar: 'ترتيبات الإرشاد' },
   svcProgramDetails: { en: 'Program details', pt: 'Detalhes do programa', es: 'Detalles del programa', ar: 'تفاصيل البرنامج' },
 };

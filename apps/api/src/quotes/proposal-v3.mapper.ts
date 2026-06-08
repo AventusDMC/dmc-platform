@@ -655,6 +655,35 @@ export function getClientSafeActivityDescription(item: ProposalV3QuoteItem) {
   return description || null;
 }
 
+// Phase Q — the guide TYPE (local vs accompanying escort) is the only
+// client-safe descriptive signal on the quote item; it lives in the internal
+// pricingDescriptor ("Guide | Local | Full day | …") / service name. There is
+// no guide-language field in the data model, so language-based wording
+// ("English-speaking guide") cannot be derived yet.
+function guideTypeFromItem(item: ProposalV3QuoteItem): 'escort' | 'local' | null {
+  const hay = `${item.pricingDescription || ''} ${item.service?.name || ''}`.toLowerCase();
+  if (/\bescort\b/.test(hay)) return 'escort';
+  if (/\blocal\b/.test(hay)) return 'local';
+  return null;
+}
+
+// Compose a clean, client-facing guide description from the safe signals
+// (guide type + day location). Returns null when nothing meaningful can be
+// said — the guide's title still conveys the service.
+function buildGuideClientDescription(item: ProposalV3QuoteItem, location: string | null): string | null {
+  const type = guideTypeFromItem(item);
+  if (type === 'escort') {
+    return prosePhrase(activeProposalLocale, 'guideEscort');
+  }
+  if (type === 'local') {
+    const loc = cleanText(location || '');
+    return loc
+      ? proseTemplate(activeProposalLocale, 'guideLocalFor', { location: loc })
+      : prosePhrase(activeProposalLocale, 'guideLocalLicensed');
+  }
+  return null;
+}
+
 function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3AccommodationRow[] {
   const sortedDays = getProposalDaySources(quote);
   const rows: ProposalV3AccommodationRow[] = [];
@@ -890,10 +919,15 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       // Contract-name / rate breakdown → drop (accommodation table carries the
       // client-facing hotel/room/board/location).
       description = null;
-    } else if (isGuideItem(item) && hasInternalServiceDescriptor(description)) {
-      // Phase P — the guide pricingDescriptor ("Guide | Local | Full day |
-      // Overnight: No") is internal; drop it. The guide title conveys the service.
-      description = null;
+    } else if (isGuideItem(item)) {
+      // Phase P/Q — the guide pricingDescriptor ("Guide | Local | Full day |
+      // Overnight: No") is internal. When it (or no client description) is
+      // present, compose a clean client phrase from the guide TYPE + day
+      // location (Phase Q); a genuine operator-entered client-safe description
+      // is preserved.
+      if (hasInternalServiceDescriptor(description) || !description) {
+        description = buildGuideClientDescription(item, location);
+      }
     } else if (hasInternalContractText(description) || hasInternalTransportText(description)) {
       description = null;
     }
