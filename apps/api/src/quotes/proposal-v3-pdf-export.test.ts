@@ -261,7 +261,7 @@ function createHotelOptionSet(overrides: Record<string, any> = {}) {
   };
 }
 
-test('proposal PDF export shows persisted hotel pricing basis labels', () => {
+test('Phase O: the per-hotel rate-basis line is not surfaced to the client', () => {
   const perPerson = mapQuoteToProposalV3(createPdfQuote());
   const perRoom = mapQuoteToProposalV3(
     createPdfQuote({
@@ -269,8 +269,10 @@ test('proposal PDF export shows persisted hotel pricing basis labels', () => {
     }),
   );
 
-  assert.ok(perPerson.investment.noteLines.includes('Grand Petra Hotel rate basis: per person/night'));
-  assert.ok(perRoom.investment.noteLines.includes('Grand Petra Hotel rate basis: per room/night'));
+  // Technical "rate basis: per room/night" / "per person/night" lines were
+  // internal pricing-mechanics noise repeated per hotel; they are now suppressed.
+  assert.ok(!perPerson.investment.noteLines.some((l) => /rate basis:/i.test(l)), 'no rate-basis bullet (per person)');
+  assert.ok(!perRoom.investment.noteLines.some((l) => /rate basis:/i.test(l)), 'no rate-basis bullet (per room)');
 });
 
 test('proposal PDF export renders meaningful child policies and suppresses the empty fallback (Phase N)', () => {
@@ -1113,8 +1115,11 @@ test('proposal PDF export keeps tax and service charge notes aligned with calcul
   );
 
   assert.ok(proposal.investment.noteLines.includes('Total Package Price: $159.50'));
-  assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are not included and may apply at 16%.'));
-  assert.ok(proposal.notes.some((line) => line === 'Service charge is not included and may apply at 10% where applicable.'));
+  // Phase O — per-item tax/service percentages are consolidated into one clean
+  // client note; "not included" → the "may apply" wording, no 16%/10% leak.
+  assert.ok(proposal.notes.some((line) => line === 'Taxes and service charges may apply where applicable.'));
+  assert.ok(!proposal.notes.some((line) => /\d+%/.test(line)), 'no percentage in client notes');
+  assert.ok(!proposal.notes.some((line) => /Applicable taxes are|Service charge is/.test(line)), 'old per-item wording gone');
 });
 
 test('proposal PDF export marks included tax without exposing manual override wording', () => {
@@ -1139,8 +1144,9 @@ test('proposal PDF export marks included tax without exposing manual override wo
 
   assert.ok(proposal.investment.noteLines.includes('Total Package Price: $150.00'));
   assert.doesNotMatch(proposal.investment.noteLines.join('\n'), /PDF sell total|finalCost override/i);
-  assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are included at 16%.'));
-  assert.ok(proposal.notes.some((line) => line === 'Service charge is included at 10% where applicable.'));
+  // Phase O — included tax/service → one consolidated "are included" note, no 16%/10%.
+  assert.ok(proposal.notes.some((line) => line === 'Taxes and service charges are included where applicable.'));
+  assert.ok(!proposal.notes.some((line) => /\d+%/.test(line)), 'no percentage in client notes');
 });
 
 test('proposal PDF export uses quote currency for totals and supplement currency for supplement lines', () => {
@@ -1192,7 +1198,8 @@ test('proposal PDF export HTML contains client-safe consistency lines rendered t
   const service = new ProposalV3Service({} as any);
   const html = await (service as any).renderHtml(proposal);
 
-  assert.match(html, /Grand Petra Hotel rate basis: per person\/night/);
+  // Phase O — the per-hotel rate-basis line is no longer rendered to the client.
+  assert.doesNotMatch(html, /rate basis: per (room|person)\/night/);
   assert.match(html, /Child policy: Children 0-5 free/);
   assert.match(html, /Total Package Price: \$540\.00/);
   assert.match(html, /AXIS Destination Management/);
@@ -2466,7 +2473,10 @@ test('Phase 3D.1O: PT proposal investment notes carry no English system bullets'
   const lines = [...vm.investment.basisLines, ...vm.investment.noteLines, vm.investment.snapshotHelper].join(' || ');
   assert.doesNotMatch(lines, /\brate basis: per (room|person)\/night\b/, 'no English rate-basis bullet');
   assert.doesNotMatch(lines, /No child policy available|Based on \d+ guests sharing|Quotation prepared for|Single supplement available on request/, 'no English system bullets');
-  assert.match(lines, /base tarifária/, 'localized rate basis present');
+  // Phase O — the rate-basis line is gone in every locale; localization is still
+  // proven by the (still-present) localized Total Package Price line.
+  assert.doesNotMatch(lines, /base tarifária|rate basis/, 'no rate-basis line at all');
+  assert.match(lines, /Preço total do pacote/, 'localized Total Package Price present');
 });
 
 test('Phase 3D.1O: PT transfer group label reads "Transporte" (EN "Transfer")', () => {
