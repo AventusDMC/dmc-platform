@@ -67,6 +67,16 @@ type ExperienceSuggestion = {
   matchedName: string | null;
 };
 
+type GuideSuggestion = {
+  dayNumber: number;
+  title: string;
+  guideTypeSuggestion: string;
+  displayName: string;
+  reason: string;
+  confidence: string;
+  placesCovered: string[];
+};
+
 type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -119,6 +129,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [experiences, setExperiences] = useState<ExperienceSuggestion[] | null>(null);
   const [experienceMessage, setExperienceMessage] = useState('');
   const [suggestingExperiences, setSuggestingExperiences] = useState(false);
+
+  // Phase R.5 — read-only guide suggestions (no apply, no pricing).
+  const [guides, setGuides] = useState<GuideSuggestion[] | null>(null);
+  const [guideMessage, setGuideMessage] = useState('');
+  const [guideEscortNote, setGuideEscortNote] = useState('');
+  const [suggestingGuides, setSuggestingGuides] = useState(false);
 
   function buildInput() {
     return {
@@ -272,6 +288,34 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const experienceTypeLabel = (t: string): string =>
     ({ ENTRANCE: 'Entrance', TICKET: 'Ticket', ACTIVITY: 'Activity' } as Record<string, string>)[t] || t;
 
+  // Phase R.5 — read-only guide suggestions (no apply, no pricing).
+  async function handleSuggestGuides() {
+    setSuggestingGuides(true);
+    setError('');
+    setGuideMessage('');
+    setGuideEscortNote('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/tailor-made-draft/guide-suggestions`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not generate guide suggestions.'));
+      }
+      const result = await response.json();
+      // Surface only the guided days (LOCAL / ESCORT_OPTION); NONE days are hidden.
+      const all = Array.isArray(result?.suggestions) ? (result.suggestions as GuideSuggestion[]) : [];
+      setGuides(all.filter((g) => g.guideTypeSuggestion && g.guideTypeSuggestion !== 'NONE'));
+      setGuideMessage(typeof result?.message === 'string' ? result.message : '');
+      setGuideEscortNote(typeof result?.escortNote === 'string' ? result.escortNote : '');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not generate guide suggestions.');
+    } finally {
+      setSuggestingGuides(false);
+    }
+  }
+
   return (
     <section className="tailor-made-draft-panel entity-form" aria-label="Tailor-Made Draft Builder">
       <header>
@@ -366,6 +410,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
         </button>
         <button type="button" onClick={handleSuggestExperiences} disabled={suggestingExperiences} className="secondary">
           {suggestingExperiences ? 'Loading…' : 'Preview Entrances & Activities'}
+        </button>
+        <button type="button" onClick={handleSuggestGuides} disabled={suggestingGuides} className="secondary">
+          {suggestingGuides ? 'Loading…' : 'Preview Guide Suggestions'}
         </button>
         <label className="checkbox-inline">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
@@ -491,6 +538,35 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
               </ol>
               <p className="form-help">
                 Read-only planning hints. No tickets, entrances, or activities have been applied and no pricing has run.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {guides ? (
+        <div className="tailor-made-guide-suggestions">
+          <h4>Suggested Guides</h4>
+          {guides.length === 0 ? (
+            <p className="form-help">{guideMessage || 'No guide suggestions for the current itinerary days.'}</p>
+          ) : (
+            <>
+              <ol className="tailor-made-guide-days">
+                {guides.map((g, i) => (
+                  <li key={`${g.dayNumber}-${i}`} className="tailor-made-guide-day">
+                    <strong>Day {g.dayNumber}</strong>
+                    {' — '}
+                    {g.displayName}
+                    {g.placesCovered && g.placesCovered.length > 0 ? (
+                      <span className="form-help"> — covers: {g.placesCovered.join(', ')}</span>
+                    ) : null}
+                    <span className="form-help"> — {g.reason}</span>
+                  </li>
+                ))}
+              </ol>
+              {guideEscortNote ? <p className="form-help">{guideEscortNote}</p> : null}
+              <p className="form-help">
+                Read-only planning hints. No guides have been applied and no pricing has run.
               </p>
             </>
           )}

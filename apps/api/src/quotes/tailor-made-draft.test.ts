@@ -446,3 +446,47 @@ test('R.4: empty / inactive days yield no suggestions', () => {
     [],
   );
 });
+
+// ---- Phase R.5: guide suggestions (pure, descriptive) ----
+
+import { deriveGuideSuggestions } from './tailor-made-draft';
+
+const byGuideDay = (input: any) => Object.fromEntries(deriveGuideSuggestions(persistedDays(input)).map((g) => [g.dayNumber, g]));
+
+test('R.5: standard CLASSIC draft suggests a local guide for Jerash (Day 2) and Petra (Day 4)', () => {
+  const byDay = byGuideDay(CLASSIC);
+  assert.equal(byDay[2].guideTypeSuggestion, 'LOCAL');
+  assert.equal(byDay[2].displayName, 'Local guide for Jerash');
+  assert.deepEqual(byDay[2].placesCovered, ['Jerash']);
+  assert.equal(byDay[4].guideTypeSuggestion, 'LOCAL');
+  assert.equal(byDay[4].displayName, 'Local guide for Petra');
+  assert.deepEqual(byDay[4].placesCovered, ['Petra']);
+});
+
+test('R.5: Petra guide lands on the visit day only (not the Day 3 transit/overnight)', () => {
+  const guided = deriveGuideSuggestions(persistedDays(CLASSIC)).filter((g) => g.placesCovered.includes('Petra'));
+  assert.equal(guided.length, 1);
+  assert.equal(guided[0].dayNumber, 4);
+});
+
+test('R.5: arrival, departure, and leisure days get no guide', () => {
+  const byDay = byGuideDay(CLASSIC);
+  assert.equal(byDay[1].guideTypeSuggestion, 'NONE'); // Arrival Amman
+  assert.equal(byDay[6].guideTypeSuggestion, 'NONE'); // Dead Sea leisure
+  assert.equal(byDay[8].guideTypeSuggestion, 'NONE'); // Departure
+});
+
+test('R.5: descriptive only — no QuoteItem ids, no pricing, no raw guide metadata', () => {
+  const sugg = deriveGuideSuggestions(persistedDays(CLASSIC));
+  const json = JSON.stringify(sugg);
+  assert.doesNotMatch(json, /minPax|maxPax|requiresOperatorConfirmation|Overnight:\s*No/i);
+  assert.doesNotMatch(json, /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell|quoteItemId/i);
+});
+
+test('R.5: empty / inactive days yield no guide suggestions', () => {
+  assert.deepEqual(deriveGuideSuggestions([]), []);
+  assert.deepEqual(
+    deriveGuideSuggestions([{ dayNumber: 2, title: 'Amman / Jerash / Amman', notes: 'Visit Jerash.', isActive: false }]),
+    [],
+  );
+});

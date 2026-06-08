@@ -848,3 +848,81 @@ export function enrichExperienceMatches(
     return s;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Phase R.5 — read-only GUIDE SUGGESTIONS derived from itinerary days. Pure
+// classification only: reads day shells (title + notes) and proposes a LOCAL
+// guide for the major guided sites (Jerash, Petra), NONE on arrival/departure/
+// leisure days. NO QuoteItem creation, NO pricing, NO writes. Output carries
+// only client/admin-friendly fields — never raw guide metadata (minPax/maxPax/
+// requiresOperatorConfirmation/overnight flags/internal enums).
+// ---------------------------------------------------------------------------
+
+export type SuggestedGuideType = 'LOCAL' | 'ESCORT_OPTION' | 'NONE';
+
+export interface SuggestedGuide {
+  dayNumber: number;
+  title: string;
+  guideTypeSuggestion: SuggestedGuideType;
+  displayName: string;
+  reason: string;
+  confidence: 'high' | 'medium' | 'low';
+  placesCovered: string[];
+}
+
+// Major sites that conventionally take a dedicated local guide.
+const GUIDED_SITE_RULES: Array<{ place: string; test: (text: string) => boolean }> = [
+  { place: 'Jerash', test: (t) => /\bjerash\b/.test(t) },
+  // Petra only counts on the VISIT day, not the arrival/transit/overnight mention.
+  { place: 'Petra', test: (t) => /visit petra|petra visit/.test(t) },
+];
+
+function guideForDay(day: DraftDayShell): SuggestedGuide {
+  const dayNumber = day.dayNumber;
+  const title = clean(day.title || '');
+  const none = (reason: string, confidence: 'high' | 'medium' | 'low' = 'medium'): SuggestedGuide => ({
+    dayNumber,
+    title,
+    guideTypeSuggestion: 'NONE',
+    displayName: 'No guide required',
+    reason,
+    confidence,
+    placesCovered: [],
+  });
+
+  // Arrival / departure transfers carry no guide by default.
+  if (/^arrival\b/i.test(title) || /^departure\b/i.test(title)) {
+    return none('Airport transfer day — no guide required.', 'high');
+  }
+
+  const text = `${title} | ${String(day.notes || '')}`.toLowerCase();
+  const covered = GUIDED_SITE_RULES.filter((rule) => rule.test(text)).map((rule) => rule.place);
+
+  if (covered.length > 0) {
+    return {
+      dayNumber,
+      title,
+      guideTypeSuggestion: 'LOCAL',
+      displayName: `Local guide for ${covered.join(' & ')}`,
+      reason: `Guided sightseeing at ${covered.join(' & ')} on this day.`,
+      confidence: 'high',
+      placesCovered: covered,
+    };
+  }
+
+  return none('No major guided site on this day — no dedicated guide required.');
+}
+
+/**
+ * Phase R.5 — classify the guide need for each active itinerary day. Read-only
+ * and descriptive; days needing no guide are returned with type NONE (the
+ * caller may surface or hide them). An ESCORT_OPTION is offered separately as a
+ * program-level planning note (see the service), not as per-day clutter.
+ */
+export function deriveGuideSuggestions(days: DraftDayShell[]): SuggestedGuide[] {
+  return (days || [])
+    .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
+    .slice()
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .map((d) => guideForDay(d));
+}
