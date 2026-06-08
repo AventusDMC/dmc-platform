@@ -367,7 +367,7 @@ export class QuoteItineraryService {
 
     // Strip the internal lookup hints from the response payload (admin sees the
     // displayName + optional matched record name, never the raw match terms).
-    const cleaned = suggestions.map(({ matchTerms, variantTerms, matchKind, ...rest }) => rest);
+    const cleaned = suggestions.map(({ matchTerms, variantTerms, matchKind, specificTerms, ...rest }) => rest);
     const byDay = cleaned.reduce<Record<number, typeof cleaned>>((acc, s) => {
       (acc[s.dayNumber] ||= []).push(s);
       return acc;

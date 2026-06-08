@@ -539,6 +539,42 @@ test('R.4d.1: real-world — "Jerash Archaeological Site & Museum" beats "… Mu
   assert.equal(jerash.matchedName, 'Jerash Archaeological Site & Museum');
 });
 
+test('R.4d.2: real-world — Madaba prefers the St. George / Mosaic Map record over "Madaba Archaeological Park"', () => {
+  // Exact live candidate set: the generic "Madaba Archaeological Park Entrance
+  // Fee" scored higher under R.4d.1 (entrance+archaeolog). The specific-term
+  // bonus pins the St. George / Mosaic Map record the suggestion intends.
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      { serviceId: 'svc-madaba-park', name: 'Madaba Archaeological Park Entrance Fee', siteName: 'Madaba Archaeological Park' },
+      { serviceId: 'svc-madaba-burnt', name: 'Burnt Palace - Madaba Entrance Fee', siteName: 'Burnt Palace - Madaba' },
+      { serviceId: 'svc-madaba-stgeorge', name: 'Madaba Tour', siteName: 'St. George Church / Mosaic Map Entrance' },
+    ],
+    activities: [],
+  });
+  const madaba = enriched.find((s) => s.place === 'Madaba')!;
+  assert.equal(madaba.matchedServiceId, 'svc-madaba-stgeorge', 'St. George / Mosaic Map wins via the specific-term bonus');
+  assert.equal(madaba.matchedName, 'St. George Church / Mosaic Map Entrance');
+});
+
+test('R.4d.2: specific-term bonus keeps Jerash (site), Petra (daytime), Nebo & Bethany stable', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      { serviceId: 'svc-jerash-museum', name: 'Jerash Archaeological Museum Entrance Fee', siteName: 'Jerash Archaeological Museum' },
+      { serviceId: 'svc-jerash-site', name: 'Jerash', siteName: 'Jerash Archaeological Site & Museum' },
+      { serviceId: 'svc-petra-night', name: 'Petra by Night', siteName: 'Petra by Night Ticket' },
+      { serviceId: 'svc-petra-day', name: 'Petra Entrance', siteName: 'Petra Entrance Ticket' },
+      { serviceId: 'svc-nebo', name: 'Mount Nebo', siteName: 'Mount Nebo Entrance' },
+      { serviceId: 'svc-bethany', name: 'Bethany', siteName: 'Bethany / Baptism Site' },
+    ],
+    activities: [{ id: 'act-wr', name: 'Wadi Rum Jeep Experiences', city: 'Wadi Rum', rateVariants: [{ id: 'var-2h', name: '2h Jeep Tour - Rum Area' }] }],
+  });
+  assert.equal(enriched.find((s) => s.place === 'Jerash')!.matchedServiceId, 'svc-jerash-site');
+  assert.equal(enriched.find((s) => s.place === 'Petra')!.matchedServiceId, 'svc-petra-day');
+  assert.equal(enriched.find((s) => s.place === 'Mount Nebo')!.matchedServiceId, 'svc-nebo');
+  assert.equal(enriched.find((s) => s.place === 'Bethany Beyond the Jordan')!.matchedServiceId, 'svc-bethany');
+  assert.equal(enriched.find((s) => s.place === 'Wadi Rum')!.matchedActivityRateVariantId, 'var-2h');
+});
+
 // ---- Phase R.5: guide suggestions (pure, descriptive) ----
 
 import { deriveGuideSuggestions } from './tailor-made-draft';

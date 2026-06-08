@@ -635,6 +635,9 @@ export interface SuggestedExperience {
   matchKind: 'SERVICE' | 'ACTIVITY';
   matchTerms: string[];
   variantTerms: string[];
+  /** Specific (non-place) terms that should strongly prefer a precise record —
+   *  e.g. "st. george"/"mosaic" for the Madaba suggestion (R.4d.2). */
+  specificTerms: string[];
 }
 
 interface ExperienceRule {
@@ -648,6 +651,9 @@ interface ExperienceRule {
   matchKind: 'SERVICE' | 'ACTIVITY';
   matchTerms: string[];
   variantTerms?: string[];
+  /** R.4d.2 — distinctive terms that pin the intended record over a broad
+   *  place-only match. */
+  specificTerms?: string[];
 }
 
 // Known Jordan sightseeing places and the experience each implies. Ordered so a
@@ -675,6 +681,7 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'medium',
     matchKind: 'SERVICE',
     matchTerms: ['citadel'],
+    specificTerms: ['citadel'],
   },
   {
     test: (t) => /\bamman\b/.test(t) && (/amman highlights/.test(t) || /city tour/.test(t)),
@@ -685,6 +692,7 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'medium',
     matchKind: 'SERVICE',
     matchTerms: ['roman theat'],
+    specificTerms: ['roman theat'],
   },
   {
     test: (t) => /\bmadaba\b/.test(t),
@@ -695,6 +703,9 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'high',
     matchKind: 'SERVICE',
     matchTerms: ['madaba', 'st. george', 'st george', 'mosaic'],
+    // The suggestion is specifically St. George / Mosaic Map — pin it over a
+    // generic "Madaba Archaeological Park" record (R.4d.2).
+    specificTerms: ['st. george', 'st george', 'george', 'mosaic', 'mosaic map', 'map'],
   },
   {
     test: (t) => /mount nebo|mt\.? nebo/.test(t),
@@ -705,6 +716,7 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'high',
     matchKind: 'SERVICE',
     matchTerms: ['nebo'],
+    specificTerms: ['nebo', 'mount nebo'],
   },
   {
     test: (t) => /visit petra|petra visit/.test(t),
@@ -736,6 +748,7 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'high',
     matchKind: 'SERVICE',
     matchTerms: ['bethany', 'baptism'],
+    specificTerms: ['bethany', 'baptism', 'baptism site'],
   },
   {
     test: (t) => /shoubak|shobak|montreal castle/.test(t),
@@ -746,6 +759,7 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'medium',
     matchKind: 'SERVICE',
     matchTerms: ['shoubak', 'shobak', 'montreal'],
+    specificTerms: ['shoubak', 'shobak', 'montreal'],
   },
 ];
 
@@ -775,6 +789,7 @@ function experiencesForDay(day: DraftDayShell): SuggestedExperience[] {
     matchKind: rule.matchKind,
     matchTerms: rule.matchTerms,
     variantTerms: rule.variantTerms || [],
+    specificTerms: rule.specificTerms || [],
   }));
 }
 
@@ -822,18 +837,22 @@ const ENTRANCE_POSITIVE_RE = /\barchaeolog|\bticket\b/i;
 const MUSEUM_RE = /\bmuseum\b/i;
 
 /**
- * Phase R.4c/R.4d/R.4d.1 — score a term-matched master record for an
- * ENTRANCE/TICKET suggestion. Higher is better; a "site" record dominates, and
- * a museum-only record (no "site") is penalized regardless of an "Entrance Fee"
- * suffix.
+ * Phase R.4c/R.4d/R.4d.1/R.4d.2 — score a term-matched master record for an
+ * ENTRANCE/TICKET suggestion. Higher is better.
+ *  - R.4d.2: a record matching the suggestion's SPECIFIC terms (e.g. "st.
+ *    george"/"mosaic" for Madaba) gets a dominant bonus so it beats a broad
+ *    place-only record ("Madaba Archaeological Park").
+ *  - R.4d.1: "site" dominates generic signals; museum-without-site is penalized.
  */
-function scoreEntranceRecord(recordText: string): number {
-  const hasSite = SITE_RE.test(recordText);
+function scoreEntranceRecord(recordText: string, specificTerms: string[] = []): number {
+  const text = recordText.toLowerCase();
+  const hasSite = SITE_RE.test(text);
   let score = 0;
-  if (hasSite) score += 3; // dominant main-site signal
-  if (ENTRANCE_RE.test(recordText)) score += 1; // generic entrance signal
-  if (ENTRANCE_POSITIVE_RE.test(recordText)) score += 1; // archaeological / ticket
-  if (MUSEUM_RE.test(recordText) && !hasSite) score -= 2; // museum-only penalty
+  if (specificTerms.some((term) => term && text.includes(term.toLowerCase()))) score += 5; // dominant specific-term match
+  if (hasSite) score += 3; // main-site signal
+  if (ENTRANCE_RE.test(text)) score += 1; // generic entrance signal
+  if (ENTRANCE_POSITIVE_RE.test(text)) score += 1; // archaeological / ticket
+  if (MUSEUM_RE.test(text) && !hasSite) score -= 2; // museum-only penalty
   return score;
 }
 
@@ -889,7 +908,7 @@ export function enrichExperienceMatches(
         .filter((m) => hit(m.siteName || '', s.matchTerms) || hit(m.name, s.matchTerms))
         .map((m, index) => {
           const recordText = `${clean(m.siteName || '')} ${clean(m.name)}`;
-          return { m, index, negative: ENTRANCE_NEGATIVE_RE.test(recordText), score: scoreEntranceRecord(recordText) };
+          return { m, index, negative: ENTRANCE_NEGATIVE_RE.test(recordText), score: scoreEntranceRecord(recordText, s.specificTerms) };
         })
         .filter((c) => !c.negative)
         .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.m || null;
