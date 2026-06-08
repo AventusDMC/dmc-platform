@@ -273,7 +273,7 @@ test('proposal PDF export shows persisted hotel pricing basis labels', () => {
   assert.ok(perRoom.investment.noteLines.includes('Grand Petra Hotel rate basis: per room/night'));
 });
 
-test('proposal PDF export renders child policies with safe fallback', () => {
+test('proposal PDF export renders meaningful child policies and suppresses the empty fallback (Phase N)', () => {
   const free = mapQuoteToProposalV3(createPdfQuote());
   const discount = mapQuoteToProposalV3(
     createPdfQuote({
@@ -286,9 +286,13 @@ test('proposal PDF export renders child policies with safe fallback', () => {
     }),
   );
 
+  // Meaningful policies still render.
   assert.ok(free.investment.noteLines.includes('Child policy: Children 0-5 free'));
   assert.ok(discount.investment.noteLines.includes('Child policy: Children 6-11 pay 50%'));
-  assert.ok(missing.investment.noteLines.includes('Child policy: No child policy available'));
+  // Phase N — when there is no real policy, the noisy fallback is suppressed
+  // entirely rather than printed once per hotel.
+  assert.ok(!missing.investment.noteLines.includes('Child policy: No child policy available'));
+  assert.ok(!missing.investment.noteLines.some((l) => /No child policy available/i.test(l)));
 });
 
 test('proposal PDF export renders selected supplement labels and basis distinctly', () => {
