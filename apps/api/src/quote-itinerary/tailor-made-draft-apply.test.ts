@@ -144,3 +144,45 @@ test('apply with replaceExisting:true replaces day rows (deleteMany) and creates
   assert.equal(replaced.length, 2);
   assert.equal(created.length, 8);
 });
+
+// ---- Phase R.2: hotel-stay SUGGESTIONS (read-only) ----
+
+import { buildTailorMadeJordanDraft } from '../quotes/tailor-made-draft';
+
+function persistedDayRows() {
+  return buildTailorMadeJordanDraft(INPUT).days.map((d) => ({
+    id: `day-${d.dayNumber}`, quoteId: 'quote-1', dayNumber: d.dayNumber,
+    title: d.title, notes: d.narrative, country: 'Jordan', sortOrder: d.dayNumber - 1, isActive: true,
+    dayItems: [], poiAssignments: [],
+  }));
+}
+
+test('hotel suggestions group overnights into stays, read-only, no QuoteItems/pricing', async () => {
+  const { prisma, calls } = makeFakePrisma(persistedDayRows());
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeHotels('quote-1', { hotelCategory: '4-star', currency: 'USD' }, { companyId: 'co-1' });
+
+  assert.deepEqual(
+    result.stays.map((s: any) => `${s.city} x${s.nights} (D${s.startDay}-${s.endDay})`),
+    ['Amman x2 (D1-2)', 'Petra x1 (D3-3)', 'Wadi Rum x1 (D4-4)', 'Dead Sea x3 (D5-7)'],
+  );
+  assert.equal(result.totalNights, 7);
+  assert.equal(result.hotelCategory, '4-star');
+  assert.ok(result.stays.every((s: any) => s.candidateHotels.length === 0), 'grouping-only: no candidate hotels yet');
+  // strictly read-only
+  assert.equal(calls.dayCreate.length, 0);
+  assert.equal(calls.dayDeleteMany, 0);
+  assert.equal(calls.auditCreate.length, 0);
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+});
+
+test('hotel suggestions on a quote with no days return a clear empty state', async () => {
+  const { prisma, calls } = makeFakePrisma([]);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeHotels('quote-1', {}, { companyId: 'co-1' });
+  assert.deepEqual(result.stays, []);
+  assert.match(result.message, /no active itinerary days/i);
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
+});

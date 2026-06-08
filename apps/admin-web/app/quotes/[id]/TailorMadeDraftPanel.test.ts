@@ -72,4 +72,14 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'quoteId={quote.id}',
     ]);
   });
+
+  it('R.2: read-only "Suggested Hotel Stays" section calls the hotel-suggestions proxy, no apply/pricing', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-draft/hotel-suggestions',
+      'Preview Hotel Suggestions',
+      'Suggested Hotel Stays',
+      'Read-only suggestions grouped by overnight city. No hotels have been applied and no pricing has run.',
+    ]);
+    assert.ok(!/applyHotel|hotelItem/i.test(panelSource), 'no hotel-apply wiring in R.2');
+  });
 });

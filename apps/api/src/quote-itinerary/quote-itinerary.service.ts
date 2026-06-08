@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -224,6 +224,42 @@ export class QuoteItineraryService {
 
     const saved = await this.findByQuoteId(quoteId, companyActor as CompanyScopedActor);
     return { draft, ...saved };
+  }
+
+  // Phase R.2 — read-only hotel-stay SUGGESTIONS. Reads the quote's active
+  // itinerary days, derives the overnight city per day, and groups consecutive
+  // same-city nights into suggested stays. Writes nothing, creates no
+  // QuoteItems, and calls no hotel/pricing logic. Candidate hotels are
+  // intentionally empty in R.2 (grouping-only; contract-backed candidates are a
+  // later, separately-reviewed step).
+  async suggestTailorMadeHotels(
+    quoteId: string,
+    options: { hotelCategory?: string | null; currency?: string | null } | undefined,
+    actor?: CompanyScopedActor,
+  ) {
+    await this.ensureQuoteExists(quoteId, actor);
+    const days = await this.dayModel.findMany({
+      where: { quoteId, isActive: true },
+      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+    });
+
+    const hotelCategory = normalizeOptionalString(options?.hotelCategory) || '4-star';
+    const currency = (normalizeOptionalString(options?.currency) || 'USD').toUpperCase();
+    const stays = deriveOvernightStays(days || [], hotelCategory);
+
+    return {
+      quoteId,
+      hotelCategory,
+      currency,
+      stays,
+      totalNights: stays.reduce((n, s) => n + s.nights, 0),
+      // Read-only grouping only — no hotels were looked up, applied, or priced.
+      message:
+        stays.length === 0
+          ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
+          : 'Suggested hotel stays grouped by overnight city. Read-only — no hotels applied and no pricing.',
+    };
   }
 
   async updateDay(dayId: string, data: UpdateQuoteItineraryDayDto, actor?: QuoteItineraryAuditActor) {

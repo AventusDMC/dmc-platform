@@ -92,6 +92,22 @@ export class QuoteItineraryController {
     return this.quoteItineraryService.previewTailorMadeDraft(quoteId, this.toDraftInput(body), this.toCompanyActor(actor));
   }
 
+  // Phase R.2 — read-only hotel-stay suggestions grouped by overnight city
+  // (no writes, no QuoteItems, no pricing).
+  @Post('quotes/:quoteId/tailor-made-draft/hotel-suggestions')
+  @Roles('admin', 'viewer', 'finance')
+  async suggestTailorMadeHotels(
+    @Param('quoteId') quoteId: string,
+    @Body() body: TailorMadeDraftBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.quoteItineraryService.suggestTailorMadeHotels(
+      quoteId,
+      { hotelCategory: body?.hotelCategory, currency: body?.currency },
+      this.toCompanyActor(actor),
+    );
+  }
+
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
   // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
   @Post('quotes/:quoteId/tailor-made-draft/apply')

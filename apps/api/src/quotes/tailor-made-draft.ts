@@ -225,3 +225,102 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
     unplacedRequiredPlaces,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Phase R.2 — read-only hotel-stay SUGGESTIONS derived from existing itinerary
+// days. This is pure grouping logic only: it reads day shells (dayNumber +
+// title + notes/narrative), derives the overnight city per day, and groups
+// consecutive same-city nights into stays. It performs NO hotel-candidate
+// lookup, NO pricing, and NO writes — those are explicitly out of scope.
+// ---------------------------------------------------------------------------
+
+export interface DraftDayShell {
+  dayNumber: number;
+  title?: string | null;
+  notes?: string | null;
+  isActive?: boolean | null;
+}
+
+export interface SuggestedHotelStay {
+  city: string;
+  nights: number;
+  startDay: number;
+  endDay: number;
+  hotelCategory: string | null;
+  /** Candidate hotels are intentionally empty in R.2 (grouping-only). */
+  candidateHotels: string[];
+  notes: string;
+}
+
+const tidyCity = (value: string): string =>
+  clean(value)
+    .replace(/\.+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+/**
+ * Best-effort overnight city for a single day shell.
+ *  1. The day title's final destination segment (split on "/") — the reliable
+ *     overnight signal for the generated route titles ("Amman / Jerash / Amman"
+ *     → Amman; "Petra Visit / Wadi Rum" → Wadi Rum; "Arrival Amman" → Amman).
+ *     "Departure" days carry no overnight.
+ *  2. Fallback (vague/edited title): a genuine "…, overnight <City>." sentence
+ *     in the narrative.
+ * Returns null when no overnight can be derived (e.g. the departure day).
+ */
+export function deriveOvernightCityFromDay(day: DraftDayShell): string | null {
+  const title = clean(day.title || '');
+  if (/^departure\b/i.test(title)) {
+    return null;
+  }
+  if (title) {
+    const cleaned = title.replace(/^arrival\s+/i, '').replace(/\s+visit\b/i, '');
+    const segments = cleaned.split('/').map((s) => s.trim()).filter(Boolean);
+    const last = segments.length ? segments[segments.length - 1] : cleaned;
+    const city = tidyCity(last);
+    if (city) {
+      return city;
+    }
+  }
+  // Title gave nothing usable — fall back to a real "…, overnight <City>." note.
+  const notes = String(day.notes || '');
+  const m = notes.match(/,\s*overnight\s+(?:in\s+|at\s+)?(?:the\s+)?([A-Za-z][A-Za-z'\- /]*?)\s*\.?\s*$/i);
+  return m && tidyCity(m[1]) ? tidyCity(m[1]) : null;
+}
+
+/**
+ * Group a quote's active itinerary days into suggested hotel stays by overnight
+ * city. Consecutive days sharing the same overnight city merge into one stay.
+ */
+export function deriveOvernightStays(days: DraftDayShell[], hotelCategory?: string | null): SuggestedHotelStay[] {
+  const category = clean(hotelCategory || '') || null;
+  const active = (days || [])
+    .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
+    .slice()
+    .sort((a, b) => a.dayNumber - b.dayNumber);
+
+  const stays: SuggestedHotelStay[] = [];
+  for (const day of active) {
+    const city = deriveOvernightCityFromDay(day);
+    if (!city) {
+      continue; // departure / no-overnight day → not a stay
+    }
+    const prev = stays[stays.length - 1];
+    if (prev && prev.city.toLowerCase() === city.toLowerCase() && day.dayNumber === prev.endDay + 1) {
+      prev.endDay = day.dayNumber;
+      prev.nights += 1;
+      prev.notes = `${prev.nights} night${prev.nights === 1 ? '' : 's'} in ${prev.city} (Days ${prev.startDay}–${prev.endDay}).`;
+    } else {
+      stays.push({
+        city,
+        nights: 1,
+        startDay: day.dayNumber,
+        endDay: day.dayNumber,
+        hotelCategory: category,
+        candidateHotels: [],
+        notes: `1 night in ${city} (Day ${day.dayNumber}).`,
+      });
+    }
+  }
+  return stays;
+}
