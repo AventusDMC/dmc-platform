@@ -85,7 +85,29 @@ export function QuoteItineraryDayForm({
   }
 
   return (
-    <form className="entity-form" onSubmit={handleSubmit}>
+    <form className="entity-form quote-itinerary-day-edit-form" onSubmit={handleSubmit}>
+      <div className="workspace-section-head">
+        <div>
+          <p className="eyebrow">{isEditing ? 'Edit day' : 'New day'}</p>
+          <h4>{isEditing ? 'Edit day title & narrative' : 'Add itinerary day'}</h4>
+        </div>
+      </div>
+
+      <label>
+        Day title
+        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Day 03 — Amman / Madaba / Mount Nebo / Petra" required />
+      </label>
+
+      <label>
+        Day narrative / notes
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={5}
+          placeholder="Describe the day's plan as it should read for the client."
+        />
+      </label>
+
       <div className="form-row form-row-3">
         <label>
           Day number
@@ -106,18 +128,8 @@ export function QuoteItineraryDayForm({
         </label>
       </div>
 
-      <label>
-        Title
-        <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-      </label>
-
-      <label>
-        Notes
-        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} />
-      </label>
-
       <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save day' : 'Create day')}
+        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save title & narrative' : 'Create day')}
       </button>
 
       {error ? <p className="form-error">{error}</p> : null}

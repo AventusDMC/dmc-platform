@@ -12,6 +12,9 @@ type InlineEntityActionsProps = {
   deleteLabel: string;
   confirmMessage: string;
   deleteSuccessHref?: string;
+  /** Label for the open-editor toggle (defaults to "Edit"). Lets callers make
+   *  the affordance explicit, e.g. "Edit title & narrative". */
+  editLabel?: string;
   children: ReactNode;
 };
 
@@ -21,6 +24,7 @@ export function InlineEntityActions({
   deleteLabel,
   confirmMessage,
   deleteSuccessHref,
+  editLabel,
   children,
 }: InlineEntityActionsProps) {
   const router = useRouter();
@@ -62,7 +66,7 @@ export function InlineEntityActions({
     <div className="inline-entity-actions">
       <div className="inline-entity-action-bar">
         <button type="button" className="compact-button" onClick={() => setIsEditing((value) => !value)}>
-          {isEditing ? 'Cancel' : 'Edit'}
+          {isEditing ? 'Cancel' : editLabel || 'Edit'}
         </button>
         <button type="button" className="compact-button compact-button-danger" onClick={handleDelete} disabled={isDeleting}>
           {isDeleting ? 'Deleting...' : 'Delete'}
