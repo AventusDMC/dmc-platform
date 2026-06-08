@@ -667,6 +667,43 @@ function guideTypeFromItem(item: ProposalV3QuoteItem): 'escort' | 'local' | null
   return null;
 }
 
+// Phase Q.1 — a day location can be a route-like string ("Amman / Jerash /
+// Amman", "Amman / Madaba / Mount Nebo / Shoubak / Petra"). For a guide line we
+// want ONE clean destination, not the whole route. Split on "/", dedupe, then:
+//  - round-trip (origin returns at the end) → the featured non-origin stop
+//  - one-way → the final destination
+//  - single token → itself
+// Returns null when nothing clean can be derived (caller falls back to
+// "Licensed local guide."). A bare "Destination N" placeholder is rejected.
+function pickGuideDestination(location: string | null): string | null {
+  const raw = cleanText(location || '');
+  if (!raw || /^Destination\s+\d+$/i.test(raw)) {
+    return null;
+  }
+  const parts = raw.split('/').map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 1) {
+    return raw;
+  }
+  const uniq: string[] = [];
+  for (const p of parts) {
+    if (!uniq.some((u) => u.toLowerCase() === p.toLowerCase())) {
+      uniq.push(p);
+    }
+  }
+  if (uniq.length === 1) {
+    return uniq[0];
+  }
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (first.toLowerCase() === last.toLowerCase()) {
+    // Round-trip: drop the origin, prefer the last remaining (featured) stop.
+    const nonOrigin = uniq.filter((u) => u.toLowerCase() !== first.toLowerCase());
+    return nonOrigin.length ? nonOrigin[nonOrigin.length - 1] : uniq[0];
+  }
+  // One-way: the final destination.
+  return uniq[uniq.length - 1];
+}
+
 // Compose a clean, client-facing guide description from the safe signals
 // (guide type + day location). Returns null when nothing meaningful can be
 // said — the guide's title still conveys the service.
@@ -676,7 +713,7 @@ function buildGuideClientDescription(item: ProposalV3QuoteItem, location: string
     return prosePhrase(activeProposalLocale, 'guideEscort');
   }
   if (type === 'local') {
-    const loc = cleanText(location || '');
+    const loc = pickGuideDestination(location);
     return loc
       ? proseTemplate(activeProposalLocale, 'guideLocalFor', { location: loc })
       : prosePhrase(activeProposalLocale, 'guideLocalLicensed');

@@ -61,6 +61,28 @@ test('an accompanying escort guide reads "Escort guide as scheduled."', () => {
   assert.equal(guide.description, 'Escort guide as scheduled.');
 });
 
+// Phase Q.1 — a multi-stop route day title resolves to ONE clean destination.
+test('Phase Q.1: round-trip day "Amman / Jerash / Amman" → "Local guide for Jerash"', () => {
+  const vm: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 2: Amman / Jerash / Amman' }) as any);
+  const guide = guideCard(vm);
+  assert.equal(guide.description, 'Local guide for Jerash');
+  // the guide DESCRIPTION carries one clean destination, not the route string
+  // (the day title may still show the full route — that's the itinerary heading).
+  assert.doesNotMatch(guide.description, /\//, 'no route string in the guide description');
+});
+
+test('Phase Q.1: one-way day "…/ Shoubak / Petra" → "Local guide for Petra"', () => {
+  const vm: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 3: Amman / Madaba / Mount Nebo / Shoubak / Petra' }) as any);
+  const guide = guideCard(vm);
+  assert.equal(guide.description, 'Local guide for Petra');
+  assert.doesNotMatch(guide.description, /\//, 'no route string in the guide description');
+});
+
+test('Phase Q.1: a single-city day is unchanged ("Local guide for Petra")', () => {
+  const vm: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 1: Petra' }) as any);
+  assert.equal(guideCard(vm).description, 'Local guide for Petra');
+});
+
 test('no internal guide metadata leaks anywhere in the view model', () => {
   const vm: any = mapQuoteToProposalV3(quoteWithGuide() as any);
   const text = JSON.stringify(vm);
