@@ -805,10 +805,22 @@ export interface ActivityMasterRecord {
   rateVariants?: Array<{ id: string; name: string }>;
 }
 
+// Phase R.4c — for an ENTRANCE/TICKET suggestion, a daytime site visit must NOT
+// match an optional / "by Night" / activity variant. Records whose name reads
+// like one of these are excluded; records that read like a main entrance/site/
+// ticket are preferred. (The ACTIVITY branch has its own specific matching.)
+const ENTRANCE_NEGATIVE_RE = /by night|\bnight\b|\boptional\b|\bactivity\b/i;
+const ENTRANCE_POSITIVE_RE = /\bentrance\b|\barchaeolog|\bsite\b|\bticket\b/i;
+
 /**
  * Phase R.4 — best-effort, read-only enrichment: attach the matched master
  * record id + human name to each suggestion when a confident name match exists.
  * Pure (no DB, no pricing). Never throws on a miss — leaves matched* null.
+ *
+ * Phase R.4c — ENTRANCE/TICKET matching is ranked, not first-hit: optional/night
+ * variants are excluded and main entrance/site records preferred, so the Petra
+ * daytime entrance no longer resolves to "Petra by Night". If only excluded
+ * variants exist, the suggestion stays descriptive (matched null).
  */
 export function enrichExperienceMatches(
   suggestions: SuggestedExperience[],
@@ -840,8 +852,21 @@ export function enrichExperienceMatches(
       }
       return s;
     }
-    // SERVICE (entrance/ticket): match by entrance siteName first, else service name.
-    const svc = services.find((m) => hit(m.siteName || '', s.matchTerms) || hit(m.name, s.matchTerms));
+
+    // SERVICE (entrance/ticket): rank the term-matched records.
+    //  1. exclude optional / "by Night" / activity variants (a daytime entrance
+    //     must not resolve to "… by Night" or an optional add-on);
+    //  2. prefer records that read like a main entrance / site / ticket;
+    //  3. if every candidate is excluded, leave the suggestion descriptive.
+    const svc =
+      services
+        .filter((m) => hit(m.siteName || '', s.matchTerms) || hit(m.name, s.matchTerms))
+        .map((m) => {
+          const recordText = `${clean(m.siteName || '')} ${clean(m.name)}`;
+          return { m, negative: ENTRANCE_NEGATIVE_RE.test(recordText), positive: ENTRANCE_POSITIVE_RE.test(recordText) };
+        })
+        .filter((c) => !c.negative)
+        .sort((a, b) => (b.positive ? 1 : 0) - (a.positive ? 1 : 0))[0]?.m || null;
     if (svc) {
       return { ...s, matchedServiceId: svc.serviceId, matchedName: clean(svc.siteName || svc.name) || null };
     }

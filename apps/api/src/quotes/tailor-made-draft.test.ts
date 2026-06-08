@@ -447,6 +447,47 @@ test('R.4: empty / inactive days yield no suggestions', () => {
   );
 });
 
+test('R.4c: Petra daytime entrance prefers the main entrance, never "Petra by Night"', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [
+      // night variant listed FIRST so a naive first-hit matcher would pick it
+      { serviceId: 'svc-petra-night', name: 'Petra by Night', siteName: 'Petra by Night Ticket' },
+      { serviceId: 'svc-petra-day', name: 'Petra Entrance', siteName: 'Petra Entrance Ticket' },
+      { serviceId: 'svc-jerash', name: 'Jerash & Amman Touring', siteName: 'Jerash Archaeological Site' },
+      { serviceId: 'svc-nebo', name: 'Mount Nebo', siteName: 'Mount Nebo Entrance' },
+      { serviceId: 'svc-bethany', name: 'Bethany', siteName: 'Bethany / Baptism Site' },
+      { serviceId: 'svc-madaba', name: 'Madaba Tour', siteName: 'St. George Church / Mosaic Map' },
+    ],
+    activities: [
+      { id: 'act-wr', name: 'Wadi Rum Jeep Experiences', city: 'Wadi Rum', rateVariants: [{ id: 'var-2h', name: '2h Jeep Tour - Rum Area' }] },
+    ],
+  });
+  const petra = enriched.find((s) => s.place === 'Petra')!;
+  assert.equal(petra.matchedServiceId, 'svc-petra-day', 'matches the daytime Petra entrance');
+  assert.equal(petra.matchedName, 'Petra Entrance Ticket');
+  assert.doesNotMatch(petra.matchedName || '', /by night/i);
+  // other entrances stay correct
+  assert.equal(enriched.find((s) => s.place === 'Jerash')!.matchedServiceId, 'svc-jerash');
+  assert.equal(enriched.find((s) => s.place === 'Mount Nebo')!.matchedServiceId, 'svc-nebo');
+  assert.equal(enriched.find((s) => s.place === 'Bethany Beyond the Jordan')!.matchedServiceId, 'svc-bethany');
+  assert.equal(enriched.find((s) => s.place === 'Madaba')!.matchedServiceId, 'svc-madaba');
+  // Wadi Rum jeep activity still matches its 2-hour Rum-Area variant
+  const wr = enriched.find((s) => s.place === 'Wadi Rum')!;
+  assert.equal(wr.matchedActivityId, 'act-wr');
+  assert.equal(wr.matchedActivityRateVariantId, 'var-2h');
+});
+
+test('R.4c: when only a night/optional Petra variant exists, the suggestion stays descriptive (no wrong match)', () => {
+  const enriched = enrichExperienceMatches(deriveExperienceSuggestions(persistedDays(CLASSIC)), {
+    services: [{ serviceId: 'svc-petra-night', name: 'Petra by Night', siteName: 'Petra by Night Ticket' }],
+    activities: [],
+  });
+  const petra = enriched.find((s) => s.place === 'Petra')!;
+  assert.equal(petra.matchedServiceId, null, 'no match rather than the wrong (night) record');
+  assert.equal(petra.matchedName, null);
+  assert.equal(petra.displayName, 'Petra — entrance', 'descriptive suggestion preserved');
+});
+
 // ---- Phase R.5: guide suggestions (pure, descriptive) ----
 
 import { deriveGuideSuggestions } from './tailor-made-draft';
