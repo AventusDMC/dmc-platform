@@ -331,3 +331,45 @@ test('R.4: no days → empty experience suggestions with a clear message', async
   assert.equal(calls.quoteItemCalls, 0);
   assert.equal(calls.pricingCalls, 0);
 });
+
+// ---- Phase R.5: guide suggestions (read-only) ----
+
+test('R.5: guide suggestions classify per day (Jerash D2, Petra D4), strictly read-only', async () => {
+  const { prisma, calls } = makeFakePrisma(persistedDayRows());
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeGuides('quote-1', { companyId: 'co-1' });
+
+  const byDay = Object.fromEntries(result.suggestions.map((s: any) => [s.dayNumber, s]));
+  assert.equal(byDay[2].guideTypeSuggestion, 'LOCAL');
+  assert.equal(byDay[2].displayName, 'Local guide for Jerash');
+  assert.equal(byDay[4].guideTypeSuggestion, 'LOCAL');
+  assert.equal(byDay[4].displayName, 'Local guide for Petra');
+  assert.equal(byDay[1].guideTypeSuggestion, 'NONE'); // arrival
+  assert.equal(byDay[6].guideTypeSuggestion, 'NONE'); // leisure
+  assert.equal(byDay[8].guideTypeSuggestion, 'NONE'); // departure
+  assert.equal(result.guidedDayCount, 2);
+  assert.ok(typeof result.escortNote === 'string' && result.escortNote.length > 0, 'escort offered as a planning note');
+  // strictly read-only — no writes, no hotel/service/activity master read, no QuoteItem/pricing
+  assert.equal(calls.dayCreate.length, 0);
+  assert.equal(calls.dayDeleteMany, 0);
+  assert.equal(calls.auditCreate.length, 0);
+  assert.equal(calls.hotelFindMany, 0);
+  assert.equal(calls.serviceFindMany, 0);
+  assert.equal(calls.activityFindMany, 0);
+  assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingCalls, 0, 'no pricing access');
+  // no raw guide metadata / pricing leaks
+  assert.doesNotMatch(JSON.stringify(result), /minPax|maxPax|requiresOperatorConfirmation|Overnight:\s*No/i);
+  assert.doesNotMatch(JSON.stringify(result), /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell/i);
+});
+
+test('R.5: no days → empty guide suggestions with a clear message', async () => {
+  const { prisma, calls } = makeFakePrisma([]);
+  const service = new QuoteItineraryService(prisma as any);
+  const result = await service.suggestTailorMadeGuides('quote-1', { companyId: 'co-1' });
+  assert.deepEqual(result.suggestions, []);
+  assert.match(result.message, /no active itinerary days/i);
+  assert.equal(result.escortNote, null);
+  assert.equal(calls.quoteItemCalls, 0);
+  assert.equal(calls.pricingCalls, 0);
+});

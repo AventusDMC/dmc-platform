@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -382,6 +382,37 @@ export class QuoteItineraryService {
         cleaned.length === 0
           ? 'No entrance/activity suggestions for the current itinerary days. Generate and apply a tailor-made draft first.'
           : 'Suggested entrances & activities by day. Read-only planning hints — nothing has been applied and no pricing has run.',
+    };
+  }
+
+  // Phase R.5 — read-only GUIDE suggestions. Reads the quote's active itinerary
+  // days and proposes a local guide for the major guided sites (Jerash, Petra).
+  // Descriptive only: no QuoteItems, no pricing, no writes, no guide master/rate
+  // lookup. An escort guide is offered as a program-level planning note only.
+  async suggestTailorMadeGuides(quoteId: string, actor?: CompanyScopedActor) {
+    await this.ensureQuoteExists(quoteId, actor);
+    const days = await this.dayModel.findMany({
+      where: { quoteId, isActive: true },
+      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+    });
+
+    const suggestions = deriveGuideSuggestions(days || []);
+    const guided = suggestions.filter((s) => s.guideTypeSuggestion !== 'NONE');
+
+    return {
+      quoteId,
+      suggestions,
+      guidedDayCount: guided.length,
+      // Program-level planning note only — never applied or priced here.
+      escortNote:
+        suggestions.length === 0
+          ? null
+          : 'An escort/tour leader for the full program can be added as a planning option (not applied, not priced).',
+      message:
+        suggestions.length === 0
+          ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
+          : 'Suggested guides by day. Read-only planning hints — no guides applied and no pricing.',
     };
   }
 

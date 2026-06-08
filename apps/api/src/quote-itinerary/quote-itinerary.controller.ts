@@ -124,6 +124,14 @@ export class QuoteItineraryController {
     return this.quoteItineraryService.suggestTailorMadeExperiences(quoteId, this.toCompanyActor(actor));
   }
 
+  // Phase R.5 — read-only guide suggestions per itinerary day (no writes, no
+  // QuoteItems, no pricing, no guide master/rate lookup).
+  @Post('quotes/:quoteId/tailor-made-draft/guide-suggestions')
+  @Roles('admin', 'viewer', 'finance')
+  async suggestTailorMadeGuides(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    return this.quoteItineraryService.suggestTailorMadeGuides(quoteId, this.toCompanyActor(actor));
+  }
+
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
   // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
   @Post('quotes/:quoteId/tailor-made-draft/apply')

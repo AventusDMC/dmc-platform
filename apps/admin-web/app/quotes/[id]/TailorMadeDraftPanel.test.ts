@@ -123,4 +123,17 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/Apply Entrances|Apply Activities|Apply Tickets/i.test(panelSource), 'no Apply Entrances/Activities button in R.4');
     assert.ok(!/sellPrice|totalSell|markup|foreignerFeeJod/i.test(panelSource), 'no pricing fields in R.4 section');
   });
+
+  it('R.5: a read-only "Suggested Guides" section calls the guide-suggestions proxy (no apply/pricing)', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-draft/guide-suggestions',
+      'Preview Guide Suggestions',
+      'Suggested Guides',
+      'Read-only planning hints. No guides have been applied and no pricing has run.',
+      "g.guideTypeSuggestion !== 'NONE'",
+    ]);
+    // read-only: no Apply button, no raw guide metadata / pricing leakage
+    assert.ok(!/Apply Guides?/i.test(panelSource), 'no Apply Guides button in R.5');
+    assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in R.5 section');
+  });
 });
