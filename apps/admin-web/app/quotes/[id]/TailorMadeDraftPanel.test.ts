@@ -109,4 +109,18 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     // no raw vehicle-class / pricing leakage in client-style display
     assert.ok(!/Sedan 2|Coaster \d|Daily Full Day \|/i.test(panelSource), 'no raw vehicle/pricing labels');
   });
+
+  it('R.4: a read-only "Suggested Entrances & Activities" section calls the experience-suggestions proxy (no apply/pricing)', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-draft/experience-suggestions',
+      'Preview Entrances & Activities',
+      'Suggested Entrances &amp; Activities',
+      'Read-only planning hints. No tickets, entrances, or activities have been applied and no pricing has run.',
+      'Entrance',
+      'Activity',
+    ]);
+    // read-only: no Apply button, no pricing fields wired into the section
+    assert.ok(!/Apply Entrances|Apply Activities|Apply Tickets/i.test(panelSource), 'no Apply Entrances/Activities button in R.4');
+    assert.ok(!/sellPrice|totalSell|markup|foreignerFeeJod/i.test(panelSource), 'no pricing fields in R.4 section');
+  });
 });

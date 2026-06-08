@@ -603,3 +603,248 @@ export function deriveTransportSuggestions(days: DraftDayShell[]): SuggestedTran
 
   return suggestions;
 }
+
+// ---------------------------------------------------------------------------
+// Phase R.4 — read-only ENTRANCE / TICKET / ACTIVITY SUGGESTIONS derived from
+// itinerary days. Pure place-recognition only: reads day shells (title +
+// notes), recognizes known Jordan sightseeing places, and proposes the
+// entrance/ticket/activity that day "probably needs". It performs NO pricing,
+// NO QuoteItem creation, NO writes. The optional matched* fields are populated
+// later by the SERVICE via a best-effort, read-only master lookup; the pure
+// engine leaves them null. matchTerms / matchKind are admin lookup hints only
+// (never client text).
+// ---------------------------------------------------------------------------
+
+export type SuggestedExperienceType = 'ENTRANCE' | 'TICKET' | 'ACTIVITY';
+
+export interface SuggestedExperience {
+  dayNumber: number;
+  place: string;
+  suggestedItemType: SuggestedExperienceType;
+  displayName: string;
+  reason: string;
+  confidence: 'high' | 'medium' | 'low';
+  notes: string;
+  /** Populated by the service's best-effort master match; null when unmatched. */
+  matchedServiceId: string | null;
+  matchedActivityId: string | null;
+  matchedActivityRateVariantId: string | null;
+  /** Human name of the matched master record (admin display), null when unmatched. */
+  matchedName: string | null;
+  /** Admin-only lookup hints for the service enrichment (never client text). */
+  matchKind: 'SERVICE' | 'ACTIVITY';
+  matchTerms: string[];
+  variantTerms: string[];
+}
+
+interface ExperienceRule {
+  /** Recognize this place on a day from its normalized (lowercased) title+notes. */
+  test: (text: string) => boolean;
+  place: string;
+  displayName: string;
+  suggestedItemType: SuggestedExperienceType;
+  reason: string;
+  confidence: 'high' | 'medium' | 'low';
+  matchKind: 'SERVICE' | 'ACTIVITY';
+  matchTerms: string[];
+  variantTerms?: string[];
+}
+
+// Known Jordan sightseeing places and the experience each implies. Ordered so a
+// day's suggestions read north→south / arrival→activity. Recognition is
+// deliberately conservative: a place that is only an overnight/transit mention
+// (e.g. "continue to Petra, overnight Petra") is NOT proposed — only an actual
+// "Visit …"/tour/activity signal triggers it.
+const EXPERIENCE_RULES: ExperienceRule[] = [
+  {
+    test: (t) => /\bjerash\b/.test(t),
+    place: 'Jerash',
+    displayName: 'Jerash Archaeological Site — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Jerash is visited on this day.',
+    confidence: 'high',
+    matchKind: 'SERVICE',
+    matchTerms: ['jerash'],
+  },
+  {
+    test: (t) => /\bamman\b/.test(t) && (/amman highlights/.test(t) || /city tour/.test(t)),
+    place: 'Amman Citadel',
+    displayName: 'Amman Citadel — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Amman city sightseeing is included on this day.',
+    confidence: 'medium',
+    matchKind: 'SERVICE',
+    matchTerms: ['citadel'],
+  },
+  {
+    test: (t) => /\bamman\b/.test(t) && (/amman highlights/.test(t) || /city tour/.test(t)),
+    place: 'Roman Theatre',
+    displayName: 'Roman Theatre (Amman) — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Amman city sightseeing is included on this day.',
+    confidence: 'medium',
+    matchKind: 'SERVICE',
+    matchTerms: ['roman theat'],
+  },
+  {
+    test: (t) => /\bmadaba\b/.test(t),
+    place: 'Madaba',
+    displayName: 'Madaba — St. George Church (Mosaic Map) entrance',
+    suggestedItemType: 'TICKET',
+    reason: 'Madaba is visited en route on this day.',
+    confidence: 'high',
+    matchKind: 'SERVICE',
+    matchTerms: ['madaba', 'st. george', 'st george', 'mosaic'],
+  },
+  {
+    test: (t) => /mount nebo|mt\.? nebo/.test(t),
+    place: 'Mount Nebo',
+    displayName: 'Mount Nebo — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Mount Nebo is visited en route on this day.',
+    confidence: 'high',
+    matchKind: 'SERVICE',
+    matchTerms: ['nebo'],
+  },
+  {
+    test: (t) => /visit petra|petra visit/.test(t),
+    place: 'Petra',
+    displayName: 'Petra — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Petra is visited on this day.',
+    confidence: 'high',
+    matchKind: 'SERVICE',
+    matchTerms: ['petra'],
+  },
+  {
+    test: (t) => /jeep tour|jeep/.test(t),
+    place: 'Wadi Rum',
+    displayName: 'Wadi Rum Jeep Tour — 2 Hours – Rum Area',
+    suggestedItemType: 'ACTIVITY',
+    reason: 'A Wadi Rum jeep tour is featured on this day.',
+    confidence: 'high',
+    matchKind: 'ACTIVITY',
+    matchTerms: ['wadi rum'],
+    variantTerms: ['jeep', '2h', '2 hour'],
+  },
+  {
+    test: (t) => /bethany/.test(t),
+    place: 'Bethany Beyond the Jordan',
+    displayName: 'Bethany Beyond the Jordan — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Bethany Beyond the Jordan is included on this day.',
+    confidence: 'high',
+    matchKind: 'SERVICE',
+    matchTerms: ['bethany', 'baptism'],
+  },
+  {
+    test: (t) => /shoubak|shobak|montreal castle/.test(t),
+    place: 'Shoubak',
+    displayName: 'Shoubak Castle — entrance',
+    suggestedItemType: 'ENTRANCE',
+    reason: 'Shoubak Castle is included on this day.',
+    confidence: 'medium',
+    matchKind: 'SERVICE',
+    matchTerms: ['shoubak', 'shobak', 'montreal'],
+  },
+];
+
+function experiencesForDay(day: DraftDayShell): SuggestedExperience[] {
+  const title = clean(day.title || '');
+  // Arrival / departure days carry no sightseeing entrance.
+  if (/^arrival\b/i.test(title) || /^departure\b/i.test(title)) {
+    return [];
+  }
+  // Join with a separator so cross-boundary phrases can't form — e.g. a day
+  // whose title ends "… / Petra" followed by notes starting "Visit Madaba …"
+  // must NOT read as "Petra Visit". Each rule matches within title or notes,
+  // never spanning the two.
+  const text = `${title} | ${String(day.notes || '')}`.toLowerCase();
+  return EXPERIENCE_RULES.filter((rule) => rule.test(text)).map((rule) => ({
+    dayNumber: day.dayNumber,
+    place: rule.place,
+    suggestedItemType: rule.suggestedItemType,
+    displayName: rule.displayName,
+    reason: rule.reason,
+    confidence: rule.confidence,
+    notes: 'Read-only planning hint derived from the day route/narrative. Not applied, not priced.',
+    matchedServiceId: null,
+    matchedActivityId: null,
+    matchedActivityRateVariantId: null,
+    matchedName: null,
+    matchKind: rule.matchKind,
+    matchTerms: rule.matchTerms,
+    variantTerms: rule.variantTerms || [],
+  }));
+}
+
+/**
+ * Phase R.4 — propose the entrances/tickets/activities each active itinerary
+ * day probably needs. Pure and descriptive: matched* fields start null and are
+ * filled in (best-effort) by the service from existing master records.
+ */
+export function deriveExperienceSuggestions(days: DraftDayShell[]): SuggestedExperience[] {
+  return (days || [])
+    .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
+    .slice()
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .flatMap((d) => experiencesForDay(d));
+}
+
+// Phase R.4 — normalized master records the service pre-fetches for the
+// best-effort (read-only) match. No pricing fields are carried.
+export interface ServiceMasterRecord {
+  serviceId: string;
+  name: string;
+  siteName: string | null;
+}
+export interface ActivityMasterRecord {
+  id: string;
+  name: string;
+  city?: string | null;
+  rateVariants?: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Phase R.4 — best-effort, read-only enrichment: attach the matched master
+ * record id + human name to each suggestion when a confident name match exists.
+ * Pure (no DB, no pricing). Never throws on a miss — leaves matched* null.
+ */
+export function enrichExperienceMatches(
+  suggestions: SuggestedExperience[],
+  masters: { services?: ServiceMasterRecord[]; activities?: ActivityMasterRecord[] },
+): SuggestedExperience[] {
+  const services = masters.services || [];
+  const activities = masters.activities || [];
+  const hit = (haystack: string, terms: string[]) => {
+    const h = clean(haystack).toLowerCase();
+    return Boolean(h) && terms.some((t) => h.includes(t.toLowerCase()));
+  };
+
+  return suggestions.map((s) => {
+    if (s.matchKind === 'ACTIVITY') {
+      const activity = activities.find(
+        (a) => hit(a.name, s.matchTerms) || hit(a.city || '', s.matchTerms),
+      );
+      if (activity) {
+        const variant =
+          (s.variantTerms.length
+            ? (activity.rateVariants || []).find((v) => hit(v.name, s.variantTerms))
+            : null) || (activity.rateVariants || [])[0] || null;
+        return {
+          ...s,
+          matchedActivityId: activity.id,
+          matchedActivityRateVariantId: variant?.id ?? null,
+          matchedName: clean(activity.name) || null,
+        };
+      }
+      return s;
+    }
+    // SERVICE (entrance/ticket): match by entrance siteName first, else service name.
+    const svc = services.find((m) => hit(m.siteName || '', s.matchTerms) || hit(m.name, s.matchTerms));
+    if (svc) {
+      return { ...s, matchedServiceId: svc.serviceId, matchedName: clean(svc.siteName || svc.name) || null };
+    }
+    return s;
+  });
+}

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveTransportSuggestions, matchHotelCandidatesForStay, type HotelMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -316,6 +316,72 @@ export class QuoteItineraryService {
         suggestions.length === 0
           ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
           : 'Suggested transport per day. Read-only planning hints — no transport applied and no pricing.',
+    };
+  }
+
+  // Phase R.4 — read-only ENTRANCE / TICKET / ACTIVITY suggestions. Reads the
+  // quote's active itinerary days, recognizes known sightseeing places, and
+  // proposes the entrance/ticket/activity each day probably needs. A best-effort
+  // master lookup attaches matched record ids + names where confidently found.
+  // No QuoteItems, no pricing, no writes; the master read is defensive (a
+  // failure degrades to descriptive-only suggestions, never an error).
+  async suggestTailorMadeExperiences(quoteId: string, actor?: CompanyScopedActor) {
+    await this.ensureQuoteExists(quoteId, actor);
+    const days = await this.dayModel.findMany({
+      where: { quoteId, isActive: true },
+      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+    });
+
+    let suggestions = deriveExperienceSuggestions(days || []);
+
+    if (suggestions.length > 0) {
+      try {
+        const [services, activities] = await Promise.all([
+          (this.prisma as any).supplierService.findMany({
+            select: { id: true, name: true, entranceFee: { select: { siteName: true } } },
+            take: 500,
+          }),
+          (this.prisma as any).activity.findMany({
+            where: { active: true },
+            select: { id: true, name: true, city: true, rateVariants: { select: { id: true, name: true }, where: { active: true } } },
+            take: 500,
+          }),
+        ]);
+        const serviceMasters: ServiceMasterRecord[] = (services || []).map((s: any) => ({
+          serviceId: s.id,
+          name: s.name,
+          siteName: s.entranceFee?.siteName ?? null,
+        }));
+        const activityMasters: ActivityMasterRecord[] = (activities || []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          city: a.city ?? null,
+          rateVariants: (a.rateVariants || []).map((v: any) => ({ id: v.id, name: v.name })),
+        }));
+        suggestions = enrichExperienceMatches(suggestions, { services: serviceMasters, activities: activityMasters });
+      } catch {
+        // Best-effort only: keep descriptive suggestions if the master read fails.
+      }
+    }
+
+    // Strip the internal lookup hints from the response payload (admin sees the
+    // displayName + optional matched record name, never the raw match terms).
+    const cleaned = suggestions.map(({ matchTerms, variantTerms, matchKind, ...rest }) => rest);
+    const byDay = cleaned.reduce<Record<number, typeof cleaned>>((acc, s) => {
+      (acc[s.dayNumber] ||= []).push(s);
+      return acc;
+    }, {});
+
+    return {
+      quoteId,
+      suggestions: cleaned,
+      byDay,
+      matchedCount: cleaned.filter((s) => s.matchedServiceId || s.matchedActivityId).length,
+      message:
+        cleaned.length === 0
+          ? 'No entrance/activity suggestions for the current itinerary days. Generate and apply a tailor-made draft first.'
+          : 'Suggested entrances & activities by day. Read-only planning hints — nothing has been applied and no pricing has run.',
     };
   }
 

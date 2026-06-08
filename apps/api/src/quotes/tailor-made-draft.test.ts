@@ -357,3 +357,92 @@ test('R.3b: derivation changes introduce no pricing/cost fields', () => {
   assert.doesNotMatch(JSON.stringify(deriveOvernightStays(persistedDays(STANDARD))), /price|cost|total|amount|markup/i);
   assert.doesNotMatch(JSON.stringify(deriveTransportSuggestions(persistedDays(STANDARD))), /price|cost|markup|totalSell/i);
 });
+
+// ---- Phase R.4: entrance / ticket / activity suggestions (pure, descriptive) ----
+
+import { deriveExperienceSuggestions, enrichExperienceMatches } from './tailor-made-draft';
+
+const byPlace = (days: any) => {
+  const out: Record<string, any[]> = {};
+  for (const s of deriveExperienceSuggestions(days)) (out[s.place] ||= []).push(s);
+  return out;
+};
+
+test('R.4: standard CLASSIC draft suggests Jerash, Petra, and the Wadi Rum Jeep Tour', () => {
+  const places = byPlace(persistedDays(CLASSIC));
+  assert.ok(places['Jerash'], 'Jerash entrance suggested');
+  assert.equal(places['Jerash'][0].dayNumber, 2);
+  assert.equal(places['Jerash'][0].suggestedItemType, 'ENTRANCE');
+  assert.ok(places['Petra'], 'Petra entrance suggested');
+  assert.equal(places['Petra'][0].dayNumber, 4, 'Petra entrance lands on the Petra VISIT day');
+  assert.ok(places['Wadi Rum'], 'Wadi Rum jeep tour suggested');
+  assert.equal(places['Wadi Rum'][0].suggestedItemType, 'ACTIVITY');
+  assert.match(places['Wadi Rum'][0].displayName, /Wadi Rum Jeep Tour — 2 Hours – Rum Area/);
+});
+
+test('R.4: Petra is NOT suggested on the arrival/transit day (only on the Visit day)', () => {
+  const petra = deriveExperienceSuggestions(persistedDays(CLASSIC)).filter((s) => s.place === 'Petra');
+  assert.equal(petra.length, 1, 'exactly one Petra entrance suggestion');
+  assert.equal(petra[0].dayNumber, 4);
+});
+
+test('R.4: Madaba / Mount Nebo appear when present and are absent when not', () => {
+  const withNebo = byPlace(persistedDays(CLASSIC));
+  assert.ok(withNebo['Madaba'] && withNebo['Mount Nebo']);
+  assert.equal(withNebo['Madaba'][0].dayNumber, 3);
+  const without = byPlace(persistedDays({ ...CLASSIC, optionalPlaces: ['Bethany'], requiredPlaces: ['Petra', 'Wadi Rum', 'Dead Sea', 'Jerash'] }));
+  assert.ok(!without['Madaba'], 'no Madaba when not in the draft');
+  assert.ok(!without['Mount Nebo'], 'no Mount Nebo when not in the draft');
+});
+
+test('R.4: Bethany suggestion appears only when Bethany is included', () => {
+  const withB = byPlace(persistedDays(CLASSIC));
+  assert.ok(withB['Bethany Beyond the Jordan'], 'Bethany suggested when included');
+  const withoutB = byPlace(persistedDays({ ...CLASSIC, optionalPlaces: ['Madaba', 'Mount Nebo'], requiredPlaces: ['Petra', 'Wadi Rum', 'Dead Sea', 'Jerash'] }));
+  assert.ok(!withoutB['Bethany Beyond the Jordan'], 'no Bethany when excluded');
+});
+
+test('R.4: arrival and departure days carry no entrance/activity suggestions', () => {
+  const sugg = deriveExperienceSuggestions(persistedDays(CLASSIC));
+  assert.ok(!sugg.some((s) => s.dayNumber === 1), 'no suggestions on arrival day');
+  assert.ok(!sugg.some((s) => s.dayNumber === 8), 'no suggestions on departure day');
+});
+
+test('R.4: suggestions are descriptive only — matched fields null and no pricing', () => {
+  const sugg = deriveExperienceSuggestions(persistedDays(CLASSIC));
+  assert.ok(sugg.every((s) => s.matchedServiceId === null && s.matchedActivityId === null && s.matchedActivityRateVariantId === null && s.matchedName === null));
+  // value-leak check (word boundaries so the "not priced" disclaimer is fine)
+  assert.doesNotMatch(JSON.stringify(sugg), /\bprices?\b|\bcosts?\b|\btotals?\b|\bamount\b|markup|sellPrice/i);
+});
+
+test('R.4: enrichExperienceMatches attaches matched master ids/name (read-only), misses stay null', () => {
+  const sugg = deriveExperienceSuggestions(persistedDays(CLASSIC));
+  const enriched = enrichExperienceMatches(sugg, {
+    services: [
+      { serviceId: 'svc-jerash', name: 'Jerash & Amman Touring', siteName: 'Jerash Archaeological Site' },
+      { serviceId: 'svc-petra', name: 'Petra Entrance', siteName: 'Petra Entrance Ticket' },
+    ],
+    activities: [
+      { id: 'act-wr', name: 'Wadi Rum Jeep Experiences', city: 'Wadi Rum', rateVariants: [{ id: 'var-2h', name: '2h Jeep Tour' }] },
+    ],
+  });
+  const jerash = enriched.find((s) => s.place === 'Jerash')!;
+  assert.equal(jerash.matchedServiceId, 'svc-jerash');
+  assert.equal(jerash.matchedName, 'Jerash Archaeological Site');
+  const wr = enriched.find((s) => s.place === 'Wadi Rum')!;
+  assert.equal(wr.matchedActivityId, 'act-wr');
+  assert.equal(wr.matchedActivityRateVariantId, 'var-2h');
+  assert.equal(wr.matchedName, 'Wadi Rum Jeep Experiences');
+  // an unmatched place (Mount Nebo, no master provided) stays null
+  const nebo = enriched.find((s) => s.place === 'Mount Nebo')!;
+  assert.equal(nebo.matchedServiceId, null);
+  assert.equal(nebo.matchedName, null);
+});
+
+test('R.4: empty / inactive days yield no suggestions', () => {
+  assert.deepEqual(deriveExperienceSuggestions([]), []);
+  assert.deepEqual(
+    deriveExperienceSuggestions([{ dayNumber: 2, title: 'Amman / Jerash / Amman', notes: 'Visit Jerash.', isActive: false }]),
+    [],
+  );
+});
