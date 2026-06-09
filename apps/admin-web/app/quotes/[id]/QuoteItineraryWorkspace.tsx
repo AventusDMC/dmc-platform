@@ -33,9 +33,8 @@ type QuoteItineraryWorkspaceProps = {
   roomingHasWarnings: boolean;
   servicePlanner: ReactNode;
   guidedStepFooter: ReactNode;
-  // Phase R.6A-1 — tailor-made hotel apply inputs (forwarded to the panel).
+  // Phase R.6A-1/R.6A-2 — tailor-made hotel apply inputs (forwarded to the panel).
   hotelServiceId?: string | null;
-  existingHotelItemCount?: number;
 };
 
 export function QuoteItineraryWorkspace({
@@ -52,8 +51,14 @@ export function QuoteItineraryWorkspace({
   servicePlanner,
   guidedStepFooter,
   hotelServiceId,
-  existingHotelItemCount,
 }: QuoteItineraryWorkspaceProps) {
+  // Phase R.6A-2 — itinerary days that ALREADY have a hotel item, so the panel's
+  // conflict guard is stay-level (a stay is blocked only when its first day has a
+  // hotel). Derived from the itinerary's day-item join (hotel set on the linked
+  // service). Read-only derivation; no writes.
+  const appliedHotelDayIds = quoteItinerary.days
+    .filter((day) => (day.dayItems || []).some((item) => Boolean(item.quoteService?.hotel)))
+    .map((day) => day.id);
   const operationalSidebarToneClass =
     operationalSidebarTone === 'critical'
       ? styles.operationalSidebarCritical
@@ -145,7 +150,7 @@ export function QuoteItineraryWorkspace({
             quoteId={quote.id}
             quoteCurrency={quote.quoteCurrency}
             hotelServiceId={hotelServiceId}
-            existingHotelItemCount={existingHotelItemCount}
+            appliedHotelDayIds={appliedHotelDayIds}
           />
         </details>
 

@@ -107,12 +107,13 @@ type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
   quoteCurrency?: string | null;
-  // Phase R.6A-1 — the HOTEL-type QuoteService id (apply uses the canonical
-  // createItem hotel branch via POST /quotes/:id/items) and the count of hotel
-  // QuoteItems already on the quote (conflict guard: tailor-made apply is blocked
-  // while any hotel item exists).
+  // Phase R.6A-1/R.6A-2 — the HOTEL-type QuoteService id (apply uses the canonical
+  // createItem hotel branch via POST /quotes/:id/items) and the itinerary-day ids
+  // that ALREADY have a hotel item. Phase R.6A-2 made the conflict guard
+  // stay-level: a stay is blocked only when its first itinerary day already has a
+  // hotel item; other stays remain applyable.
   hotelServiceId?: string | null;
-  existingHotelItemCount?: number;
+  appliedHotelDayIds?: string[];
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
@@ -121,10 +122,11 @@ const TRAVEL_STYLES = ['classic', 'religious', 'adventure', 'luxury'];
 // HOTEL_DEFAULT_MARKUP (apps/api/src/common/pricing-constants.ts); kept as one
 // named constant here rather than a scattered literal.
 const HOTEL_DEFAULT_MARKUP = 15;
-const HOTEL_CONFLICT_MESSAGE =
-  'This quote already has hotel items. Remove existing hotel items before applying tailor-made hotel stays.';
+// Phase R.6A-2 — stay-level conflict message (one hotel per stay/day).
+const HOTEL_STAY_CONFLICT_MESSAGE =
+  'This stay already has a hotel item. Remove the existing hotel item before applying another hotel to this stay.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, existingHotelItemCount }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -167,13 +169,18 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [hotelConfigMeal, setHotelConfigMeal] = useState('');
   const [hotelConfigLoading, setHotelConfigLoading] = useState(false);
 
-  // Phase R.6A-1 — apply one configured hotel stay as a single HOTEL QuoteItem
-  // via the canonical createItem path. Conflict guard blocks while the quote
-  // already has hotel items (or one was applied in this session).
+  // Phase R.6A-1/R.6A-2 — apply one configured hotel stay as a single HOTEL
+  // QuoteItem via the canonical createItem path. The guard is STAY-LEVEL: a stay
+  // is blocked only when its first itinerary day already has a hotel item — from
+  // the server (appliedHotelDayIds) or applied in this session. Other stays stay
+  // applyable.
   const [hotelApplying, setHotelApplying] = useState(false);
-  const [hotelApplied, setHotelApplied] = useState(false);
-  const [hotelApplyMessage, setHotelApplyMessage] = useState('');
-  const hotelConflict = (existingHotelItemCount ?? 0) > 0 || hotelApplied;
+  const [sessionAppliedDayIds, setSessionAppliedDayIds] = useState<string[]>([]);
+  // Server-known days with a hotel item + days applied this session.
+  const stayHasHotelApplied = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && ((appliedHotelDayIds ?? []).includes(dayId as string) || sessionAppliedDayIds.includes(dayId as string));
+  const stayAppliedThisSession = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && sessionAppliedDayIds.includes(dayId as string);
 
   // Phase R.3 — read-only transport suggestions (no apply, no pricing).
   const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
@@ -325,16 +332,17 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     }
   }
 
-  // Phase R.6A-1 — apply ONE configured hotel stay as a single HOTEL QuoteItem
-  // through the canonical path (POST /quotes/:id/items → QuotesService.createItem
-  // hotel branch). No parallel pricing system: createItem auto-prices via the
-  // existing HotelPricingResolver at the standard markup. Scoped to hotels only,
-  // one stay at a time, blocked if any hotel item already exists.
+  // Phase R.6A-1/R.6A-2 — apply ONE configured hotel stay as a single HOTEL
+  // QuoteItem through the canonical path (POST /quotes/:id/items →
+  // QuotesService.createItem hotel branch). No parallel pricing system:
+  // createItem auto-prices via the existing HotelPricingResolver at the standard
+  // markup. Hotels only, one stay at a time. The conflict guard is STAY-LEVEL:
+  // blocked only when this stay's first itinerary day already has a hotel item;
+  // other stays remain applyable.
   async function applySelectedHotel(stay: HotelStay, candidate: HotelCandidate) {
     setError('');
-    setHotelApplyMessage('');
-    if (hotelConflict) {
-      setError(HOTEL_CONFLICT_MESSAGE);
+    if (stayHasHotelApplied(stay.firstItineraryDayId)) {
+      setError(HOTEL_STAY_CONFLICT_MESSAGE);
       return;
     }
     const preview = hotelConfig?.pricePreview;
@@ -375,8 +383,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not apply the selected hotel.'));
       }
-      setHotelApplied(true);
-      setHotelApplyMessage('Hotel applied to quote.');
+      // Mark THIS stay applied (per-stay, keyed on its first itinerary day) so it
+      // shows "Hotel applied to this stay." and blocks a duplicate — while every
+      // other stay stays applyable. router.refresh() re-reads server state.
+      const dayId = stay.firstItineraryDayId;
+      if (dayId) {
+        setSessionAppliedDayIds((prev) => (prev.includes(dayId) ? prev : [...prev, dayId]));
+      }
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not apply the selected hotel.');
@@ -625,6 +638,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     <strong>{stay.city}</strong> — {stay.nights} night{stay.nights === 1 ? '' : 's'} —{' '}
                     {stay.startDay === stay.endDay ? `Day ${stay.startDay}` : `Days ${stay.startDay}–${stay.endDay}`}
                     {stay.hotelCategory ? ` • ${stay.hotelCategory}` : ''}
+                    {/* Phase R.6A-2 — per-stay applied/blocked status (independent of other stays). */}
+                    {stayAppliedThisSession(stay.firstItineraryDayId) ? (
+                      <p className="form-success" role="status">Hotel applied to this stay.</p>
+                    ) : stayHasHotelApplied(stay.firstItineraryDayId) ? (
+                      <p className="form-help" role="status">{HOTEL_STAY_CONFLICT_MESSAGE}</p>
+                    ) : null}
                     {stay.candidateHotels && stay.candidateHotels.length ? (
                       <ul className="tailor-made-hotel-candidates">
                         {stay.candidateHotels.map((c) => {
@@ -695,14 +714,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                                   ) : (
                                     <p className="form-help">{hotelConfig.message}</p>
                                   )}
-                                  {/* Phase R.6A-1 — Apply is enabled only after an OK price preview and
-                                      while no hotel item exists. One stay, one HOTEL QuoteItem. */}
+                                  {/* Phase R.6A-2 — Apply enabled after an OK price preview, and only
+                                      for a stay that has no hotel item yet. One stay, one HOTEL QuoteItem;
+                                      other stays stay applyable. */}
                                   <button
                                     type="button"
                                     className="compact-button"
                                     disabled={
                                       hotelApplying ||
-                                      hotelConflict ||
+                                      stayHasHotelApplied(stay.firstItineraryDayId) ||
                                       hotelConfig.rateStatus !== 'OK' ||
                                       !hotelConfig.pricePreview
                                     }
@@ -710,11 +730,10 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                                   >
                                     {hotelApplying ? 'Applying…' : 'Apply Selected Hotel'}
                                   </button>
-                                  {hotelConflict ? (
-                                    <p className="form-help" role="status">{HOTEL_CONFLICT_MESSAGE}</p>
-                                  ) : null}
-                                  {hotelApplyMessage ? (
-                                    <p className="form-help" role="status">{hotelApplyMessage}</p>
+                                  {stayAppliedThisSession(stay.firstItineraryDayId) ? (
+                                    <p className="form-success" role="status">Hotel applied to this stay.</p>
+                                  ) : stayHasHotelApplied(stay.firstItineraryDayId) ? (
+                                    <p className="form-help" role="status">{HOTEL_STAY_CONFLICT_MESSAGE}</p>
                                   ) : null}
                                 </div>
                               ) : null}
