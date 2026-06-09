@@ -35,6 +35,18 @@ type HotelCandidate = {
   hasActiveContract: boolean;
   verified: boolean;
   reason: string;
+  contractId: string | null;
+};
+
+// Phase R.6A-0 — read-only hotel-stay configure / price-preview state.
+type HotelStayPreview = {
+  availableRoomCategories: Array<{ id: string; name: string }>;
+  availableMealPlans: string[];
+  availableOccupancyTypes: string[];
+  defaults: { roomCount: number; paxCount: number; occupancyType: string | null; mealPlan: string | null; markupPercent: number };
+  pricePreview: { totalCost: number; totalSell: number; currency: string | null; markupPercent: number } | null;
+  rateStatus: string;
+  message: string;
 };
 
 type HotelStay = {
@@ -119,6 +131,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [hotelStays, setHotelStays] = useState<HotelStay[] | null>(null);
   const [stayMessage, setStayMessage] = useState('');
   const [suggesting, setSuggesting] = useState(false);
+
+  // Phase R.6A-0 — read-only hotel-stay configure / price preview (no apply).
+  // One active candidate at a time, keyed by `${stayStartDay}:${hotelId}`.
+  const [hotelConfigKey, setHotelConfigKey] = useState<string | null>(null);
+  const [hotelConfig, setHotelConfig] = useState<HotelStayPreview | null>(null);
+  const [hotelConfigRoom, setHotelConfigRoom] = useState('');
+  const [hotelConfigOccupancy, setHotelConfigOccupancy] = useState('');
+  const [hotelConfigMeal, setHotelConfigMeal] = useState('');
+  const [hotelConfigLoading, setHotelConfigLoading] = useState(false);
 
   // Phase R.3 — read-only transport suggestions (no apply, no pricing).
   const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
@@ -224,6 +245,49 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
       setError(caught instanceof Error ? caught.message : 'Could not generate hotel suggestions.');
     } finally {
       setSuggesting(false);
+    }
+  }
+
+  // Phase R.6A-0 — read-only hotel-stay configure / price preview. POSTs the
+  // stay + chosen hotel/contract (+ optional room/meal/occupancy) and renders
+  // the returned options + estimated price. Creates NO QuoteItem, no pricing.
+  async function loadHotelStayOptions(
+    stay: HotelStay,
+    candidate: HotelCandidate,
+    selections?: { roomCategoryId?: string; occupancyType?: string; mealPlan?: string },
+  ) {
+    const key = `${stay.startDay}:${candidate.hotelId}`;
+    setHotelConfigKey(key);
+    setHotelConfigLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/tailor-made-draft/hotel-stay-options`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          hotelId: candidate.hotelId,
+          contractId: candidate.contractId,
+          stay: { city: stay.city, startDay: stay.startDay, endDay: stay.endDay, nights: stay.nights },
+          roomCategoryId: selections?.roomCategoryId,
+          occupancyType: selections?.occupancyType,
+          mealPlan: selections?.mealPlan,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not load hotel stay options.'));
+      }
+      const result = (await response.json()) as HotelStayPreview;
+      setHotelConfig(result);
+      if (!selections) {
+        // Seed the selectors from the returned defaults.
+        setHotelConfigRoom(result.availableRoomCategories?.[0]?.id || '');
+        setHotelConfigOccupancy(result.defaults?.occupancyType || '');
+        setHotelConfigMeal(result.defaults?.mealPlan || '');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not load hotel stay options.');
+    } finally {
+      setHotelConfigLoading(false);
     }
   }
 
@@ -469,12 +533,82 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
                     {stay.hotelCategory ? ` • ${stay.hotelCategory}` : ''}
                     {stay.candidateHotels && stay.candidateHotels.length ? (
                       <ul className="tailor-made-hotel-candidates">
-                        {stay.candidateHotels.map((c) => (
-                          <li key={c.hotelId}>
-                            {c.hotelName}
-                            <span className="form-help"> — {c.reason}</span>
-                          </li>
-                        ))}
+                        {stay.candidateHotels.map((c) => {
+                          const key = `${stay.startDay}:${c.hotelId}`;
+                          const active = hotelConfigKey === key;
+                          return (
+                            <li key={c.hotelId}>
+                              {c.hotelName}
+                              <span className="form-help"> — {c.reason}</span>
+                              {c.contractId ? (
+                                <button
+                                  type="button"
+                                  className="compact-button"
+                                  onClick={() => loadHotelStayOptions(stay, c)}
+                                  disabled={hotelConfigLoading && active}
+                                >
+                                  {active ? 'Reload options' : 'Configure & Preview Price'}
+                                </button>
+                              ) : null}
+                              {active && hotelConfig ? (
+                                <div className="tailor-made-hotel-config">
+                                  <label>
+                                    Room category
+                                    <select value={hotelConfigRoom} onChange={(e) => setHotelConfigRoom(e.target.value)}>
+                                      <option value="">Select…</option>
+                                      {hotelConfig.availableRoomCategories.map((rc) => (
+                                        <option key={rc.id} value={rc.id}>{rc.name}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Occupancy
+                                    <select value={hotelConfigOccupancy} onChange={(e) => setHotelConfigOccupancy(e.target.value)}>
+                                      <option value="">Select…</option>
+                                      {hotelConfig.availableOccupancyTypes.map((o) => (
+                                        <option key={o} value={o}>{o}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Meal plan
+                                    <select value={hotelConfigMeal} onChange={(e) => setHotelConfigMeal(e.target.value)}>
+                                      <option value="">Select…</option>
+                                      {hotelConfig.availableMealPlans.map((m) => (
+                                        <option key={m} value={m}>{m}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className="compact-button"
+                                    disabled={hotelConfigLoading || !hotelConfigRoom || !hotelConfigOccupancy || !hotelConfigMeal}
+                                    onClick={() =>
+                                      loadHotelStayOptions(stay, c, {
+                                        roomCategoryId: hotelConfigRoom,
+                                        occupancyType: hotelConfigOccupancy,
+                                        mealPlan: hotelConfigMeal,
+                                      })
+                                    }
+                                  >
+                                    {hotelConfigLoading ? 'Loading…' : 'Preview Price'}
+                                  </button>
+                                  {hotelConfig.pricePreview ? (
+                                    <p className="form-help">
+                                      Estimated cost {hotelConfig.pricePreview.totalCost} / sell {hotelConfig.pricePreview.totalSell}{' '}
+                                      {hotelConfig.pricePreview.currency || ''} (markup {hotelConfig.pricePreview.markupPercent}%)
+                                    </p>
+                                  ) : (
+                                    <p className="form-help">{hotelConfig.message}</p>
+                                  )}
+                                  <button type="button" className="compact-button" disabled title="Apply hotels will be enabled in the next phase">
+                                    Apply hotel (next phase)
+                                  </button>
+                                </div>
+                              ) : null}
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : (
                       <span className="form-help"> • No candidate hotels found for this city.</span>

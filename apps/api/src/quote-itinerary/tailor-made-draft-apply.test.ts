@@ -373,3 +373,84 @@ test('R.5: no days → empty guide suggestions with a clear message', async () =
   assert.equal(calls.quoteItemCalls, 0);
   assert.equal(calls.pricingCalls, 0);
 });
+
+// ---- Phase R.6A-0: hotel-stay configure / price preview (READ-ONLY) ----
+
+function makeHotelPreviewPrisma(opts: { quote: any; hotel: any; rates: any[] }) {
+  const calls = { quoteFindUnique: 0, hotelRateFindMany: 0, quoteItemAccess: 0, pricingAccess: 0, writeAccess: 0 };
+  const base: any = {
+    quote: {
+      findFirst: async () => (opts.quote ? { id: 'quote-1' } : null),
+      findUnique: async () => { calls.quoteFindUnique += 1; return opts.quote; },
+    },
+    hotel: { findUnique: async () => opts.hotel },
+    hotelRate: { findMany: async () => { calls.hotelRateFindMany += 1; return opts.rates.slice(); } },
+  };
+  const prisma = new Proxy(base, {
+    get(target, prop: string) {
+      if (prop in target) return target[prop];
+      if (prop === 'quoteItem' || prop === 'quoteService') calls.quoteItemAccess += 1;
+      if (/pricing|hotelRate$|markup/i.test(prop) && prop !== 'hotelRate') calls.pricingAccess += 1;
+      return new Proxy({}, { get: (_t, m: string) => async () => { if (/create|update|delete|upsert/i.test(m)) calls.writeAccess += 1; throw new Error(`Unexpected prisma access: ${prop}.${m}`); } });
+    },
+  });
+  return { prisma, calls };
+}
+
+const PREVIEW_QUOTE = { adults: 2, children: 0, roomCount: 1, travelStartDate: new Date('2026-06-01T00:00:00.000Z') };
+const AMMAN_RATES = [
+  { id: 'rate-dbl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'DBL', mealPlan: 'BB', cost: 80, pricingBasis: 'PER_ROOM', currency: 'USD', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
+  { id: 'rate-sgl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'SGL', mealPlan: 'BB', cost: 60, pricingBasis: 'PER_ROOM', currency: 'USD', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
+];
+
+test('R.6A-0: returns room/meal/occupancy options + an estimated price at HOTEL_DEFAULT_MARKUP (15%), read-only', async () => {
+  const { prisma, calls } = makeHotelPreviewPrisma({ quote: PREVIEW_QUOTE, hotel: { name: 'Corp Amman Hotel', city: 'Amman' }, rates: AMMAN_RATES });
+  const service = new QuoteItineraryService(prisma as any);
+  const result: any = await service.previewTailorMadeHotelStay(
+    'quote-1',
+    { hotelId: 'h-amman', contractId: 'c-amman', stay: { city: 'Amman', startDay: 1, endDay: 2, nights: 2 }, roomCategoryId: 'rc-deluxe', occupancyType: 'DBL', mealPlan: 'BB' },
+    { companyId: 'co-1' },
+  );
+  assert.equal(result.hotelName, 'Corp Amman Hotel');
+  assert.deepEqual(result.availableRoomCategories, [{ id: 'rc-deluxe', name: 'Deluxe' }]);
+  assert.deepEqual(result.availableMealPlans.sort(), ['BB']);
+  assert.deepEqual(result.availableOccupancyTypes.sort(), ['DBL', 'SGL']);
+  assert.equal(result.defaults.markupPercent, 15);
+  assert.equal(result.nights, 2);
+  assert.ok(result.pricePreview, 'price preview present');
+  assert.equal(result.pricePreview.markupPercent, 15);
+  assert.ok(result.pricePreview.totalCost > 0);
+  // sell == cost * (1 + 15/100), rounded to cents
+  assert.equal(result.pricePreview.totalSell, Math.round(result.pricePreview.totalCost * 1.15 * 100) / 100);
+  assert.equal(result.canApply, false);
+  // strictly read-only — no QuoteItem/pricing/write access
+  assert.equal(calls.quoteItemAccess, 0, 'no QuoteItem access');
+  assert.equal(calls.pricingAccess, 0, 'no pricing-model access');
+  assert.equal(calls.writeAccess, 0, 'no writes');
+  assert.equal(calls.hotelRateFindMany >= 1, true, 'read hotel rates');
+});
+
+test('R.6A-0: no contracted rates → clear NO_RATES message, no price, canApply false', async () => {
+  const { prisma, calls } = makeHotelPreviewPrisma({ quote: PREVIEW_QUOTE, hotel: { name: 'No Rate Inn', city: 'Amman' }, rates: [] });
+  const service = new QuoteItineraryService(prisma as any);
+  const result: any = await service.previewTailorMadeHotelStay(
+    'quote-1',
+    { hotelId: 'h-amman', contractId: 'c-amman', stay: { city: 'Amman', startDay: 1, endDay: 2, nights: 2 } },
+    { companyId: 'co-1' },
+  );
+  assert.equal(result.rateStatus, 'NO_RATES');
+  assert.equal(result.pricePreview, null);
+  assert.match(result.message, /no active contracted rates/i);
+  assert.equal(result.canApply, false);
+  assert.equal(calls.quoteItemAccess, 0);
+  assert.equal(calls.writeAccess, 0);
+});
+
+test('R.6A-0: missing hotelId/contractId is rejected', async () => {
+  const { prisma } = makeHotelPreviewPrisma({ quote: PREVIEW_QUOTE, hotel: null, rates: [] });
+  const service = new QuoteItineraryService(prisma as any);
+  await assert.rejects(
+    () => service.previewTailorMadeHotelStay('quote-1', { stay: { city: 'Amman', startDay: 1, endDay: 2, nights: 2 } } as any, { companyId: 'co-1' }),
+    /hotelId and contractId are required/i,
+  );
+});

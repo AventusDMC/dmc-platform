@@ -60,6 +60,19 @@ type TailorMadeDraftBody = {
   replaceExisting?: boolean;
 };
 
+// Phase R.6A-0 — body for the read-only hotel-stay price preview.
+type HotelStayOptionsBody = {
+  hotelId?: string;
+  contractId?: string;
+  stay?: { city?: string; startDay?: number; endDay?: number; nights?: number; firstItineraryDayId?: string };
+  roomCategoryId?: string;
+  occupancyType?: string;
+  mealPlan?: string;
+  roomCount?: number;
+  paxCount?: number;
+  serviceDate?: string;
+};
+
 @Controller()
 export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
@@ -130,6 +143,19 @@ export class QuoteItineraryController {
   @Roles('admin', 'viewer', 'finance')
   async suggestTailorMadeGuides(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.suggestTailorMadeGuides(quoteId, this.toCompanyActor(actor));
+  }
+
+  // Phase R.6A-0 — READ-ONLY hotel-stay configure + price preview. No QuoteItem,
+  // no pricing write, no quote-total change. Returns room/meal/occupancy options
+  // + an estimated cost/sell at the standard hotel markup; canApply:false.
+  @Post('quotes/:quoteId/tailor-made-draft/hotel-stay-options')
+  @Roles('admin', 'viewer', 'finance')
+  async previewTailorMadeHotelStay(
+    @Param('quoteId') quoteId: string,
+    @Body() body: HotelStayOptionsBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.quoteItineraryService.previewTailorMadeHotelStay(quoteId, body || {}, this.toCompanyActor(actor));
   }
 
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
