@@ -177,14 +177,6 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'apply is gated on an OK price preview',
     );
     assert.ok(/disabled=\{[\s\S]*?hotelApplying[\s\S]*?\}/.test(panelSource), 'apply button is disabled while applying / gated');
-    // Conflict guard with the exact required message.
-    expectSourceContains(panelSource, [
-      'This quote already has hotel items. Remove existing hotel items before applying tailor-made hotel stays.',
-      'hotelConflict',
-      'existingHotelItemCount',
-    ]);
-    // Success state copy.
-    expectSourceContains(panelSource, ['Hotel applied to quote.']);
     // HOTELS ONLY: the panel never posts transport/ticket/activity/guide apply
     // endpoints, and the only /items POST is the hotel apply.
     assert.ok(
@@ -193,7 +185,38 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     );
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
     assert.equal(itemsPosts.length, 1, 'exactly one /items POST (the hotel apply)');
-    // The hotelServiceId + existingHotelItemCount inputs are wired in from the workspace.
-    expectSourceContains(workspaceSource, ['hotelServiceId', 'existingHotelItemCount', '<TailorMadeDraftPanel']);
+    // The hotelServiceId input is wired in from the workspace.
+    expectSourceContains(workspaceSource, ['hotelServiceId', '<TailorMadeDraftPanel']);
+  });
+
+  it('R.6A-2: conflict guard is STAY-LEVEL — block the applied stay, keep other stays applyable', () => {
+    // Per-stay guard keyed on the stay's first itinerary day (not a global flag).
+    expectSourceContains(panelSource, [
+      'appliedHotelDayIds',
+      'sessionAppliedDayIds',
+      'stayHasHotelApplied',
+      'stayAppliedThisSession',
+      'stay.firstItineraryDayId',
+    ]);
+    // Apply is disabled only for a stay that already has a hotel, not globally.
+    assert.ok(
+      /disabled=\{[\s\S]*?stayHasHotelApplied\(stay\.firstItineraryDayId\)[\s\S]*?\}/.test(panelSource),
+      'apply disabled is keyed on the per-stay guard',
+    );
+    // No global "any hotel item" guard remains.
+    assert.ok(!/hotelConflict|existingHotelItemCount/.test(panelSource), 'no global hotel-conflict guard remains');
+    // Required stay-level messages: applied state + block message.
+    expectSourceContains(panelSource, [
+      'Hotel applied to this stay.',
+      'This stay already has a hotel item. Remove the existing hotel item before applying another hotel to this stay.',
+    ]);
+    // Applying marks only THIS stay's first day as applied (not a global flag).
+    expectSourceContains(panelSource, ['setSessionAppliedDayIds']);
+    // Workspace derives the per-day applied set from the itinerary's hotel items.
+    expectSourceContains(workspaceSource, [
+      'appliedHotelDayIds',
+      'quoteItinerary.days',
+      'quoteService?.hotel',
+    ]);
   });
 });

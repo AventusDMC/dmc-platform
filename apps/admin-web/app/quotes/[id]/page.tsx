@@ -2207,15 +2207,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quote = normalizeQuoteDetail(rawQuote);
   const quoteCancelled = quote.status === 'CANCELLED';
   const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
-  // Phase R.6A-1 — inputs for the tailor-made hotel apply (canonical createItem
-  // path). The representative HOTEL-type service the applied item attaches to,
-  // and the count of hotel QuoteItems already on the quote (conflict guard:
-  // tailor-made hotel apply is blocked while any hotel item exists).
+  // Phase R.6A-1/R.6A-2 — the representative HOTEL-type service the applied
+  // tailor-made hotel item attaches to (canonical createItem path). The stay-level
+  // conflict guard's day data is derived in the workspace from the itinerary.
   const tailorMadeHotelServiceId =
     services.find((service) => getQuoteServiceCategoryKey(service) === 'hotel')?.id ?? null;
-  // A hotel QuoteItem reliably carries hotelId once created via the hotel branch
-  // (matches the auto-itinerary builder's existing-hotel detection).
-  const existingHotelItemCount = quote.quoteItems.filter((item) => Boolean(item.hotelId)).length;
   const agents = agentUsers
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
@@ -3323,7 +3319,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               servicePlanner={renderQuoteServicePlanner()}
               guidedStepFooter={guidedStepFooter}
               hotelServiceId={tailorMadeHotelServiceId}
-              existingHotelItemCount={existingHotelItemCount}
             />
           ) : null}
 
