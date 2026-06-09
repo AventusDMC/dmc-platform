@@ -4902,7 +4902,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
     <section className="workspace-tabs quote-service-planner">
       <style>{tabStyles}</style>
         <div className="workspace-tab-header">
-          <div className="workspace-section-head">
+          <div id="qb-start-blank" className="workspace-section-head">
             <div>
               <p className="eyebrow">Service Planner</p>
               <h2>Day-by-day workspace</h2>
@@ -4916,24 +4916,31 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             Focused day mode is active. Use the highlighted day card below to complete the targeted operating task.
           </p>
         ) : null}
-        <QuoteAutoItineraryBuilder
-          apiBaseUrl={props.apiBaseUrl}
-          quote={plannerQuote}
-          services={props.services}
-          transportServiceTypes={props.transportServiceTypes}
-          routes={props.routes}
-          routeStandards={props.routeStandards || []}
-          hotels={props.hotels}
-          hotelContracts={props.hotelContracts}
-          hotelRates={props.hotelRates}
-          totalPax={props.totalPax}
-        />
-        <ProgramTemplateImportPanel
-          apiBaseUrl={props.apiBaseUrl}
-          quoteId={props.quote.id}
-          defaultPax={props.totalPax}
-          defaultStartDate={props.quote.travelStartDate}
-        />
+        {/* Phase S.1 — anchor for the unified Quote Builder "Route Block" card
+            (the touring-route generator lives inside the Auto Builder). */}
+        <div id="qb-route-block">
+          <QuoteAutoItineraryBuilder
+            apiBaseUrl={props.apiBaseUrl}
+            quote={plannerQuote}
+            services={props.services}
+            transportServiceTypes={props.transportServiceTypes}
+            routes={props.routes}
+            routeStandards={props.routeStandards || []}
+            hotels={props.hotels}
+            hotelContracts={props.hotelContracts}
+            hotelRates={props.hotelRates}
+            totalPax={props.totalPax}
+          />
+        </div>
+        {/* Phase S.1 — anchor for the unified Quote Builder "Package Template" card. */}
+        <div id="qb-package-template">
+          <ProgramTemplateImportPanel
+            apiBaseUrl={props.apiBaseUrl}
+            quoteId={props.quote.id}
+            defaultPax={props.totalPax}
+            defaultStartDate={props.quote.travelStartDate}
+          />
+        </div>
         <div className="table-action-group" style={{ margin: '0.5rem 0' }}>
           <SaveQuoteAsTemplateButton apiBaseUrl={props.apiBaseUrl} quoteId={props.quote.id} />
         </div>
