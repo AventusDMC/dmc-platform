@@ -125,7 +125,7 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/sellPrice|foreignerFeeJod|costPrice/i.test(panelSource), 'no raw rate fields in the panel');
   });
 
-  it('R.6C-0: experience section shows read-only readiness + gross estimate; apply is a disabled placeholder', () => {
+  it('R.6C-0: experience section shows read-only readiness + gross estimate', () => {
     expectSourceContains(panelSource, [
       // readiness status + estimate display
       "e.matchedServiceId || e.matchedActivityId ? 'MATCHED' : 'NO_MATCH'",
@@ -133,17 +133,45 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'sell ',
       '(markup ',
       'Jordan Pass may cover this entrance',
-      // disabled next-phase placeholder, no enabled apply
-      'Apply experience (next phase)',
-      'Read-only readiness + estimated prices only',
     ]);
-    // No experience /items POST and no experience apply endpoint in R.6C-0.
-    assert.ok(!/tailor-made-draft\/experience-apply/.test(panelSource), 'no experience apply endpoint');
-    // The two existing /items POSTs (hotel + transport) are unchanged — no third yet.
+  });
+
+  it('R.6C-1: applies one matched experience via the canonical /items path with activity ids + markup 20', () => {
+    expectSourceContains(panelSource, [
+      // canonical apply path + handler
+      'async function applySelectedExperience',
+      '/quotes/${quoteId}/items',
+      // activity branch carries activityId + the matched variant
+      'payload.activityId = e.matchedActivityId',
+      'payload.activityRateVariantId = e.matchedActivityRateVariantId',
+      // entrance/ticket branch carries the matched service id
+      'payload.serviceId = e.matchedServiceId',
+      // standard experience markup constant (== API EXPERIENCE_DEFAULT_MARKUP)
+      'const EXPERIENCE_DEFAULT_MARKUP = 20',
+      'markupPercent: EXPERIENCE_DEFAULT_MARKUP',
+      // pax drives the engine (basis / maxPaxPerUnit honoured server-side)
+      'paxCount: pax',
+      'participantCount: pax',
+      // per-(day, record) conflict guard + message
+      'const EXPERIENCE_CONFLICT_MESSAGE',
+      'This experience is already applied to this day.',
+      'const experienceApplied',
+      'experienceApplied(e)',
+      'appliedExperienceKeys',
+      // enabled apply button + single-unit label
+      'onClick={() => applySelectedExperience(e)}',
+      'Applied to this day',
+      'single-unit estimate; final total calculated on apply based on pax',
+    ]);
+    // The placeholder is gone — apply is real now.
+    assert.ok(!/Apply experience \(next phase\)/.test(panelSource), 'no next-phase placeholder remains');
+    // NO_MATCH suggestions keep a disabled apply button.
+    assert.ok(/readiness === 'NO_MATCH' \? \(\s*<button[^>]*disabled/m.test(panelSource), 'NO_MATCH apply button is disabled');
+    // Now three /items POSTs: hotel + transport + experience.
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 2, 'still only hotel + transport apply post to /items (no experience apply yet)');
-    // The experience apply placeholder is disabled.
-    assert.ok(/Apply experience \(next phase\)/.test(panelSource), 'experience apply placeholder present');
+    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
+    // Still no parallel experience-apply endpoint — canonical path only.
+    assert.ok(!/tailor-made-draft\/experience-apply/.test(panelSource), 'no parallel experience apply endpoint');
   });
 
   it('R.5: a read-only "Suggested Guides" section calls the guide-suggestions proxy (no apply/pricing)', () => {
@@ -201,9 +229,9 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       !/tailor-made-draft\/(transport|experience|guide|hotel)-apply/.test(panelSource),
       'no transport/experience/guide/hotel apply endpoints',
     );
-    // Hotel + transport (R.6B-1) both apply through the canonical /items path.
+    // Hotel + transport (R.6B-1) + experience (R.6C-1) apply through the canonical /items path.
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 2, 'hotel apply + transport apply post to /items');
+    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
     // The hotelServiceId input is wired in from the workspace.
     expectSourceContains(workspaceSource, ['hotelServiceId', '<TailorMadeDraftPanel']);
   });
@@ -273,9 +301,9 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
     // No transport-apply endpoint — reuses the canonical /items path.
     assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no parallel transport apply endpoint');
-    // Two /items POSTs now: the hotel apply (R.6A) and the transport apply (R.6B-1).
+    // /items POSTs: hotel (R.6A) + transport (R.6B-1) + experience (R.6C-1).
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 2, 'hotel apply + transport apply both post to /items');
+    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
     // Apply enabled only on OK preview + an unapplied day (disabled otherwise).
     assert.ok(
       /disabled=\{[\s\S]*?transportApplying[\s\S]*?dayHasTransport\(t\.itineraryDayId\)[\s\S]*?transportPreview\.status !== 'OK'[\s\S]*?\}/.test(panelSource),

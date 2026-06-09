@@ -169,6 +169,11 @@ type TailorMadeDraftPanelProps = {
   transportServiceId?: string | null;
   appliedTransportDayIds?: string[];
   defaultPax?: number;
+  // Phase R.6C-1 — per-(day, record) experience guard keys already applied on the
+  // server (`${dayId}:act:${activityId}` / `${dayId}:svc:${serviceId}`). The panel
+  // blocks re-applying the SAME matched record to the SAME day; other experiences
+  // and other days stay applyable.
+  appliedExperienceKeys?: string[];
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
@@ -183,8 +188,14 @@ const HOTEL_STAY_CONFLICT_MESSAGE =
 // Phase R.6B-1 — per-day transport conflict message (one transport per day).
 const TRANSPORT_DAY_CONFLICT_MESSAGE =
   'This day already has transport. Remove the existing transport item before applying another to this day.';
+// Phase R.6C-1 — standard experience markup applied to every applied
+// entrance/activity. Mirrors the API's EXPERIENCE_DEFAULT_MARKUP
+// (apps/api/src/common/pricing-constants.ts); one named constant, no scattered literal.
+const EXPERIENCE_DEFAULT_MARKUP = 20;
+// Phase R.6C-1 — per-(day, record) experience conflict message.
+const EXPERIENCE_CONFLICT_MESSAGE = 'This experience is already applied to this day.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes, transportServiceId, appliedTransportDayIds, defaultPax }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes, transportServiceId, appliedTransportDayIds, defaultPax, appliedExperienceKeys }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -265,6 +276,23 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [experiences, setExperiences] = useState<ExperienceSuggestion[] | null>(null);
   const [experienceMessage, setExperienceMessage] = useState('');
   const [suggestingExperiences, setSuggestingExperiences] = useState(false);
+  // Phase R.6C-1 — apply state. One Experience QuoteItem at a time via the
+  // canonical POST /quotes/:id/items path. The per-(day, record) guard combines
+  // server-known keys (appliedExperienceKeys) with those applied this session.
+  const [experienceApplying, setExperienceApplying] = useState<string | null>(null);
+  const [sessionAppliedExperienceKeys, setSessionAppliedExperienceKeys] = useState<string[]>([]);
+  // The stable key for a suggestion: activity matches by activityId, an
+  // entrance/ticket by its matched service id. Mirrors the workspace derivation.
+  const experienceKey = (e: ExperienceSuggestion): string | null => {
+    if (!e.itineraryDayId) return null;
+    if (e.matchedActivityId) return `${e.itineraryDayId}:act:${e.matchedActivityId}`;
+    if (e.matchedServiceId) return `${e.itineraryDayId}:svc:${e.matchedServiceId}`;
+    return null;
+  };
+  const experienceApplied = (e: ExperienceSuggestion): boolean => {
+    const key = experienceKey(e);
+    return Boolean(key) && ((appliedExperienceKeys ?? []).includes(key as string) || sessionAppliedExperienceKeys.includes(key as string));
+  };
 
   // Phase R.5 — read-only guide suggestions (no apply, no pricing).
   const [guides, setGuides] = useState<GuideSuggestion[] | null>(null);
@@ -665,6 +693,66 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       setError(caught instanceof Error ? caught.message : 'Could not generate entrance/activity suggestions.');
     } finally {
       setSuggestingExperiences(false);
+    }
+  }
+
+  // Phase R.6C-1 — apply ONE matched entrance/activity as a real Experience
+  // QuoteItem through the canonical path (POST /quotes/:id/items →
+  // QuotesService.createItem activity / entrance branch). No parallel pricing
+  // system: createItem auto-prices via the existing engine at the standard
+  // experience markup, and (for activities) honours the pricing basis + per-jeep
+  // group capacity so a per-group rate bills ceil(pax / capacity) units. One at a time.
+  // Per-(day, record) guard: blocked only when this same matched record is
+  // already on this day; other experiences and other days remain applyable.
+  async function applySelectedExperience(e: ExperienceSuggestion) {
+    setError('');
+    const readiness = e.readiness || (e.matchedServiceId || e.matchedActivityId ? 'MATCHED' : 'NO_MATCH');
+    if (readiness === 'NO_MATCH' || (!e.matchedActivityId && !e.matchedServiceId)) {
+      setError('This suggestion has no matched catalog record, so it cannot be applied.');
+      return;
+    }
+    if (!e.itineraryDayId) {
+      setError('This day has no itinerary row to attach the experience to. Apply the draft days first.');
+      return;
+    }
+    if (experienceApplied(e)) {
+      setError(EXPERIENCE_CONFLICT_MESSAGE);
+      return;
+    }
+    const key = experienceKey(e) as string;
+    setExperienceApplying(key);
+    try {
+      // Activity branch uses activityId (+ optional variant); entrance/ticket
+      // branch uses serviceId (+ optional ticketRateVariantId). createItem keys
+      // on which identifier is present; pax + markup drive the engine.
+      const pax = defaultPax ?? 2;
+      const payload: Record<string, unknown> = {
+        itineraryId: e.itineraryDayId,
+        paxCount: pax,
+        participantCount: pax,
+        markupPercent: EXPERIENCE_DEFAULT_MARKUP,
+      };
+      if (e.matchedActivityId) {
+        payload.activityId = e.matchedActivityId;
+        if (e.matchedActivityRateVariantId) payload.activityRateVariantId = e.matchedActivityRateVariantId;
+      } else {
+        // Entrance/ticket: createItem auto-selects the active ticket rate variant.
+        payload.serviceId = e.matchedServiceId;
+      }
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not apply the selected experience.'));
+      }
+      setSessionAppliedExperienceKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not apply the selected experience.');
+    } finally {
+      setExperienceApplying(null);
     }
   }
 
@@ -1087,25 +1175,44 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                       ) : readiness !== 'NO_MATCH' ? (
                         <span className="form-help"> — estimate unavailable</span>
                       ) : null}
+                      {/* Phase R.6C-1 — the estimate is a single-unit gross figure;
+                          the canonical createItem applies pax / pricing basis /
+                          per-jeep group capacity on apply (e.g. an activity priced
+                          per group bills ceil(pax / capacity) units). */}
+                      {hasEstimate ? (
+                        <span className="form-help"> — single-unit estimate; final total calculated on apply based on pax</span>
+                      ) : null}
                       {e.jordanPassEligible ? (
                         <span className="form-help"> — Jordan Pass may cover this entrance (final price set on apply)</span>
                       ) : null}
                       <span className="form-help"> — {e.reason}</span>
-                      {/* Phase R.6C-0 — apply lands next phase; disabled placeholder only. */}
-                      <button
-                        type="button"
-                        className="compact-button"
-                        disabled
-                        title="Apply experiences will be enabled in the next phase"
-                      >
-                        Apply experience (next phase)
-                      </button>
+                      {/* Phase R.6C-1 — apply one matched experience via the canonical
+                          /items path. MATCHED → enabled; NO_MATCH → disabled; already
+                          applied to this day → disabled with the conflict label. */}
+                      {readiness === 'NO_MATCH' ? (
+                        <button type="button" className="compact-button" disabled title="No catalog match — cannot apply">
+                          Apply experience
+                        </button>
+                      ) : experienceApplied(e) ? (
+                        <button type="button" className="compact-button" disabled title={EXPERIENCE_CONFLICT_MESSAGE}>
+                          Applied to this day
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="compact-button"
+                          onClick={() => applySelectedExperience(e)}
+                          disabled={experienceApplying !== null}
+                        >
+                          {experienceApplying === experienceKey(e) ? 'Applying…' : 'Apply experience'}
+                        </button>
+                      )}
                     </li>
                   );
                 })}
               </ol>
               <p className="form-help">
-                Read-only readiness + estimated prices only (gross unit cost × markup {/* 20 */}20%). Nothing has been applied; final price (pax, basis, Jordan Pass) is set when applied in a later step.
+                Estimates are single-unit gross figures (unit cost × markup {/* 20 */}20%). Applying creates one Experience item via the standard path; the final total (pax, pricing basis, Jordan Pass, currency) is calculated on apply.
               </p>
             </>
           )}

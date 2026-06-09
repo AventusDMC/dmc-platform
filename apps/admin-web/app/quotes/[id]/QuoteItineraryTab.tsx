@@ -31,6 +31,10 @@ type QuoteItineraryLinkedServiceSummary = {
   pricingDescription: string | null;
   reconfirmationRequired: boolean;
   reconfirmationDueAt: string | null;
+  // R.6C-1 — experience apply identifiers (for the per-(day, record) guard).
+  activityId: string | null;
+  activityRateVariantId: string | null;
+  ticketRateVariantId: string | null;
   service: {
     id: string;
     name: string;
