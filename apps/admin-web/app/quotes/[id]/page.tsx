@@ -2212,6 +2212,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   // conflict guard's day data is derived in the workspace from the itinerary.
   const tailorMadeHotelServiceId =
     services.find((service) => getQuoteServiceCategoryKey(service) === 'hotel')?.id ?? null;
+  // Phase R.6B-1 — representative TRANSPORT-type service the applied tailor-made
+  // transport item attaches to (canonical createItem transport branch).
+  const tailorMadeTransportServiceId =
+    services.find((service) => getQuoteServiceCategoryKey(service) === 'transport')?.id ?? null;
   const agents = agentUsers
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
@@ -3321,6 +3325,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               hotelServiceId={tailorMadeHotelServiceId}
               routes={routes}
               transportServiceTypes={transportServiceTypes}
+              transportServiceId={tailorMadeTransportServiceId}
             />
           ) : null}
 

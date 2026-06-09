@@ -180,13 +180,14 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     );
     assert.ok(/disabled=\{[\s\S]*?hotelApplying[\s\S]*?\}/.test(panelSource), 'apply button is disabled while applying / gated');
     // HOTELS ONLY: the panel never posts transport/ticket/activity/guide apply
-    // endpoints, and the only /items POST is the hotel apply.
+    // endpoints — apply reuses the canonical /items path, never a parallel apply route.
     assert.ok(
       !/tailor-made-draft\/(transport|experience|guide|hotel)-apply/.test(panelSource),
       'no transport/experience/guide/hotel apply endpoints',
     );
+    // Hotel + transport (R.6B-1) both apply through the canonical /items path.
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 1, 'exactly one /items POST (the hotel apply)');
+    assert.equal(itemsPosts.length, 2, 'hotel apply + transport apply post to /items');
     // The hotelServiceId input is wired in from the workspace.
     expectSourceContains(workspaceSource, ['hotelServiceId', '<TailorMadeDraftPanel']);
   });
@@ -222,7 +223,7 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
   });
 
-  it('R.6B-0: read-only transport price preview resolves a route+rate via the canonical calculate endpoint; apply is disabled', () => {
+  it('R.6B-0: read-only transport price preview resolves a route+rate via the canonical calculate endpoint', () => {
     expectSourceContains(panelSource, [
       'loadTransportOptions',
       'resolveTransportPlan',
@@ -233,22 +234,39 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       // graceful statuses
       "status: 'NO_ROUTE'",
       "status: 'NO_RATE'",
-      // disabled next-phase placeholder, no enabled apply
-      'Apply transport (next phase)',
     ]);
-    // The preview must NOT create a transport QuoteItem (no transport /items POST,
-    // no transport apply endpoint). The only /items POST in the panel is the hotel apply.
-    assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no transport apply endpoint');
-    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 1, 'only the hotel apply posts to /items — transport preview does not');
-    // The transport apply placeholder is disabled.
-    assert.ok(
-      /disabled\s*\n?\s*title="Apply transport will be enabled in the next phase"/.test(panelSource) ||
-        /Apply transport \(next phase\)/.test(panelSource),
-      'transport apply placeholder is disabled',
-    );
     // routes + transportServiceTypes are wired from the workspace.
     expectSourceContains(workspaceSource, ['routes', 'transportServiceTypes', 'tailor-made-transport-resolve']);
+  });
+
+  it('R.6B-1: applies ONE OK-priced transport day via the canonical /items path with markup 20 and resolved route/service-type', () => {
+    expectSourceContains(panelSource, [
+      'applySelectedTransport',
+      'Apply Selected Transport',
+      '/quotes/${quoteId}/items',
+      'transportServiceTypeId: p.serviceTypeId',
+      'routeId: p.routeId',
+      'markupPercent: TRANSPORT_DEFAULT_MARKUP',
+      'itineraryId: t.itineraryDayId',
+      'paxCount: defaultPax',
+      // per-day guard
+      'dayHasTransport',
+      'sessionAppliedTransportDayIds',
+      'Transport applied to this day.',
+      'This day already has transport. Remove the existing transport item before applying another to this day.',
+    ]);
+    // No transport-apply endpoint — reuses the canonical /items path.
+    assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no parallel transport apply endpoint');
+    // Two /items POSTs now: the hotel apply (R.6A) and the transport apply (R.6B-1).
+    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
+    assert.equal(itemsPosts.length, 2, 'hotel apply + transport apply both post to /items');
+    // Apply enabled only on OK preview + an unapplied day (disabled otherwise).
+    assert.ok(
+      /disabled=\{[\s\S]*?transportApplying[\s\S]*?dayHasTransport\(t\.itineraryDayId\)[\s\S]*?transportPreview\.status !== 'OK'[\s\S]*?\}/.test(panelSource),
+      'transport apply disabled is gated on OK preview + per-day guard',
+    );
+    // transportServiceId + appliedTransportDayIds wired from the workspace.
+    expectSourceContains(workspaceSource, ['transportServiceId', 'appliedTransportDayIds', 'quoteService?.appliedVehicleRate']);
   });
 });
 

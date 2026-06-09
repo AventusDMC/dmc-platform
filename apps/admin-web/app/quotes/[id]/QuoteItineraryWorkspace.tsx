@@ -41,6 +41,8 @@ type QuoteItineraryWorkspaceProps = {
   // for the read-only transport price preview).
   routes?: RouteOption[];
   transportServiceTypes?: TransportServiceTypeOption[];
+  // Phase R.6B-1 — TRANSPORT-type QuoteService id (apply); forwarded to the panel.
+  transportServiceId?: string | null;
 };
 
 export function QuoteItineraryWorkspace({
@@ -59,6 +61,7 @@ export function QuoteItineraryWorkspace({
   hotelServiceId,
   routes,
   transportServiceTypes,
+  transportServiceId,
 }: QuoteItineraryWorkspaceProps) {
   // Phase R.6A-2 — itinerary days that ALREADY have a hotel item, so the panel's
   // conflict guard is stay-level (a stay is blocked only when its first day has a
@@ -66,6 +69,12 @@ export function QuoteItineraryWorkspace({
   // service). Read-only derivation; no writes.
   const appliedHotelDayIds = quoteItinerary.days
     .filter((day) => (day.dayItems || []).some((item) => Boolean(item.quoteService?.hotel)))
+    .map((day) => day.id);
+  // Phase R.6B-1 — itinerary days that ALREADY have a transport item (a linked
+  // service carrying an appliedVehicleRate), so the panel's transport guard is
+  // per-day. Read-only derivation; no writes.
+  const appliedTransportDayIds = quoteItinerary.days
+    .filter((day) => (day.dayItems || []).some((item) => Boolean(item.quoteService?.appliedVehicleRate)))
     .map((day) => day.id);
   const operationalSidebarToneClass =
     operationalSidebarTone === 'critical'
@@ -161,6 +170,9 @@ export function QuoteItineraryWorkspace({
             appliedHotelDayIds={appliedHotelDayIds}
             routes={routes}
             transportServiceTypes={transportServiceTypes}
+            transportServiceId={transportServiceId}
+            appliedTransportDayIds={appliedTransportDayIds}
+            defaultPax={totalPax}
           />
         </details>
 
