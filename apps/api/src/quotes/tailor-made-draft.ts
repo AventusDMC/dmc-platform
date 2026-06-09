@@ -984,6 +984,20 @@ export interface SuggestedGuide {
   reason: string;
   confidence: 'high' | 'medium' | 'low';
   placesCovered: string[];
+  // Phase R.6D-0 — the QuoteItineraryDay row id, when known. Used to attach an
+  // applied guide item to its day in R.6D-1. Optional; classification never
+  // depends on it.
+  itineraryDayId?: string | null;
+  // Phase R.6D-0 — readiness + read-only estimate (apply lands in R.6D-1). Set by
+  // the service, never by the pure deriver. LOCAL → MATCHED with a guide-rate
+  // estimate; NONE days carry no estimate. Never includes raw guide metadata.
+  readiness?: 'MATCHED' | 'NONE' | 'ESCORT_OPTION';
+  guideType?: 'local' | null;
+  guideDuration?: 'full_day' | null;
+  estimatedCost?: number | null;
+  estimatedSell?: number | null;
+  currency?: string | null;
+  markupPercent?: number | null;
 }
 
 // Major sites that conventionally take a dedicated local guide.
@@ -1004,6 +1018,7 @@ function guideForDay(day: DraftDayShell): SuggestedGuide {
     reason,
     confidence,
     placesCovered: [],
+    itineraryDayId: day.id ?? null,
   });
 
   // Arrival / departure transfers carry no guide by default.
@@ -1023,6 +1038,7 @@ function guideForDay(day: DraftDayShell): SuggestedGuide {
       reason: `Guided sightseeing at ${covered.join(' & ')} on this day.`,
       confidence: 'high',
       placesCovered: covered,
+      itineraryDayId: day.id ?? null,
     };
   }
 

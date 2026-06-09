@@ -144,6 +144,15 @@ type GuideSuggestion = {
   reason: string;
   confidence: string;
   placesCovered: string[];
+  // Phase R.6D-0 — readiness + read-only estimate (apply lands in R.6D-1).
+  itineraryDayId?: string | null;
+  readiness?: 'MATCHED' | 'NONE' | 'ESCORT_OPTION';
+  guideType?: 'local' | null;
+  guideDuration?: 'full_day' | null;
+  estimatedCost?: number | null;
+  estimatedSell?: number | null;
+  currency?: string | null;
+  markupPercent?: number | null;
 };
 
 type TailorMadeDraftPanelProps = {
@@ -1227,21 +1236,43 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           ) : (
             <>
               <ol className="tailor-made-guide-days">
-                {guides.map((g, i) => (
-                  <li key={`${g.dayNumber}-${i}`} className="tailor-made-guide-day">
-                    <strong>Day {g.dayNumber}</strong>
-                    {' — '}
-                    {g.displayName}
-                    {g.placesCovered && g.placesCovered.length > 0 ? (
-                      <span className="form-help"> — covers: {g.placesCovered.join(', ')}</span>
-                    ) : null}
-                    <span className="form-help"> — {g.reason}</span>
-                  </li>
-                ))}
+                {guides.map((g, i) => {
+                  const readiness = g.readiness || (g.guideTypeSuggestion === 'LOCAL' ? 'MATCHED' : 'NONE');
+                  const hasEstimate = typeof g.estimatedCost === 'number' && typeof g.estimatedSell === 'number';
+                  return (
+                    <li key={`${g.dayNumber}-${i}`} className="tailor-made-guide-day">
+                      <strong>Day {g.dayNumber}</strong>
+                      {' — '}
+                      {g.displayName}
+                      {/* Phase R.6D-0 — readiness status (MATCHED for local guides). */}
+                      {' • '}
+                      <span className="form-help">{readiness}</span>
+                      {g.placesCovered && g.placesCovered.length > 0 ? (
+                        <span className="form-help"> — covers: {g.placesCovered.join(', ')}</span>
+                      ) : null}
+                      {/* Read-only gross estimate; createItem is authoritative on apply. */}
+                      {hasEstimate ? (
+                        <span className="form-help">
+                          {' '}— est. cost {g.estimatedCost} / sell {g.estimatedSell} {g.currency || ''} (markup {g.markupPercent}%)
+                        </span>
+                      ) : null}
+                      <span className="form-help"> — {g.reason}</span>
+                      {/* Phase R.6D-0 — apply lands next phase; disabled placeholder only. */}
+                      <button
+                        type="button"
+                        className="compact-button"
+                        disabled
+                        title="Applying guides will be enabled in the next phase"
+                      >
+                        Apply guide (next phase)
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
               {guideEscortNote ? <p className="form-help">{guideEscortNote}</p> : null}
               <p className="form-help">
-                Read-only planning hints. No guides have been applied and no pricing has run.
+                Read-only readiness + estimated prices only (local full-day guide: gross unit cost × markup 20%). No guides have been applied and no pricing has run; final price is set when applied in a later step.
               </p>
             </>
           )}

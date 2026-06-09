@@ -174,17 +174,27 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/tailor-made-draft\/experience-apply/.test(panelSource), 'no parallel experience apply endpoint');
   });
 
-  it('R.5: a read-only "Suggested Guides" section calls the guide-suggestions proxy (no apply/pricing)', () => {
+  it('R.5/R.6D-0: read-only "Suggested Guides" section with readiness + estimate, apply disabled', () => {
     expectSourceContains(panelSource, [
       'tailor-made-draft/guide-suggestions',
       'Preview Guide Suggestions',
       'Suggested Guides',
-      'Read-only planning hints. No guides have been applied and no pricing has run.',
       "g.guideTypeSuggestion !== 'NONE'",
+      // R.6D-0 readiness + read-only estimate display
+      "g.guideTypeSuggestion === 'LOCAL' ? 'MATCHED' : 'NONE'",
+      'est. cost ',
+      'sell ',
+      '(markup ',
+      'No guides have been applied and no pricing has run',
+      // disabled next-phase placeholder
+      'Apply guide (next phase)',
     ]);
-    // read-only: no Apply button, no raw guide metadata / pricing leakage
-    assert.ok(!/Apply Guides?/i.test(panelSource), 'no Apply Guides button in R.5');
-    assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in R.5 section');
+    // R.6D-0: the guide Apply button is a DISABLED placeholder — no enabled apply,
+    // no parallel guide-apply endpoint.
+    assert.ok(/Apply guide \(next phase\)/.test(panelSource), 'guide apply placeholder present');
+    assert.ok(!/tailor-made-draft\/guide-apply/.test(panelSource), 'no parallel guide apply endpoint');
+    // No raw guide metadata leaks into the section.
+    assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in guides section');
   });
 
   it('R.6A-0: hotel-stay configure/price-preview calls the read-only options proxy', () => {
