@@ -634,6 +634,10 @@ export type SuggestedExperienceType = 'ENTRANCE' | 'TICKET' | 'ACTIVITY';
 
 export interface SuggestedExperience {
   dayNumber: number;
+  /** Phase R.6C-0 — the QuoteItineraryDay row id, when known. A future apply
+   *  (R.6C-1) attaches the experience item here. Null when the day id was not
+   *  provided. */
+  itineraryDayId: string | null;
   place: string;
   suggestedItemType: SuggestedExperienceType;
   displayName: string;
@@ -791,6 +795,8 @@ function experiencesForDay(day: DraftDayShell): SuggestedExperience[] {
   const text = `${title} | ${String(day.notes || '')}`.toLowerCase();
   return EXPERIENCE_RULES.filter((rule) => rule.test(text)).map((rule) => ({
     dayNumber: day.dayNumber,
+    // R.6C-0 — where a future applied experience item attaches (null if no id).
+    itineraryDayId: day.id ?? null,
     place: rule.place,
     suggestedItemType: rule.suggestedItemType,
     displayName: rule.displayName,

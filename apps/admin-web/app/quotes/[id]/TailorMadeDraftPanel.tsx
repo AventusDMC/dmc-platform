@@ -122,6 +122,18 @@ type ExperienceSuggestion = {
   reason: string;
   confidence: string;
   matchedName: string | null;
+  // Phase R.6C-0 — readiness + read-only estimate (apply lands in R.6C-1). The
+  // matched ids are kept for the future apply; the estimate is a gross unit cost.
+  itineraryDayId?: string | null;
+  matchedServiceId?: string | null;
+  matchedActivityId?: string | null;
+  matchedActivityRateVariantId?: string | null;
+  readiness?: 'MATCHED' | 'NO_MATCH' | 'NEEDS_VARIANT';
+  estimatedCost?: number | null;
+  estimatedSell?: number | null;
+  currency?: string | null;
+  markupPercent?: number;
+  jordanPassEligible?: boolean;
 };
 
 type GuideSuggestion = {
@@ -1053,20 +1065,47 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           ) : (
             <>
               <ol className="tailor-made-experience-days">
-                {experiences.map((e, i) => (
-                  <li key={`${e.dayNumber}-${e.place}-${i}`} className="tailor-made-experience-day">
-                    <strong>Day {e.dayNumber}</strong>
-                    {' — '}
-                    {e.displayName}
-                    {' • '}
-                    {experienceTypeLabel(e.suggestedItemType)}
-                    {e.matchedName ? <span className="form-help"> — matched: {e.matchedName}</span> : null}
-                    <span className="form-help"> — {e.reason}</span>
-                  </li>
-                ))}
+                {experiences.map((e, i) => {
+                  const readiness = e.readiness || (e.matchedServiceId || e.matchedActivityId ? 'MATCHED' : 'NO_MATCH');
+                  const hasEstimate = typeof e.estimatedCost === 'number' && typeof e.estimatedSell === 'number';
+                  return (
+                    <li key={`${e.dayNumber}-${e.place}-${i}`} className="tailor-made-experience-day">
+                      <strong>Day {e.dayNumber}</strong>
+                      {' — '}
+                      {e.displayName}
+                      {' • '}
+                      {experienceTypeLabel(e.suggestedItemType)}
+                      {/* Phase R.6C-0 — readiness status (MATCHED / NEEDS_VARIANT / NO_MATCH). */}
+                      {' • '}
+                      <span className="form-help">{readiness}</span>
+                      {e.matchedName ? <span className="form-help"> — matched: {e.matchedName}</span> : null}
+                      {/* Read-only gross estimate; createItem is authoritative on apply. */}
+                      {hasEstimate ? (
+                        <span className="form-help">
+                          {' '}— est. cost {e.estimatedCost} / sell {e.estimatedSell} {e.currency || ''} (markup {e.markupPercent}%)
+                        </span>
+                      ) : readiness !== 'NO_MATCH' ? (
+                        <span className="form-help"> — estimate unavailable</span>
+                      ) : null}
+                      {e.jordanPassEligible ? (
+                        <span className="form-help"> — Jordan Pass may cover this entrance (final price set on apply)</span>
+                      ) : null}
+                      <span className="form-help"> — {e.reason}</span>
+                      {/* Phase R.6C-0 — apply lands next phase; disabled placeholder only. */}
+                      <button
+                        type="button"
+                        className="compact-button"
+                        disabled
+                        title="Apply experiences will be enabled in the next phase"
+                      >
+                        Apply experience (next phase)
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
               <p className="form-help">
-                Read-only planning hints. No tickets, entrances, or activities have been applied and no pricing has run.
+                Read-only readiness + estimated prices only (gross unit cost × markup {/* 20 */}20%). Nothing has been applied; final price (pax, basis, Jordan Pass) is set when applied in a later step.
               </p>
             </>
           )}
