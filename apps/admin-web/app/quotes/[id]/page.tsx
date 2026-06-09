@@ -3319,6 +3319,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               servicePlanner={renderQuoteServicePlanner()}
               guidedStepFooter={guidedStepFooter}
               hotelServiceId={tailorMadeHotelServiceId}
+              routes={routes}
+              transportServiceTypes={transportServiceTypes}
             />
           ) : null}
 

@@ -3,6 +3,8 @@ import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPane
 import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { TailorMadeDraftPanel } from './TailorMadeDraftPanel';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
+import type { RouteOption } from '../../lib/routes';
+import type { TransportServiceTypeOption } from './tailor-made-transport-resolve';
 import styles from './QuoteItineraryWorkspace.module.css';
 
 type QuoteItineraryWorkspaceReadiness = {
@@ -35,6 +37,10 @@ type QuoteItineraryWorkspaceProps = {
   guidedStepFooter: ReactNode;
   // Phase R.6A-1/R.6A-2 — tailor-made hotel apply inputs (forwarded to the panel).
   hotelServiceId?: string | null;
+  // Phase R.6B-0 — route + transport-service-type catalogs (forwarded to the panel
+  // for the read-only transport price preview).
+  routes?: RouteOption[];
+  transportServiceTypes?: TransportServiceTypeOption[];
 };
 
 export function QuoteItineraryWorkspace({
@@ -51,6 +57,8 @@ export function QuoteItineraryWorkspace({
   servicePlanner,
   guidedStepFooter,
   hotelServiceId,
+  routes,
+  transportServiceTypes,
 }: QuoteItineraryWorkspaceProps) {
   // Phase R.6A-2 — itinerary days that ALREADY have a hotel item, so the panel's
   // conflict guard is stay-level (a stay is blocked only when its first day has a
@@ -151,6 +159,8 @@ export function QuoteItineraryWorkspace({
             quoteCurrency={quote.quoteCurrency}
             hotelServiceId={hotelServiceId}
             appliedHotelDayIds={appliedHotelDayIds}
+            routes={routes}
+            transportServiceTypes={transportServiceTypes}
           />
         </details>
 
