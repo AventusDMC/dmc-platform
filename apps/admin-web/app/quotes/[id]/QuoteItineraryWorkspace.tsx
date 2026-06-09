@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
 import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { TailorMadeDraftPanel } from './TailorMadeDraftPanel';
+import { QuoteBuilderEntry } from './QuoteBuilderEntry';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import type { RouteOption } from '../../lib/routes';
 import type { TransportServiceTypeOption } from './tailor-made-transport-resolve';
@@ -157,6 +158,8 @@ export function QuoteItineraryWorkspace({
       </aside>
 
       <div className={`${styles.main} section-stack quote-itinerary-ops-main`}>
+        {/* Phase S.1 — unified Quote Builder front door (UI organization only). */}
+        <QuoteBuilderEntry />
         <details className="quote-operational-collapsible quote-operational-collapsible-passengers" open>
           <summary>
             <div>
@@ -191,7 +194,7 @@ export function QuoteItineraryWorkspace({
           />
         </details>
 
-        <details className="quote-operational-collapsible quote-operational-collapsible-tailor-made">
+        <details id="qb-tailor-made" className="quote-operational-collapsible quote-operational-collapsible-tailor-made">
           <summary>
             <div>
               <span className="eyebrow">Tailor-Made Draft</span>

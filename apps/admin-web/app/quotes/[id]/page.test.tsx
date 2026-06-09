@@ -17,6 +17,7 @@ const quoteDayPlannerLayoutCssSource = readFileSync(new URL('./QuoteDayPlannerLa
 const quoteServiceLaneBoardCssSource = readFileSync(new URL('./QuoteServiceLaneBoard.module.css', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceCssSource = readFileSync(new URL('./QuoteItineraryWorkspace.module.css', import.meta.url), 'utf8');
+const quoteBuilderEntrySource = readFileSync(new URL('./QuoteBuilderEntry.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
@@ -549,6 +550,41 @@ describe('quote detail page regression', () => {
       !/entrance\|ticket\|experience\|activity\|sightsee/.test(quoteItineraryWorkspaceSource),
       'brittle category allowlist removed from the experience guard derivation',
     );
+  });
+
+  it('S.1: unified Quote Builder entry organizes the six builder methods + step guidance', () => {
+    // The entry component renders the six labelled method cards + the 5-step guidance.
+    expectSourceContains(quoteBuilderEntrySource, [
+      "title: 'Start from Blank'",
+      "title: 'Tailor-Made Itinerary'",
+      "title: 'Route Block'",
+      "title: 'Package Template'",
+      "title: 'Guide Services'",
+      "title: 'Apply Services'",
+      'Step 1 — Choose a starting method',
+      'Step 2 — Edit the day-by-day itinerary',
+      'Step 3 — Preview suggestions',
+      'Step 4 — Apply services',
+      'Step 5 — Generate proposal',
+      // reveals the existing panel by opening its <details> ancestors + scrolling
+      'function revealPanel',
+      "el.closest('details')",
+      'scrollIntoView',
+    ]);
+    // Each card targets an anchor on an EXISTING panel (UI organization only).
+    for (const target of ['qb-start-blank', 'qb-tailor-made', 'qb-route-block', 'qb-package-template']) {
+      assert.ok(quoteBuilderEntrySource.includes(`'${target}'`), `entry card targets ${target}`);
+    }
+    // The entry is mounted at the top of the itinerary workspace.
+    expectSourceContains(quoteItineraryWorkspaceSource, [
+      "import { QuoteBuilderEntry } from './QuoteBuilderEntry';",
+      '<QuoteBuilderEntry />',
+      'id="qb-tailor-made"',
+    ]);
+    // The Route Block + Package Template anchors live on the existing service-planner panels.
+    expectSourceContains(quoteServicePlannerSource, ['id="qb-route-block"', 'id="qb-package-template"', 'id="qb-start-blank"']);
+    // UI organization only — the entry creates no QuoteItems and posts to no apply route.
+    assert.ok(!/\/quotes\/\$\{[^}]+\}\/items|markupPercent|createItem|guideType:/.test(quoteBuilderEntrySource), 'entry component performs no apply/pricing');
   });
 
   it('adds sticky operational summary and collapsible itinerary workspace sections', () => {
