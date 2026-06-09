@@ -2216,6 +2216,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   // transport item attaches to (canonical createItem transport branch).
   const tailorMadeTransportServiceId =
     services.find((service) => getQuoteServiceCategoryKey(service) === 'transport')?.id ?? null;
+  // Phase R.6D-1 — representative GUIDE-type service the applied tailor-made guide
+  // item attaches to (canonical createItem guide branch).
+  const tailorMadeGuideServiceId =
+    services.find((service) => getQuoteServiceCategoryKey(service) === 'guide')?.id ?? null;
   const agents = agentUsers
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
@@ -3326,6 +3330,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               routes={routes}
               transportServiceTypes={transportServiceTypes}
               transportServiceId={tailorMadeTransportServiceId}
+              guideServiceId={tailorMadeGuideServiceId}
             />
           ) : null}
 
