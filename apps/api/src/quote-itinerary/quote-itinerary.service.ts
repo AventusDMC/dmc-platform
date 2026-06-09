@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
-import { HOTEL_DEFAULT_MARKUP, EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { HOTEL_DEFAULT_MARKUP, EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP, GUIDE_LOCAL_FULL_DAY_COST } from '../common/pricing-constants';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -485,11 +485,42 @@ export class QuoteItineraryService {
     await this.ensureQuoteExists(quoteId, actor);
     const days = await this.dayModel.findMany({
       where: { quoteId, isActive: true },
-      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      // R.6D-0 — include `id` so each guide suggestion can expose its itinerary
+      // day id (the apply target in R.6D-1).
+      select: { id: true, dayNumber: true, title: true, notes: true, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
     });
 
-    const suggestions = deriveGuideSuggestions(days || []);
+    // R.6D-0 — enrich each suggestion with readiness + a read-only price estimate.
+    // LOCAL guides → MATCHED, priced at the standard local/full-day guide rate
+    // (GUIDE_LOCAL_FULL_DAY_COST) × GUIDE_DEFAULT_MARKUP; NONE days carry no
+    // estimate. Escort stays a program-level planning note (escortNote), never a
+    // per-day apply target. No QuoteItems, no pricing writes, no raw guide metadata.
+    const suggestions = deriveGuideSuggestions(days || []).map((s) => {
+      if (s.guideTypeSuggestion === 'LOCAL') {
+        const estimatedCost = GUIDE_LOCAL_FULL_DAY_COST;
+        return {
+          ...s,
+          readiness: 'MATCHED' as const,
+          guideType: 'local' as const,
+          guideDuration: 'full_day' as const,
+          estimatedCost,
+          estimatedSell: Math.round(estimatedCost * (1 + GUIDE_DEFAULT_MARKUP / 100) * 100) / 100,
+          currency: 'USD',
+          markupPercent: GUIDE_DEFAULT_MARKUP,
+        };
+      }
+      return {
+        ...s,
+        readiness: 'NONE' as const,
+        guideType: null,
+        guideDuration: null,
+        estimatedCost: null,
+        estimatedSell: null,
+        currency: null,
+        markupPercent: null,
+      };
+    });
     const guided = suggestions.filter((s) => s.guideTypeSuggestion !== 'NONE');
 
     return {

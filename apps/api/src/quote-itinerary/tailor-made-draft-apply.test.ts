@@ -356,6 +356,20 @@ test('R.5: guide suggestions classify per day (Jerash D2, Petra D4), strictly re
   assert.equal(byDay[8].guideTypeSuggestion, 'NONE'); // departure
   assert.equal(result.guidedDayCount, 2);
   assert.ok(typeof result.escortNote === 'string' && result.escortNote.length > 0, 'escort offered as a planning note');
+  // R.6D-0 — readiness + read-only estimate on LOCAL guide suggestions.
+  assert.equal(byDay[2].readiness, 'MATCHED');
+  assert.equal(byDay[2].guideType, 'local');
+  assert.equal(byDay[2].guideDuration, 'full_day');
+  assert.equal(byDay[2].estimatedCost, 120);
+  assert.equal(byDay[2].estimatedSell, 144); // 120 × 1.20
+  assert.equal(byDay[2].markupPercent, 20);
+  assert.equal(byDay[2].currency, 'USD');
+  assert.equal(byDay[2].itineraryDayId, 'day-2'); // threaded from the day row
+  assert.equal(byDay[4].readiness, 'MATCHED');
+  assert.equal(byDay[4].estimatedSell, 144);
+  // NONE days carry no estimate.
+  assert.equal(byDay[1].readiness, 'NONE');
+  assert.equal(byDay[1].estimatedCost, null);
   // strictly read-only — no writes, no hotel/service/activity master read, no QuoteItem/pricing
   assert.equal(calls.dayCreate.length, 0);
   assert.equal(calls.dayDeleteMany, 0);
@@ -365,9 +379,10 @@ test('R.5: guide suggestions classify per day (Jerash D2, Petra D4), strictly re
   assert.equal(calls.activityFindMany, 0);
   assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
   assert.equal(calls.pricingCalls, 0, 'no pricing access');
-  // no raw guide metadata / pricing leaks
+  // no raw guide metadata leaks (the neutral estimatedCost/estimatedSell/markupPercent
+  // fields are the intended R.6D-0 read-only estimate, not raw metadata).
   assert.doesNotMatch(JSON.stringify(result), /minPax|maxPax|requiresOperatorConfirmation|Overnight:\s*No/i);
-  assert.doesNotMatch(JSON.stringify(result), /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell/i);
+  assert.doesNotMatch(JSON.stringify(result), /costPrice|sellPrice|totalSell|GUIDE_RATES|overnightSupplement/i);
 });
 
 test('R.5: no days → empty guide suggestions with a clear message', async () => {
