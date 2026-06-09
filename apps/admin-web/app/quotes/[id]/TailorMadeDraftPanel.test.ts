@@ -103,13 +103,11 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'tailor-made-draft/transport-suggestions',
       'Preview Transport Suggestions',
       'Suggested Transport',
-      'Read-only planning hints + price preview. No transport has been applied and no pricing has run.',
+      // R.6B-2 — footer reflects the per-day apply workflow (apply shipped in R.6B-1).
+      'Preview a price per day, then apply OK days one by one. Each applied day adds one transport service; NO_ROUTE / NO_RATE days stay disabled.',
       'Arrival transfer',
       'Touring (full day)',
     ]);
-    // R.6B-0 adds a DISABLED "Apply transport (next phase)" placeholder — an
-    // ENABLED transport apply / transport /items POST must still not exist.
-    assert.ok(!/Apply Transport\b(?![^<]*next phase)/i.test(panelSource), 'no enabled Apply Transport button yet');
     // no raw vehicle-class / pricing leakage in client-style display
     assert.ok(!/Sedan 2|Coaster \d|Daily Full Day \|/i.test(panelSource), 'no raw vehicle/pricing labels');
   });
@@ -267,6 +265,31 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     );
     // transportServiceId + appliedTransportDayIds wired from the workspace.
     expectSourceContains(workspaceSource, ['transportServiceId', 'appliedTransportDayIds', 'quoteService?.appliedVehicleRate']);
+  });
+
+  it('R.6B-2: transport apply is per-day — remaining OK days stay independently applyable', () => {
+    // Apply + guard + status are all keyed on the day's own itineraryDayId, so
+    // applying one day never blocks the others (only the same day is blocked).
+    expectSourceContains(panelSource, [
+      'dayHasTransport(t.itineraryDayId)',
+      'dayTransportAppliedThisSession(t.itineraryDayId)',
+      'applySelectedTransport(t)',
+      // session-applied set ACCUMULATES (multiple days), never replaced.
+      'setSessionAppliedTransportDayIds((prev) => (prev.includes(dayId) ? prev : [...prev, dayId]))',
+      // per-day status rendered inside the transport .map (so each day shows its own).
+      'Transport applied to this day.',
+      'This day already has transport. Remove the existing transport item before applying another to this day.',
+    ]);
+    // The per-day status/guard live INSIDE the transport.map((t) => ...) iteration,
+    // not a single global flag — confirms independence across days.
+    assert.ok(
+      /transport\.map\(\(t\)[\s\S]*?dayHasTransport\(t\.itineraryDayId\)[\s\S]*?\}\)/.test(panelSource),
+      'per-day transport guard is evaluated within the day map',
+    );
+    // NO_RATE / NO_ROUTE days stay disabled: apply is gated on status === 'OK'.
+    assert.ok(/transportPreview\.status !== 'OK'/.test(panelSource), 'apply disabled unless the previewed status is OK');
+    // No batch-apply control.
+    assert.ok(!/Apply All Transport|applyAllTransport/i.test(panelSource), 'no batch transport apply');
   });
 });
 
