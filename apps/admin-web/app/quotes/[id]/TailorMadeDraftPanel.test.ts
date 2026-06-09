@@ -103,11 +103,13 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'tailor-made-draft/transport-suggestions',
       'Preview Transport Suggestions',
       'Suggested Transport',
-      'Read-only planning hints. No transport has been applied and no pricing has run.',
+      'Read-only planning hints + price preview. No transport has been applied and no pricing has run.',
       'Arrival transfer',
       'Touring (full day)',
     ]);
-    assert.ok(!/Apply Transport/i.test(panelSource), 'no Apply Transport button in R.3');
+    // R.6B-0 adds a DISABLED "Apply transport (next phase)" placeholder — an
+    // ENABLED transport apply / transport /items POST must still not exist.
+    assert.ok(!/Apply Transport\b(?![^<]*next phase)/i.test(panelSource), 'no enabled Apply Transport button yet');
     // no raw vehicle-class / pricing leakage in client-style display
     assert.ok(!/Sedan 2|Coaster \d|Daily Full Day \|/i.test(panelSource), 'no raw vehicle/pricing labels');
   });
@@ -218,5 +220,41 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'quoteItinerary.days',
       'quoteService?.hotel',
     ]);
+  });
+
+  it('R.6B-0: read-only transport price preview resolves a route+rate via the canonical calculate endpoint; apply is disabled', () => {
+    expectSourceContains(panelSource, [
+      'loadTransportOptions',
+      'resolveTransportPlan',
+      '/transport-pricing/calculate',
+      'Configure & Preview Price',
+      'TRANSPORT_DEFAULT_MARKUP',
+      'computeTransportSell',
+      // graceful statuses
+      "status: 'NO_ROUTE'",
+      "status: 'NO_RATE'",
+      // disabled next-phase placeholder, no enabled apply
+      'Apply transport (next phase)',
+    ]);
+    // The preview must NOT create a transport QuoteItem (no transport /items POST,
+    // no transport apply endpoint). The only /items POST in the panel is the hotel apply.
+    assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no transport apply endpoint');
+    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
+    assert.equal(itemsPosts.length, 1, 'only the hotel apply posts to /items — transport preview does not');
+    // The transport apply placeholder is disabled.
+    assert.ok(
+      /disabled\s*\n?\s*title="Apply transport will be enabled in the next phase"/.test(panelSource) ||
+        /Apply transport \(next phase\)/.test(panelSource),
+      'transport apply placeholder is disabled',
+    );
+    // routes + transportServiceTypes are wired from the workspace.
+    expectSourceContains(workspaceSource, ['routes', 'transportServiceTypes', 'tailor-made-transport-resolve']);
+  });
+});
+
+describe('R.6B-0 — transport resolver constant', () => {
+  it('mirrors the transport markup as a shared constant (20)', () => {
+    const resolverSource = readFileSync(new URL('./tailor-made-transport-resolve.ts', import.meta.url), 'utf8');
+    expectSourceContains(resolverSource, ['export const TRANSPORT_DEFAULT_MARKUP = 20', 'resolveTransportPlan', "'NO_ROUTE'"]);
   });
 });

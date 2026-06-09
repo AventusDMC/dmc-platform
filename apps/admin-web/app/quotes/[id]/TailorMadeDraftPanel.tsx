@@ -4,6 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { getErrorMessage } from '../../lib/api';
+import type { RouteOption } from '../../lib/routes';
+import {
+  resolveTransportPlan,
+  computeTransportSell,
+  TRANSPORT_DEFAULT_MARKUP,
+  type TransportServiceTypeOption,
+} from './tailor-made-transport-resolve';
 
 // Phase R.1c — UI for the Phase R.1/R.1b tailor-made draft endpoints. This panel
 // only PREVIEWS and APPLIES editable itinerary days. It never creates priced
@@ -77,10 +84,28 @@ type TransportSuggestion = {
   dayNumber: number;
   title: string;
   routeLabel: string | null;
-  suggestedTransportType: string;
-  pricingModeSuggestion: string | null;
+  origin: string | null;
+  destination: string | null;
+  stops?: string[];
+  suggestedTransportType: 'ARRIVAL_TRANSFER' | 'DEPARTURE_TRANSFER' | 'TOURING_FULL_DAY' | 'NONE';
+  pricingModeSuggestion: 'POINT_TO_POINT' | 'FULL_DAY' | null;
   reason: string;
   confidence: string;
+};
+
+// Phase R.6B-0 — read-only transport price-preview state for one day. Admin-only
+// planning fields (vehicle/service-type/pricing-mode) — never client proposal text.
+type TransportPreview = {
+  status: 'OK' | 'NO_ROUTE' | 'NO_RATE';
+  routeLabel: string | null;
+  serviceTypeName: string | null;
+  pricingModeHint: 'POINT_TO_POINT' | 'FULL_DAY' | null;
+  vehicleName: string | null;
+  cost: number | null;
+  sell: number | null;
+  currency: string | null;
+  markupPercent: number;
+  reason: string;
 };
 
 type ExperienceSuggestion = {
@@ -114,6 +139,11 @@ type TailorMadeDraftPanelProps = {
   // hotel item; other stays remain applyable.
   hotelServiceId?: string | null;
   appliedHotelDayIds?: string[];
+  // Phase R.6B-0 — route + transport-service-type catalogs used to resolve a
+  // transport suggestion to a concrete route/service-type for the read-only
+  // price preview (via the canonical /transport-pricing/calculate endpoint).
+  routes?: RouteOption[];
+  transportServiceTypes?: TransportServiceTypeOption[];
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
@@ -126,7 +156,7 @@ const HOTEL_DEFAULT_MARKUP = 15;
 const HOTEL_STAY_CONFLICT_MESSAGE =
   'This stay already has a hotel item. Remove the existing hotel item before applying another hotel to this stay.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -186,6 +216,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
   const [transportMessage, setTransportMessage] = useState('');
   const [suggestingTransport, setSuggestingTransport] = useState(false);
+
+  // Phase R.6B-0 — read-only transport price preview, one active day at a time.
+  const [transportPreviewDay, setTransportPreviewDay] = useState<number | null>(null);
+  const [transportPreview, setTransportPreview] = useState<TransportPreview | null>(null);
+  const [transportPreviewLoading, setTransportPreviewLoading] = useState(false);
 
   // Phase R.4 — read-only entrance/ticket/activity suggestions (no apply, no pricing).
   const [experiences, setExperiences] = useState<ExperienceSuggestion[] | null>(null);
@@ -419,6 +454,82 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       setError(caught instanceof Error ? caught.message : 'Could not generate transport suggestions.');
     } finally {
       setSuggestingTransport(false);
+    }
+  }
+
+  // Phase R.6B-0 — READ-ONLY transport price preview for one day. Resolves the
+  // suggestion to a route + service type (pure resolver), then prices via the
+  // canonical POST /transport-pricing/calculate (the same endpoint the Auto
+  // Builder uses). Creates NO QuoteItem, runs NO pricing write, changes NO quote
+  // total. Returns OK / NO_ROUTE / NO_RATE. Vehicle/service-type are admin
+  // planning fields only — never client proposal text.
+  async function loadTransportOptions(t: TransportSuggestion) {
+    setTransportPreviewDay(t.dayNumber);
+    setTransportPreviewLoading(true);
+    setTransportPreview(null);
+    setError('');
+    try {
+      const plan = resolveTransportPlan(t, routes ?? [], transportServiceTypes ?? []);
+      if (plan.status === 'NO_ROUTE' || !plan.routeId || !plan.serviceTypeId) {
+        setTransportPreview({
+          status: 'NO_ROUTE',
+          routeLabel: plan.routeLabel,
+          serviceTypeName: plan.serviceTypeName,
+          pricingModeHint: plan.pricingModeHint,
+          vehicleName: null,
+          cost: null,
+          sell: null,
+          currency: null,
+          markupPercent: TRANSPORT_DEFAULT_MARKUP,
+          reason: plan.reason,
+        });
+        return;
+      }
+      const response = await fetch(`${apiBaseUrl}/transport-pricing/calculate`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          serviceTypeId: plan.serviceTypeId,
+          routeId: plan.routeId,
+          normalizedKey: plan.normalizedKey,
+          routeName: '',
+          paxCount: 2,
+        }),
+      });
+      if (!response.ok) {
+        // A 404 = "no matching vehicle rate" → a clean NO_RATE status (not an error).
+        setTransportPreview({
+          status: 'NO_RATE',
+          routeLabel: plan.routeLabel,
+          serviceTypeName: plan.serviceTypeName,
+          pricingModeHint: plan.pricingModeHint,
+          vehicleName: null,
+          cost: null,
+          sell: null,
+          currency: null,
+          markupPercent: TRANSPORT_DEFAULT_MARKUP,
+          reason: 'No contracted transport rate is configured for this route/vehicle yet.',
+        });
+        return;
+      }
+      const result = await response.json();
+      const cost = typeof result?.price === 'number' ? result.price : null;
+      setTransportPreview({
+        status: cost === null ? 'NO_RATE' : 'OK',
+        routeLabel: plan.routeLabel,
+        serviceTypeName: result?.serviceType?.name ?? plan.serviceTypeName,
+        pricingModeHint: plan.pricingModeHint,
+        vehicleName: result?.vehicle?.name ?? null,
+        cost,
+        sell: cost === null ? null : computeTransportSell(cost),
+        currency: result?.currency ?? null,
+        markupPercent: TRANSPORT_DEFAULT_MARKUP,
+        reason: cost === null ? 'No rate returned for this leg.' : 'Estimated from the contracted transport rate.',
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');
+    } finally {
+      setTransportPreviewLoading(false);
     }
   }
 
@@ -763,18 +874,63 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           ) : (
             <>
               <ol className="tailor-made-transport-days">
-                {transport.map((t) => (
-                  <li key={t.dayNumber} className="tailor-made-transport-day">
-                    <strong>Day {t.dayNumber}</strong>
-                    {t.routeLabel ? ` — ${t.routeLabel}` : ` — ${t.title}`}
-                    {' • '}
-                    {transportTypeLabel(t.suggestedTransportType)}
-                    <span className="form-help"> — {t.reason}</span>
-                  </li>
-                ))}
+                {transport.map((t) => {
+                  const activeDay = transportPreviewDay === t.dayNumber;
+                  return (
+                    <li key={t.dayNumber} className="tailor-made-transport-day">
+                      <strong>Day {t.dayNumber}</strong>
+                      {t.routeLabel ? ` — ${t.routeLabel}` : ` — ${t.title}`}
+                      {' • '}
+                      {transportTypeLabel(t.suggestedTransportType)}
+                      <span className="form-help"> — {t.reason}</span>
+                      {t.suggestedTransportType !== 'NONE' ? (
+                        <>
+                          <button
+                            type="button"
+                            className="compact-button"
+                            onClick={() => loadTransportOptions(t)}
+                            disabled={transportPreviewLoading && activeDay}
+                          >
+                            {transportPreviewLoading && activeDay
+                              ? 'Loading…'
+                              : activeDay
+                                ? 'Reload Price'
+                                : 'Configure & Preview Price'}
+                          </button>
+                          {activeDay && transportPreview ? (
+                            <div className="tailor-made-transport-preview">
+                              {transportPreview.status === 'OK' ? (
+                                <p className="form-help">
+                                  Estimated cost {transportPreview.cost} / sell {transportPreview.sell}{' '}
+                                  {transportPreview.currency || ''} (markup {transportPreview.markupPercent}%)
+                                  {/* Admin-only planning detail — never shown in the client proposal. */}
+                                  {transportPreview.vehicleName ? ` • vehicle (internal): ${transportPreview.vehicleName}` : ''}
+                                  {transportPreview.serviceTypeName ? ` • type (internal): ${transportPreview.serviceTypeName}` : ''}
+                                  {transportPreview.pricingModeHint ? ` • mode (internal): ${transportPreview.pricingModeHint}` : ''}
+                                </p>
+                              ) : (
+                                <p className="form-help">
+                                  {transportPreview.status === 'NO_ROUTE' ? 'NO_ROUTE' : 'NO_RATE'} — {transportPreview.reason}
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                className="compact-button"
+                                disabled
+                                title="Apply transport will be enabled in the next phase"
+                              >
+                                Apply transport (next phase)
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ol>
               <p className="form-help">
-                Read-only planning hints. No transport has been applied and no pricing has run.
+                Read-only planning hints + price preview. No transport has been applied and no pricing has run.
               </p>
             </>
           )}
