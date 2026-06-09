@@ -112,20 +112,38 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/Sedan 2|Coaster \d|Daily Full Day \|/i.test(panelSource), 'no raw vehicle/pricing labels');
   });
 
-  it('R.4: a read-only "Suggested Entrances & Activities" section calls the experience-suggestions proxy (no apply/pricing)', () => {
+  it('R.4: a read-only "Suggested Entrances & Activities" section calls the experience-suggestions proxy', () => {
     expectSourceContains(panelSource, [
       'tailor-made-draft/experience-suggestions',
       'Preview Entrances & Activities',
       'Suggested Entrances &amp; Activities',
-      'Read-only planning hints. No tickets, entrances, or activities have been applied and no pricing has run.',
       'Entrance',
       'Activity',
     ]);
-    // read-only: no Apply button, no pricing fields wired into the section
-    assert.ok(!/Apply Entrances|Apply Activities|Apply Tickets/i.test(panelSource), 'no Apply Entrances/Activities button in R.4');
-    // raw rate-field leaks must not appear (the R.6A-0 hotel price preview legitimately
-    // shows an estimated totalSell/markup, so those words are no longer forbidden panel-wide).
-    assert.ok(!/sellPrice|foreignerFeeJod/i.test(panelSource), 'no raw rate fields in the panel');
+    // raw rate-field leaks must not appear (the R.6C-0 estimate uses neutral
+    // estimatedCost/estimatedSell, not raw catalog field names).
+    assert.ok(!/sellPrice|foreignerFeeJod|costPrice/i.test(panelSource), 'no raw rate fields in the panel');
+  });
+
+  it('R.6C-0: experience section shows read-only readiness + gross estimate; apply is a disabled placeholder', () => {
+    expectSourceContains(panelSource, [
+      // readiness status + estimate display
+      "e.matchedServiceId || e.matchedActivityId ? 'MATCHED' : 'NO_MATCH'",
+      'est. cost ',
+      'sell ',
+      '(markup ',
+      'Jordan Pass may cover this entrance',
+      // disabled next-phase placeholder, no enabled apply
+      'Apply experience (next phase)',
+      'Read-only readiness + estimated prices only',
+    ]);
+    // No experience /items POST and no experience apply endpoint in R.6C-0.
+    assert.ok(!/tailor-made-draft\/experience-apply/.test(panelSource), 'no experience apply endpoint');
+    // The two existing /items POSTs (hotel + transport) are unchanged — no third yet.
+    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
+    assert.equal(itemsPosts.length, 2, 'still only hotel + transport apply post to /items (no experience apply yet)');
+    // The experience apply placeholder is disabled.
+    assert.ok(/Apply experience \(next phase\)/.test(panelSource), 'experience apply placeholder present');
   });
 
   it('R.5: a read-only "Suggested Guides" section calls the guide-suggestions proxy (no apply/pricing)', () => {

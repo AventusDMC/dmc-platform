@@ -305,9 +305,16 @@ test('R.4: experience suggestions classify per day + best-effort master match, s
   assert.equal(calls.auditCreate.length, 0);
   assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
   assert.equal(calls.pricingCalls, 0, 'no pricing access');
-  // internal lookup hints are stripped from the payload; no pricing-value leak
+  // internal lookup hints are stripped; no RAW internal rate field leaks. (R.6C-0
+  // intentionally adds neutral estimatedCost/estimatedSell/markupPercent preview
+  // fields — those are allowed; raw catalog field names are not.)
   assert.doesNotMatch(JSON.stringify(result), /matchTerms|variantTerms|matchKind|specificTerms/);
-  assert.doesNotMatch(JSON.stringify(result), /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell/i);
+  assert.doesNotMatch(JSON.stringify(result), /foreignerFeeJod|costPrice|sellPrice|totalSell/i);
+  // R.6C-0 — readiness + itineraryDayId + markup are present per suggestion.
+  assert.equal(byPlace['Jerash'].readiness, 'MATCHED');
+  assert.equal(byPlace['Wadi Rum'].readiness, 'MATCHED');
+  assert.ok('itineraryDayId' in byPlace['Jerash']);
+  assert.equal(byPlace['Jerash'].markupPercent, 20);
 });
 
 test('R.4: master-read failure degrades to descriptive-only (still read-only, no throw)', async () => {

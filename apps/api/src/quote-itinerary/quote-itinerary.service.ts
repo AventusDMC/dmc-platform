@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
-import { HOTEL_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { HOTEL_DEFAULT_MARKUP, EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
@@ -335,22 +335,41 @@ export class QuoteItineraryService {
     await this.ensureQuoteExists(quoteId, actor);
     const days = await this.dayModel.findMany({
       where: { quoteId, isActive: true },
-      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      // R.6C-0 — include `id` so each suggestion exposes its itinerary day id (a
+      // future apply attaches there). Classification/matching unchanged.
+      select: { id: true, dayNumber: true, title: true, notes: true, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
     });
 
     let suggestions = deriveExperienceSuggestions(days || []);
 
+    // R.6C-0 — best-effort COST maps for a read-only price ESTIMATE (gross unit
+    // cost × standard markup). Keyed by the matched record id. Populated from the
+    // same master read used for matching; left empty if the read fails.
+    const activityCostById = new Map<string, { cost: number | null; currency: string; variants: Map<string, { cost: number; currency: string }> }>();
+    const serviceCostById = new Map<string, { cost: number | null; currency: string; jordanPassEligible: boolean }>();
+
     if (suggestions.length > 0) {
       try {
         const [services, activities] = await Promise.all([
           (this.prisma as any).supplierService.findMany({
-            select: { id: true, name: true, entranceFee: { select: { siteName: true } } },
+            select: {
+              id: true,
+              name: true,
+              entranceFee: { select: { siteName: true, foreignerFeeJod: true, includedInJordanPass: true } },
+              ticketRateVariants: { select: { id: true, costPrice: true, currency: true }, where: { active: true } },
+            },
             take: 500,
           }),
           (this.prisma as any).activity.findMany({
             where: { active: true },
-            select: { id: true, name: true, city: true, rateVariants: { select: { id: true, name: true }, where: { active: true } } },
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              costPrice: true,
+              rateVariants: { select: { id: true, name: true, costPrice: true, currency: true }, where: { active: true } },
+            },
             take: 500,
           }),
         ]);
@@ -365,15 +384,82 @@ export class QuoteItineraryService {
           city: a.city ?? null,
           rateVariants: (a.rateVariants || []).map((v: any) => ({ id: v.id, name: v.name })),
         }));
+        // Build the cost maps alongside the match masters (no pricing engine; just
+        // surfacing the catalog cost for an estimate — createItem stays authoritative).
+        for (const s of services || []) {
+          const firstTicket = (s.ticketRateVariants || [])[0];
+          const cost = firstTicket ? Number(firstTicket.costPrice) : s.entranceFee ? Number(s.entranceFee.foreignerFeeJod) : null;
+          serviceCostById.set(s.id, {
+            cost: cost == null || Number.isNaN(cost) ? null : cost,
+            currency: firstTicket?.currency || 'JOD',
+            jordanPassEligible: Boolean(s.entranceFee?.includedInJordanPass),
+          });
+        }
+        for (const a of activities || []) {
+          const variants = new Map<string, { cost: number; currency: string }>();
+          for (const v of a.rateVariants || []) variants.set(v.id, { cost: Number(v.costPrice), currency: v.currency || 'USD' });
+          const firstVariant = (a.rateVariants || [])[0];
+          activityCostById.set(a.id, {
+            cost: firstVariant ? Number(firstVariant.costPrice) : a.costPrice != null ? Number(a.costPrice) : null,
+            currency: firstVariant?.currency || 'USD',
+            variants,
+          });
+        }
         suggestions = enrichExperienceMatches(suggestions, { services: serviceMasters, activities: activityMasters });
       } catch {
         // Best-effort only: keep descriptive suggestions if the master read fails.
       }
     }
 
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
     // Strip the internal lookup hints from the response payload (admin sees the
-    // displayName + optional matched record name, never the raw match terms).
-    const cleaned = suggestions.map(({ matchTerms, variantTerms, matchKind, specificTerms, ...rest }) => rest);
+    // displayName + optional matched record name, never the raw match terms), and
+    // attach READ-ONLY readiness + a gross price estimate (R.6C-0).
+    const cleaned = suggestions.map(({ matchTerms, variantTerms, matchKind, specificTerms, ...rest }) => {
+      const isActivity = Boolean(rest.matchedActivityId);
+      const isService = Boolean(rest.matchedServiceId);
+      let estimatedCost: number | null = null;
+      let currency: string | null = null;
+      let jordanPassEligible = false;
+
+      if (isActivity) {
+        const a = activityCostById.get(rest.matchedActivityId as string);
+        if (a) {
+          const v = rest.matchedActivityRateVariantId ? a.variants.get(rest.matchedActivityRateVariantId) : null;
+          estimatedCost = v ? v.cost : a.cost;
+          currency = v ? v.currency : a.currency;
+        }
+      } else if (isService) {
+        const s = serviceCostById.get(rest.matchedServiceId as string);
+        if (s) {
+          estimatedCost = s.cost;
+          currency = s.currency;
+          jordanPassEligible = s.jordanPassEligible;
+        }
+      }
+
+      // Readiness: NO_MATCH (no record) → NEEDS_VARIANT (activity matched but no
+      // specific rate variant; createItem auto-selects one on apply) → MATCHED.
+      const readiness: 'MATCHED' | 'NO_MATCH' | 'NEEDS_VARIANT' = !isActivity && !isService
+        ? 'NO_MATCH'
+        : isActivity && !rest.matchedActivityRateVariantId
+          ? 'NEEDS_VARIANT'
+          : 'MATCHED';
+
+      const hasEstimate = estimatedCost != null && !Number.isNaN(estimatedCost);
+      return {
+        ...rest,
+        readiness,
+        // Gross unit estimate only — NOT the final price. createItem applies pax,
+        // pricing basis, supplier rules and Jordan Pass coverage on apply.
+        estimatedCost: hasEstimate ? round2(estimatedCost as number) : null,
+        estimatedSell: hasEstimate ? round2((estimatedCost as number) * (1 + EXPERIENCE_DEFAULT_MARKUP / 100)) : null,
+        currency: hasEstimate ? currency : null,
+        markupPercent: EXPERIENCE_DEFAULT_MARKUP,
+        jordanPassEligible,
+      };
+    });
     const byDay = cleaned.reduce<Record<number, typeof cleaned>>((acc, s) => {
       (acc[s.dayNumber] ||= []).push(s);
       return acc;
@@ -387,7 +473,7 @@ export class QuoteItineraryService {
       message:
         cleaned.length === 0
           ? 'No entrance/activity suggestions for the current itinerary days. Generate and apply a tailor-made draft first.'
-          : 'Suggested entrances & activities by day. Read-only planning hints — nothing has been applied and no pricing has run.',
+          : 'Suggested entrances & activities by day. Read-only — estimated prices only (Jordan Pass and final pricing are applied later); nothing has been applied.',
     };
   }
 
