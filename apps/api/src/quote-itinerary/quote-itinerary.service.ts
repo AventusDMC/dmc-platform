@@ -1422,6 +1422,12 @@ export class QuoteItineraryService {
       overrideReason: quoteService.overrideReason ?? null,
       reconfirmationRequired: quoteService.reconfirmationRequired,
       reconfirmationDueAt: quoteService.reconfirmationDueAt,
+      // R.6C-1 — experience apply identifiers (scalars on QuoteService) so the
+      // tailor-made panel can build a per-(day, record) conflict guard that
+      // survives reload. Read-only; no pricing/schema impact.
+      activityId: quoteService.activityId ?? null,
+      activityRateVariantId: quoteService.activityRateVariantId ?? null,
+      ticketRateVariantId: quoteService.ticketRateVariantId ?? null,
       service: quoteService.service
         ? {
             id: quoteService.service.id,

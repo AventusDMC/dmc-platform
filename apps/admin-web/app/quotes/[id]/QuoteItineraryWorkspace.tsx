@@ -76,6 +76,23 @@ export function QuoteItineraryWorkspace({
   const appliedTransportDayIds = quoteItinerary.days
     .filter((day) => (day.dayItems || []).some((item) => Boolean(item.quoteService?.appliedVehicleRate)))
     .map((day) => day.id);
+  // Phase R.6C-1 — per-(day, record) experience guard keys. For an applied
+  // activity the key is `${dayId}:act:${activityId}`; for an applied
+  // entrance/ticket it is `${dayId}:svc:${serviceId}`. The panel blocks
+  // re-applying the SAME matched activity/service to the SAME day while leaving
+  // other experiences (and other days) applyable. Read-only derivation.
+  const appliedExperienceKeys = quoteItinerary.days.flatMap((day) =>
+    (day.dayItems || []).flatMap((item) => {
+      const qs = item.quoteService;
+      if (!qs) return [];
+      if (qs.activityId) return [`${day.id}:act:${qs.activityId}`];
+      const category = qs.service?.category || '';
+      if (qs.ticketRateVariantId || /entrance|ticket|experience|activity|sightsee/i.test(category)) {
+        return qs.service?.id ? [`${day.id}:svc:${qs.service.id}`] : [];
+      }
+      return [];
+    }),
+  );
   const operationalSidebarToneClass =
     operationalSidebarTone === 'critical'
       ? styles.operationalSidebarCritical
@@ -173,6 +190,7 @@ export function QuoteItineraryWorkspace({
             transportServiceId={transportServiceId}
             appliedTransportDayIds={appliedTransportDayIds}
             defaultPax={totalPax}
+            appliedExperienceKeys={appliedExperienceKeys}
           />
         </details>
 
