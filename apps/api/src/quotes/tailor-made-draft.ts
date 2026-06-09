@@ -756,7 +756,12 @@ const EXPERIENCE_RULES: ExperienceRule[] = [
     confidence: 'high',
     matchKind: 'ACTIVITY',
     matchTerms: ['wadi rum'],
-    variantTerms: ['jeep', '2h', '2 hour'],
+    // R.6C-Fix — target the priced "2 Hours – Rum Area" jeep variant (the catalog
+    // has a separate all-zero "Wadi Rum Jeep Experiences" placeholder activity whose
+    // "2h Jeep Tour" variant costs 0). Region + duration terms select the real
+    // "2 Hours – Rum Area" variant (and the activity that carries it) over the
+    // placeholder; "rum area" also disambiguates from the Disi-area variants.
+    variantTerms: ['rum area', '2 hour'],
   },
   {
     test: (t) => /bethany/.test(t),
@@ -900,14 +905,34 @@ export function enrichExperienceMatches(
 
   return suggestions.map((s) => {
     if (s.matchKind === 'ACTIVITY') {
-      const activity = activities.find(
-        (a) => hit(a.name, s.matchTerms) || hit(a.city || '', s.matchTerms),
-      );
+      // R.6C-Fix — count how many of the rule's variant terms a variant name
+      // contains (a ranked match, not first-hit). Used to (a) prefer the activity
+      // that actually carries the intended variant, and (b) pick that variant.
+      const variantScore = (name: string): number => {
+        const n = clean(name).toLowerCase();
+        if (!n || !s.variantTerms.length) return 0;
+        return s.variantTerms.filter((t) => n.includes(t.toLowerCase())).length;
+      };
+      const bestVariantScore = (a: ActivityMasterRecord): number =>
+        (a.rateVariants || []).reduce((best, v) => Math.max(best, variantScore(v.name)), 0);
+
+      const matched = activities.filter((a) => hit(a.name, s.matchTerms) || hit(a.city || '', s.matchTerms));
+      // Prefer the term-matched activity that carries a variant matching the rule's
+      // variant terms — so "Wadi Rum Jeep Tour" (with its priced "2 Hours – Rum Area"
+      // variant) wins over the all-zero "Wadi Rum Jeep Experiences" placeholder.
+      // Stable: keep catalog order among equally-scored activities.
+      const activity = matched
+        .map((a, index) => ({ a, index, score: bestVariantScore(a) }))
+        .sort((x, y) => (y.score - x.score) || (x.index - y.index))[0]?.a || null;
       if (activity) {
+        const variants = activity.rateVariants || [];
         const variant =
           (s.variantTerms.length
-            ? (activity.rateVariants || []).find((v) => hit(v.name, s.variantTerms))
-            : null) || (activity.rateVariants || [])[0] || null;
+            ? variants
+                .map((v, index) => ({ v, index, score: variantScore(v.name) }))
+                .filter((c) => c.score > 0)
+                .sort((x, y) => (y.score - x.score) || (x.index - y.index))[0]?.v
+            : null) || variants[0] || null;
         return {
           ...s,
           matchedActivityId: activity.id,
