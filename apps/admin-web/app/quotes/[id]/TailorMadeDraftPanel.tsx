@@ -1038,7 +1038,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                 })}
               </ol>
               <p className="form-help">
-                Read-only planning hints + price preview. No transport has been applied and no pricing has run.
+                Preview a price per day, then apply OK days one by one. Each applied day adds one transport service; NO_ROUTE / NO_RATE days stay disabled.
               </p>
             </>
           )}
