@@ -91,6 +91,8 @@ type TransportSuggestion = {
   pricingModeSuggestion: 'POINT_TO_POINT' | 'FULL_DAY' | null;
   reason: string;
   confidence: string;
+  // Phase R.6B-1 — id of this day's itinerary row (apply attaches the transport item here).
+  itineraryDayId?: string | null;
 };
 
 // Phase R.6B-0 — read-only transport price-preview state for one day. Admin-only
@@ -105,6 +107,10 @@ type TransportPreview = {
   sell: number | null;
   currency: string | null;
   markupPercent: number;
+  // Phase R.6B-1 — resolved apply identifiers (for the canonical createItem path).
+  routeId?: string | null;
+  normalizedKey?: string | null;
+  serviceTypeId?: string | null;
   reason: string;
 };
 
@@ -144,6 +150,13 @@ type TailorMadeDraftPanelProps = {
   // price preview (via the canonical /transport-pricing/calculate endpoint).
   routes?: RouteOption[];
   transportServiceTypes?: TransportServiceTypeOption[];
+  // Phase R.6B-1 — the TRANSPORT-type QuoteService id (apply uses the canonical
+  // createItem transport branch via POST /quotes/:id/items), the itinerary-day
+  // ids that ALREADY have a transport item (per-day conflict guard), and the
+  // quote pax count passed on apply.
+  transportServiceId?: string | null;
+  appliedTransportDayIds?: string[];
+  defaultPax?: number;
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
@@ -155,8 +168,11 @@ const HOTEL_DEFAULT_MARKUP = 15;
 // Phase R.6A-2 — stay-level conflict message (one hotel per stay/day).
 const HOTEL_STAY_CONFLICT_MESSAGE =
   'This stay already has a hotel item. Remove the existing hotel item before applying another hotel to this stay.';
+// Phase R.6B-1 — per-day transport conflict message (one transport per day).
+const TRANSPORT_DAY_CONFLICT_MESSAGE =
+  'This day already has transport. Remove the existing transport item before applying another to this day.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes, transportServiceId, appliedTransportDayIds, defaultPax }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -221,6 +237,17 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [transportPreviewDay, setTransportPreviewDay] = useState<number | null>(null);
   const [transportPreview, setTransportPreview] = useState<TransportPreview | null>(null);
   const [transportPreviewLoading, setTransportPreviewLoading] = useState(false);
+
+  // Phase R.6B-1 — apply one OK-priced transport day as a single TRANSPORT
+  // QuoteItem. Per-DAY conflict guard: a day is blocked only when it already has
+  // a transport item (server-known appliedTransportDayIds, or applied this
+  // session). Other days remain applyable.
+  const [transportApplying, setTransportApplying] = useState(false);
+  const [sessionAppliedTransportDayIds, setSessionAppliedTransportDayIds] = useState<string[]>([]);
+  const dayHasTransport = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && ((appliedTransportDayIds ?? []).includes(dayId as string) || sessionAppliedTransportDayIds.includes(dayId as string));
+  const dayTransportAppliedThisSession = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && sessionAppliedTransportDayIds.includes(dayId as string);
 
   // Phase R.4 — read-only entrance/ticket/activity suggestions (no apply, no pricing).
   const [experiences, setExperiences] = useState<ExperienceSuggestion[] | null>(null);
@@ -493,7 +520,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           routeId: plan.routeId,
           normalizedKey: plan.normalizedKey,
           routeName: '',
-          paxCount: 2,
+          paxCount: defaultPax ?? 2,
         }),
       });
       if (!response.ok) {
@@ -509,6 +536,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           currency: null,
           markupPercent: TRANSPORT_DEFAULT_MARKUP,
           reason: 'No contracted transport rate is configured for this route/vehicle yet.',
+          routeId: plan.routeId,
+          normalizedKey: plan.normalizedKey,
+          serviceTypeId: plan.serviceTypeId,
         });
         return;
       }
@@ -525,11 +555,71 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         currency: result?.currency ?? null,
         markupPercent: TRANSPORT_DEFAULT_MARKUP,
         reason: cost === null ? 'No rate returned for this leg.' : 'Estimated from the contracted transport rate.',
+        // Resolved identifiers for the canonical createItem transport apply (R.6B-1).
+        routeId: plan.routeId,
+        normalizedKey: plan.normalizedKey,
+        serviceTypeId: plan.serviceTypeId,
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');
     } finally {
       setTransportPreviewLoading(false);
+    }
+  }
+
+  // Phase R.6B-1 — apply ONE OK-priced transport day as a single TRANSPORT
+  // QuoteItem through the canonical path (POST /quotes/:id/items →
+  // QuotesService.createItem transport branch). No parallel pricing system:
+  // createItem auto-prices via the existing TransportPricingService at the
+  // standard transport markup. Transport only, one day at a time. Per-day guard:
+  // blocked only when this day already has a transport item; other days remain
+  // applyable.
+  async function applySelectedTransport(t: TransportSuggestion) {
+    setError('');
+    if (dayHasTransport(t.itineraryDayId)) {
+      setError(TRANSPORT_DAY_CONFLICT_MESSAGE);
+      return;
+    }
+    const p = transportPreview;
+    if (!p || p.status !== 'OK' || !p.routeId || !p.serviceTypeId) {
+      setError('Preview a transport price (status OK) before applying.');
+      return;
+    }
+    if (!transportServiceId) {
+      setError('No transport service is configured for this quote, so transport cannot be applied.');
+      return;
+    }
+    if (!t.itineraryDayId) {
+      setError('This day has no itinerary row to attach transport to. Apply the draft days first.');
+      return;
+    }
+    setTransportApplying(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          serviceId: transportServiceId,
+          itineraryId: t.itineraryDayId,
+          quantity: 1,
+          paxCount: defaultPax ?? 2,
+          markupPercent: TRANSPORT_DEFAULT_MARKUP,
+          transportServiceTypeId: p.serviceTypeId,
+          routeId: p.routeId,
+          normalizedKey: p.normalizedKey ?? undefined,
+          routeName: '',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not apply the selected transport.'));
+      }
+      const dayId = t.itineraryDayId;
+      setSessionAppliedTransportDayIds((prev) => (prev.includes(dayId) ? prev : [...prev, dayId]));
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not apply the selected transport.');
+    } finally {
+      setTransportApplying(false);
     }
   }
 
@@ -885,6 +975,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                       <span className="form-help"> — {t.reason}</span>
                       {t.suggestedTransportType !== 'NONE' ? (
                         <>
+                          {/* Phase R.6B-1 — per-day applied/blocked status (independent of other days). */}
+                          {dayTransportAppliedThisSession(t.itineraryDayId) ? (
+                            <p className="form-success" role="status">Transport applied to this day.</p>
+                          ) : dayHasTransport(t.itineraryDayId) ? (
+                            <p className="form-help" role="status">{TRANSPORT_DAY_CONFLICT_MESSAGE}</p>
+                          ) : null}
                           <button
                             type="button"
                             className="compact-button"
@@ -913,14 +1009,26 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                                   {transportPreview.status === 'NO_ROUTE' ? 'NO_ROUTE' : 'NO_RATE'} — {transportPreview.reason}
                                 </p>
                               )}
+                              {/* Phase R.6B-1 — Apply enabled only after an OK preview AND only for a
+                                  day with no transport item yet. One day, one TRANSPORT QuoteItem;
+                                  other days stay applyable. */}
                               <button
                                 type="button"
                                 className="compact-button"
-                                disabled
-                                title="Apply transport will be enabled in the next phase"
+                                disabled={
+                                  transportApplying ||
+                                  dayHasTransport(t.itineraryDayId) ||
+                                  transportPreview.status !== 'OK'
+                                }
+                                onClick={() => applySelectedTransport(t)}
                               >
-                                Apply transport (next phase)
+                                {transportApplying ? 'Applying…' : 'Apply Selected Transport'}
                               </button>
+                              {dayTransportAppliedThisSession(t.itineraryDayId) ? (
+                                <p className="form-success" role="status">Transport applied to this day.</p>
+                              ) : dayHasTransport(t.itineraryDayId) ? (
+                                <p className="form-help" role="status">{TRANSPORT_DAY_CONFLICT_MESSAGE}</p>
+                              ) : null}
                             </div>
                           ) : null}
                         </>

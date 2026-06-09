@@ -489,6 +489,9 @@ export interface SuggestedTransport {
   matchedRouteId: string | null;
   confidence: 'high' | 'medium' | 'low';
   candidateTransport: string[];
+  /** Phase R.6B-1 — the QuoteItineraryDay row id, when known. An applied
+   *  transport item attaches here. Null when the day id was not provided. */
+  itineraryDayId: string | null;
 }
 
 const AIRPORT_RE = /\b([A-Z]{3,4})\b/; // e.g. QAIA
@@ -510,6 +513,8 @@ function transportForDay(day: DraftDayShell): SuggestedTransport {
     matchedRouteId: null,
     confidence: 'medium',
     candidateTransport: [],
+    // R.6B-1 — where an applied transport item attaches (null if no id provided).
+    itineraryDayId: day.id ?? null,
     ...extra,
   });
 

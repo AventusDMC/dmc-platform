@@ -305,7 +305,9 @@ export class QuoteItineraryService {
     await this.ensureQuoteExists(quoteId, actor);
     const days = await this.dayModel.findMany({
       where: { quoteId, isActive: true },
-      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      // R.6B-1 — include `id` so each suggestion can expose its itinerary day id
+      // (an applied transport item attaches there). Classification is unchanged.
+      select: { id: true, dayNumber: true, title: true, notes: true, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
     });
 
