@@ -183,6 +183,11 @@ type TailorMadeDraftPanelProps = {
   // blocks re-applying the SAME matched record to the SAME day; other experiences
   // and other days stay applyable.
   appliedExperienceKeys?: string[];
+  // Phase R.6D-1 — the GUIDE-type QuoteService id (apply uses the canonical
+  // createItem guide branch via POST /quotes/:id/items) and the itinerary-day ids
+  // that ALREADY have a guide item (per-day conflict guard — one guide per day).
+  guideServiceId?: string | null;
+  appliedGuideDayIds?: string[];
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
@@ -203,8 +208,12 @@ const TRANSPORT_DAY_CONFLICT_MESSAGE =
 const EXPERIENCE_DEFAULT_MARKUP = 20;
 // Phase R.6C-1 — per-(day, record) experience conflict message.
 const EXPERIENCE_CONFLICT_MESSAGE = 'This experience is already applied to this day.';
+// Phase R.6D-1 — standard guide markup (== API GUIDE_DEFAULT_MARKUP) + the per-day
+// guide conflict message (one guide per day).
+const GUIDE_DEFAULT_MARKUP = 20;
+const GUIDE_DAY_CONFLICT_MESSAGE = 'This day already has a guide item.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes, transportServiceId, appliedTransportDayIds, defaultPax, appliedExperienceKeys }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, appliedHotelDayIds, routes, transportServiceTypes, transportServiceId, appliedTransportDayIds, defaultPax, appliedExperienceKeys, guideServiceId, appliedGuideDayIds }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -308,6 +317,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [guideMessage, setGuideMessage] = useState('');
   const [guideEscortNote, setGuideEscortNote] = useState('');
   const [suggestingGuides, setSuggestingGuides] = useState(false);
+  // Phase R.6D-1 — guide apply state. One GUIDE QuoteItem at a time via the
+  // canonical POST /quotes/:id/items path. Per-day guard combines server-known
+  // appliedGuideDayIds with days applied this session.
+  const [guideApplying, setGuideApplying] = useState<string | null>(null);
+  const [sessionAppliedGuideDayIds, setSessionAppliedGuideDayIds] = useState<string[]>([]);
+  const dayHasGuide = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && ((appliedGuideDayIds ?? []).includes(dayId as string) || sessionAppliedGuideDayIds.includes(dayId as string));
+  const dayGuideAppliedThisSession = (dayId: string | null | undefined): boolean =>
+    Boolean(dayId) && sessionAppliedGuideDayIds.includes(dayId as string);
 
   function buildInput() {
     return {
@@ -768,6 +786,60 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   // Human-friendly admin label for a suggested experience type (never client text).
   const experienceTypeLabel = (t: string): string =>
     ({ ENTRANCE: 'Entrance', TICKET: 'Ticket', ACTIVITY: 'Activity' } as Record<string, string>)[t] || t;
+
+  // Phase R.6D-1 — apply ONE matched LOCAL guide as a real GUIDE QuoteItem through
+  // the canonical path (POST /quotes/:id/items → QuotesService.createItem guide
+  // branch). No parallel pricing: createItem prices via GUIDE_RATES (local/full_day
+  // = 120) flat per engagement (not × pax) at the standard guide markup. One guide
+  // per day; escort + overnight stay out of scope. Per-day guard: blocked only when
+  // this day already has a guide; other days remain applyable.
+  async function applySelectedGuide(g: GuideSuggestion) {
+    setError('');
+    const readiness = g.readiness || (g.guideTypeSuggestion === 'LOCAL' ? 'MATCHED' : 'NONE');
+    if (readiness !== 'MATCHED' || g.guideTypeSuggestion !== 'LOCAL') {
+      setError('Only matched local guide suggestions can be applied.');
+      return;
+    }
+    if (!g.itineraryDayId) {
+      setError('This day has no itinerary row to attach the guide to. Apply the draft days first.');
+      return;
+    }
+    if (!guideServiceId) {
+      setError('No guide service is configured for this quote, so a guide cannot be applied.');
+      return;
+    }
+    if (dayHasGuide(g.itineraryDayId)) {
+      setError(GUIDE_DAY_CONFLICT_MESSAGE);
+      return;
+    }
+    const dayId = g.itineraryDayId;
+    setGuideApplying(dayId);
+    try {
+      const pax = defaultPax ?? 2;
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          serviceId: guideServiceId,
+          itineraryId: dayId,
+          guideType: 'local',
+          guideDuration: 'full_day',
+          overnight: false,
+          paxCount: pax,
+          markupPercent: GUIDE_DEFAULT_MARKUP,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not apply the selected guide.'));
+      }
+      setSessionAppliedGuideDayIds((prev) => (prev.includes(dayId) ? prev : [...prev, dayId]));
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not apply the selected guide.');
+    } finally {
+      setGuideApplying(null);
+    }
+  }
 
   // Phase R.5 — read-only guide suggestions (no apply, no pricing).
   async function handleSuggestGuides() {
@@ -1257,22 +1329,36 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                         </span>
                       ) : null}
                       <span className="form-help"> — {g.reason}</span>
-                      {/* Phase R.6D-0 — apply lands next phase; disabled placeholder only. */}
-                      <button
-                        type="button"
-                        className="compact-button"
-                        disabled
-                        title="Applying guides will be enabled in the next phase"
-                      >
-                        Apply guide (next phase)
-                      </button>
+                      {/* Phase R.6D-1 — apply one matched LOCAL guide via the canonical
+                          /items path. MATCHED → enabled; already applied to this day →
+                          disabled with the conflict label. Escort (ESCORT_OPTION) is a
+                          planning note only and never an apply target. */}
+                      {readiness === 'MATCHED' ? (
+                        dayHasGuide(g.itineraryDayId) ? (
+                          <button type="button" className="compact-button" disabled title={GUIDE_DAY_CONFLICT_MESSAGE}>
+                            Guide applied to this day
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="compact-button"
+                            onClick={() => applySelectedGuide(g)}
+                            disabled={guideApplying !== null}
+                          >
+                            {guideApplying === g.itineraryDayId ? 'Applying…' : 'Apply guide'}
+                          </button>
+                        )
+                      ) : null}
+                      {dayGuideAppliedThisSession(g.itineraryDayId) ? (
+                        <span className="form-success" role="status"> Guide applied to this day.</span>
+                      ) : null}
                     </li>
                   );
                 })}
               </ol>
               {guideEscortNote ? <p className="form-help">{guideEscortNote}</p> : null}
               <p className="form-help">
-                Read-only readiness + estimated prices only (local full-day guide: gross unit cost × markup 20%). No guides have been applied and no pricing has run; final price is set when applied in a later step.
+                Estimates are single-unit gross figures (local full-day guide cost × markup 20%). Applying a matched local guide creates one Guide item via the standard path; the final total is calculated on apply.
               </p>
             </>
           )}

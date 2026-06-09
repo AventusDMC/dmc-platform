@@ -169,12 +169,12 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(/readiness === 'NO_MATCH' \? \(\s*<button[^>]*disabled/m.test(panelSource), 'NO_MATCH apply button is disabled');
     // Now three /items POSTs: hotel + transport + experience.
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
+    assert.equal(itemsPosts.length, 4, 'hotel + transport + experience + guide apply post to /items');
     // Still no parallel experience-apply endpoint — canonical path only.
     assert.ok(!/tailor-made-draft\/experience-apply/.test(panelSource), 'no parallel experience apply endpoint');
   });
 
-  it('R.5/R.6D-0: read-only "Suggested Guides" section with readiness + estimate, apply disabled', () => {
+  it('R.5/R.6D-0: read-only "Suggested Guides" section with readiness + estimate', () => {
     expectSourceContains(panelSource, [
       'tailor-made-draft/guide-suggestions',
       'Preview Guide Suggestions',
@@ -185,16 +185,40 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'est. cost ',
       'sell ',
       '(markup ',
-      'No guides have been applied and no pricing has run',
-      // disabled next-phase placeholder
-      'Apply guide (next phase)',
     ]);
-    // R.6D-0: the guide Apply button is a DISABLED placeholder — no enabled apply,
-    // no parallel guide-apply endpoint.
-    assert.ok(/Apply guide \(next phase\)/.test(panelSource), 'guide apply placeholder present');
-    assert.ok(!/tailor-made-draft\/guide-apply/.test(panelSource), 'no parallel guide apply endpoint');
     // No raw guide metadata leaks into the section.
     assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in guides section');
+  });
+
+  it('R.6D-1: applies one matched local guide via the canonical /items guide branch with per-day guard', () => {
+    expectSourceContains(panelSource, [
+      'async function applySelectedGuide',
+      '/quotes/${quoteId}/items',
+      'serviceId: guideServiceId',
+      "guideType: 'local'",
+      "guideDuration: 'full_day'",
+      'overnight: false',
+      'markupPercent: GUIDE_DEFAULT_MARKUP',
+      'const GUIDE_DEFAULT_MARKUP = 20',
+      // per-day guard + message
+      'const GUIDE_DAY_CONFLICT_MESSAGE',
+      'This day already has a guide item.',
+      'const dayHasGuide',
+      'dayHasGuide(g.itineraryDayId)',
+      'appliedGuideDayIds',
+      // enabled apply button (MATCHED) + applied state
+      'onClick={() => applySelectedGuide(g)}',
+      'Guide applied to this day',
+    ]);
+    // The next-phase placeholder is gone — apply is real now.
+    assert.ok(!/Apply guide \(next phase\)/.test(panelSource), 'no next-phase guide placeholder remains');
+    // Canonical path only — no parallel guide-apply endpoint.
+    assert.ok(!/tailor-made-draft\/guide-apply/.test(panelSource), 'no parallel guide apply endpoint');
+    // Escort stays a planning note, never an apply target (apply gated on LOCAL/MATCHED).
+    assert.ok(/g\.guideTypeSuggestion !== 'LOCAL'/.test(panelSource), 'guide apply rejects non-local (escort) suggestions');
+    // Four /items POSTs now: hotel + transport + experience + guide.
+    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
+    assert.equal(itemsPosts.length, 4, 'hotel + transport + experience + guide apply post to /items');
   });
 
   it('R.6A-0: hotel-stay configure/price-preview calls the read-only options proxy', () => {
@@ -241,7 +265,7 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     );
     // Hotel + transport (R.6B-1) + experience (R.6C-1) apply through the canonical /items path.
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
+    assert.equal(itemsPosts.length, 4, 'hotel + transport + experience + guide apply post to /items');
     // The hotelServiceId input is wired in from the workspace.
     expectSourceContains(workspaceSource, ['hotelServiceId', '<TailorMadeDraftPanel']);
   });
@@ -313,7 +337,7 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no parallel transport apply endpoint');
     // /items POSTs: hotel (R.6A) + transport (R.6B-1) + experience (R.6C-1).
     const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
-    assert.equal(itemsPosts.length, 3, 'hotel + transport + experience apply post to /items');
+    assert.equal(itemsPosts.length, 4, 'hotel + transport + experience + guide apply post to /items');
     // Apply enabled only on OK preview + an unapplied day (disabled otherwise).
     assert.ok(
       /disabled=\{[\s\S]*?transportApplying[\s\S]*?dayHasTransport\(t\.itineraryDayId\)[\s\S]*?transportPreview\.status !== 'OK'[\s\S]*?\}/.test(panelSource),

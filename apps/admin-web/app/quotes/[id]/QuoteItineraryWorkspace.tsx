@@ -43,6 +43,8 @@ type QuoteItineraryWorkspaceProps = {
   transportServiceTypes?: TransportServiceTypeOption[];
   // Phase R.6B-1 — TRANSPORT-type QuoteService id (apply); forwarded to the panel.
   transportServiceId?: string | null;
+  // Phase R.6D-1 — GUIDE-type QuoteService id (apply); forwarded to the panel.
+  guideServiceId?: string | null;
 };
 
 export function QuoteItineraryWorkspace({
@@ -62,6 +64,7 @@ export function QuoteItineraryWorkspace({
   routes,
   transportServiceTypes,
   transportServiceId,
+  guideServiceId,
 }: QuoteItineraryWorkspaceProps) {
   // Phase R.6A-2 — itinerary days that ALREADY have a hotel item, so the panel's
   // conflict guard is stay-level (a stay is blocked only when its first day has a
@@ -99,6 +102,17 @@ export function QuoteItineraryWorkspace({
       return qs.service?.id ? [`${day.id}:svc:${qs.service.id}`] : [];
     }),
   );
+  // Phase R.6D-1 — itinerary days that ALREADY have a guide item, so the panel's
+  // guide guard is per-day (one guide per day). A guide item's linked service is a
+  // GUIDE service-type / "Guide"-category service. Read-only derivation.
+  const appliedGuideDayIds = quoteItinerary.days
+    .filter((day) =>
+      (day.dayItems || []).some((item) => {
+        const svc = item.quoteService?.service;
+        return svc?.serviceType?.code === 'GUIDE' || /guide/i.test(svc?.category || '');
+      }),
+    )
+    .map((day) => day.id);
   const operationalSidebarToneClass =
     operationalSidebarTone === 'critical'
       ? styles.operationalSidebarCritical
@@ -197,6 +211,8 @@ export function QuoteItineraryWorkspace({
             appliedTransportDayIds={appliedTransportDayIds}
             defaultPax={totalPax}
             appliedExperienceKeys={appliedExperienceKeys}
+            guideServiceId={guideServiceId}
+            appliedGuideDayIds={appliedGuideDayIds}
           />
         </details>
 
