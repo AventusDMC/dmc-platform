@@ -534,6 +534,23 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('R.6C-2: experience conflict-guard keys every applied entrance/activity (no category allowlist)', () => {
+    // An applied activity keys by activityId; every other applied (non-hotel,
+    // non-transport) service keys by its service id. No brittle category
+    // allowlist — the old list missed Petra's `variant_archived` entrance service,
+    // so its cross-reload re-apply guard silently failed.
+    expectSourceContains(quoteItineraryWorkspaceSource, [
+      'const appliedExperienceKeys',
+      'if (qs.activityId) return [`${day.id}:act:${qs.activityId}`];',
+      'if (qs.hotel || qs.appliedVehicleRate) return [];',
+      'return qs.service?.id ? [`${day.id}:svc:${qs.service.id}`] : [];',
+    ]);
+    assert.ok(
+      !/entrance\|ticket\|experience\|activity\|sightsee/.test(quoteItineraryWorkspaceSource),
+      'brittle category allowlist removed from the experience guard derivation',
+    );
+  });
+
   it('adds sticky operational summary and collapsible itinerary workspace sections', () => {
     expectSourceContains(pageSource, [
       '<QuoteItineraryWorkspace',

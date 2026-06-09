@@ -81,16 +81,22 @@ export function QuoteItineraryWorkspace({
   // entrance/ticket it is `${dayId}:svc:${serviceId}`. The panel blocks
   // re-applying the SAME matched activity/service to the SAME day while leaving
   // other experiences (and other days) applyable. Read-only derivation.
+  // R.6C-2: a matched activity keys by activityId; every other applied
+  // entrance/ticket/experience keys by its service id. Hotel and transport items
+  // are guarded separately (appliedHotelDayIds / appliedTransportDayIds), so skip
+  // them here and emit a svc key for any remaining applied service. This replaces
+  // the earlier category allowlist, which missed entrances whose catalog service
+  // carries an off-list category (e.g. Petra resolves to a `variant_archived`
+  // service) — so its cross-reload re-apply guard silently failed. Emitting a svc
+  // key for a non-experience service is harmless: it only ever blocks a suggestion
+  // whose matchedServiceId is that exact service on that exact day.
   const appliedExperienceKeys = quoteItinerary.days.flatMap((day) =>
     (day.dayItems || []).flatMap((item) => {
       const qs = item.quoteService;
       if (!qs) return [];
       if (qs.activityId) return [`${day.id}:act:${qs.activityId}`];
-      const category = qs.service?.category || '';
-      if (qs.ticketRateVariantId || /entrance|ticket|experience|activity|sightsee/i.test(category)) {
-        return qs.service?.id ? [`${day.id}:svc:${qs.service.id}`] : [];
-      }
-      return [];
+      if (qs.hotel || qs.appliedVehicleRate) return [];
+      return qs.service?.id ? [`${day.id}:svc:${qs.service.id}`] : [];
     }),
   );
   const operationalSidebarToneClass =
