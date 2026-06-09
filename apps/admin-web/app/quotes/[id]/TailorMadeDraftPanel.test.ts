@@ -58,11 +58,12 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     expectSourceContains(panelSource, [
       'No hotels, transport, tickets, guides, or pricing were added.',
     ]);
-    // the panel must not POST to any pricing / item endpoints, nor reference
-    // pricing FIELDS (the disclaimer copy may say the word "pricing" to state it
-    // is NOT applied — that's fine; what matters is no item/pricing wiring).
+    // The panel must not POST to any item-creation endpoint nor carry
+    // item-write fields. (Phase R.6A-0 adds a READ-ONLY hotel price PREVIEW that
+    // displays an estimated cost/sell/markup — that does not create a QuoteItem,
+    // so the preview display words are allowed; only item-apply wiring is not.)
     assert.ok(!/\/items\b/.test(panelSource), 'panel must not call the /items endpoint');
-    assert.ok(!/markup|totalSell|totalCost|overrideCost|supplierCost/i.test(panelSource), 'panel must not reference pricing fields');
+    assert.ok(!/useOverride|overrideCost|supplierCost/i.test(panelSource), 'panel must not reference item-write pricing fields');
   });
 
   it('7. the panel is wired into the live itinerary workspace', () => {
@@ -90,10 +91,11 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       '{c.reason}',
       'No candidate hotels found for this city.',
     ]);
-    // still read-only: no Apply Hotels button, no contract-name display, no pricing fields
-    assert.ok(!/Apply Hotels/i.test(panelSource), 'no Apply Hotels button in R.2b');
+    // still read-only: no contract-name display, no item-write wiring. (R.6A-0
+    // adds a disabled "Apply hotel (next phase)" placeholder + read-only price
+    // preview; an ENABLED apply / items POST is what must not exist.)
     assert.ok(!/contractName|contract\.name|agreement/i.test(panelSource), 'no contract-name display');
-    assert.ok(!/markup|totalSell|totalCost|overrideCost/i.test(panelSource), 'no pricing fields');
+    assert.ok(!/useOverride|overrideCost|supplierCost/i.test(panelSource), 'no item-write pricing fields');
   });
 
   it('R.3: a read-only "Suggested Transport" section calls the transport-suggestions proxy (no apply/pricing)', () => {
@@ -121,7 +123,9 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
     // read-only: no Apply button, no pricing fields wired into the section
     assert.ok(!/Apply Entrances|Apply Activities|Apply Tickets/i.test(panelSource), 'no Apply Entrances/Activities button in R.4');
-    assert.ok(!/sellPrice|totalSell|markup|foreignerFeeJod/i.test(panelSource), 'no pricing fields in R.4 section');
+    // raw rate-field leaks must not appear (the R.6A-0 hotel price preview legitimately
+    // shows an estimated totalSell/markup, so those words are no longer forbidden panel-wide).
+    assert.ok(!/sellPrice|foreignerFeeJod/i.test(panelSource), 'no raw rate fields in the panel');
   });
 
   it('R.5: a read-only "Suggested Guides" section calls the guide-suggestions proxy (no apply/pricing)', () => {
@@ -135,5 +139,21 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     // read-only: no Apply button, no raw guide metadata / pricing leakage
     assert.ok(!/Apply Guides?/i.test(panelSource), 'no Apply Guides button in R.5');
     assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in R.5 section');
+  });
+
+  it('R.6A-0: hotel-stay configure/price-preview calls the read-only options proxy; apply is disabled (next phase)', () => {
+    expectSourceContains(panelSource, [
+      'tailor-made-draft/hotel-stay-options',
+      'Configure & Preview Price',
+      'Preview Price',
+      'loadHotelStayOptions',
+      'availableRoomCategories',
+      'availableMealPlans',
+      'availableOccupancyTypes',
+      'Apply hotel (next phase)',
+    ]);
+    // the preview must NOT call any apply/items endpoint and the Apply control is disabled
+    assert.ok(!/tailor-made-draft\/hotel-apply|\/items\b/.test(panelSource), 'no hotel apply/items POST in R.6A-0');
+    assert.ok(/Apply hotel \(next phase\)[^]*?disabled|disabled[^]*?Apply hotel \(next phase\)/.test(panelSource) || panelSource.includes('disabled title="Apply hotels will be enabled in the next phase"'), 'apply hotel button is disabled');
   });
 });

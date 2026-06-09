@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
+import { HOTEL_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDayCountry } from '../quotes/quote-day-country';
 import {
@@ -413,6 +415,175 @@ export class QuoteItineraryService {
         suggestions.length === 0
           ? 'No active itinerary days found. Generate and apply a tailor-made draft first.'
           : 'Suggested guides by day. Read-only planning hints — no guides applied and no pricing.',
+    };
+  }
+
+  // Phase R.6A-0 — READ-ONLY hotel-stay configure + price preview. For a chosen
+  // hotel candidate + contract on a stay, returns the available room categories /
+  // meal plans / occupancy types from the contracted rates, sensible defaults
+  // (nights from the stay, rooms/pax from the quote, markup = HOTEL_DEFAULT_MARKUP),
+  // and an ESTIMATED cost/sell using the same pure HotelPricingResolver that
+  // createItem uses. It creates NO QuoteItem, runs NO pricing write, and changes
+  // NO quote totals. Returns canApply:false (apply lands in R.6A-1).
+  async previewTailorMadeHotelStay(
+    quoteId: string,
+    input: {
+      hotelId?: string;
+      contractId?: string;
+      stay?: { city?: string; startDay?: number; endDay?: number; nights?: number; firstItineraryDayId?: string };
+      roomCategoryId?: string;
+      occupancyType?: string;
+      mealPlan?: string;
+      roomCount?: number;
+      paxCount?: number;
+      serviceDate?: string;
+    },
+    actor?: CompanyScopedActor,
+  ) {
+    await this.ensureQuoteExists(quoteId, actor);
+    const hotelId = normalizeOptionalString(input?.hotelId);
+    const contractId = normalizeOptionalString(input?.contractId);
+    if (!hotelId || !contractId) {
+      throw new BadRequestException('hotelId and contractId are required to preview a hotel stay.');
+    }
+
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: { adults: true, children: true, roomCount: true, travelStartDate: true },
+    });
+    const hotel = await (this.prisma as any).hotel.findUnique({ where: { id: hotelId }, select: { name: true, city: true } });
+
+    const stay = input?.stay || {};
+    const nights = Number(input?.nights ?? stay.nights)
+      || (Number.isInteger(stay.endDay) && Number.isInteger(stay.startDay) ? (stay.endDay as number) - (stay.startDay as number) + 1 : 0)
+      || 1;
+    const roomCount = Number(input?.roomCount) || quote?.roomCount || 1;
+    const paxCount = Number(input?.paxCount) || ((quote?.adults || 0) + (quote?.children || 0)) || 2;
+
+    // Resolve the stay's service date (explicit → quote start + day offset).
+    let serviceDate: Date | null = input?.serviceDate ? new Date(input.serviceDate) : null;
+    if ((!serviceDate || Number.isNaN(serviceDate.getTime())) && quote?.travelStartDate) {
+      const offset = Number.isInteger(stay.startDay) && (stay.startDay as number) > 0 ? (stay.startDay as number) - 1 : 0;
+      const base = new Date(quote.travelStartDate);
+      base.setDate(base.getDate() + offset);
+      serviceDate = base;
+    }
+    if (serviceDate && Number.isNaN(serviceDate.getTime())) {
+      serviceDate = null;
+    }
+
+    // Read contracted rates for this hotel+contract (date-season filtered when
+    // known; fall back to all seasons so options still surface). Read-only.
+    const seasonWhere = serviceDate ? { seasonFrom: { lte: serviceDate }, seasonTo: { gte: serviceDate } } : {};
+    let rates = await (this.prisma as any).hotelRate.findMany({
+      where: { hotelId, contractId, roomCategory: { isActive: true }, ...seasonWhere },
+      include: { roomCategory: true },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+    if ((!rates || rates.length === 0) && serviceDate) {
+      rates = await (this.prisma as any).hotelRate.findMany({
+        where: { hotelId, contractId, roomCategory: { isActive: true } },
+        include: { roomCategory: true },
+        orderBy: [{ createdAt: 'desc' }],
+      });
+    }
+    rates = rates || [];
+
+    const roomMap = new Map<string, string>();
+    const mealSet = new Set<string>();
+    const occSet = new Set<string>();
+    for (const r of rates) {
+      if (r.roomCategoryId) roomMap.set(r.roomCategoryId, r.roomCategory?.name || r.roomCategoryId);
+      if (r.mealPlan) mealSet.add(r.mealPlan);
+      if (r.occupancyType) occSet.add(r.occupancyType);
+    }
+    const availableRoomCategories = [...roomMap.entries()].map(([id, name]) => ({ id, name }));
+    const availableMealPlans = [...mealSet];
+    const availableOccupancyTypes = [...occSet];
+
+    const defaults = {
+      roomCount,
+      paxCount,
+      occupancyType: availableOccupancyTypes.includes('DBL') ? 'DBL' : availableOccupancyTypes[0] || null,
+      mealPlan: availableMealPlans.length === 1 ? availableMealPlans[0] : null,
+      markupPercent: HOTEL_DEFAULT_MARKUP,
+    };
+
+    const base = {
+      hotelName: hotel?.name || null,
+      hotelId,
+      contractId,
+      city: normalizeOptionalString(stay.city) || hotel?.city || null,
+      nights,
+      startDay: stay.startDay ?? null,
+      endDay: stay.endDay ?? null,
+      serviceDate: serviceDate ? serviceDate.toISOString().slice(0, 10) : null,
+      availableRoomCategories,
+      availableMealPlans,
+      availableOccupancyTypes,
+      defaults,
+      pricePreview: null as null | Record<string, unknown>,
+      canApply: false,
+    };
+
+    if (rates.length === 0) {
+      return { ...base, rateStatus: 'NO_RATES', message: 'No active contracted rates were found for this hotel and contract. Apply will be unavailable until a rate exists.' };
+    }
+
+    const selRoom = normalizeOptionalString(input?.roomCategoryId) || (availableRoomCategories.length === 1 ? availableRoomCategories[0].id : null);
+    const selOcc = normalizeOptionalString(input?.occupancyType) || defaults.occupancyType;
+    const selMeal = normalizeOptionalString(input?.mealPlan) || defaults.mealPlan;
+
+    if (!selRoom || !selOcc || !selMeal) {
+      return { ...base, rateStatus: 'NEEDS_SELECTION', message: 'Select a room category, occupancy, and meal plan to preview a price.' };
+    }
+
+    const rate = rates.find((r: any) => r.roomCategoryId === selRoom && r.occupancyType === selOcc && r.mealPlan === selMeal) || null;
+    if (!rate) {
+      return { ...base, rateStatus: 'NO_MATCHING_RATE', message: 'No contracted rate matches the selected room category, occupancy, and meal plan. Choose a different combination.' };
+    }
+
+    // Estimate via the SAME pure resolver createItem uses (cost side only — no
+    // optional supplements in this preview), then apply the standard hotel markup.
+    const pricing = new HotelPricingResolver().resolve({
+      pax: paxCount,
+      rooms: roomCount,
+      nights,
+      adults: quote?.adults ?? null,
+      children: quote?.children ?? null,
+      selectedMealPlan: selMeal,
+      baseMealPlan: rate.mealPlan,
+      selectedRoomCategoryId: rate.roomCategoryId,
+      rates: [
+        {
+          id: rate.id,
+          label: `${rate.roomCategory?.name || ''} ${rate.occupancyType} ${rate.mealPlan}`.trim(),
+          amount: rate.cost,
+          basis: rate.pricingBasis,
+          mealPlan: rate.mealPlan,
+          roomCategoryId: rate.roomCategoryId,
+          occupancyType: rate.occupancyType,
+          isSelected: true,
+        },
+      ],
+      markupPercent: HOTEL_DEFAULT_MARKUP,
+    });
+
+    return {
+      ...base,
+      pricePreview: {
+        totalCost: pricing.totalCost,
+        totalSell: pricing.totalSell,
+        currency: rate.currency || null,
+        markupPercent: HOTEL_DEFAULT_MARKUP,
+        roomCategoryId: selRoom,
+        occupancyType: selOcc,
+        mealPlan: selMeal,
+        rateStatus: 'OK',
+        notes: 'Estimated from the contracted rate (excludes optional supplements). Final price is calculated when the hotel is applied.',
+      },
+      rateStatus: 'OK',
+      message: 'Price preview is an estimate. No hotel has been applied and no pricing has been saved.',
     };
   }
 
