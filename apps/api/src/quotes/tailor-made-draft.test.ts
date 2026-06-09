@@ -452,6 +452,30 @@ test('R.4: enrichExperienceMatches attaches matched master ids/name (read-only),
   assert.equal(nebo.matchedName, null);
 });
 
+test('R.6C-Fix: Wadi Rum jeep prefers the priced "2 Hours – Rum Area" variant over an all-zero placeholder activity', () => {
+  const sugg = deriveExperienceSuggestions(persistedDays(CLASSIC));
+  const enriched = enrichExperienceMatches(sugg, {
+    services: [],
+    activities: [
+      // The all-zero placeholder must NOT win even though it's listed first and
+      // also matches "wadi rum"; its variants don't match the rule's variant terms.
+      { id: 'act-experiences', name: 'Wadi Rum Jeep Experiences', city: 'Wadi Rum', rateVariants: [
+        { id: 'v-2h', name: '2h Jeep Tour' }, { id: 'v-4h', name: '4h Jeep Tour' },
+      ] },
+      // The priced activity carries the intended "2 Hours – Rum Area" variant.
+      { id: 'act-jeeptour', name: 'Wadi Rum Jeep Tour', city: null, rateVariants: [
+        { id: 'v-rum-2h', name: '2 Hours – Rum Area' },
+        { id: 'v-disi-2h', name: '2 Hours – Disi Area' },
+        { id: 'v-burrah', name: 'Burrah Canyon -3 Hours – Disi Area' },
+      ] },
+    ],
+  });
+  const wr = enriched.find((s) => s.place === 'Wadi Rum')!;
+  assert.equal(wr.matchedActivityId, 'act-jeeptour', 'selects the activity that carries the matching variant');
+  assert.equal(wr.matchedActivityRateVariantId, 'v-rum-2h', 'selects the 2 Hours – Rum Area variant, not Disi or the placeholder');
+  assert.equal(wr.matchedName, 'Wadi Rum Jeep Tour');
+});
+
 test('R.4: empty / inactive days yield no suggestions', () => {
   assert.deepEqual(deriveExperienceSuggestions([]), []);
   assert.deepEqual(
