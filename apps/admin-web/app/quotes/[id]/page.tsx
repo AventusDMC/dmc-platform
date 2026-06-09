@@ -51,7 +51,7 @@ import { RouteOption } from '../../lib/routes';
 import { formatNightCountLabel } from '../../lib/formatters';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getQuoteMarginWarning } from '../../lib/financials';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
-import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, isActiveImportedQuoteServiceUnresolved, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
+import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, getQuoteServiceCategoryKey, isActiveImportedQuoteServiceUnresolved, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { readSessionActor } from '../../lib/auth-session';
@@ -2207,6 +2207,15 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quote = normalizeQuoteDetail(rawQuote);
   const quoteCancelled = quote.status === 'CANCELLED';
   const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
+  // Phase R.6A-1 — inputs for the tailor-made hotel apply (canonical createItem
+  // path). The representative HOTEL-type service the applied item attaches to,
+  // and the count of hotel QuoteItems already on the quote (conflict guard:
+  // tailor-made hotel apply is blocked while any hotel item exists).
+  const tailorMadeHotelServiceId =
+    services.find((service) => getQuoteServiceCategoryKey(service) === 'hotel')?.id ?? null;
+  // A hotel QuoteItem reliably carries hotelId once created via the hotel branch
+  // (matches the auto-itinerary builder's existing-hotel detection).
+  const existingHotelItemCount = quote.quoteItems.filter((item) => Boolean(item.hotelId)).length;
   const agents = agentUsers
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
@@ -3313,6 +3322,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               roomingHasWarnings={roomingHasWarnings}
               servicePlanner={renderQuoteServicePlanner()}
               guidedStepFooter={guidedStepFooter}
+              hotelServiceId={tailorMadeHotelServiceId}
+              existingHotelItemCount={existingHotelItemCount}
             />
           ) : null}
 

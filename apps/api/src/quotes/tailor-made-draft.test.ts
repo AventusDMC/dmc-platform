@@ -186,6 +186,19 @@ test('R.2: inactive days are ignored', () => {
   assert.deepEqual(deriveOvernightStays(days).map((s) => s.city), ['Petra']);
 });
 
+test('R.6A-1: each stay exposes its FIRST itinerary day id (for hotel apply); null when absent', () => {
+  const days = [
+    { id: 'day-1', dayNumber: 1, title: 'Amman', notes: 'overnight Amman.', isActive: true },
+    { id: 'day-2', dayNumber: 2, title: 'Amman', notes: 'overnight Amman.', isActive: true },
+    { id: 'day-3', dayNumber: 3, title: 'Petra', notes: 'overnight Petra.', isActive: true },
+  ];
+  const stays = deriveOvernightStays(days);
+  // merged Amman stay attaches to its first day (day-1), Petra to day-3
+  assert.deepEqual(stays.map((s) => `${s.city}:${s.firstItineraryDayId}`), ['Amman:day-1', 'Petra:day-3']);
+  // without ids on the shells, firstItineraryDayId is null (grouping still works)
+  assert.equal(deriveOvernightStays([{ dayNumber: 1, title: 'Amman', notes: 'overnight Amman.', isActive: true }])[0].firstItineraryDayId, null);
+});
+
 // ---- Phase R.2b: contract-backed candidate matching (pure) ----
 
 import { matchHotelCandidatesForStay } from './tailor-made-draft';

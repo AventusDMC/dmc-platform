@@ -242,7 +242,9 @@ export class QuoteItineraryService {
     await this.ensureQuoteExists(quoteId, actor);
     const days = await this.dayModel.findMany({
       where: { quoteId, isActive: true },
-      select: { dayNumber: true, title: true, notes: true, isActive: true },
+      // R.6A-1 — include `id` so each stay can expose its first itinerary day id
+      // (the hotel apply attaches its QuoteItem there). Grouping itself is unchanged.
+      select: { id: true, dayNumber: true, title: true, notes: true, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
     });
 
@@ -579,6 +581,10 @@ export class QuoteItineraryService {
         roomCategoryId: selRoom,
         occupancyType: selOcc,
         mealPlan: selMeal,
+        // Phase R.6A-1 — the matched rate's season name. The canonical hotel apply
+        // path (createItem hotel branch) REQUIRES a season, so the apply payload
+        // must echo this back. Read-only here; no write, no pricing saved.
+        seasonName: rate.seasonName || null,
         rateStatus: 'OK',
         notes: 'Estimated from the contracted rate (excludes optional supplements). Final price is calculated when the hotel is applied.',
       },

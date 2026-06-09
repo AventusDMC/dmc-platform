@@ -39,12 +39,24 @@ type HotelCandidate = {
 };
 
 // Phase R.6A-0 — read-only hotel-stay configure / price-preview state.
+// Phase R.6A-1 — pricePreview also echoes the matched rate's identifiers so the
+// canonical hotel apply (POST /quotes/:id/items) can reuse them verbatim.
 type HotelStayPreview = {
   availableRoomCategories: Array<{ id: string; name: string }>;
   availableMealPlans: string[];
   availableOccupancyTypes: string[];
+  serviceDate: string | null;
   defaults: { roomCount: number; paxCount: number; occupancyType: string | null; mealPlan: string | null; markupPercent: number };
-  pricePreview: { totalCost: number; totalSell: number; currency: string | null; markupPercent: number } | null;
+  pricePreview: {
+    totalCost: number;
+    totalSell: number;
+    currency: string | null;
+    markupPercent: number;
+    roomCategoryId?: string;
+    occupancyType?: string;
+    mealPlan?: string;
+    seasonName?: string | null;
+  } | null;
   rateStatus: string;
   message: string;
 };
@@ -57,6 +69,8 @@ type HotelStay = {
   hotelCategory: string | null;
   candidateHotels: HotelCandidate[];
   notes: string;
+  // Phase R.6A-1 — id of the stay's first itinerary day (apply attaches here).
+  firstItineraryDayId?: string | null;
 };
 
 type TransportSuggestion = {
@@ -93,12 +107,24 @@ type TailorMadeDraftPanelProps = {
   apiBaseUrl: string;
   quoteId: string;
   quoteCurrency?: string | null;
+  // Phase R.6A-1 — the HOTEL-type QuoteService id (apply uses the canonical
+  // createItem hotel branch via POST /quotes/:id/items) and the count of hotel
+  // QuoteItems already on the quote (conflict guard: tailor-made apply is blocked
+  // while any hotel item exists).
+  hotelServiceId?: string | null;
+  existingHotelItemCount?: number;
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
 const TRAVEL_STYLES = ['classic', 'religious', 'adventure', 'luxury'];
+// Standard hotel markup applied to every applied hotel stay. Mirrors the API's
+// HOTEL_DEFAULT_MARKUP (apps/api/src/common/pricing-constants.ts); kept as one
+// named constant here rather than a scattered literal.
+const HOTEL_DEFAULT_MARKUP = 15;
+const HOTEL_CONFLICT_MESSAGE =
+  'This quote already has hotel items. Remove existing hotel items before applying tailor-made hotel stays.';
 
-export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: TailorMadeDraftPanelProps) {
+export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotelServiceId, existingHotelItemCount }: TailorMadeDraftPanelProps) {
   const router = useRouter();
 
   const [durationDays, setDurationDays] = useState('8');
@@ -140,6 +166,14 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
   const [hotelConfigOccupancy, setHotelConfigOccupancy] = useState('');
   const [hotelConfigMeal, setHotelConfigMeal] = useState('');
   const [hotelConfigLoading, setHotelConfigLoading] = useState(false);
+
+  // Phase R.6A-1 — apply one configured hotel stay as a single HOTEL QuoteItem
+  // via the canonical createItem path. Conflict guard blocks while the quote
+  // already has hotel items (or one was applied in this session).
+  const [hotelApplying, setHotelApplying] = useState(false);
+  const [hotelApplied, setHotelApplied] = useState(false);
+  const [hotelApplyMessage, setHotelApplyMessage] = useState('');
+  const hotelConflict = (existingHotelItemCount ?? 0) > 0 || hotelApplied;
 
   // Phase R.3 — read-only transport suggestions (no apply, no pricing).
   const [transport, setTransport] = useState<TransportSuggestion[] | null>(null);
@@ -288,6 +322,66 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
       setError(caught instanceof Error ? caught.message : 'Could not load hotel stay options.');
     } finally {
       setHotelConfigLoading(false);
+    }
+  }
+
+  // Phase R.6A-1 — apply ONE configured hotel stay as a single HOTEL QuoteItem
+  // through the canonical path (POST /quotes/:id/items → QuotesService.createItem
+  // hotel branch). No parallel pricing system: createItem auto-prices via the
+  // existing HotelPricingResolver at the standard markup. Scoped to hotels only,
+  // one stay at a time, blocked if any hotel item already exists.
+  async function applySelectedHotel(stay: HotelStay, candidate: HotelCandidate) {
+    setError('');
+    setHotelApplyMessage('');
+    if (hotelConflict) {
+      setError(HOTEL_CONFLICT_MESSAGE);
+      return;
+    }
+    const preview = hotelConfig?.pricePreview;
+    if (!hotelConfig || hotelConfig.rateStatus !== 'OK' || !preview) {
+      setError('Preview a price (status OK) before applying this hotel.');
+      return;
+    }
+    if (!hotelServiceId) {
+      setError('No hotel service is configured for this quote, so the hotel cannot be applied.');
+      return;
+    }
+    if (!stay.firstItineraryDayId) {
+      setError('This stay has no itinerary day to attach the hotel to. Apply the draft days first.');
+      return;
+    }
+    setHotelApplying(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          serviceId: hotelServiceId,
+          itineraryId: stay.firstItineraryDayId,
+          quantity: hotelConfig.defaults.roomCount,
+          paxCount: hotelConfig.defaults.paxCount,
+          roomCount: hotelConfig.defaults.roomCount,
+          nightCount: stay.nights,
+          markupPercent: HOTEL_DEFAULT_MARKUP,
+          hotelId: candidate.hotelId,
+          contractId: candidate.contractId,
+          seasonName: preview.seasonName ?? undefined,
+          roomCategoryId: preview.roomCategoryId,
+          occupancyType: preview.occupancyType,
+          mealPlan: preview.mealPlan,
+          serviceDate: hotelConfig.serviceDate ?? undefined,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not apply the selected hotel.'));
+      }
+      setHotelApplied(true);
+      setHotelApplyMessage('Hotel applied to quote.');
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not apply the selected hotel.');
+    } finally {
+      setHotelApplying(false);
     }
   }
 
@@ -601,9 +695,27 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency }: Tai
                                   ) : (
                                     <p className="form-help">{hotelConfig.message}</p>
                                   )}
-                                  <button type="button" className="compact-button" disabled title="Apply hotels will be enabled in the next phase">
-                                    Apply hotel (next phase)
+                                  {/* Phase R.6A-1 — Apply is enabled only after an OK price preview and
+                                      while no hotel item exists. One stay, one HOTEL QuoteItem. */}
+                                  <button
+                                    type="button"
+                                    className="compact-button"
+                                    disabled={
+                                      hotelApplying ||
+                                      hotelConflict ||
+                                      hotelConfig.rateStatus !== 'OK' ||
+                                      !hotelConfig.pricePreview
+                                    }
+                                    onClick={() => applySelectedHotel(stay, c)}
+                                  >
+                                    {hotelApplying ? 'Applying…' : 'Apply Selected Hotel'}
                                   </button>
+                                  {hotelConflict ? (
+                                    <p className="form-help" role="status">{HOTEL_CONFLICT_MESSAGE}</p>
+                                  ) : null}
+                                  {hotelApplyMessage ? (
+                                    <p className="form-help" role="status">{hotelApplyMessage}</p>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </li>
