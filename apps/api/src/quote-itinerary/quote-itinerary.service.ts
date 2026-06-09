@@ -454,7 +454,7 @@ export class QuoteItineraryService {
     const hotel = await (this.prisma as any).hotel.findUnique({ where: { id: hotelId }, select: { name: true, city: true } });
 
     const stay = input?.stay || {};
-    const nights = Number(input?.nights ?? stay.nights)
+    const nights = Number(stay.nights)
       || (Number.isInteger(stay.endDay) && Number.isInteger(stay.startDay) ? (stay.endDay as number) - (stay.startDay as number) + 1 : 0)
       || 1;
     const roomCount = Number(input?.roomCount) || quote?.roomCount || 1;
