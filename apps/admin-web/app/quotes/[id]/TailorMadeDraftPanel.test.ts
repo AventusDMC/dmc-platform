@@ -53,16 +53,15 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
   });
 
-  it('6. the UI never implies priced QuoteItems / pricing were created', () => {
-    // success copy explicitly states no priced services were added
+  it('6. the draft-day apply never implies priced QuoteItems / pricing were created', () => {
+    // success copy explicitly states no priced services were added by the DAY apply
     expectSourceContains(panelSource, [
       'No hotels, transport, tickets, guides, or pricing were added.',
     ]);
-    // The panel must not POST to any item-creation endpoint nor carry
-    // item-write fields. (Phase R.6A-0 adds a READ-ONLY hotel price PREVIEW that
-    // displays an estimated cost/sell/markup — that does not create a QuoteItem,
-    // so the preview display words are allowed; only item-apply wiring is not.)
-    assert.ok(!/\/items\b/.test(panelSource), 'panel must not call the /items endpoint');
+    // The panel must never carry raw item-write override fields. (Phase R.6A-1
+    // adds a single HOTEL apply via the canonical POST /quotes/:id/items path —
+    // allowed — but createItem auto-prices; the panel never sets manual cost
+    // overrides.)
     assert.ok(!/useOverride|overrideCost|supplierCost/i.test(panelSource), 'panel must not reference item-write pricing fields');
   });
 
@@ -81,7 +80,8 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'Suggested Hotel Stays',
       'Read-only suggestions grouped by overnight city. No hotels have been applied and no pricing has run.',
     ]);
-    assert.ok(!/applyHotel|hotelItem/i.test(panelSource), 'no hotel-apply wiring in R.2');
+    // (Phase R.6A-1 adds an explicit per-stay hotel apply; the grouping section
+    // header copy above stays accurate — suggestions themselves remain read-only.)
   });
 
   it('R.2b: candidate hotels render by name + reason under each stay (no contract names, no Apply Hotels)', () => {
@@ -141,7 +141,7 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     assert.ok(!/minPax|maxPax|requiresOperatorConfirmation|Overnight: No/i.test(panelSource), 'no raw guide metadata in R.5 section');
   });
 
-  it('R.6A-0: hotel-stay configure/price-preview calls the read-only options proxy; apply is disabled (next phase)', () => {
+  it('R.6A-0: hotel-stay configure/price-preview calls the read-only options proxy', () => {
     expectSourceContains(panelSource, [
       'tailor-made-draft/hotel-stay-options',
       'Configure & Preview Price',
@@ -150,10 +150,50 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'availableRoomCategories',
       'availableMealPlans',
       'availableOccupancyTypes',
-      'Apply hotel (next phase)',
     ]);
-    // the preview must NOT call any apply/items endpoint and the Apply control is disabled
-    assert.ok(!/tailor-made-draft\/hotel-apply|\/items\b/.test(panelSource), 'no hotel apply/items POST in R.6A-0');
-    assert.ok(/Apply hotel \(next phase\)[^]*?disabled|disabled[^]*?Apply hotel \(next phase\)/.test(panelSource) || panelSource.includes('disabled title="Apply hotels will be enabled in the next phase"'), 'apply hotel button is disabled');
+  });
+
+  it('R.6A-1: applies ONE configured hotel via the canonical /items path with markup 15 and the selected room/meal/occupancy', () => {
+    // The apply posts to the canonical quote-item endpoint (createItem hotel branch),
+    // not a parallel hotel-pricing endpoint.
+    expectSourceContains(panelSource, [
+      'applySelectedHotel',
+      'Apply Selected Hotel',
+      '/quotes/${quoteId}/items',
+      'markupPercent: HOTEL_DEFAULT_MARKUP',
+      'const HOTEL_DEFAULT_MARKUP = 15',
+      'hotelId: candidate.hotelId',
+      'contractId: candidate.contractId',
+      'roomCategoryId: preview.roomCategoryId',
+      'occupancyType: preview.occupancyType',
+      'mealPlan: preview.mealPlan',
+      'seasonName: preview.seasonName',
+      'nightCount: stay.nights',
+      'itineraryId: stay.firstItineraryDayId',
+    ]);
+    // Apply only after an OK price preview; disabled otherwise (and while applying).
+    assert.ok(
+      /rateStatus !== 'OK'/.test(panelSource) && /!hotelConfig\.pricePreview/.test(panelSource),
+      'apply is gated on an OK price preview',
+    );
+    assert.ok(/disabled=\{[\s\S]*?hotelApplying[\s\S]*?\}/.test(panelSource), 'apply button is disabled while applying / gated');
+    // Conflict guard with the exact required message.
+    expectSourceContains(panelSource, [
+      'This quote already has hotel items. Remove existing hotel items before applying tailor-made hotel stays.',
+      'hotelConflict',
+      'existingHotelItemCount',
+    ]);
+    // Success state copy.
+    expectSourceContains(panelSource, ['Hotel applied to quote.']);
+    // HOTELS ONLY: the panel never posts transport/ticket/activity/guide apply
+    // endpoints, and the only /items POST is the hotel apply.
+    assert.ok(
+      !/tailor-made-draft\/(transport|experience|guide|hotel)-apply/.test(panelSource),
+      'no transport/experience/guide/hotel apply endpoints',
+    );
+    const itemsPosts = panelSource.match(/\/quotes\/\$\{quoteId\}\/items\b/g) || [];
+    assert.equal(itemsPosts.length, 1, 'exactly one /items POST (the hotel apply)');
+    // The hotelServiceId + existingHotelItemCount inputs are wired in from the workspace.
+    expectSourceContains(workspaceSource, ['hotelServiceId', 'existingHotelItemCount', '<TailorMadeDraftPanel']);
   });
 });

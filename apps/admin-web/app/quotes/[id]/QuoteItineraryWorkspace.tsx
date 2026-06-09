@@ -33,6 +33,9 @@ type QuoteItineraryWorkspaceProps = {
   roomingHasWarnings: boolean;
   servicePlanner: ReactNode;
   guidedStepFooter: ReactNode;
+  // Phase R.6A-1 — tailor-made hotel apply inputs (forwarded to the panel).
+  hotelServiceId?: string | null;
+  existingHotelItemCount?: number;
 };
 
 export function QuoteItineraryWorkspace({
@@ -48,6 +51,8 @@ export function QuoteItineraryWorkspace({
   roomingHasWarnings,
   servicePlanner,
   guidedStepFooter,
+  hotelServiceId,
+  existingHotelItemCount,
 }: QuoteItineraryWorkspaceProps) {
   const operationalSidebarToneClass =
     operationalSidebarTone === 'critical'
@@ -135,7 +140,13 @@ export function QuoteItineraryWorkspace({
             </div>
             <em>Days only — no pricing</em>
           </summary>
-          <TailorMadeDraftPanel apiBaseUrl={apiBaseUrl} quoteId={quote.id} quoteCurrency={quote.quoteCurrency} />
+          <TailorMadeDraftPanel
+            apiBaseUrl={apiBaseUrl}
+            quoteId={quote.id}
+            quoteCurrency={quote.quoteCurrency}
+            hotelServiceId={hotelServiceId}
+            existingHotelItemCount={existingHotelItemCount}
+          />
         </details>
 
         {servicePlanner}

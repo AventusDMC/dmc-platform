@@ -255,6 +255,10 @@ export interface DraftDayShell {
   title?: string | null;
   notes?: string | null;
   isActive?: boolean | null;
+  /** Phase R.6A-1 — the QuoteItineraryDay row id, when known. Used to attach an
+   *  applied hotel item to the stay's first itinerary day. Optional: grouping
+   *  logic never depends on it. */
+  id?: string | null;
 }
 
 // Phase R.2b — read-only candidate hotel for an overnight stay. Operational
@@ -281,6 +285,10 @@ export interface SuggestedHotelStay {
   /** Candidate hotels — empty until enriched by the service (R.2b). */
   candidateHotels: HotelCandidate[];
   notes: string;
+  /** Phase R.6A-1 — id of the stay's FIRST itinerary day, when the source day
+   *  shells carried ids. The hotel apply attaches the QuoteItem here. Null when
+   *  the day id was not provided (grouping still works). */
+  firstItineraryDayId: string | null;
 }
 
 const tidyCity = (value: string): string =>
@@ -369,6 +377,8 @@ export function deriveOvernightStays(days: DraftDayShell[], hotelCategory?: stri
         hotelCategory: category,
         candidateHotels: [],
         notes: `1 night in ${city} (Day ${day.dayNumber}).`,
+        // First day of the stay → where an applied hotel item attaches (R.6A-1).
+        firstItineraryDayId: day.id ?? null,
       });
     }
   }

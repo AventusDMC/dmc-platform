@@ -399,8 +399,8 @@ function makeHotelPreviewPrisma(opts: { quote: any; hotel: any; rates: any[] }) 
 
 const PREVIEW_QUOTE = { adults: 2, children: 0, roomCount: 1, travelStartDate: new Date('2026-06-01T00:00:00.000Z') };
 const AMMAN_RATES = [
-  { id: 'rate-dbl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'DBL', mealPlan: 'BB', cost: 80, pricingBasis: 'PER_ROOM', currency: 'USD', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
-  { id: 'rate-sgl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'SGL', mealPlan: 'BB', cost: 60, pricingBasis: 'PER_ROOM', currency: 'USD', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
+  { id: 'rate-dbl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'DBL', mealPlan: 'BB', cost: 80, pricingBasis: 'PER_ROOM', currency: 'USD', seasonName: 'Standard 2026', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
+  { id: 'rate-sgl-bb', hotelId: 'h-amman', contractId: 'c-amman', roomCategoryId: 'rc-deluxe', roomCategory: { name: 'Deluxe' }, occupancyType: 'SGL', mealPlan: 'BB', cost: 60, pricingBasis: 'PER_ROOM', currency: 'USD', seasonName: 'Standard 2026', seasonFrom: new Date('2026-01-01'), seasonTo: new Date('2026-12-31') },
 ];
 
 test('R.6A-0: returns room/meal/occupancy options + an estimated price at HOTEL_DEFAULT_MARKUP (15%), read-only', async () => {
@@ -422,6 +422,11 @@ test('R.6A-0: returns room/meal/occupancy options + an estimated price at HOTEL_
   assert.ok(result.pricePreview.totalCost > 0);
   // sell == cost * (1 + 15/100), rounded to cents
   assert.equal(result.pricePreview.totalSell, Math.round(result.pricePreview.totalCost * 1.15 * 100) / 100);
+  // R.6A-1: the matched rate's season + identifiers are echoed back for the apply payload.
+  assert.equal(result.pricePreview.seasonName, 'Standard 2026');
+  assert.equal(result.pricePreview.roomCategoryId, 'rc-deluxe');
+  assert.equal(result.pricePreview.occupancyType, 'DBL');
+  assert.equal(result.pricePreview.mealPlan, 'BB');
   assert.equal(result.canApply, false);
   // strictly read-only — no QuoteItem/pricing/write access
   assert.equal(calls.quoteItemAccess, 0, 'no QuoteItem access');
