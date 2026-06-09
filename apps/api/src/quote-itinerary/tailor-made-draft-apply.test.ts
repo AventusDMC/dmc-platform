@@ -306,7 +306,7 @@ test('R.4: experience suggestions classify per day + best-effort master match, s
   assert.equal(calls.quoteItemCalls, 0, 'no QuoteItem access');
   assert.equal(calls.pricingCalls, 0, 'no pricing access');
   // internal lookup hints are stripped from the payload; no pricing-value leak
-  assert.doesNotMatch(JSON.stringify(result), /matchTerms|variantTerms|matchKind/);
+  assert.doesNotMatch(JSON.stringify(result), /matchTerms|variantTerms|matchKind|specificTerms/);
   assert.doesNotMatch(JSON.stringify(result), /\bprices?\b|\bcosts?\b|markup|sellPrice|totalSell/i);
 });
 
