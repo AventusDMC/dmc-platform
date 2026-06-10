@@ -56,6 +56,8 @@ type TailorMadeDraftBody = {
   optionalPlaces?: string[];
   guideType?: string;
   currency?: string;
+  /** Phase S.2B-2 — OPTIONAL explicit overnight plan (validated server-side). */
+  overnightSequence?: Array<{ city?: string; nights?: number }>;
   /** APPLY only — replace the existing itinerary-day structure (never items/pricing). */
   replaceExisting?: boolean;
 };
@@ -294,6 +296,12 @@ export class QuoteItineraryController {
       optionalPlaces: Array.isArray(body?.optionalPlaces) ? body.optionalPlaces : undefined,
       guideType: body?.guideType,
       currency: body?.currency,
+      // Phase S.2B-2 — normalize the optional overnight plan to { city, nights }.
+      // The service validates it (400 on bad input) and the generator applies it
+      // (overnight-only). Coercion keeps the strict TailorMadeDraftInput shape.
+      overnightSequence: Array.isArray(body?.overnightSequence)
+        ? body.overnightSequence.map((row) => ({ city: String(row?.city ?? ''), nights: Number(row?.nights) }))
+        : undefined,
     };
   }
 

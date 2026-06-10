@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveOvernightCityFromDay } from './tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveOvernightCityFromDay, validateOvernightSequence } from './tailor-made-draft';
 
 // Phase R.1 — the tailor-made draft generator produces an editable 8-day /
 // 7-overnight Jordan classic itinerary structure with no pricing/DB side effects.
@@ -654,4 +654,75 @@ test('R.5: empty / inactive days yield no guide suggestions', () => {
     deriveGuideSuggestions([{ dayNumber: 2, title: 'Amman / Jerash / Amman', notes: 'Visit Jerash.', isActive: false }]),
     [],
   );
+});
+
+// ---------------------------------------------------------------------------
+// Phase S.2B-2 — optional explicit overnightSequence (overnight-only override).
+// ---------------------------------------------------------------------------
+
+const DEFAULT_OVERNIGHT_SEQ = [
+  { city: 'Amman', nights: 2 },
+  { city: 'Petra', nights: 1 },
+  { city: 'Wadi Rum', nights: 1 },
+  { city: 'Dead Sea', nights: 3 },
+];
+
+test('S.2B-2: validator accepts a valid optional sequence and treats omitted/empty as OK', () => {
+  assert.equal(validateOvernightSequence(undefined, 8), null, 'omitted → no error');
+  assert.equal(validateOvernightSequence(null as any, 8), null, 'null → no error');
+  assert.equal(validateOvernightSequence([], 8), null, 'empty → no error (treated as omitted)');
+  assert.equal(validateOvernightSequence(DEFAULT_OVERNIGHT_SEQ, 8), null, 'valid 7-night default → no error');
+});
+
+test('S.2B-2: omitted overnightSequence produces the byte-identical 8-day classic draft', () => {
+  const omitted = buildTailorMadeJordanDraft(CLASSIC);
+  const explicitDefault = buildTailorMadeJordanDraft({ ...CLASSIC, overnightSequence: DEFAULT_OVERNIGHT_SEQ });
+  // The canonical sequence equals today's heuristic → identical output (days,
+  // titles, narratives, overnight cities all the same).
+  assert.deepEqual(explicitDefault, omitted, 'explicit default sequence == omitted output');
+});
+
+test('S.2B-2: explicit default sequence yields the expected per-day overnight structure', () => {
+  const draft = buildTailorMadeJordanDraft({ ...CLASSIC, overnightSequence: DEFAULT_OVERNIGHT_SEQ });
+  assert.deepEqual(
+    draft.days.map((d) => d.overnightCity),
+    ['Amman', 'Amman', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea', 'Dead Sea', null],
+  );
+});
+
+test('S.2B-2: a provided sequence rewrites the day overnight + matching narrative text', () => {
+  // Change day 2 from Amman to Petra (still 7 nights total) and confirm both the
+  // overnightCity AND the narrative "overnight <City>" phrase follow the sequence.
+  const seq = [
+    { city: 'Amman', nights: 1 },
+    { city: 'Petra', nights: 2 },
+    { city: 'Wadi Rum', nights: 1 },
+    { city: 'Dead Sea', nights: 3 },
+  ];
+  const draft = buildTailorMadeJordanDraft({ ...CLASSIC, overnightSequence: seq });
+  assert.deepEqual(
+    draft.days.map((d) => d.overnightCity),
+    ['Amman', 'Petra', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea', 'Dead Sea', null],
+  );
+  // Day 2 narrative now says "overnight Petra" (rewritten), and re-deriving the
+  // overnight from the day text agrees — this is what hotel/transport read.
+  assert.match(draft.days[1].narrative, /overnight Petra\b/i);
+  assert.equal(deriveOvernightCityFromDay({ dayNumber: 2, title: draft.days[1].title, notes: draft.days[1].narrative }), 'Petra');
+});
+
+test('S.2B-2: validator rejects a total-nights mismatch with a clear message', () => {
+  const err = validateOvernightSequence([{ city: 'Amman', nights: 2 }, { city: 'Petra', nights: 1 }], 8);
+  assert.ok(err && /total nights/i.test(err), `expected total-nights error, got: ${err}`);
+});
+
+test('S.2B-2: validator rejects nights < 1 (zero or negative)', () => {
+  assert.ok(validateOvernightSequence([{ city: 'Amman', nights: 0 }], 8), 'zero nights → error');
+  assert.ok(validateOvernightSequence([{ city: 'Amman', nights: -2 }], 8), 'negative nights → error');
+  const err = validateOvernightSequence([{ city: 'Amman', nights: 0 }], 8) || '';
+  assert.match(err, /nights/i);
+});
+
+test('S.2B-2: validator rejects a blank city', () => {
+  const err = validateOvernightSequence([{ city: '', nights: 7 }], 8);
+  assert.ok(err && /city/i.test(err), `expected city-required error, got: ${err}`);
 });

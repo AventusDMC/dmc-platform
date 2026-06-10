@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
-import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, validateOvernightSequence, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { HOTEL_DEFAULT_MARKUP, EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP, GUIDE_LOCAL_FULL_DAY_COST } from '../common/pricing-constants';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
@@ -143,12 +143,26 @@ export class QuoteItineraryService {
 
   // Phase R.1b — Tailor-made draft PREVIEW. Pure read: validates the quote
   // exists, then returns the generated day-by-day draft. Writes nothing.
+  // Phase S.2B-2 — strict 400 on a malformed explicit overnight plan (city
+  // required, nights >= 1, total == durationDays - 1). Omitted/empty → no error
+  // (today's heuristic behavior). No auto-padding, no silent ignore.
+  private assertValidOvernightSequence(input: TailorMadeDraftInput | undefined): void {
+    const error = validateOvernightSequence(
+      input?.overnightSequence,
+      input?.durationDays === undefined ? undefined : Number(input.durationDays),
+    );
+    if (error) {
+      throw new BadRequestException(error);
+    }
+  }
+
   async previewTailorMadeDraft(
     quoteId: string,
     input: TailorMadeDraftInput,
     actor?: CompanyScopedActor,
   ): Promise<TailorMadeDraft> {
     await this.ensureQuoteExists(quoteId, actor);
+    this.assertValidOvernightSequence(input);
     return buildTailorMadeJordanDraft(input || {});
   }
 
@@ -169,6 +183,7 @@ export class QuoteItineraryService {
     await this.ensureQuoteExists(quoteId, companyActor);
     const requiredActor = this.requireActor(actor);
     const replaceExisting = options?.replaceExisting === true;
+    this.assertValidOvernightSequence(input);
     const draft = buildTailorMadeJordanDraft(input || {});
 
     await this.prisma.$transaction(async (tx) => {
