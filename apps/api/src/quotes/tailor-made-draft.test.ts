@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveOvernightCityFromDay, validateOvernightSequence } from './tailor-made-draft';
+import { buildTailorMadeJordanDraft, deriveOvernightStays, deriveOvernightCityFromDay, deriveOvernightChain, validateOvernightSequence } from './tailor-made-draft';
 
 // Phase R.1 — the tailor-made draft generator produces an editable 8-day /
 // 7-overnight Jordan classic itinerary structure with no pricing/DB side effects.
@@ -472,6 +472,72 @@ test('S.2B-4A: same-city consecutive overnights never fabricate an intercity tra
   assert.equal(byDay[3].suggestedTransportType, 'NONE');
   assert.equal(byDay[4].suggestedTransportType, 'DEPARTURE_TRANSFER');
   assert.equal(byDay[4].origin, 'Amman');
+});
+
+// ---------------------------------------------------------------------------
+// Phase S.2B-4B — pure deriveOvernightChain helper (NOT wired into transport).
+// Reuses deriveOvernightCityFromDay (the same source hotels use), so the chain
+// is already overnightSequence-aware. These tests assert the chain ONLY; they do
+// NOT change transport behavior (the S.2B-4A snapshot tests still run and lock it).
+// ---------------------------------------------------------------------------
+
+test('S.2B-4B: default 8-day overnight chain', () => {
+  const chain = deriveOvernightChain(persistedDays(DEFAULT_PANEL));
+  assert.deepEqual(
+    chain.map((c) => c.overnightCity),
+    ['Amman', 'Amman', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea', 'Dead Sea', null],
+  );
+  // entries carry their day number, in order, one per active day
+  assert.deepEqual(chain.map((c) => c.dayNumber), [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+test('S.2B-4B: custom overnight sequence reshapes the chain (Amman x3 / Petra / Wadi Rum / Dead Sea x2)', () => {
+  const customSequence = [
+    { city: 'Amman', nights: 3 },
+    { city: 'Petra', nights: 1 },
+    { city: 'Wadi Rum', nights: 1 },
+    { city: 'Dead Sea', nights: 2 },
+  ];
+  const chain = deriveOvernightChain(persistedDays({ ...DEFAULT_PANEL, overnightSequence: customSequence }));
+  assert.deepEqual(
+    chain.map((c) => c.overnightCity),
+    ['Amman', 'Amman', 'Amman', 'Petra', 'Wadi Rum', 'Dead Sea', 'Dead Sea', null],
+  );
+});
+
+test('S.2B-4B: departure / no-overnight day yields null; leisure overnight still resolves', () => {
+  const chain = deriveOvernightChain([
+    { dayNumber: 1, title: 'Arrival Amman', notes: 'Meet & assist at QAIA, transfer to Amman, overnight Amman.', isActive: true },
+    { dayNumber: 2, title: 'Dead Sea', notes: 'Free day at the Dead Sea, overnight Dead Sea.', isActive: true }, // leisure → still Dead Sea
+    { dayNumber: 3, title: 'Departure', notes: 'Transfer from Dead Sea to QAIA for your departure flight.', isActive: true },
+  ]);
+  assert.deepEqual(chain, [
+    { dayNumber: 1, overnightCity: 'Amman' },
+    { dayNumber: 2, overnightCity: 'Dead Sea' },
+    { dayNumber: 3, overnightCity: null },
+  ]);
+});
+
+test('S.2B-4B: helper is safe on missing/blank notes and empty input', () => {
+  assert.deepEqual(deriveOvernightChain([]), []);
+  // blank notes → title fallback (no throw); a bare city title resolves to that city
+  const chain = deriveOvernightChain([
+    { dayNumber: 1, title: 'Amman', notes: '', isActive: true },
+    { dayNumber: 2, title: 'Petra', isActive: true }, // notes omitted entirely
+  ]);
+  assert.deepEqual(chain, [
+    { dayNumber: 1, overnightCity: 'Amman' },
+    { dayNumber: 2, overnightCity: 'Petra' },
+  ]);
+});
+
+test('S.2B-4B: chain matches the overnight cities implied by hotel-stay grouping (consistency)', () => {
+  // The chain and deriveOvernightStays read the SAME source, so the chain (minus
+  // null departure days) must reproduce the per-night cities of the stays.
+  const days = persistedDays(DEFAULT_PANEL);
+  const chainCities = deriveOvernightChain(days).map((c) => c.overnightCity).filter(Boolean);
+  const stayCities = deriveOvernightStays(days).flatMap((s) => Array(s.nights).fill(s.city));
+  assert.deepEqual(chainCities, stayCities);
 });
 
 // ---- Phase R.4: entrance / ticket / activity suggestions (pure, descriptive) ----

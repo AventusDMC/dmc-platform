@@ -428,6 +428,30 @@ export function deriveOvernightCityFromDay(day: DraftDayShell): string | null {
   return null;
 }
 
+// Phase S.2B-4B — pure, read-only overnight CHAIN for the active itinerary days.
+// Reuses the SAME source of truth as hotel-stay derivation (deriveOvernightCityFromDay
+// → narrative "overnight <City>" first, then the day-title fallback), so the chain
+// is already overnightSequence-aware (S.2B-2/-3 rewrote those narratives) and stays
+// consistent with deriveOvernightStays by construction.
+//
+// This phase ADDS the helper only — it is NOT wired into transport suggestions.
+// A later phase (S.2B-4C) may use it for the arrival-transfer DESTINATION and the
+// departure-transfer ORIGIN only; touring-day classification/origins stay title-based
+// until route-generation exists. Returns one entry per active day in dayNumber order;
+// departure / no-overnight days carry overnightCity: null. Safe on blank/missing notes.
+export interface OvernightChainEntry {
+  dayNumber: number;
+  overnightCity: string | null;
+}
+
+export function deriveOvernightChain(days: DraftDayShell[]): OvernightChainEntry[] {
+  return (days || [])
+    .filter((d) => d && d.isActive !== false && Number.isInteger(d.dayNumber))
+    .slice()
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .map((d) => ({ dayNumber: d.dayNumber, overnightCity: deriveOvernightCityFromDay(d) }));
+}
+
 /**
  * Group a quote's active itinerary days into suggested hotel stays by overnight
  * city. Consecutive days sharing the same overnight city merge into one stay.
