@@ -371,6 +371,109 @@ test('R.3b: derivation changes introduce no pricing/cost fields', () => {
   assert.doesNotMatch(JSON.stringify(deriveTransportSuggestions(persistedDays(STANDARD))), /price|cost|markup|totalSell/i);
 });
 
+// ---------------------------------------------------------------------------
+// Phase S.2B-4A — SNAPSHOT AUDIT of transport suggestions BEFORE any S.2B-4
+// transport-derivation change. These tests lock today's behavior so a later
+// phase (S.2B-4C) that uses the overnight chain only for the arrival-transfer
+// DESTINATION and departure-transfer ORIGIN can prove it changed nothing else.
+//
+// IMPORTANT (locked on purpose): touring-day classification + touring
+// origin/destination stay TITLE-based. The generator does NOT regenerate day
+// TITLES from overnightSequence (S.2B-2/-3 only rewrote the overnight NARRATIVE
+// phrase + overnightCity). So a re-ordered overnight sequence must NOT silently
+// reclassify touring days or realign their origin/destination — that needs
+// route-generation work (a later phase) before it is safe. This snapshot guards
+// against doing it prematurely.
+// ---------------------------------------------------------------------------
+
+// The production panel default (S.2C/S.2B-3): fixed route places + the four
+// optional add-ons all woven (Jerash / Madaba / Mount Nebo / Bethany).
+const DEFAULT_PANEL = {
+  durationDays: 8,
+  arrivalCity: 'Amman',
+  arrivalAirport: 'QAIA',
+  departureCity: 'Dead Sea',
+  departureAirport: 'QAIA',
+  requiredPlaces: ['Amman', 'Petra', 'Wadi Rum', 'Dead Sea'],
+  optionalPlaces: ['Jerash', 'Madaba', 'Mount Nebo', 'Bethany'],
+};
+
+// Reduce a SuggestedTransport to the fields this audit locks.
+const transportShape = (s: any) => ({
+  dayNumber: s.dayNumber,
+  type: s.suggestedTransportType,
+  origin: s.origin,
+  destination: s.destination,
+  stops: s.stops,
+  routeLabel: s.routeLabel,
+  pricingMode: s.pricingModeSuggestion,
+});
+
+test('S.2B-4A: default 8-day transport suggestions match the locked snapshot', () => {
+  const snapshot = deriveTransportSuggestions(persistedDays(DEFAULT_PANEL)).map(transportShape);
+  assert.deepEqual(snapshot, [
+    { dayNumber: 1, type: 'ARRIVAL_TRANSFER', origin: 'QAIA', destination: 'Amman', stops: [], routeLabel: 'QAIA → Amman', pricingMode: 'POINT_TO_POINT' },
+    { dayNumber: 2, type: 'TOURING_FULL_DAY', origin: 'Amman', destination: 'Amman', stops: ['Jerash'], routeLabel: 'Amman / Jerash / Amman', pricingMode: 'FULL_DAY' },
+    { dayNumber: 3, type: 'TOURING_FULL_DAY', origin: 'Amman', destination: 'Petra', stops: ['Madaba', 'Mount Nebo'], routeLabel: 'Amman / Madaba / Mount Nebo / Petra', pricingMode: 'FULL_DAY' },
+    { dayNumber: 4, type: 'TOURING_FULL_DAY', origin: 'Petra', destination: 'Wadi Rum', stops: [], routeLabel: 'Petra / Wadi Rum', pricingMode: 'FULL_DAY' },
+    { dayNumber: 5, type: 'TOURING_FULL_DAY', origin: 'Wadi Rum', destination: 'Dead Sea', stops: [], routeLabel: 'Wadi Rum / Dead Sea', pricingMode: 'FULL_DAY' },
+    { dayNumber: 6, type: 'NONE', origin: null, destination: 'Dead Sea', stops: [], routeLabel: null, pricingMode: null },
+    { dayNumber: 7, type: 'TOURING_FULL_DAY', origin: 'Bethany', destination: 'Dead Sea', stops: [], routeLabel: 'Bethany / Dead Sea', pricingMode: 'FULL_DAY' },
+    { dayNumber: 8, type: 'DEPARTURE_TRANSFER', origin: 'Dead Sea', destination: 'QAIA', stops: [], routeLabel: 'Dead Sea → QAIA', pricingMode: 'POINT_TO_POINT' },
+  ]);
+});
+
+test('S.2B-4A: a custom valid overnight sequence does NOT change transport suggestions today', () => {
+  // Custom plan: Amman×3 / Petra×1 / Wadi Rum×1 / Dead Sea×2 (still 7 nights).
+  // S.2B-2/-3 rewrite the overnight NARRATIVE + overnightCity, but NOT the day
+  // TITLES — and transport reads titles for touring origin/destination and the
+  // notes only for the arrival airport + departure from/to. The first overnight
+  // (Amman) and last overnight (Dead Sea) are unchanged here, so the arrival
+  // destination and departure origin are identical too. Net: transport output is
+  // byte-identical to the default. This intentionally proves S.2B-4A performs NO
+  // reclassification — in particular Day 3 is NOT turned into an "Amman, no
+  // transfer" day, and Days 4/5/6 are NOT realigned to the shifted overnights.
+  const customSequence = [
+    { city: 'Amman', nights: 3 },
+    { city: 'Petra', nights: 1 },
+    { city: 'Wadi Rum', nights: 1 },
+    { city: 'Dead Sea', nights: 2 },
+  ];
+  const baseline = deriveTransportSuggestions(persistedDays(DEFAULT_PANEL));
+  const custom = deriveTransportSuggestions(persistedDays({ ...DEFAULT_PANEL, overnightSequence: customSequence }));
+  assert.deepEqual(custom, baseline);
+  // Explicit guard: Day 3 stays an Amman→Petra touring move (NOT silently made
+  // a same-city no-transfer day despite the custom overnight now being Amman).
+  const d3 = custom.find((s) => s.dayNumber === 3);
+  assert.equal(d3?.suggestedTransportType, 'TOURING_FULL_DAY');
+  assert.equal(d3?.origin, 'Amman');
+  assert.equal(d3?.destination, 'Petra');
+});
+
+test('S.2B-4A: transport remains read-only — no route match, no candidates, no items, no pricing', () => {
+  const sugg = deriveTransportSuggestions(persistedDays(DEFAULT_PANEL));
+  // No rate/route lookup happened (NO_RATE path stays the engine's job, unchanged):
+  assert.ok(sugg.every((s) => s.matchedRouteId === null), 'no route is matched in the descriptive suggestion');
+  assert.ok(sugg.every((s) => Array.isArray(s.candidateTransport) && s.candidateTransport.length === 0), 'no candidate transport products');
+  // No QuoteItem / pricing fields leak into the planning payload.
+  assert.doesNotMatch(JSON.stringify(sugg), /Sedan|Coaster|\bprice\b|markup|totalSell|totalCost|sellPrice|quoteItem/i);
+});
+
+test('S.2B-4A: same-city consecutive overnights never fabricate an intercity transfer', () => {
+  // A bare single-city day with no tour stays NONE (no false point-to-point move).
+  const days = [
+    { dayNumber: 1, title: 'Arrival Amman', notes: 'Meet & assist at QAIA, transfer to Amman, overnight Amman.', isActive: true },
+    { dayNumber: 2, title: 'Amman', notes: 'Leisure day in Amman, overnight Amman.', isActive: true },
+    { dayNumber: 3, title: 'Amman', notes: 'Another leisure day, overnight Amman.', isActive: true },
+    { dayNumber: 4, title: 'Departure', notes: 'Transfer from Amman to QAIA for your departure flight.', isActive: true },
+  ];
+  const byDay = Object.fromEntries(deriveTransportSuggestions(days).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[2].suggestedTransportType, 'NONE');
+  assert.equal(byDay[3].suggestedTransportType, 'NONE');
+  assert.equal(byDay[4].suggestedTransportType, 'DEPARTURE_TRANSFER');
+  assert.equal(byDay[4].origin, 'Amman');
+});
+
 // ---- Phase R.4: entrance / ticket / activity suggestions (pure, descriptive) ----
 
 import { deriveExperienceSuggestions, enrichExperienceMatches } from './tailor-made-draft';
