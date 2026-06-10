@@ -230,6 +230,24 @@ const TRIP_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 const CUSTOM_OPTION_VALUE = '__custom__';
 
+// Phase S.2B-1 — Overnight Sequence editor (UI PREVIEW ONLY). The operator can
+// see/edit where clients sleep, but this is NOT submitted to the backend in this
+// phase: buildInput() is unchanged and no overnightSequence field is sent. The
+// generator continues to derive overnights heuristically until a later backend
+// phase. Overnight cities (where clients sleep) are deliberately SEPARATE from
+// the sightseeing places selector (which drives entrance/activity/guide
+// suggestions) — e.g. Aqaba/Ajloun are valid overnights but not sightseeing
+// services here.
+const OVERNIGHT_CITY_OPTIONS = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Ajloun'];
+// Default sequence for the 8-day classic route — matches today's generated
+// overnights exactly (Amman×2 → Petra×1 → Wadi Rum×1 → Dead Sea×3 = 7 nights).
+const DEFAULT_OVERNIGHT_SEQUENCE: Array<{ city: string; nights: number }> = [
+  { city: 'Amman', nights: 2 },
+  { city: 'Petra', nights: 1 },
+  { city: 'Wadi Rum', nights: 1 },
+  { city: 'Dead Sea', nights: 3 },
+];
+
 // Phase S.2A — a single-select with a "Custom…" escape hatch. Owns only its
 // custom-mode flag; the chosen/typed value is always a plain string lifted to the
 // parent via onChange, so the submit payload type is identical to the prior
@@ -332,6 +350,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   });
   const [guideType, setGuideType] = useState('local');
   const [currency, setCurrency] = useState((quoteCurrency || 'USD').toUpperCase());
+  // Phase S.2B-1 — overnight sequence rows. PREVIEW-ONLY local state: it is NOT
+  // read by buildInput() and never submitted in this phase.
+  const [overnightSequence, setOvernightSequence] = useState<Array<{ city: string; nights: number }>>(
+    DEFAULT_OVERNIGHT_SEQUENCE.map((row) => ({ ...row })),
+  );
   const [replaceExisting, setReplaceExisting] = useState(false);
 
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -1065,6 +1088,87 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
             {place}
           </label>
         ))}
+      </fieldset>
+
+      {/* Phase S.2B-1 — Overnight Sequence editor (PREVIEW ONLY). Not submitted:
+          buildInput() ignores this and no overnightSequence field is sent. */}
+      <fieldset className="overnight-sequence">
+        <legend>Overnight Sequence</legend>
+        <p className="form-help">
+          This overnight sequence is a planning preview only in this phase. It will not change the generated itinerary until the next backend phase.
+        </p>
+        <p className="form-help">
+          Overnight Sequence is where clients sleep — it is separate from the sightseeing places above and does not create entrance/activity/guide services.
+        </p>
+        {(() => {
+          const expectedNights = (Number(durationDays) || 8) - 1;
+          const totalNights = overnightSequence.reduce((sum, row) => sum + (Number(row.nights) || 0), 0);
+          const balanced = totalNights === expectedNights;
+          let startDay = 1;
+          return (
+            <>
+              <div className="overnight-rows">
+                {overnightSequence.map((row, index) => {
+                  const nights = Math.max(1, Number(row.nights) || 1);
+                  const from = startDay;
+                  const to = startDay + nights - 1;
+                  startDay = to + 1;
+                  const dayRange = nights === 1 ? `Day ${from}` : `Days ${from}–${to}`;
+                  const cityMissing = !String(row.city || '').trim();
+                  return (
+                    <div key={index} className="overnight-row">
+                      <SelectWithCustom
+                        value={row.city}
+                        onChange={(next) =>
+                          setOvernightSequence((prev) => prev.map((r, i) => (i === index ? { ...r, city: next } : r)))
+                        }
+                        options={OVERNIGHT_CITY_OPTIONS}
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        className="overnight-nights"
+                        value={row.nights}
+                        onChange={(e) =>
+                          setOvernightSequence((prev) =>
+                            prev.map((r, i) => (i === index ? { ...r, nights: Math.max(1, Number(e.target.value) || 1) } : r)),
+                          )
+                        }
+                      />
+                      <span className="overnight-day-range">{dayRange}</span>
+                      {cityMissing ? <span className="overnight-warning">City required</span> : null}
+                      <button
+                        type="button"
+                        className="overnight-remove"
+                        aria-label="Remove overnight row"
+                        onClick={() => setOvernightSequence((prev) => prev.filter((_, i) => i !== index))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="overnight-footer">
+                <button
+                  type="button"
+                  className="overnight-add"
+                  onClick={() => setOvernightSequence((prev) => [...prev, { city: 'Amman', nights: 1 }])}
+                >
+                  + Add overnight
+                </button>
+                <span className={balanced ? 'overnight-total overnight-total-ok' : 'overnight-total overnight-total-warn'}>
+                  Total nights: {totalNights} / {expectedNights}
+                </span>
+                {!balanced ? (
+                  <span className="overnight-warning">
+                    Warning: overnight nights ({totalNights}) don’t match {expectedNights} (duration − 1). Preview only — not enforced in this phase.
+                  </span>
+                ) : null}
+              </div>
+            </>
+          );
+        })()}
       </fieldset>
 
       <div className="form-actions">
