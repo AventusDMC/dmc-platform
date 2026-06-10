@@ -190,7 +190,26 @@ type TailorMadeDraftPanelProps = {
   appliedGuideDayIds?: string[];
 };
 
-const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
+// Phase S.2C — grouped controlled place selector (UI/config only). The backend
+// preview/apply contract is unchanged: buildInput still emits
+// requiredPlaces:string[] + optionalPlaces:string[].
+//
+// "Included in this route" places are FIXED for the 8-day classic route — Amman
+// is the arrival base and Petra / Wadi Rum / Dead Sea are hardcoded route stops,
+// so the generator always weaves them. They render as read-only chips and are
+// always emitted into requiredPlaces; they are NOT removable in this phase
+// (route-level editing is a later phase).
+//
+// "Optional add-ons" are the only places the 8-day generator actually toggles
+// from the place inputs (Jerash / Madaba / Mount Nebo / Bethany), each backed by
+// a matcher rule + a live catalog record. They are emitted into optionalPlaces.
+//
+// Deferred places (Ajloun, Kerak, Little Petra, Aqaba-as-sightseeing, Umm Qais,
+// Pella, Salt, Blessed Tree, Jordan Valley Islamic Sites, Mu'ta) are NOT exposed
+// here — they are not woven by the generator and/or have no service match yet.
+// No comma free-text and no Custom place input in this phase.
+const INCLUDED_PLACES = ['Amman', 'Petra', 'Wadi Rum', 'Dead Sea'];
+const OPTIONAL_ADDON_PLACES = ['Jerash', 'Madaba', 'Mount Nebo', 'Bethany'];
 // Phase S.2A — controlled single-select option catalogs. UI/config only: every
 // dropdown still emits the SAME plain string the free-text input did, so the
 // backend preview/apply contract is unchanged. "Custom…" reveals a free-text
@@ -300,13 +319,16 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [departureAirport, setDepartureAirport] = useState('QAIA');
   const [hotelCategory, setHotelCategory] = useState('4-star');
   const [travelStyle, setTravelStyle] = useState('classic');
-  const [requiredPlaces, setRequiredPlaces] = useState('Petra, Wadi Rum, Dead Sea, Jerash');
+  // Phase S.2C — fixed included places (always emitted into requiredPlaces, see
+  // buildInput) plus toggleable optional add-ons. Defaults preserve today's
+  // behavior EXACTLY: Jerash / Madaba / Mount Nebo / Bethany were all woven by
+  // default before (Jerash sat in the required comma string; the other three
+  // were checkbox-on), so all four start selected.
   const [optionalSelected, setOptionalSelected] = useState<Record<string, boolean>>({
+    Jerash: true,
     Madaba: true,
     'Mount Nebo': true,
     Bethany: true,
-    Ajloun: false,
-    Aqaba: false,
   });
   const [guideType, setGuideType] = useState('local');
   const [currency, setCurrency] = useState((quoteCurrency || 'USD').toUpperCase());
@@ -413,8 +435,10 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       departureAirport,
       hotelCategory,
       travelStyle,
-      requiredPlaces: requiredPlaces.split(',').map((p) => p.trim()).filter(Boolean),
-      optionalPlaces: OPTIONAL_PLACES.filter((p) => optionalSelected[p]),
+      // S.2C — fixed included places preserve the route's required content; the
+      // selected add-ons go to optionalPlaces. Both stay string[] (contract unchanged).
+      requiredPlaces: [...INCLUDED_PLACES],
+      optionalPlaces: OPTIONAL_ADDON_PLACES.filter((p) => optionalSelected[p]),
       guideType,
       currency,
     };
@@ -1005,15 +1029,33 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           Currency
           <SelectWithCustom value={currency} onChange={setCurrency} options={CURRENCY_OPTIONS} />
         </label>
-        <label>
-          Required places (comma-separated)
-          <input value={requiredPlaces} onChange={(e) => setRequiredPlaces(e.target.value)} />
-        </label>
       </div>
 
-      <fieldset className="optional-places">
-        <legend>Optional places</legend>
-        {OPTIONAL_PLACES.map((place) => (
+      {/* Phase S.2C — grouped place selector. "Included in this route" places are
+          fixed/read-only chips for the 8-day classic route; "Optional add-ons"
+          are the toggleable, service-matched places. No comma free-text, no
+          Custom place input, no narrative-only/deferred places in this phase. */}
+      <fieldset className="places-selector places-included">
+        <legend>Included in this route</legend>
+        <p className="form-help">These places are part of the current 8-day classic route. Route-level editing will come in a later phase.</p>
+        <div className="places-chip-row">
+          {INCLUDED_PLACES.map((place) => (
+            <span
+              key={place}
+              className="place-chip place-chip-fixed"
+              aria-disabled="true"
+              title="Included in the current 8-day classic route — not editable in this phase"
+            >
+              {place}
+            </span>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="places-selector places-optional">
+        <legend>Optional add-ons</legend>
+        <p className="form-help">Select optional places to weave into the draft itinerary and service suggestions.</p>
+        {OPTIONAL_ADDON_PLACES.map((place) => (
           <label key={place} className="checkbox-inline">
             <input
               type="checkbox"

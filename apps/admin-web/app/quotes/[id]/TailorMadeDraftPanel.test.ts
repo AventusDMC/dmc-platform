@@ -80,9 +80,50 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     // Backend-unsafe trip styles are NOT exposed as selectable options in S.2A.
     assert.ok(!/label: 'Islamic Heritage'/.test(panelSource), 'Islamic Heritage not exposed as an option');
     assert.ok(!/value: 'family'/.test(panelSource), 'family not exposed as a trip-style value');
-    // The submit contract is unchanged — buildInput still emits the same fields,
-    // and no S.2A field added a new payload key.
-    expectSourceContains(panelSource, ['requiredPlaces: requiredPlaces.split', 'optionalPlaces: OPTIONAL_PLACES.filter']);
+    // The submit contract is unchanged — buildInput still emits requiredPlaces +
+    // optionalPlaces as string[] (S.2C changed HOW they're collected, not the shape).
+    expectSourceContains(panelSource, ['requiredPlaces: [...INCLUDED_PLACES]', 'optionalPlaces: OPTIONAL_ADDON_PLACES.filter']);
+  });
+
+  it('S.2C: required/optional places use one grouped selector (fixed included + toggleable add-ons)', () => {
+    expectSourceContains(panelSource, [
+      // grouped selector legends + helper copy
+      'Included in this route',
+      'Optional add-ons',
+      'These places are part of the current 8-day classic route. Route-level editing will come in a later phase.',
+      'Select optional places to weave into the draft itinerary and service suggestions.',
+      // place-group constants
+      "const INCLUDED_PLACES = ['Amman', 'Petra', 'Wadi Rum', 'Dead Sea']",
+      "const OPTIONAL_ADDON_PLACES = ['Jerash', 'Madaba', 'Mount Nebo', 'Bethany']",
+      // included = read-only chips (not editable), mapped from the fixed list
+      'INCLUDED_PLACES.map((place) =>',
+      'place-chip-fixed',
+      'aria-disabled="true"',
+      // optional add-ons = toggleable checkboxes mapped from the add-on list
+      'OPTIONAL_ADDON_PLACES.map((place) =>',
+      // buildInput preserves the payload shape: both stay string[]
+      'requiredPlaces: [...INCLUDED_PLACES]',
+      'optionalPlaces: OPTIONAL_ADDON_PLACES.filter((p) => optionalSelected[p])',
+    ]);
+    // Default selection preserves today's behavior — all four add-ons start on.
+    expectSourceContains(panelSource, [
+      'Jerash: true',
+      'Madaba: true',
+      "'Mount Nebo': true",
+      'Bethany: true',
+    ]);
+    // The old comma free-text Required Places input + state are gone.
+    assert.ok(!panelSource.includes('Required places (comma-separated)'), 'comma-based Required Places input removed');
+    assert.ok(!/const \[requiredPlaces, setRequiredPlaces\]/.test(panelSource), 'requiredPlaces free-text state removed');
+    // The old flat OPTIONAL_PLACES list (with deferred Ajloun/Aqaba) is gone.
+    assert.ok(!panelSource.includes('OPTIONAL_PLACES'), 'old flat OPTIONAL_PLACES list removed');
+    // Deferred / narrative-only places are NOT in either place GROUP. (Scope the
+    // check to the two place-group consts: Ajloun/Aqaba legitimately appear in the
+    // S.2A city/airport dropdown catalogs, which are a different control.)
+    const placeConsts = (panelSource.match(/const (?:INCLUDED_PLACES|OPTIONAL_ADDON_PLACES) =[^;]*/g) || []).join(' ');
+    for (const deferred of ['Ajloun', 'Kerak', 'Little Petra', 'Aqaba', 'Umm Qais', 'Pella', 'Salt', 'Blessed Tree', 'Jordan Valley Islamic Sites', "Mu'ta"]) {
+      assert.ok(!placeConsts.includes(deferred), `deferred place not exposed in place groups: ${deferred}`);
+    }
   });
 
   it('6. the draft-day apply never implies priced QuoteItems / pricing were created', () => {
