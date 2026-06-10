@@ -26,6 +26,12 @@ export interface TailorMadeDraftInput {
   optionalPlaces?: string[]; // e.g. ['Bethany','Madaba','Mount Nebo','Ajloun','Aqaba']
   guideType?: string;
   currency?: string; // default 'USD'
+  // Phase S.2B-2 — OPTIONAL explicit overnight plan. When provided (and valid),
+  // the generator overrides each overnight day's city + its "overnight <City>"
+  // narrative phrase from this sequence. Omitted/empty → today's heuristic
+  // overnight behavior, unchanged. Affects overnight city only (not titles,
+  // places, sightseeing, tickets, guides, or route presets).
+  overnightSequence?: Array<{ city: string; nights: number }>;
 }
 
 export interface DraftItineraryDay {
@@ -63,6 +69,74 @@ export interface TailorMadeDraft {
 const clean = (v: unknown): string => String(v ?? '').trim();
 const has = (list: string[] | undefined, name: string): boolean =>
   (list || []).some((p) => clean(p).toLowerCase() === name.toLowerCase());
+
+// Phase S.2B-2 — optional explicit overnight plan. Pure validator: returns an
+// error MESSAGE (which the API surfaces as a 400) or null when the sequence is
+// absent/empty (omitted → today's heuristic behavior) or valid. Strict: no
+// auto-padding, no silent ignore of a malformed sequence. Rules: city required,
+// nights a whole number >= 1, and total nights == durationDays - 1.
+export function validateOvernightSequence(
+  sequence: Array<{ city?: unknown; nights?: unknown }> | null | undefined,
+  durationDays?: number,
+): string | null {
+  if (sequence === undefined || sequence === null) return null;
+  if (!Array.isArray(sequence)) return 'overnightSequence must be an array of { city, nights }.';
+  if (sequence.length === 0) return null;
+  let total = 0;
+  for (let i = 0; i < sequence.length; i++) {
+    const row = sequence[i];
+    const city = clean(row?.city);
+    if (!city) return `overnightSequence[${i}].city is required.`;
+    const nights = Number(row?.nights);
+    if (!Number.isInteger(nights) || nights < 1) {
+      return `overnightSequence[${i}].nights must be a whole number of 1 or more.`;
+    }
+    total += nights;
+  }
+  const days = Number.isInteger(durationDays) && (durationDays as number) > 0 ? (durationDays as number) : 8;
+  const expected = days - 1;
+  if (total !== expected) {
+    return `overnightSequence total nights (${total}) must equal durationDays - 1 (${expected}).`;
+  }
+  return null;
+}
+
+// Phase S.2B-2 — expand a validated (city, nights) sequence into a per-night
+// city array (e.g. Amman×2 → ['Amman','Amman']).
+function expandOvernightSequence(sequence: Array<{ city?: unknown; nights?: unknown }>): string[] {
+  const perNight: string[] = [];
+  for (const row of sequence) {
+    const city = clean(row?.city);
+    const nights = Math.floor(Number(row?.nights));
+    if (!city || !Number.isFinite(nights) || nights < 1) continue;
+    for (let i = 0; i < nights; i++) perNight.push(city);
+  }
+  return perNight;
+}
+
+// Phase S.2B-2 — overwrite each overnight day's city + its "overnight <City>"
+// narrative phrase from the per-night plan. Pure & OVERNIGHT-ONLY: departure /
+// no-overnight days are left alone; a city equal to the day's current overnight
+// is a no-op (so the canonical 8-day sequence reproduces today's output exactly);
+// days beyond the plan length keep their generated overnight.
+const OVERNIGHT_PHRASE_RE = /(\bovernight\s+)(?:in\s+|at\s+)?(?:the\s+)?[A-Z][A-Za-z'\- ]*?(\s*(?:[.,;]|$))/;
+function applyOvernightSequence(
+  days: DraftItineraryDay[],
+  sequence: Array<{ city?: unknown; nights?: unknown }> | null | undefined,
+): DraftItineraryDay[] {
+  if (!Array.isArray(sequence) || sequence.length === 0) return days;
+  const perNight = expandOvernightSequence(sequence);
+  if (perNight.length === 0) return days;
+  return days.map((day) => {
+    if (day.overnightCity == null) return day; // departure / no overnight
+    const city = perNight[day.dayNumber - 1];
+    if (!city || city === day.overnightCity) return day; // unchanged → byte-identical output
+    const narrative = OVERNIGHT_PHRASE_RE.test(day.narrative)
+      ? day.narrative.replace(OVERNIGHT_PHRASE_RE, `$1${city}$2`)
+      : `${day.narrative}${/[.!?]\s*$/.test(day.narrative) ? '' : '.'} Overnight ${city}.`;
+    return { ...day, overnightCity: city, narrative };
+  });
+}
 
 /**
  * Build an 8-day / 7-night Jordan classic tailor-made draft itinerary.
@@ -213,7 +287,15 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
     }
   }
 
-  const overnightCount = days.filter((d) => d.overnightCity).length;
+  // Phase S.2B-2 — when an explicit overnight sequence is provided, override each
+  // overnight day's city + its "overnight <City>" narrative phrase from it.
+  // Overnight-only: titles, places, sightseeing, guides, route presets untouched.
+  // The sequence is assumed pre-validated by the API (validateOvernightSequence);
+  // applying a city equal to a day's current overnight is a no-op, so the
+  // canonical 8-day sequence reproduces today's output byte-for-byte.
+  const sequencedDays = applyOvernightSequence(days, input.overnightSequence);
+
+  const overnightCount = sequencedDays.filter((d) => d.overnightCity).length;
   const unplacedRequiredPlaces = required.filter((p) => !placed.has(p.toLowerCase()));
 
   return {
@@ -221,7 +303,7 @@ export function buildTailorMadeJordanDraft(input: TailorMadeDraftInput = {}): Ta
     durationDays,
     nightCount: durationDays - 1,
     travelStyle,
-    days,
+    days: sequencedDays,
     overnightCount,
     input: {
       arrivalCity,
