@@ -53,6 +53,38 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     ]);
   });
 
+  it('S.2A: the risky free-text generate fields are controlled dropdowns with a Custom fallback', () => {
+    expectSourceContains(panelSource, [
+      // shared select-with-custom helper + Custom escape value
+      'function SelectWithCustom',
+      "const CUSTOM_OPTION_VALUE = '__custom__'",
+      'Custom…',
+      // option catalogs
+      "const HOTEL_CATEGORY_OPTIONS = ['3-star', '4-star', '5-star', 'Mixed']",
+      "const ARRIVAL_POINT_OPTIONS = ['QAIA', 'Amman', 'Aqaba', 'Allenby', 'Sheikh Hussein', 'Wadi Araba']",
+      "const ITINERARY_CITY_OPTIONS = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Ajloun']",
+      "const GUIDE_TYPE_OPTIONS = ['local', 'escort', 'none']",
+      "const CURRENCY_OPTIONS = ['USD', 'JOD', 'EUR']",
+      // each S.2A field wired to a controlled select (still lifting a plain string)
+      'value={hotelCategory} onChange={setHotelCategory} options={HOTEL_CATEGORY_OPTIONS}',
+      'value={arrivalCity} onChange={setArrivalCity} options={ITINERARY_CITY_OPTIONS}',
+      'value={arrivalAirport} onChange={setArrivalAirport} options={ARRIVAL_POINT_OPTIONS}',
+      'value={departureCity} onChange={setDepartureCity} options={ITINERARY_CITY_OPTIONS}',
+      'value={departureAirport} onChange={setDepartureAirport} options={ARRIVAL_POINT_OPTIONS}',
+      'value={guideType} onChange={setGuideType} options={GUIDE_TYPE_OPTIONS}',
+      'value={currency} onChange={setCurrency} options={CURRENCY_OPTIONS}',
+      // trip style: friendly labels mapped to existing backend-safe enum values
+      "{ value: 'classic', label: 'Classic Jordan' }",
+      "{ value: 'religious', label: 'Christian / Biblical' }",
+    ]);
+    // Backend-unsafe trip styles are NOT exposed as selectable options in S.2A.
+    assert.ok(!/label: 'Islamic Heritage'/.test(panelSource), 'Islamic Heritage not exposed as an option');
+    assert.ok(!/value: 'family'/.test(panelSource), 'family not exposed as a trip-style value');
+    // The submit contract is unchanged — buildInput still emits the same fields,
+    // and no S.2A field added a new payload key.
+    expectSourceContains(panelSource, ['requiredPlaces: requiredPlaces.split', 'optionalPlaces: OPTIONAL_PLACES.filter']);
+  });
+
   it('6. the draft-day apply never implies priced QuoteItems / pricing were created', () => {
     // success copy explicitly states no priced services were added by the DAY apply
     expectSourceContains(panelSource, [
