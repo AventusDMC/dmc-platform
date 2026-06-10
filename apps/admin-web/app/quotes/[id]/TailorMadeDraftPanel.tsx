@@ -191,7 +191,84 @@ type TailorMadeDraftPanelProps = {
 };
 
 const OPTIONAL_PLACES = ['Madaba', 'Mount Nebo', 'Bethany', 'Ajloun', 'Aqaba'];
-const TRAVEL_STYLES = ['classic', 'religious', 'adventure', 'luxury'];
+// Phase S.2A — controlled single-select option catalogs. UI/config only: every
+// dropdown still emits the SAME plain string the free-text input did, so the
+// backend preview/apply contract is unchanged. "Custom…" reveals a free-text
+// input for edge values that aren't in the catalog.
+const HOTEL_CATEGORY_OPTIONS = ['3-star', '4-star', '5-star', 'Mixed'];
+const ARRIVAL_POINT_OPTIONS = ['QAIA', 'Amman', 'Aqaba', 'Allenby', 'Sheikh Hussein', 'Wadi Araba'];
+const ITINERARY_CITY_OPTIONS = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Ajloun'];
+const GUIDE_TYPE_OPTIONS = ['local', 'escort', 'none'];
+const CURRENCY_OPTIONS = ['USD', 'JOD', 'EUR'];
+// Trip style stays backend-safe: friendly LABELS mapped to the EXISTING enum
+// VALUES the generator understands (classic / religious / adventure / luxury).
+// Islamic Heritage / Family are intentionally NOT exposed in S.2A.
+const TRIP_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'classic', label: 'Classic Jordan' },
+  { value: 'religious', label: 'Christian / Biblical' },
+  { value: 'adventure', label: 'Adventure' },
+  { value: 'luxury', label: 'Luxury' },
+];
+const CUSTOM_OPTION_VALUE = '__custom__';
+
+// Phase S.2A — a single-select with a "Custom…" escape hatch. Owns only its
+// custom-mode flag; the chosen/typed value is always a plain string lifted to the
+// parent via onChange, so the submit payload type is identical to the prior
+// free-text input. Custom is secondary (last option), never the default.
+function SelectWithCustom({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  options: string[];
+}) {
+  const [custom, setCustom] = useState(value !== '' && !options.includes(value));
+  if (custom) {
+    return (
+      <>
+        <select
+          value={CUSTOM_OPTION_VALUE}
+          onChange={(e) => {
+            if (e.target.value !== CUSTOM_OPTION_VALUE) {
+              setCustom(false);
+              onChange(e.target.value);
+            }
+          }}
+        >
+          {options.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+          <option value={CUSTOM_OPTION_VALUE}>Custom…</option>
+        </select>
+        <input
+          className="select-with-custom-input"
+          value={value}
+          placeholder="Custom value"
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </>
+    );
+  }
+  return (
+    <select
+      value={options.includes(value) ? value : ''}
+      onChange={(e) => {
+        if (e.target.value === CUSTOM_OPTION_VALUE) {
+          setCustom(true);
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+      <option value={CUSTOM_OPTION_VALUE}>Custom…</option>
+    </select>
+  );
+}
 // Standard hotel markup applied to every applied hotel stay. Mirrors the API's
 // HOTEL_DEFAULT_MARKUP (apps/api/src/common/pricing-constants.ts); kept as one
 // named constant here rather than a scattered literal.
@@ -885,13 +962,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         </label>
         <label>
           Hotel category
-          <input value={hotelCategory} onChange={(e) => setHotelCategory(e.target.value)} />
+          <SelectWithCustom value={hotelCategory} onChange={setHotelCategory} options={HOTEL_CATEGORY_OPTIONS} />
         </label>
         <label>
-          Travel style
+          Trip style
           <select value={travelStyle} onChange={(e) => setTravelStyle(e.target.value)}>
-            {TRAVEL_STYLES.map((s) => (
-              <option key={s} value={s}>{s}</option>
+            {TRIP_STYLE_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
         </label>
@@ -900,33 +977,33 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       <div className="form-row form-row-2">
         <label>
           Arrival city
-          <input value={arrivalCity} onChange={(e) => setArrivalCity(e.target.value)} />
+          <SelectWithCustom value={arrivalCity} onChange={setArrivalCity} options={ITINERARY_CITY_OPTIONS} />
         </label>
         <label>
-          Arrival airport
-          <input value={arrivalAirport} onChange={(e) => setArrivalAirport(e.target.value)} />
+          Arrival point
+          <SelectWithCustom value={arrivalAirport} onChange={setArrivalAirport} options={ARRIVAL_POINT_OPTIONS} />
         </label>
       </div>
 
       <div className="form-row form-row-2">
         <label>
           Departure city
-          <input value={departureCity} onChange={(e) => setDepartureCity(e.target.value)} />
+          <SelectWithCustom value={departureCity} onChange={setDepartureCity} options={ITINERARY_CITY_OPTIONS} />
         </label>
         <label>
-          Departure airport
-          <input value={departureAirport} onChange={(e) => setDepartureAirport(e.target.value)} />
+          Departure point
+          <SelectWithCustom value={departureAirport} onChange={setDepartureAirport} options={ARRIVAL_POINT_OPTIONS} />
         </label>
       </div>
 
       <div className="form-row form-row-3">
         <label>
           Guide type
-          <input value={guideType} onChange={(e) => setGuideType(e.target.value)} />
+          <SelectWithCustom value={guideType} onChange={setGuideType} options={GUIDE_TYPE_OPTIONS} />
         </label>
         <label>
           Currency
-          <input value={currency} onChange={(e) => setCurrency(e.target.value)} />
+          <SelectWithCustom value={currency} onChange={setCurrency} options={CURRENCY_OPTIONS} />
         </label>
         <label>
           Required places (comma-separated)
