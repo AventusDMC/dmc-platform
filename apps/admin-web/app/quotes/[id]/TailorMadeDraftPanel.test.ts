@@ -126,43 +126,50 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     }
   });
 
-  it('S.2B-1: Overnight Sequence editor renders as a PREVIEW-ONLY section (not submitted)', () => {
+  it('S.2B-3: Overnight Sequence is submitted via buildInput when valid + gates Apply', () => {
     expectSourceContains(panelSource, [
-      // section + helper copy (planning-preview wording)
+      // section + S.2B-3 helper copy (controls overnights → hotel stay suggestions)
       '<legend>Overnight Sequence</legend>',
-      'This overnight sequence is a planning preview only in this phase. It will not change the generated itinerary until the next backend phase.',
-      // overnight cities are separate from the sightseeing places selector
-      'Overnight Sequence is where clients sleep — it is separate from the sightseeing places above',
-      // city options + default 8-day classic sequence
+      'This sequence controls where the clients overnight and is used to generate hotel stay suggestions.',
+      // sightseeing separation kept
+      'Sightseeing places are controlled separately above',
+      // city options + default 8-day classic sequence (still present from S.2B-1)
       "const OVERNIGHT_CITY_OPTIONS = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Ajloun']",
       "{ city: 'Amman', nights: 2 }",
       "{ city: 'Petra', nights: 1 }",
       "{ city: 'Wadi Rum', nights: 1 }",
       "{ city: 'Dead Sea', nights: 3 }",
-      // city dropdown reuses SelectWithCustom (which appends the "Custom…" option)
       'options={OVERNIGHT_CITY_OPTIONS}',
-      // nights input is min-1 constrained
       'type="number"',
       'min={1}',
       'Math.max(1, Number(e.target.value) || 1)',
-      // live total: actual / expected (expected = durationDays - 1)
-      'const expectedNights = (Number(durationDays) || 8) - 1',
-      'const totalNights = overnightSequence.reduce',
       'Total nights: {totalNights} / {expectedNights}',
-      // mismatch shows a warning only (no block)
-      'const balanced = totalNights === expectedNights',
-      'Preview only — not enforced in this phase.',
+      // validity (drives submission + Apply gate)
+      'const expectedOvernightNights = (Number(durationDays) || 8) - 1',
+      'const overnightTotalNights = overnightSequence.reduce',
+      'const overnightSequenceValid =',
+      'overnightTotalNights === expectedOvernightNights',
+      // unbalanced → warning (now enforced, not preview-only)
+      'so it will not be applied to the generated draft',
+      // Apply is blocked while invalid (guard + disabled button)
+      'if (!overnightSequenceValid)',
+      'disabled={applying || !overnightSequenceValid}',
       // add/remove rows
       '+ Add overnight',
       'Remove overnight row',
     ]);
-    // PREVIEW-ONLY contract: buildInput() must NOT carry overnightSequence — the
-    // field is never submitted in S.2B-1. (Scope the check to the buildInput body;
-    // overnightSequence exists elsewhere as local state.)
+    // S.2B-3 contract: buildInput() submits overnightSequence ONLY when valid.
     const start = panelSource.indexOf('function buildInput');
     assert.ok(start >= 0, 'buildInput present');
-    const buildInputBody = panelSource.slice(start, start + 700);
-    assert.ok(!buildInputBody.includes('overnightSequence'), 'overnightSequence is NOT included in the submitted buildInput payload');
+    const buildInputBody = panelSource.slice(start, start + 1100);
+    assert.ok(buildInputBody.includes('if (overnightSequenceValid)'), 'buildInput guards the overnightSequence submission on validity');
+    assert.ok(
+      buildInputBody.includes('input.overnightSequence = overnightSequence.map'),
+      'buildInput submits the mapped { city, nights } sequence when valid',
+    );
+    // The preview-only wording is gone (the sequence now shapes the draft).
+    assert.ok(!panelSource.includes('planning preview only in this phase'), 'old preview-only helper copy removed');
+    assert.ok(!panelSource.includes('Preview only — not enforced in this phase.'), 'old preview-only warning removed');
   });
 
   it('6. the draft-day apply never implies priced QuoteItems / pricing were created', () => {
