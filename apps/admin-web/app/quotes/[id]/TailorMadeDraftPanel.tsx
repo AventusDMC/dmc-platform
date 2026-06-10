@@ -350,8 +350,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   });
   const [guideType, setGuideType] = useState('local');
   const [currency, setCurrency] = useState((quoteCurrency || 'USD').toUpperCase());
-  // Phase S.2B-1 — overnight sequence rows. PREVIEW-ONLY local state: it is NOT
-  // read by buildInput() and never submitted in this phase.
+  // Phase S.2B-3 — overnight sequence rows. Now SUBMITTED via buildInput() when
+  // valid (see overnightSequenceValid below); the backend (S.2B-2) applies it to
+  // the generated overnight cities + narratives, which hotel suggestions re-parse.
   const [overnightSequence, setOvernightSequence] = useState<Array<{ city: string; nights: number }>>(
     DEFAULT_OVERNIGHT_SEQUENCE.map((row) => ({ ...row })),
   );
@@ -449,8 +450,20 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const dayGuideAppliedThisSession = (dayId: string | null | undefined): boolean =>
     Boolean(dayId) && sessionAppliedGuideDayIds.includes(dayId as string);
 
+  // Phase S.2B-3 — overnight-sequence validity. Drives BOTH whether buildInput
+  // submits the sequence AND the Apply gate. Valid = non-empty, every city
+  // non-blank, every nights an integer >= 1, and total nights == durationDays - 1.
+  const expectedOvernightNights = (Number(durationDays) || 8) - 1;
+  const overnightTotalNights = overnightSequence.reduce((sum, row) => sum + (Number(row.nights) || 0), 0);
+  const overnightSequenceValid =
+    overnightSequence.length > 0 &&
+    overnightSequence.every(
+      (row) => String(row.city || '').trim() !== '' && Number.isInteger(Number(row.nights)) && Number(row.nights) >= 1,
+    ) &&
+    overnightTotalNights === expectedOvernightNights;
+
   function buildInput() {
-    return {
+    const input: Record<string, unknown> = {
       durationDays: Number(durationDays) || 8,
       arrivalCity,
       arrivalAirport,
@@ -465,6 +478,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       guideType,
       currency,
     };
+    // S.2B-3 — submit the operator overnight plan ONLY when it is valid. An
+    // invalid/unbalanced sequence is never sent, so the generator keeps its
+    // heuristic overnights (Apply is additionally blocked while invalid).
+    if (overnightSequenceValid) {
+      input.overnightSequence = overnightSequence.map((row) => ({ city: row.city, nights: row.nights }));
+    }
+    return input;
   }
 
   async function handlePreview() {
@@ -490,6 +510,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   }
 
   async function handleApply() {
+    // S.2B-3 — block Apply while the overnight sequence is unbalanced/invalid.
+    if (!overnightSequenceValid) {
+      setError(
+        `Overnight sequence is not balanced — total nights (${overnightTotalNights}) must equal ${expectedOvernightNights} (number of nights in the trip), and every row needs a city and at least 1 night. Fix it before applying.`,
+      );
+      return;
+    }
     setApplying(true);
     setError('');
     setConflict(false);
@@ -1090,20 +1117,20 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         ))}
       </fieldset>
 
-      {/* Phase S.2B-1 — Overnight Sequence editor (PREVIEW ONLY). Not submitted:
-          buildInput() ignores this and no overnightSequence field is sent. */}
+      {/* Phase S.2B-3 — Overnight Sequence editor. Submitted via buildInput() when
+          valid; the backend applies it to the generated overnight cities + narratives. */}
       <fieldset className="overnight-sequence">
         <legend>Overnight Sequence</legend>
         <p className="form-help">
-          This overnight sequence is a planning preview only in this phase. It will not change the generated itinerary until the next backend phase.
+          This sequence controls where the clients overnight and is used to generate hotel stay suggestions.
         </p>
         <p className="form-help">
-          Overnight Sequence is where clients sleep — it is separate from the sightseeing places above and does not create entrance/activity/guide services.
+          Overnight Sequence is where clients sleep. Sightseeing places are controlled separately above and selecting an overnight city does not create entrance/activity/guide services.
         </p>
         {(() => {
-          const expectedNights = (Number(durationDays) || 8) - 1;
-          const totalNights = overnightSequence.reduce((sum, row) => sum + (Number(row.nights) || 0), 0);
-          const balanced = totalNights === expectedNights;
+          const expectedNights = expectedOvernightNights;
+          const totalNights = overnightTotalNights;
+          const balanced = overnightSequenceValid;
           let startDay = 1;
           return (
             <>
@@ -1162,7 +1189,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                 </span>
                 {!balanced ? (
                   <span className="overnight-warning">
-                    Warning: overnight nights ({totalNights}) don’t match {expectedNights} (duration − 1). Preview only — not enforced in this phase.
+                    Overnight sequence is not balanced ({totalNights} / {expectedNights} nights), so it will not be applied to the generated draft. Apply to Quote is disabled until it balances.
                   </span>
                 ) : null}
               </div>
@@ -1175,7 +1202,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         <button type="button" onClick={handlePreview} disabled={previewing}>
           {previewing ? 'Generating…' : 'Preview Draft'}
         </button>
-        <button type="button" onClick={handleApply} disabled={applying} className="secondary">
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={applying || !overnightSequenceValid}
+          className="secondary"
+          title={overnightSequenceValid ? undefined : 'Balance the overnight sequence before applying.'}
+        >
           {applying ? 'Applying…' : 'Apply to Quote'}
         </button>
         <button type="button" onClick={handleSuggestHotels} disabled={suggesting} className="secondary">
