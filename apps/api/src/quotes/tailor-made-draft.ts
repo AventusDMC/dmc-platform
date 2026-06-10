@@ -722,6 +722,47 @@ export function deriveTransportSuggestions(days: DraftDayShell[]): SuggestedTran
     }
   });
 
+  // Phase S.2B-4C — use the overnight chain for the TWO transfer endpoints only:
+  //  • ARRIVAL_TRANSFER destination = that day's overnight city (where the client
+  //    actually sleeps night 1) — fixes a title that names a different city.
+  //  • DEPARTURE_TRANSFER origin    = the last overnight city — fixes a stale
+  //    "Transfer from X" narrative when the chosen sequence ends elsewhere.
+  // Touring-day classification + origins/destinations stay TITLE-based (untouched).
+  // Read-only: no rate/route lookup, no items, no pricing. The override only fires
+  // when the chain value DIFFERS from today's, so the default 8-day route (and any
+  // sequence with the same first/last overnight) is byte-identical. A same-city
+  // result (origin === destination) is never written, so no false move is created.
+  const chain = deriveOvernightChain(active);
+  const overnightByDay = new Map(chain.map((c) => [c.dayNumber, c.overnightCity]));
+  const lastOvernightCity = [...chain].reverse().find((c) => c.overnightCity)?.overnightCity ?? null;
+  // Set of overnight cities in THIS itinerary (lowercased) — used to tell an
+  // explicit/consistent departure origin apart from a stale one.
+  const overnightCitySet = new Set(
+    chain.map((c) => c.overnightCity).filter(Boolean).map((c) => String(c).toLowerCase()),
+  );
+
+  suggestions.forEach((s) => {
+    if (s.suggestedTransportType === 'ARRIVAL_TRANSFER') {
+      // Destination = where the client actually sleeps night 1 (this day's
+      // overnight). Override only when it differs and isn't the airport itself.
+      const dest = overnightByDay.get(s.dayNumber) || null;
+      if (dest && dest !== s.destination && dest !== s.origin) {
+        s.destination = dest;
+        s.routeLabel = s.origin ? `${s.origin} → ${dest}` : s.routeLabel;
+      }
+    } else if (s.suggestedTransportType === 'DEPARTURE_TRANSFER') {
+      // Origin = last overnight city, but ONLY when the parsed origin is missing
+      // or STALE (not an overnight anywhere in this itinerary). An explicit
+      // departure city that IS one of the overnights is the operator's choice and
+      // is preserved (e.g. depart from Amman though the last night was elsewhere).
+      const originInChain = s.origin ? overnightCitySet.has(s.origin.toLowerCase()) : false;
+      if (lastOvernightCity && !originInChain && lastOvernightCity !== s.destination) {
+        s.origin = lastOvernightCity;
+        s.routeLabel = s.destination ? `${lastOvernightCity} → ${s.destination}` : s.routeLabel;
+      }
+    }
+  });
+
   return suggestions;
 }
 
