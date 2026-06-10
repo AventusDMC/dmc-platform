@@ -357,6 +357,10 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     DEFAULT_OVERNIGHT_SEQUENCE.map((row) => ({ ...row })),
   );
   const [replaceExisting, setReplaceExisting] = useState(false);
+  // Hotfix — non-8-day durations fall back to a basic day shell (the structured
+  // route weaving is 8-day-only). The operator must explicitly confirm basic-shell
+  // mode before Apply when the duration isn't 8. 8-day behavior is unchanged.
+  const [basicShellConfirmed, setBasicShellConfirmed] = useState(false);
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -462,6 +466,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     ) &&
     overnightTotalNights === expectedOvernightNights;
 
+  // Hotfix — the structured route weaving (fixed Amman/Petra/Wadi Rum/Dead Sea
+  // placement) is 8-day-only; other durations fall back to a basic day shell.
+  const isClassicDuration = (Number(durationDays) || 8) === 8;
+  // Apply requires a balanced overnight sequence AND, for non-8-day drafts,
+  // explicit basic-shell confirmation. 8-day is unaffected (always confirmed).
+  const applyBlocked = !overnightSequenceValid || (!isClassicDuration && !basicShellConfirmed);
+
   function buildInput() {
     const input: Record<string, unknown> = {
       durationDays: Number(durationDays) || 8,
@@ -515,6 +526,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       setError(
         `Overnight sequence is not balanced — total nights (${overnightTotalNights}) must equal ${expectedOvernightNights} (number of nights in the trip), and every row needs a city and at least 1 night. Fix it before applying.`,
       );
+      return;
+    }
+    // Hotfix — non-8-day drafts are a basic day shell; require explicit confirmation.
+    if (!isClassicDuration && !basicShellConfirmed) {
+      setError('This is not the 8-day classic program, so the draft is a basic day shell only. Confirm basic-shell mode before applying.');
       return;
     }
     setApplying(true);
@@ -1085,16 +1101,24 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
           fixed/read-only chips for the 8-day classic route; "Optional add-ons"
           are the toggleable, service-matched places. No comma free-text, no
           Custom place input, no narrative-only/deferred places in this phase. */}
-      <fieldset className="places-selector places-included">
-        <legend>Included in this route</legend>
-        <p className="form-help">These places are part of the current 8-day classic route. Route-level editing will come in a later phase.</p>
+      <fieldset className={`places-selector places-included${isClassicDuration ? '' : ' places-included-inactive'}`}>
+        <legend>Included in this route{isClassicDuration ? '' : ' (8-day classic route only)'}</legend>
+        <p className="form-help">
+          {isClassicDuration
+            ? 'These places are part of the current 8-day classic route. Route-level editing will come in a later phase.'
+            : 'These places are only placed automatically in the 8-day classic route. For other durations the draft is a basic day shell, so these are NOT guaranteed to be placed.'}
+        </p>
         <div className="places-chip-row">
           {INCLUDED_PLACES.map((place) => (
             <span
               key={place}
               className="place-chip place-chip-fixed"
               aria-disabled="true"
-              title="Included in the current 8-day classic route — not editable in this phase"
+              title={
+                isClassicDuration
+                  ? 'Included in the current 8-day classic route — not editable in this phase'
+                  : 'Only placed automatically in the 8-day classic route; not guaranteed in this duration'
+              }
             >
               {place}
             </span>
@@ -1198,6 +1222,24 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         })()}
       </fieldset>
 
+      {/* Hotfix — non-8-day durations only produce a basic day shell. Warn before
+          preview/apply and require explicit basic-shell confirmation to Apply. */}
+      {!isClassicDuration ? (
+        <div
+          className="tm-duration-warning"
+          role="alert"
+          style={{ background: '#fff4e5', border: '1px solid #e0b070', borderRadius: 8, padding: '0.6rem 0.8rem', margin: '0.5rem 0' }}
+        >
+          <p style={{ margin: 0 }}>
+            The structured route builder is currently optimized for the 8-day classic Jordan program. Other durations will create a basic day shell only. Route-level editing will come in the next phase.
+          </p>
+          <label className="checkbox-inline" style={{ display: 'block', marginTop: '0.45rem' }}>
+            <input type="checkbox" checked={basicShellConfirmed} onChange={(e) => setBasicShellConfirmed(e.target.checked)} />
+            I understand this {Number(durationDays) || 0}-day draft is a basic day shell only.
+          </label>
+        </div>
+      ) : null}
+
       <div className="form-actions">
         <button type="button" onClick={handlePreview} disabled={previewing}>
           {previewing ? 'Generating…' : 'Preview Draft'}
@@ -1205,9 +1247,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         <button
           type="button"
           onClick={handleApply}
-          disabled={applying || !overnightSequenceValid}
+          disabled={applying || applyBlocked}
           className="secondary"
-          title={overnightSequenceValid ? undefined : 'Balance the overnight sequence before applying.'}
+          title={
+            applyBlocked
+              ? !overnightSequenceValid
+                ? 'Balance the overnight sequence before applying.'
+                : 'Confirm basic-shell mode for non-8-day drafts before applying.'
+              : undefined
+          }
         >
           {applying ? 'Applying…' : 'Apply to Quote'}
         </button>

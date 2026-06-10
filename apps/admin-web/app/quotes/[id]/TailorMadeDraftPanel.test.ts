@@ -151,9 +151,11 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
       'overnightTotalNights === expectedOvernightNights',
       // unbalanced → warning (now enforced, not preview-only)
       'so it will not be applied to the generated draft',
-      // Apply is blocked while invalid (guard + disabled button)
+      // Apply is blocked while invalid (guard + disabled button). The disabled
+      // expression is the combined gate `applyBlocked`, which includes
+      // !overnightSequenceValid (plus the hotfix non-8-day basic-shell confirm).
       'if (!overnightSequenceValid)',
-      'disabled={applying || !overnightSequenceValid}',
+      'disabled={applying || applyBlocked}',
       // add/remove rows
       '+ Add overnight',
       'Remove overnight row',
@@ -182,6 +184,35 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     // allowed — but createItem auto-prices; the panel never sets manual cost
     // overrides.)
     assert.ok(!/useOverride|overrideCost|supplierCost/i.test(panelSource), 'panel must not reference item-write pricing fields');
+  });
+
+  it('Hotfix: non-8-day durations warn + gate Apply; 8-day classic behavior unchanged', () => {
+    expectSourceContains(panelSource, [
+      // duration classifier + apply gate
+      'const isClassicDuration = (Number(durationDays) || 8) === 8',
+      'const applyBlocked = !overnightSequenceValid || (!isClassicDuration && !basicShellConfirmed)',
+      'const [basicShellConfirmed, setBasicShellConfirmed] = useState(false)',
+      // exact warning copy shown for non-8-day durations
+      'The structured route builder is currently optimized for the 8-day classic Jordan program. Other durations will create a basic day shell only. Route-level editing will come in the next phase.',
+      // banner only renders when NOT the classic duration
+      '{!isClassicDuration ? (',
+      // basic-shell confirmation checkbox
+      'checked={basicShellConfirmed}',
+      // Included chips clarified as 8-day-only when non-classic
+      "(8-day classic route only)",
+      'these are NOT guaranteed to be placed',
+      // Apply button uses the combined gate; handleApply guards confirmation too
+      'disabled={applying || applyBlocked}',
+      'if (!isClassicDuration && !basicShellConfirmed)',
+    ]);
+    // 8-day classic behavior is UNCHANGED — the original Included helper copy and
+    // the S.2B-3 Apply gate still exist; the guard only adds a non-classic branch.
+    expectSourceContains(panelSource, [
+      'These places are part of the current 8-day classic route. Route-level editing will come in a later phase.',
+    ]);
+    // Preview is NOT hard-blocked for non-8-day (operator may still preview the
+    // shell); only Apply is gated.
+    assert.ok(panelSource.includes('onClick={handlePreview} disabled={previewing}'), 'Preview stays enabled regardless of duration');
   });
 
   it('7. the panel is wired into the live itinerary workspace', () => {
