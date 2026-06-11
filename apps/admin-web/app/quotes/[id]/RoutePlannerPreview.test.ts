@@ -132,7 +132,8 @@ describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only
       "{ kind: 'guide' as const }",
       "{ kind: 'hotel' as const }",
       "{ kind: 'transport' as const }",
-      "{ kind: 'activity' as const, name: qs.service?.name ?? null }",
+      // R.7A-2.1 — activity prefers the linked Activity public name (service is null for activities)
+      "{ kind: 'activity' as const, name: qs.activityName ?? qs.service?.name ?? null }",
       "{ kind: 'entrance' as const, name: qs.service?.name ?? null }",
     ]);
     // The mapper must NOT forward pricing/supplier/contract/room/meal fields.

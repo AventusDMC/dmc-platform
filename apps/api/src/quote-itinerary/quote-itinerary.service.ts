@@ -83,6 +83,9 @@ export class QuoteItineraryService {
                   },
                 },
                 touringRoute: true,
+                // R.7A-2.1 — load the linked Activity's public name only (for the
+                // narrative preview "including a <activity>"); no pricing fields.
+                activity: { select: { id: true, name: true } },
               },
             },
           },
@@ -1121,6 +1124,9 @@ export class QuoteItineraryService {
                   },
                 },
                 touringRoute: true,
+                // R.7A-2.1 — load the linked Activity's public name only (for the
+                // narrative preview "including a <activity>"); no pricing fields.
+                activity: { select: { id: true, name: true } },
               },
             },
           },
@@ -1158,6 +1164,8 @@ export class QuoteItineraryService {
               },
             },
             touringRoute: true,
+            // R.7A-2.1 — linked Activity public name only (narrative preview).
+            activity: { select: { id: true, name: true } },
           },
         },
       },
@@ -1186,6 +1194,8 @@ export class QuoteItineraryService {
           },
         },
         touringRoute: true,
+        // R.7A-2.1 — linked Activity public name only (narrative preview).
+        activity: { select: { id: true, name: true } },
       },
     });
 
@@ -1474,6 +1484,12 @@ export class QuoteItineraryService {
       activityId: quoteService.activityId ?? null,
       activityRateVariantId: quoteService.activityRateVariantId ?? null,
       ticketRateVariantId: quoteService.ticketRateVariantId ?? null,
+      // R.7A-2.1 — client-safe display name of the linked Activity (public
+      // catalog name only). Lets the admin-web narrative preview say "including a
+      // <activity>" for an applied activity/experience. Null for non-activity
+      // items (e.g. entrances apply via serviceId, so they have no Activity and
+      // stay no-op in the preview). No pricing/cost/variant/internal fields.
+      activityName: quoteService.activity?.name ?? null,
       service: quoteService.service
         ? {
             id: quoteService.service.id,
