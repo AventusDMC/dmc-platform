@@ -4,6 +4,8 @@ import {
   TRANSPORT_DEFAULT_MARKUP,
   computeTransportSell,
   resolveTransportPlan,
+  classifyPackageTransportPolicy,
+  PACKAGE_FULL_DAY_MIN_TOURING_DAYS,
   type TransportServiceTypeOption,
 } from './tailor-made-transport-resolve';
 import type { RouteOption } from '../../lib/routes';
@@ -190,5 +192,74 @@ describe('R.6B-0 — resolveTransportPlan', () => {
     assert.equal(TRANSPORT_DEFAULT_MARKUP, 20);
     assert.equal(computeTransportSell(100), 120);
     assert.equal(computeTransportSell(4300), 5160);
+  });
+});
+
+// Curated-template day transport classifications (only the field the policy reads).
+const tt = (t) => ({ suggestedTransportType: t });
+const DAYS_4 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
+const DAYS_5 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
+const DAYS_6 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
+const DAYS_7 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
+
+describe('T.5B — classifyPackageTransportPolicy', () => {
+  it('1. 4-day template → count 2, usePackageFullDay false (regular route rates)', () => {
+    const p = classifyPackageTransportPolicy(DAYS_4);
+    assert.equal(p.touringFullDayCount, 2);
+    assert.equal(p.usePackageFullDay, false);
+  });
+
+  it('2. 5-day template → count 3, usePackageFullDay true', () => {
+    const p = classifyPackageTransportPolicy(DAYS_5);
+    assert.equal(p.touringFullDayCount, 3);
+    assert.equal(p.usePackageFullDay, true);
+  });
+
+  it('3. 6-day template → count 4, usePackageFullDay true', () => {
+    const p = classifyPackageTransportPolicy(DAYS_6);
+    assert.equal(p.touringFullDayCount, 4);
+    assert.equal(p.usePackageFullDay, true);
+  });
+
+  it('4. 7-day template → count 5, usePackageFullDay true', () => {
+    const p = classifyPackageTransportPolicy(DAYS_7);
+    assert.equal(p.touringFullDayCount, 5);
+    assert.equal(p.usePackageFullDay, true);
+  });
+
+  it('5/6. arrival, departure and NONE/leisure days are excluded from the count', () => {
+    const p = classifyPackageTransportPolicy([
+      tt('ARRIVAL_TRANSFER'), tt('DEPARTURE_TRANSFER'), tt('NONE'), tt('NONE'),
+    ]);
+    assert.equal(p.touringFullDayCount, 0);
+    assert.equal(p.usePackageFullDay, false);
+  });
+
+  it('7/8. same-base AND intercity touring days both count (both classify TOURING_FULL_DAY)', () => {
+    // Amman/Jerash/Amman (same-base) + Amman/Madaba/Nebo/Petra (intercity) + Wadi Rum/Dead Sea (intercity).
+    const p = classifyPackageTransportPolicy([
+      tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'),
+    ]);
+    assert.equal(p.touringFullDayCount, 3);
+    assert.equal(p.usePackageFullDay, true);
+  });
+
+  it('threshold boundary: exactly 2 → false, exactly 3 → true', () => {
+    assert.equal(classifyPackageTransportPolicy([tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY')]).usePackageFullDay, false);
+    assert.equal(classifyPackageTransportPolicy([tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY')]).usePackageFullDay, true);
+    assert.equal(PACKAGE_FULL_DAY_MIN_TOURING_DAYS, 3);
+  });
+
+  it('empty / null input is safe (count 0, false)', () => {
+    assert.equal(classifyPackageTransportPolicy([]).touringFullDayCount, 0);
+    assert.equal(classifyPackageTransportPolicy(null).usePackageFullDay, false);
+    assert.equal(classifyPackageTransportPolicy(undefined).touringFullDayCount, 0);
+  });
+
+  it('deterministic + carries an admin reason (never client text)', () => {
+    const a = classifyPackageTransportPolicy(DAYS_6);
+    const b = classifyPackageTransportPolicy(DAYS_6);
+    assert.equal(a.reason, b.reason);
+    assert.match(a.reason, /full touring days/i);
   });
 });

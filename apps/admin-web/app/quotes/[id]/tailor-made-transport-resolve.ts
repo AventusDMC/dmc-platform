@@ -256,3 +256,47 @@ export function resolveTransportPlan(
     reason: 'Route and service type resolved.',
   };
 }
+
+// ---------------------------------------------------------------------------
+// Phase T.5B — package transport pricing POLICY (pure classification only).
+//
+// Business rule (Zeyad): a package with 3+ full TOURING days should price every
+// touring day at the fixed daily full-day vehicle rate instead of per-leg
+// route/point-to-point rates. Below 3, keep regular route pricing. Arrival and
+// departure stay transfer rates regardless. This helper ONLY classifies the
+// policy from the day transport classifications — it changes NO pricing, NO
+// resolver output, NO apply behaviour (consumed later in T.5C/T.5D).
+// ---------------------------------------------------------------------------
+
+/** Minimum number of full touring days that triggers package full-day pricing. */
+export const PACKAGE_FULL_DAY_MIN_TOURING_DAYS = 3;
+
+export type PackageTransportPolicy = {
+  /** Count of days classified TOURING_FULL_DAY (same-base day-trips + intercity
+   *  sightseeing). Arrival/departure transfers and NONE/leisure are excluded. */
+  touringFullDayCount: number;
+  /** True when touringFullDayCount >= PACKAGE_FULL_DAY_MIN_TOURING_DAYS. */
+  usePackageFullDay: boolean;
+  /** Admin-facing explanation (never client proposal text). */
+  reason: string;
+};
+
+/**
+ * Classify whether a quote/package should use package full-day vehicle pricing
+ * for its touring days. Pure + deterministic; counts only TOURING_FULL_DAY days.
+ */
+export function classifyPackageTransportPolicy(
+  suggestions: Array<Pick<TransportSuggestionLike, 'suggestedTransportType'>> | null | undefined,
+): PackageTransportPolicy {
+  const touringFullDayCount = (suggestions || []).filter(
+    (s) => s?.suggestedTransportType === 'TOURING_FULL_DAY',
+  ).length;
+  const usePackageFullDay = touringFullDayCount >= PACKAGE_FULL_DAY_MIN_TOURING_DAYS;
+  return {
+    touringFullDayCount,
+    usePackageFullDay,
+    reason: usePackageFullDay
+      ? `Package has ${touringFullDayCount} full touring days (>= ${PACKAGE_FULL_DAY_MIN_TOURING_DAYS}) — touring days use the fixed daily full-day vehicle rate.`
+      : `Package has ${touringFullDayCount} full touring day(s) (< ${PACKAGE_FULL_DAY_MIN_TOURING_DAYS}) — touring days use regular route rates.`,
+  };
+}
