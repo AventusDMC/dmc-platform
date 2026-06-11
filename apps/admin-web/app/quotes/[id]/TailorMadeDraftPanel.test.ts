@@ -467,6 +467,27 @@ describe('Phase R.1c — Tailor-Made Draft Builder panel', () => {
     expectSourceContains(workspaceSource, ['routes', 'transportServiceTypes', 'tailor-made-transport-resolve']);
   });
 
+  it('T.2: transport preview tries the primary service type, then the resolver fallback on no-rate', () => {
+    expectSourceContains(panelSource, [
+      // a single-service-type pricing helper, tried for primary then fallback
+      'const priceWith = async (serviceTypeId: string) =>',
+      'let priced = await priceWith(plan.serviceTypeId)',
+      'plan.fallbackServiceTypeId',
+      'await priceWith(plan.fallbackServiceTypeId)',
+      // the EFFECTIVE service type that actually priced flows to apply
+      'let effectiveServiceTypeId = plan.serviceTypeId',
+      'effectiveServiceTypeId = plan.fallbackServiceTypeId',
+      'serviceTypeId: effectiveServiceTypeId',
+      // NO_RATE stays non-fatal when neither primary nor fallback prices
+      "status: 'NO_RATE'",
+    ]);
+    // The fallback only triggers when the primary yields no usable rate (guarded
+    // on !priced), so legs already priced under the primary are unchanged.
+    assert.ok(/if \(!priced && plan\.fallbackServiceTypeId/.test(panelSource), 'fallback is gated on the primary returning no rate');
+    // Still exactly the canonical calculate endpoint (no new pricing endpoint).
+    assert.ok(!/transport-pricing\/(?!calculate)/.test(panelSource), 'no new transport-pricing endpoint added');
+  });
+
   it('R.6B-1: applies ONE OK-priced transport day via the canonical /items path with markup 20 and resolved route/service-type', () => {
     expectSourceContains(panelSource, [
       'applySelectedTransport',
