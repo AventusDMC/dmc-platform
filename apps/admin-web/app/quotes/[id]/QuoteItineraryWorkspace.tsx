@@ -3,6 +3,7 @@ import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPane
 import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { TailorMadeDraftPanel } from './TailorMadeDraftPanel';
 import { QuoteBuilderEntry } from './QuoteBuilderEntry';
+import { RoutePlannerPreview } from './RoutePlannerPreview';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import type { RouteOption } from '../../lib/routes';
 import type { TransportServiceTypeOption } from './tailor-made-transport-resolve';
@@ -217,6 +218,20 @@ export function QuoteItineraryWorkspace({
             guideServiceId={guideServiceId}
             appliedGuideDayIds={appliedGuideDayIds}
           />
+        </details>
+
+        {/* Phase S.2D-1 — UI-only per-day Route Planner PREVIEW. Reuses
+            DAY_ROUTE_PRESETS; persists nothing (no PATCH, no generator, no
+            services). Applying presets to days lands in S.2D-2. */}
+        <details id="qb-route-planner" className="quote-operational-collapsible quote-operational-collapsible-route-planner">
+          <summary>
+            <div>
+              <span className="eyebrow">Route Planner</span>
+              <strong>Preview route presets per day</strong>
+            </div>
+            <em>Preview only — not saved</em>
+          </summary>
+          <RoutePlannerPreview days={quoteItinerary.days.map((day) => ({ dayNumber: day.dayNumber, title: day.title }))} />
         </details>
 
         {servicePlanner}
