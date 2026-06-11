@@ -233,7 +233,7 @@ export function QuoteItineraryWorkspace({
           </summary>
           <RoutePlannerPreview
             apiBaseUrl={apiBaseUrl}
-            days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title }))}
+            days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes }))}
           />
         </details>
 
