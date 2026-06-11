@@ -33,6 +33,8 @@ type QuoteItineraryLinkedServiceSummary = {
   reconfirmationDueAt: string | null;
   // R.6C-1 — experience apply identifiers (for the per-(day, record) guard).
   activityId: string | null;
+  // R.7A-2.1 — client-safe public name of the linked Activity (narrative preview).
+  activityName: string | null;
   activityRateVariantId: string | null;
   ticketRateVariantId: string | null;
   service: {

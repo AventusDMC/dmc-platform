@@ -66,7 +66,9 @@ function toRoutePlannerAppliedServices(
     }
     if (qs.hotel) return [{ kind: 'hotel' as const }];
     if (qs.appliedVehicleRate) return [{ kind: 'transport' as const }];
-    if (qs.activityId) return [{ kind: 'activity' as const, name: qs.service?.name ?? null }];
+    // R.7A-2.1 — prefer the linked Activity's public name (service is null for
+    // activity items); the preview helper re-sanitizes and ignores unsafe names.
+    if (qs.activityId) return [{ kind: 'activity' as const, name: qs.activityName ?? qs.service?.name ?? null }];
     return [{ kind: 'entrance' as const, name: qs.service?.name ?? null }];
   });
 }

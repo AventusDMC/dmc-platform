@@ -141,6 +141,118 @@ test('findByQuoteId preserves excursion origin variant fields for client renderi
   });
 });
 
+test('R.7A-2.1: findByQuoteId exposes a client-safe activityName for an applied activity, no pricing/internal fields', async () => {
+  const service = createService({
+    quoteItineraryDay: {
+      findMany: async () => [
+        {
+          id: 'day-4',
+          quoteId: 'quote-1',
+          dayNumber: 4,
+          title: 'Wadi Rum / Dead Sea',
+          notes: null,
+          sortOrder: 0,
+          isActive: true,
+          createdAt: '2026-04-24T08:00:00.000Z',
+          updatedAt: '2026-04-24T08:00:00.000Z',
+          dayItems: [
+            {
+              id: 'item-1',
+              dayId: 'day-4',
+              quoteServiceId: 'quote-service-1',
+              sortOrder: 0,
+              notes: null,
+              isActive: true,
+              createdAt: '2026-04-24T08:00:00.000Z',
+              updatedAt: '2026-04-24T08:00:00.000Z',
+              quoteService: {
+                id: 'quote-service-1',
+                quoteId: 'quote-1',
+                pricingDescription: 'INTERNAL: cost 60 / sell 96 / markup 60%',
+                activityId: 'activity-jeep',
+                activityRateVariantId: 'variant-1',
+                ticketRateVariantId: null,
+                // service is null for activity items (matches production shape).
+                service: null,
+                hotel: null,
+                contract: null,
+                roomCategory: null,
+                appliedVehicleRate: null,
+                touringRoute: null,
+                // R.7A-2.1 — the loaded Activity relation (public name only).
+                activity: { id: 'activity-jeep', name: 'Wadi Rum Jeep Tour' },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  const result = await service.findByQuoteId('quote-1', { companyId: 'company-1' });
+  const qs = result.days[0].dayItems[0].quoteService as Record<string, unknown>;
+
+  // The clean public activity name is exposed for the narrative preview…
+  assert.equal(qs.activityName, 'Wadi Rum Jeep Tour');
+  assert.equal(qs.activityId, 'activity-jeep');
+  // …and the serialized summary exposes no cost/sell/markup or raw Activity object.
+  assert.equal('activity' in qs, false, 'must not pass through the raw Activity relation');
+  for (const forbidden of ['cost', 'costPrice', 'sellPrice', 'markup', 'markupPercent', 'supplierId']) {
+    assert.equal(forbidden in qs, false, `serialized summary must not include ${forbidden}`);
+  }
+  // pricingDescription is a pre-existing field (not introduced here) but must
+  // never carry into the narrative preview — the admin-web mapper ignores it.
+});
+
+test('R.7A-2.1: activityName is null when no Activity is linked (entrances/other items stay no-op)', async () => {
+  const service = createService({
+    quoteItineraryDay: {
+      findMany: async () => [
+        {
+          id: 'day-3',
+          quoteId: 'quote-1',
+          dayNumber: 3,
+          title: 'Petra Visit / Wadi Rum',
+          notes: null,
+          sortOrder: 0,
+          isActive: true,
+          createdAt: '2026-04-24T08:00:00.000Z',
+          updatedAt: '2026-04-24T08:00:00.000Z',
+          dayItems: [
+            {
+              id: 'item-1',
+              dayId: 'day-3',
+              quoteServiceId: 'quote-service-1',
+              sortOrder: 0,
+              notes: null,
+              isActive: true,
+              createdAt: '2026-04-24T08:00:00.000Z',
+              updatedAt: '2026-04-24T08:00:00.000Z',
+              quoteService: {
+                id: 'quote-service-1',
+                quoteId: 'quote-1',
+                activityId: null,
+                // Entrance applied via serviceId with an internal-style name.
+                service: { id: 'svc-1', name: 'Petra 3 Days archived variant source', category: 'variant_archived', serviceType: null },
+                hotel: null,
+                contract: null,
+                roomCategory: null,
+                appliedVehicleRate: null,
+                touringRoute: null,
+                activity: null,
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  const result = await service.findByQuoteId('quote-1', { companyId: 'company-1' });
+  const qs = result.days[0].dayItems[0].quoteService as Record<string, unknown>;
+  assert.equal(qs.activityName, null, 'no Activity linked → activityName null (entrance stays no-op)');
+});
+
 test('findByQuoteId returns an empty poiAssignments array for days that have none (existing quotes unchanged)', async () => {
   const service = createService({
     quoteItineraryDay: {
