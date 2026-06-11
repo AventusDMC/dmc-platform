@@ -12,45 +12,59 @@ function expectSourceContains(src: string, fragments: string[]) {
   }
 }
 
-describe('Phase S.2D-1 — Route Planner preview (UI-only, not persisted)', () => {
-  it('renders a preview section, one row per day, reusing DAY_ROUTE_PRESETS', () => {
+describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only)', () => {
+  it('renders one row per day with a preset dropdown reusing DAY_ROUTE_PRESETS', () => {
     expectSourceContains(source, [
-      "export function RoutePlannerPreview",
-      // reuses the existing preset catalog (no new place data)
+      'export function RoutePlannerPreview',
       "import { DAY_ROUTE_PRESETS, getDayRoutePreset } from './day-route-presets'",
-      'aria-label="Route Planner (preview)"',
-      // one row per itinerary day
+      'aria-label="Route Planner"',
       'sorted.map((day) =>',
       'Day {String(day.dayNumber).padStart(2, \'0\')}',
       'Current title:',
-      // preset dropdown with the catalog labels + the two non-preset options
       'DAY_ROUTE_PRESETS.map((p) =>',
       '<option key={p.key} value={p.key}>{p.label}</option>',
       'Custom / keep current',
       'Leisure / no transport',
-      // preview values from the selected preset
       'preset.defaultTitle',
       'preset.narrative',
       'preset.overnightCity',
-      // explicit preview-only labelling
-      'Preview only — not saved yet',
     ]);
   });
 
-  it('is preview-only — no persistence, no PATCH, no generator/service calls', () => {
-    // No network writes of any kind from this component (the real guarantee).
-    assert.ok(!/\bfetch\s*\(/.test(source), 'must not call fetch');
-    // Call-shaped checks (so the descriptive header comment doesn't false-positive):
-    assert.ok(!/method:\s*['"]PATCH['"]/i.test(source), 'must not issue a PATCH request');
-    assert.ok(!/quotes\/[^'"`]*\/itinerary\/day/.test(source), 'must not hit the day endpoint');
-    assert.ok(!source.includes('tailor-made-draft'), 'must not call the generator/apply endpoints');
+  it('Apply to Day writes ONLY title + notes via the existing PATCH /itinerary/day/:dayId', () => {
+    expectSourceContains(source, [
+      // explicit, destructive-action button copy
+      'Replace Day with Selected Preset',
+      // apply handler hits the EXISTING day PATCH endpoint (no new endpoint)
+      'async function applyPresetToDay',
+      "method: 'PATCH'",
+      '`${apiBaseUrl}/itinerary/day/${day.id}`',
+      // payload is ONLY the title + client-safe narrative
+      'body: JSON.stringify({ title: preset.defaultTitle, notes: preset.narrative })',
+      // reuse the standard auth + error helpers + refresh
+      'buildAuthHeaders',
+      'getErrorMessage',
+      'router.refresh()',
+      // confirmation before overwriting the day
+      'This will replace the current day title and narrative with the selected route preset. Continue?',
+    ]);
+    // The PATCH body must NOT touch dayNumber / sortOrder / isActive (partial
+    // update). Scope the check to JSON.stringify(...) so the header comment that
+    // describes the partial update doesn't false-positive.
+    assert.ok(!/JSON\.stringify\([^)]*sortOrder/.test(source), 'apply body must not send sortOrder');
+    assert.ok(!/JSON\.stringify\([^)]*isActive/.test(source), 'apply body must not send isActive');
+    assert.ok(!/JSON\.stringify\([^)]*dayNumber/.test(source), 'apply body must not send dayNumber');
+  });
+
+  it('Custom / keep current and Leisure never PATCH; no items / generator / pricing', () => {
+    // applyPresetToDay bails when there is no real preset (Custom-keep / Leisure).
+    expectSourceContains(source, ['const preset = getDayRoutePreset(presetKey);', 'if (!preset) return;']);
+    // No QuoteItem creation, no generator/apply call.
     assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'must not create QuoteItems');
-    // Selecting a preset only updates LOCAL preview state — it never mutates the
-    // passed-in day objects (no assignment to day.title / day.narrative).
+    assert.ok(!source.includes('tailor-made-draft'), 'must not call the generator/apply endpoints');
+    // No mutation of the passed-in day objects.
     assert.ok(!/day\.title\s*=/.test(source), 'must not mutate day.title');
     assert.ok(!/day\.narrative\s*=/.test(source), 'must not mutate day narrative');
-    // The only state is the local preview selection.
-    expectSourceContains(source, ['const [selected, setSelected] = useState']);
   });
 
   it('warns that 5-day classic routing is not yet automatable', () => {
@@ -59,17 +73,17 @@ describe('Phase S.2D-1 — Route Planner preview (UI-only, not persisted)', () =
     ]);
   });
 
-  it('is mounted in the itinerary workspace as a preview-only details section', () => {
+  it('is mounted in the itinerary workspace with apiBaseUrl + day ids', () => {
     expectSourceContains(workspaceSource, [
       "import { RoutePlannerPreview } from './RoutePlannerPreview';",
       '<RoutePlannerPreview',
-      'days={quoteItinerary.days.map((day) => ({ dayNumber: day.dayNumber, title: day.title }))}',
+      'apiBaseUrl={apiBaseUrl}',
+      'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title }))}',
       'id="qb-route-planner"',
     ]);
   });
 
   it('the preset catalog it reuses is unchanged (no new places exposed here)', () => {
-    // S.2D-1 must not add places/presets — it only consumes the existing catalog.
     expectSourceContains(presetsSource, ['export const DAY_ROUTE_PRESETS', 'export const CUSTOM_DAY_PRESET_KEY']);
   });
 });

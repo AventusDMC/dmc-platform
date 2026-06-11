@@ -220,18 +220,21 @@ export function QuoteItineraryWorkspace({
           />
         </details>
 
-        {/* Phase S.2D-1 — UI-only per-day Route Planner PREVIEW. Reuses
-            DAY_ROUTE_PRESETS; persists nothing (no PATCH, no generator, no
-            services). Applying presets to days lands in S.2D-2. */}
+        {/* Phase S.2D-1/-2 — per-day Route Planner. Preview presets and "Apply to
+            Day" writes the selected preset to ONE day's title + notes via the
+            existing PATCH /itinerary/day. No generator/services/pricing. */}
         <details id="qb-route-planner" className="quote-operational-collapsible quote-operational-collapsible-route-planner">
           <summary>
             <div>
               <span className="eyebrow">Route Planner</span>
-              <strong>Preview route presets per day</strong>
+              <strong>Apply route presets per day</strong>
             </div>
-            <em>Preview only — not saved</em>
+            <em>Title & narrative only</em>
           </summary>
-          <RoutePlannerPreview days={quoteItinerary.days.map((day) => ({ dayNumber: day.dayNumber, title: day.title }))} />
+          <RoutePlannerPreview
+            apiBaseUrl={apiBaseUrl}
+            days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title }))}
+          />
         </details>
 
         {servicePlanner}
