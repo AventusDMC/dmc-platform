@@ -27,6 +27,21 @@ export type TransportSuggestionLike = {
 
 export type TransportResolveStatus = 'OK' | 'NO_ROUTE' | 'NO_RATE' | 'NEEDS_SELECTION';
 
+// T.5D-1 — operator-safe pricing basis for the resolved plan. Never exposes raw
+// engine enums (POINT_TO_POINT / FULL_DAY / capacity_unit) to the operator UI.
+export type TransportPricingBasis =
+  | 'PACKAGE_FULL_DAY'
+  | 'ROUTE_RATE'
+  | 'ARRIVAL_TRANSFER'
+  | 'DEPARTURE_TRANSFER'
+  | 'NO_TRANSPORT';
+
+// T.5D-1 — optional package-policy context (from classifyPackageTransportPolicy).
+// When usePackageFullDay is true, TOURING_FULL_DAY days resolve their PRICING
+// target to the canonical Amman-disposal DAILY_FULL_DAY rate while keeping the
+// real day route label. Default (omitted) preserves the pre-T.5D behaviour.
+export type ResolveTransportOptions = { usePackageFullDay?: boolean };
+
 export type TransportResolvedPlan = {
   // Resolution status BEFORE pricing. 'OK' here means a route + service type were
   // resolved and the leg is priceable; the panel still calls /transport-pricing/
@@ -46,6 +61,10 @@ export type TransportResolvedPlan = {
   // so legs already priced under the primary are unchanged.
   fallbackServiceTypeId: string | null;
   fallbackServiceTypeName: string | null;
+  // T.5D-1 — operator-safe pricing basis (PACKAGE_FULL_DAY when the package
+  // threshold applies to a touring day; ROUTE_RATE / ARRIVAL_TRANSFER /
+  // DEPARTURE_TRANSFER / NO_TRANSPORT otherwise). Display classification only.
+  pricingBasis: TransportPricingBasis;
   // Admin planning hint only — never client-facing text.
   pricingModeHint: 'POINT_TO_POINT' | 'FULL_DAY' | null;
   reason: string;
@@ -193,8 +212,9 @@ export function resolveTransportPlan(
   suggestion: TransportSuggestionLike,
   routes: RouteOption[],
   serviceTypes: TransportServiceTypeOption[],
+  options: ResolveTransportOptions = {},
 ): TransportResolvedPlan {
-  const noRoute = (reason: string): TransportResolvedPlan => ({
+  const noRoute = (reason: string, basis: TransportPricingBasis = 'NO_TRANSPORT'): TransportResolvedPlan => ({
     status: 'NO_ROUTE',
     routeId: null,
     normalizedKey: null,
@@ -204,6 +224,7 @@ export function resolveTransportPlan(
     fallbackServiceTypeId: null,
     fallbackServiceTypeName: null,
     pricingModeHint: suggestion.pricingModeSuggestion ?? null,
+    pricingBasis: basis,
     reason,
   });
 
@@ -214,30 +235,53 @@ export function resolveTransportPlan(
   let serviceType: TransportServiceTypeOption | null = null;
   // T.2 — secondary service type for the panel's no-rate fallback (airport legs).
   let fallbackServiceType: TransportServiceTypeOption | null = null;
+  let pricingBasis: TransportPricingBasis = 'ROUTE_RATE';
+  // Display label — always the REAL day route, never the canonical pricing route.
+  let routeLabel: string | null = suggestion.routeLabel ?? null;
 
   if (suggestion.suggestedTransportType === 'ARRIVAL_TRANSFER') {
+    pricingBasis = 'ARRIVAL_TRANSFER';
     serviceType = airportTransferType(serviceTypes);
     // Some airport legs only have rates under the general (point-to-point) pool.
     const general = generalTransferType(serviceTypes);
     fallbackServiceType = general && general.id !== serviceType?.id ? general : null;
     route = destination ? findAirportRoute(routes, destination, 'arrival') : null;
   } else if (suggestion.suggestedTransportType === 'DEPARTURE_TRANSFER') {
+    pricingBasis = 'DEPARTURE_TRANSFER';
     serviceType = airportTransferType(serviceTypes);
     const general = generalTransferType(serviceTypes);
     fallbackServiceType = general && general.id !== serviceType?.id ? general : null;
     route = origin ? findAirportRoute(routes, origin, 'departure') : null;
   } else if (suggestion.suggestedTransportType === 'TOURING_FULL_DAY') {
-    const intercity = Boolean(origin && destination && normalizeTransportText(origin) !== normalizeTransportText(destination));
-    if (intercity) {
-      serviceType = generalTransferType(serviceTypes);
-      route = findRoute(routes, origin, destination) || findDailyDisposalRoute(routes);
-      if (!route) serviceType = dailyFullDayType(serviceTypes);
+    // T.5D-1 — package full-day override: when the package has 3+ touring days,
+    // every touring day prices against the canonical Amman-disposal DAILY_FULL_DAY
+    // rate, while the displayed route label stays the real day route. Falls back
+    // to regular per-leg behaviour if that target can't be resolved.
+    const packageServiceType = options.usePackageFullDay ? dailyFullDayType(serviceTypes) : null;
+    const packageRoute = options.usePackageFullDay ? findDailyDisposalRoute(routes) : null;
+    if (packageServiceType && packageRoute) {
+      pricingBasis = 'PACKAGE_FULL_DAY';
+      serviceType = packageServiceType;
+      route = packageRoute;
+      // Never surface the disposal route name — keep the real day route for display.
+      routeLabel =
+        suggestion.routeLabel ||
+        (origin && destination ? `${origin} / ${destination}` : origin || destination) ||
+        null;
     } else {
-      serviceType = dailyFullDayType(serviceTypes);
-      route = findDailyDisposalRoute(routes);
+      pricingBasis = 'ROUTE_RATE';
+      const intercity = Boolean(origin && destination && normalizeTransportText(origin) !== normalizeTransportText(destination));
+      if (intercity) {
+        serviceType = generalTransferType(serviceTypes);
+        route = findRoute(routes, origin, destination) || findDailyDisposalRoute(routes);
+        if (!route) serviceType = dailyFullDayType(serviceTypes);
+      } else {
+        serviceType = dailyFullDayType(serviceTypes);
+        route = findDailyDisposalRoute(routes);
+      }
     }
   } else {
-    return noRoute('No transport required for this day.');
+    return noRoute('No transport required for this day.', 'NO_TRANSPORT');
   }
 
   if (!serviceType) return noRoute('No transport service type is configured.');
@@ -247,12 +291,13 @@ export function resolveTransportPlan(
     status: 'OK',
     routeId: route.id,
     normalizedKey: route.normalizedKey || null,
-    routeLabel: suggestion.routeLabel || route.name || null,
+    routeLabel: routeLabel || route.name || null,
     serviceTypeId: serviceType.id,
     serviceTypeName: serviceType.name,
     fallbackServiceTypeId: fallbackServiceType?.id ?? null,
     fallbackServiceTypeName: fallbackServiceType?.name ?? null,
     pricingModeHint: suggestion.pricingModeSuggestion ?? null,
+    pricingBasis,
     reason: 'Route and service type resolved.',
   };
 }

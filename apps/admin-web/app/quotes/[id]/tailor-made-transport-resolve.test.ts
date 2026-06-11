@@ -7,6 +7,7 @@ import {
   classifyPackageTransportPolicy,
   PACKAGE_FULL_DAY_MIN_TOURING_DAYS,
   type TransportServiceTypeOption,
+  type TransportSuggestionLike,
 } from './tailor-made-transport-resolve';
 import type { RouteOption } from '../../lib/routes';
 
@@ -196,7 +197,7 @@ describe('R.6B-0 — resolveTransportPlan', () => {
 });
 
 // Curated-template day transport classifications (only the field the policy reads).
-const tt = (t) => ({ suggestedTransportType: t });
+const tt = (t: TransportSuggestionLike['suggestedTransportType']) => ({ suggestedTransportType: t });
 const DAYS_4 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
 const DAYS_5 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
 const DAYS_6 = [tt('ARRIVAL_TRANSFER'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('TOURING_FULL_DAY'), tt('DEPARTURE_TRANSFER')];
@@ -261,5 +262,83 @@ describe('T.5B — classifyPackageTransportPolicy', () => {
     const b = classifyPackageTransportPolicy(DAYS_6);
     assert.equal(a.reason, b.reason);
     assert.match(a.reason, /full touring days/i);
+  });
+});
+
+describe('T.5D-1 — resolveTransportPlan package full-day pricing basis', () => {
+  const touring = (origin: string, destination: string, routeLabel?: string): TransportSuggestionLike => ({
+    dayNumber: 3, suggestedTransportType: 'TOURING_FULL_DAY', origin, destination, routeLabel, pricingModeSuggestion: 'FULL_DAY',
+  });
+
+  it('1. usePackageFullDay false: intercity touring day stays ROUTE_RATE on its real route', () => {
+    const plan = resolveTransportPlan(touring('Petra', 'Wadi Rum', 'Petra / Wadi Rum'), ROUTES, SERVICE_TYPES, { usePackageFullDay: false });
+    assert.equal(plan.pricingBasis, 'ROUTE_RATE');
+    assert.equal(plan.routeId, 'r-petra-wadirum');
+    assert.equal(plan.serviceTypeId, 'st-p2p');
+    assert.equal(plan.routeLabel, 'Petra / Wadi Rum');
+  });
+
+  it('2-4. usePackageFullDay true: touring day → PACKAGE_FULL_DAY on the disposal route + DAILY_FULL_DAY, real label kept', () => {
+    const plan = resolveTransportPlan(touring('Petra', 'Wadi Rum', 'Petra / Wadi Rum'), ROUTES, SERVICE_TYPES, { usePackageFullDay: true });
+    assert.equal(plan.pricingBasis, 'PACKAGE_FULL_DAY');
+    assert.equal(plan.routeId, 'r-amman-amman', 'prices against the canonical Amman-disposal route');
+    assert.equal(plan.serviceTypeId, 'st-daily', 'DAILY_FULL_DAY service type');
+    assert.equal(plan.routeLabel, 'Petra / Wadi Rum', 'real day route label preserved (never the disposal route name)');
+  });
+
+  it('package mode composes a real label from origin/destination when routeLabel is absent (never disposal name)', () => {
+    const plan = resolveTransportPlan(
+      { dayNumber: 4, suggestedTransportType: 'TOURING_FULL_DAY', origin: 'Wadi Rum', destination: 'Dead Sea' },
+      ROUTES, SERVICE_TYPES, { usePackageFullDay: true },
+    );
+    assert.equal(plan.pricingBasis, 'PACKAGE_FULL_DAY');
+    assert.equal(plan.routeLabel, 'Wadi Rum / Dead Sea');
+    assert.notEqual(plan.routeLabel, 'Amman -> Amman');
+  });
+
+  it('5. arrival/departure unchanged even in package mode; basis is the transfer label', () => {
+    const arrival = resolveTransportPlan(
+      { dayNumber: 1, suggestedTransportType: 'ARRIVAL_TRANSFER', origin: 'QAIA', destination: 'Amman', routeLabel: 'QAIA → Amman' },
+      ROUTES, SERVICE_TYPES, { usePackageFullDay: true },
+    );
+    assert.equal(arrival.pricingBasis, 'ARRIVAL_TRANSFER');
+    assert.equal(arrival.routeId, 'r-qaia-amman');
+    assert.equal(arrival.serviceTypeId, 'st-airport');
+    const departure = resolveTransportPlan(
+      { dayNumber: 8, suggestedTransportType: 'DEPARTURE_TRANSFER', origin: 'Dead Sea', destination: 'Airport', routeLabel: 'Dead Sea → Airport' },
+      [...ROUTES, route({ id: 'r-deadsea-qaia', from: 'Dead Sea', to: 'Queen Alia International Airport', name: 'Dead Sea -> QAIA Airport' })],
+      SERVICE_TYPES, { usePackageFullDay: true },
+    );
+    assert.equal(departure.pricingBasis, 'DEPARTURE_TRANSFER');
+  });
+
+  it('6. NONE/leisure day → NO_TRANSPORT basis, unchanged', () => {
+    const plan = resolveTransportPlan({ dayNumber: 5, suggestedTransportType: 'NONE' }, ROUTES, SERVICE_TYPES, { usePackageFullDay: true });
+    assert.equal(plan.status, 'NO_ROUTE');
+    assert.equal(plan.pricingBasis, 'NO_TRANSPORT');
+  });
+
+  it('7. same-base Amman/Jerash/Amman: full-day disposal in both modes (no regress), basis flips with the package flag', () => {
+    const sameBase = (opts: { usePackageFullDay: boolean }) => resolveTransportPlan(
+      { dayNumber: 2, suggestedTransportType: 'TOURING_FULL_DAY', origin: 'Amman', destination: 'Amman', routeLabel: 'Amman / Jerash / Amman', pricingModeSuggestion: 'FULL_DAY' },
+      ROUTES, SERVICE_TYPES, opts,
+    );
+    const regular = sameBase({ usePackageFullDay: false });
+    assert.equal(regular.routeId, 'r-amman-amman');
+    assert.equal(regular.serviceTypeId, 'st-daily');
+    assert.equal(regular.pricingBasis, 'ROUTE_RATE');
+    assert.equal(regular.routeLabel, 'Amman / Jerash / Amman');
+    const pkg = sameBase({ usePackageFullDay: true });
+    assert.equal(pkg.routeId, 'r-amman-amman');
+    assert.equal(pkg.serviceTypeId, 'st-daily');
+    assert.equal(pkg.pricingBasis, 'PACKAGE_FULL_DAY');
+    assert.equal(pkg.routeLabel, 'Amman / Jerash / Amman');
+  });
+
+  it('default (no options arg) preserves pre-T.5D behaviour + basis ROUTE_RATE for touring', () => {
+    const plan = resolveTransportPlan(touring('Petra', 'Wadi Rum', 'Petra / Wadi Rum'), ROUTES, SERVICE_TYPES);
+    assert.equal(plan.pricingBasis, 'ROUTE_RATE');
+    assert.equal(plan.routeId, 'r-petra-wadirum');
+    assert.equal(plan.serviceTypeId, 'st-p2p');
   });
 });
