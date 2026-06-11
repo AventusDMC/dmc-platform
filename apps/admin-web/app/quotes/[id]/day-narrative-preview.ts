@@ -15,20 +15,36 @@
 // internal/operational tokens (supplier/contract/cost/markup/vehicle class/…),
 // so an operator-edited title can never leak internal data into the preview.
 
+// Phase R.7A-2 — a minimal, client-safe descriptor of a service ALREADY applied
+// to the day. The caller (workspace) maps each day's QuoteItems to this shape;
+// only `kind` and (for entrance/activity) a display `name` are passed — never
+// pricing, supplier, contract, vehicle class, room/meal/occupancy. The helper
+// re-sanitizes `name` defensively and only ever weaves in a guide mention and
+// client-safe activity callouts. hotel/transport are intentionally NOT mentioned
+// (overnight city + route movement phrasing already cover them).
+export type AppliedNarrativeService = {
+  kind: 'guide' | 'entrance' | 'activity' | 'hotel' | 'transport';
+  name?: string | null;
+};
+
 export type DayNarrativePreviewInput = {
   title: string | null | undefined;
   notes?: string | null;
   overnightCity?: string | null;
   dayNumber?: number;
+  /** R.7A-2 — services already applied to this day (applied wins; no suggestions). */
+  appliedServices?: AppliedNarrativeService[];
 };
 
 export type DayNarrativePreview = {
   /** The polished English preview paragraph. */
   text: string;
-  /** Always 'route' in R.7A-1 (route/day text only; services come in R.7A-2). */
-  sourceLayer: 'route';
-  /** Structural + diagnostic flags (e.g. 'arrival', 'touring', 'unknown-place'). */
+  /** 'route' = route/day text only; 'service-aware' = applied services woven in. */
+  sourceLayer: 'route' | 'service-aware';
+  /** Structural + diagnostic flags (e.g. 'arrival', 'touring', 'service-aware'). */
   flags: string[];
+  /** Applied services actually mentioned (e.g. ['guide', 'activity:Wadi Rum Jeep Tour']). */
+  usedServices: string[];
 };
 
 // Curated, client-safe descriptors keyed by the lowercased place name.
@@ -128,18 +144,50 @@ function visitChain(names: string[]): string {
 }
 
 /**
- * Phase R.7A-1 — build the read-only English client narrative for one day from
- * its route/day text only. Pure + deterministic.
+ * Phase R.7A-1/-2 — build the read-only English client narrative for one day.
+ * R.7A-1: composed from route/day text only (title + notes). R.7A-2: if services
+ * are already applied to the day, an applied local guide and client-safe activity
+ * callouts are woven into the sightseeing sentence. Pure + deterministic.
  */
 export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNarrativePreview {
   const title = (input.title || '').trim();
   const notes = String(input.notes || '');
   const flags: string[] = [];
-  const route = (text: string): DayNarrativePreview => ({ text, sourceLayer: 'route', flags });
+
+  // R.7A-2 — client-safe enrichment fragment from APPLIED services only.
+  // Applied guide → ", with a local guide"; applied activities → ", including a
+  // <name>". Entrances are no-ops (the place is already named); hotel/transport
+  // are intentionally never mentioned (no name/vehicle class/supplier leak).
+  const services = input.appliedServices || [];
+  const guideApplied = services.some((s) => s.kind === 'guide');
+  const activityNames = services
+    .filter((s) => s.kind === 'activity')
+    .map((s) => sanitizePlace(s.name))
+    .filter((n) => n.length > 0);
+  const activityClause = activityNames.length
+    ? `, including ${activityNames.map((n) => `a ${n}`).join(' and ')}`
+    : '';
+  const guideClause = guideApplied ? ', with a local guide' : '';
+  // Order: activity callout(s) then the guide mention.
+  const enrich = `${activityClause}${guideClause}`;
+  const usedServices: string[] = [
+    ...activityNames.map((n) => `activity:${n}`),
+    ...(guideApplied ? ['guide'] : []),
+  ];
+
+  // serviceUsed is true only when `enrich` is actually woven into the sentence
+  // (i.e. a sightseeing branch). It drives sourceLayer + the "Includes applied
+  // services" label. hotel/transport-only days stay 'route' (nothing woven).
+  const finalize = (text: string, serviceUsed: boolean): DayNarrativePreview => ({
+    text,
+    sourceLayer: serviceUsed ? 'service-aware' : 'route',
+    flags: serviceUsed ? [...flags, 'service-aware'] : flags,
+    usedServices: serviceUsed ? usedServices : [],
+  });
 
   if (!title) {
     flags.push('empty');
-    return route('Day at leisure.');
+    return finalize('Day at leisure.', false);
   }
 
   // Arrival day → airport meet & assist + transfer to the overnight city.
@@ -149,7 +197,7 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     const city = fromTitle || sanitizePlace(input.overnightCity);
     if (city && !descriptorFor(city)) flags.push('unknown-place');
     const dest = city ? artName(city) : 'your hotel';
-    return route(`On arrival, meet and assist at the airport, then transfer to ${dest} for overnight.`);
+    return finalize(`On arrival, meet and assist at the airport, then transfer to ${dest} for overnight.`, false);
   }
 
   // Departure day → transfer from the last city to the airport.
@@ -157,16 +205,18 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     flags.push('departure');
     const m = notes.match(/from\s+(?:the\s+)?(.+?)\s+to\b/i);
     const origin = sanitizePlace(m ? m[1] : input.overnightCity);
-    return route(
+    return finalize(
       origin
         ? `Transfer from ${artName(origin)} to the airport for your departure flight.`
         : 'Transfer to the airport for your departure flight.',
+      false,
     );
   }
 
   const segments = parseSegments(title);
 
-  // Single segment → city tour or a leisure day.
+  // Single segment → city tour or a leisure day. (No service weaving — a guided
+  // city tour already implies a guide; keep these route-only.)
   if (segments.length <= 1) {
     flags.push('leisure');
     const place = segments[0]?.name || sanitizePlace(input.overnightCity);
@@ -174,11 +224,12 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     if (/\btour\b/i.test(title)) {
       const tourPlace = sanitizePlace(title.replace(/\b(city|half[- ]?day|full[- ]?day|tour)\b/gi, ' ')) || place;
       const desc = descriptorFor(tourPlace);
-      return route(
+      return finalize(
         `After breakfast, enjoy a guided city tour of ${artName(tourPlace)}${desc ? `, ${desc}` : ''}, then return to your hotel for overnight.`,
+        false,
       );
     }
-    return route(`Enjoy a day at leisure${place ? ` at ${artName(place)}` : ''} for overnight.`);
+    return finalize(`Enjoy a day at leisure${place ? ` at ${artName(place)}` : ''} for overnight.`, false);
   }
 
   flags.push('touring');
@@ -187,6 +238,7 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
   const last = names[names.length - 1];
   const roundTrip = segments.length >= 3 && key(origin) === key(last);
   const visitOrigin = segments[0].wasVisit;
+  const woven = enrich.length > 0;
 
   if (names.some((n) => !descriptorFor(n))) flags.push('unknown-place');
 
@@ -194,7 +246,7 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
   if (roundTrip) {
     flags.push('round-trip');
     const middles = names.slice(1, names.length - 1);
-    return route(`After breakfast, ${visitChain(middles)}, then return to ${artName(origin)} for overnight.`);
+    return finalize(`After breakfast, ${visitChain(middles)}${enrich}, then return to ${artName(origin)} for overnight.`, woven);
   }
 
   // Visit-the-origin day ("Petra Visit / Wadi Rum"): visit origin, then continue.
@@ -204,7 +256,7 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     // The origin is the sightseeing stop (keep its descriptor); the place(s) we
     // then continue to are move-to destinations (name only — see examples).
     const continueParts = rest.map((n) => `continue to ${artName(n)}`).join(', then ');
-    return route(`After breakfast, visit ${visitClause(origin)}. Later, ${continueParts} for overnight.`);
+    return finalize(`After breakfast, visit ${visitClause(origin)}${enrich}. Later, ${continueParts} for overnight.`, woven);
   }
 
   // Simple two-stop transition (origin → destination, no intermediate sights).
@@ -214,11 +266,12 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     const desc = descriptorFor(dest);
     const tail = desc ? `${artName(dest)}, ${desc}, for overnight.` : `${artName(dest)} for overnight.`;
     const opener = TRANSITION_OPENER[key(origin)];
-    return route(
-      opener
-        ? `${opener} before continuing to ${tail}`
-        : `After breakfast, depart ${artName(origin)} and continue to ${tail}`,
-    );
+    if (opener) {
+      const sep = enrich ? ', before continuing to ' : ' before continuing to ';
+      return finalize(`${opener}${enrich}${sep}${tail}`, woven);
+    }
+    // Fallback (no bespoke opener) has no clean sightseeing slot → route-only.
+    return finalize(`After breakfast, depart ${artName(origin)} and continue to ${tail}`, false);
   }
 
   // Depart base, visit intermediate stops, proceed to the overnight destination.
@@ -226,7 +279,8 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
   const middles = names.slice(1, names.length - 1);
   const dir = DIRECTION[key(last)];
   const directionPhrase = dir ? `proceed ${dir} to` : 'continue on to';
-  return route(
-    `After breakfast, depart ${artName(origin)} and ${visitChain(middles)}. Afterwards, ${directionPhrase} ${artName(last)} for overnight.`,
+  return finalize(
+    `After breakfast, depart ${artName(origin)} and ${visitChain(middles)}${enrich}. Afterwards, ${directionPhrase} ${artName(last)} for overnight.`,
+    woven,
   );
 }

@@ -111,3 +111,115 @@ describe('R.7A-1 — buildDayNarrativePreview (route/day text only)', () => {
     );
   });
 });
+
+describe('R.7A-2 — applied services woven into the preview (applied wins; no suggestions)', () => {
+  it('1. route-only output is byte-identical when no applied services are passed (empty or omitted)', () => {
+    const omitted = buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum' });
+    const empty = buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum', appliedServices: [] });
+    assert.equal(empty.text, omitted.text);
+    assert.equal(empty.sourceLayer, 'route');
+    assert.equal(empty.usedServices.length, 0);
+  });
+
+  it('2. applied Petra entrance + local guide enriches the Petra preview safely', () => {
+    const { text, sourceLayer, usedServices } = buildDayNarrativePreview({
+      title: 'Petra Visit / Wadi Rum',
+      appliedServices: [{ kind: 'entrance', name: 'Petra' }, { kind: 'guide' }],
+    });
+    assert.equal(
+      text,
+      'After breakfast, visit Petra, the rose-red city and one of Jordan’s most famous archaeological sites, with a local guide. Later, continue to Wadi Rum for overnight.',
+    );
+    assert.equal(sourceLayer, 'service-aware');
+    assert.deepEqual(usedServices, ['guide']);
+  });
+
+  it('3. applied Jerash entrance + local guide enriches the Jerash round-trip safely', () => {
+    const { text, sourceLayer } = buildDayNarrativePreview({
+      title: 'Amman / Jerash / Amman',
+      appliedServices: [{ kind: 'entrance', name: 'Jerash' }, { kind: 'guide' }],
+    });
+    assert.equal(
+      text,
+      'After breakfast, visit Jerash, one of the best-preserved Roman cities in the region, with a local guide, then return to Amman for overnight.',
+    );
+    assert.equal(sourceLayer, 'service-aware');
+  });
+
+  it('4. applied Wadi Rum Jeep Tour enriches the Wadi Rum preview safely', () => {
+    const { text, sourceLayer, usedServices } = buildDayNarrativePreview({
+      title: 'Wadi Rum / Dead Sea',
+      appliedServices: [{ kind: 'activity', name: 'Wadi Rum Jeep Tour' }],
+    });
+    assert.equal(
+      text,
+      'Enjoy the desert scenery of Wadi Rum, including a Wadi Rum Jeep Tour, before continuing to the Dead Sea, the lowest point on earth, for overnight.',
+    );
+    assert.equal(sourceLayer, 'service-aware');
+    assert.deepEqual(usedServices, ['activity:Wadi Rum Jeep Tour']);
+  });
+
+  it('5. applied hotel never leaks hotel name / room / meal / occupancy (route-only, unchanged)', () => {
+    const routeOnly = buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum' });
+    const withHotel = buildDayNarrativePreview({
+      title: 'Petra Visit / Wadi Rum',
+      appliedServices: [{ kind: 'hotel', name: 'Mövenpick Resort Petra — Deluxe Room, Half Board, Double Occupancy' }],
+    });
+    assert.equal(withHotel.text, routeOnly.text);
+    assert.equal(withHotel.sourceLayer, 'route');
+    for (const token of ['Mövenpick', 'Deluxe', 'Room', 'Half Board', 'Occupancy']) {
+      assert.ok(!withHotel.text.includes(token), `must not leak "${token}"`);
+    }
+  });
+
+  it('6. applied transport never leaks vehicle class / supplier / route IDs (route-only, unchanged)', () => {
+    const routeOnly = buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' });
+    const withTransport = buildDayNarrativePreview({
+      title: 'Wadi Rum / Dead Sea',
+      appliedServices: [{ kind: 'transport', name: 'Coaster 30-seat / Alpha Tours / route-1234 / FULL_DAY' }],
+    });
+    assert.equal(withTransport.text, routeOnly.text);
+    assert.equal(withTransport.sourceLayer, 'route');
+    for (const token of ['Coaster', '30-seat', 'Alpha', 'route-1234', 'FULL_DAY']) {
+      assert.ok(!withTransport.text.includes(token), `must not leak "${token}"`);
+    }
+  });
+
+  it('7. sourceLayer = route when no service is woven in', () => {
+    assert.equal(buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }).sourceLayer, 'route');
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea', appliedServices: [{ kind: 'hotel' }] }).sourceLayer,
+      'route',
+    );
+  });
+
+  it('8. sourceLayer = service-aware when a guide/activity is woven in', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum', appliedServices: [{ kind: 'guide' }] }).sourceLayer,
+      'service-aware',
+    );
+  });
+
+  it('9. leakage: a dirty applied activity name is scrubbed; no internal data / "Overnight: No"', () => {
+    const { text } = buildDayNarrativePreview({
+      title: 'Wadi Rum / Dead Sea',
+      appliedServices: [
+        { kind: 'activity', name: 'Wadi Rum Jeep Tour (cost USD 80, supplier Alpha, Coaster, contract C-9, markup 22%, code WR123)' },
+        { kind: 'guide' },
+      ],
+    });
+    for (const token of ['cost', 'USD', '80', 'supplier', 'Alpha', 'Coaster', 'contract', 'C-9', 'markup', '22%', 'WR123', 'Overnight: No', 'pricingDescription']) {
+      assert.ok(!text.includes(token), `preview must not contain "${token}" — got: ${text}`);
+    }
+    assert.ok(text.includes('including a Wadi Rum Jeep Tour'), 'clean activity name still surfaces');
+    assert.ok(text.includes('with a local guide'), 'guide still woven');
+  });
+
+  it('10. deterministic with services: same input → identical output', () => {
+    const input = { title: 'Petra Visit / Wadi Rum', appliedServices: [{ kind: 'guide' as const }] };
+    const a = buildDayNarrativePreview(input);
+    const b = buildDayNarrativePreview(input);
+    assert.equal(a.text, b.text);
+    assert.deepEqual(a.usedServices, b.usedServices);
+  });
+});

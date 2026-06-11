@@ -4,6 +4,7 @@ import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { TailorMadeDraftPanel } from './TailorMadeDraftPanel';
 import { QuoteBuilderEntry } from './QuoteBuilderEntry';
 import { RoutePlannerPreview } from './RoutePlannerPreview';
+import type { AppliedNarrativeService } from './day-narrative-preview';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import type { RouteOption } from '../../lib/routes';
 import type { TransportServiceTypeOption } from './tailor-made-transport-resolve';
@@ -48,6 +49,27 @@ type QuoteItineraryWorkspaceProps = {
   // Phase R.6D-1 — GUIDE-type QuoteService id (apply); forwarded to the panel.
   guideServiceId?: string | null;
 };
+
+// Phase R.7A-2 — map a day's applied QuoteItems to the client-safe service
+// descriptors the narrative preview consumes. Only kind (+ a display name for
+// entrance/activity) is forwarded — never pricing/supplier/contract/vehicle
+// class/room/meal/occupancy. The preview helper re-sanitizes the name and only
+// ever mentions a local guide + client-safe activity callouts. Read-only.
+function toRoutePlannerAppliedServices(
+  dayItems: QuoteItineraryResponse['days'][number]['dayItems'],
+): AppliedNarrativeService[] {
+  return (dayItems || []).flatMap((item): AppliedNarrativeService[] => {
+    const qs = item.quoteService;
+    if (!qs) return [];
+    if (qs.service?.serviceType?.code === 'GUIDE' || /guide/i.test(qs.service?.category || '')) {
+      return [{ kind: 'guide' as const }];
+    }
+    if (qs.hotel) return [{ kind: 'hotel' as const }];
+    if (qs.appliedVehicleRate) return [{ kind: 'transport' as const }];
+    if (qs.activityId) return [{ kind: 'activity' as const, name: qs.service?.name ?? null }];
+    return [{ kind: 'entrance' as const, name: qs.service?.name ?? null }];
+  });
+}
 
 export function QuoteItineraryWorkspace({
   apiBaseUrl,
@@ -233,7 +255,7 @@ export function QuoteItineraryWorkspace({
           </summary>
           <RoutePlannerPreview
             apiBaseUrl={apiBaseUrl}
-            days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes }))}
+            days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: toRoutePlannerAppliedServices(day.dayItems) }))}
           />
         </details>
 

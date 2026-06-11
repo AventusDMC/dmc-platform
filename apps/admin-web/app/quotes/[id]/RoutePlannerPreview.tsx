@@ -19,15 +19,23 @@ import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { getErrorMessage } from '../../lib/api';
 import { DAY_ROUTE_PRESETS, getDayRoutePreset, getClassicJordanRouteTemplate } from './day-route-presets';
-// Phase R.7A-1 — read-only English client narrative preview, generated purely
-// from the day's route/day text (title + notes). No services, no network, no save.
-import { buildDayNarrativePreview } from './day-narrative-preview';
+// Phase R.7A-1/-2 — read-only English client narrative preview, generated purely
+// from the day's route/day text (title + notes) and, when present, the day's
+// already-applied services (R.7A-2). No network, no save.
+import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview';
 
 // Local sentinels for the two non-preset choices (UI-only; never submitted).
 const KEEP_CURRENT_KEY = '__keep_current__';
 const LEISURE_KEY = '__leisure__';
 
-export type RoutePlannerDay = { id: string; dayNumber: number; title: string | null; notes?: string | null };
+export type RoutePlannerDay = {
+  id: string;
+  dayNumber: number;
+  title: string | null;
+  notes?: string | null;
+  // R.7A-2 — client-safe descriptors of services already applied to this day.
+  appliedServices?: AppliedNarrativeService[];
+};
 
 export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; days: RoutePlannerDay[] }) {
   const router = useRouter();
@@ -187,12 +195,13 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
           const choice = selected[day.dayNumber] ?? KEEP_CURRENT_KEY;
           const preset = choice === KEEP_CURRENT_KEY || choice === LEISURE_KEY ? null : getDayRoutePreset(choice);
           const isApplying = applyingDay === day.dayNumber;
-          // R.7A-1 — deterministic English client narrative preview from this
-          // day's route/day text only. Read-only; nothing is saved.
+          // R.7A-1/-2 — deterministic English client narrative preview from this
+          // day's route/day text + any already-applied services. Read-only.
           const narrativePreview = buildDayNarrativePreview({
             dayNumber: day.dayNumber,
             title: day.title,
             notes: day.notes,
+            appliedServices: day.appliedServices,
           });
           return (
             <div key={day.dayNumber} className="route-planner-row">
@@ -205,6 +214,9 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
                 <span className="form-help">Client narrative preview</span>
                 <p className="route-narrative-preview-text">{narrativePreview.text}</p>
                 <span className="route-narrative-preview-flag">Preview only — not saved yet</span>
+                {narrativePreview.sourceLayer === 'service-aware' ? (
+                  <span className="route-narrative-preview-services">Includes applied services</span>
+                ) : null}
               </div>
 
               <label>
