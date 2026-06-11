@@ -540,6 +540,59 @@ test('S.2B-4B: chain matches the overnight cities implied by hotel-stay grouping
   assert.deepEqual(chainCities, stayCities);
 });
 
+// ---------------------------------------------------------------------------
+// Phase S.2B-4C — the overnight chain drives ONLY the two transfer endpoints:
+// ARRIVAL_TRANSFER destination (= that day's overnight city) and
+// DEPARTURE_TRANSFER origin (= the last overnight city). Touring days stay
+// title-based and byte-identical to the S.2B-4A snapshot.
+// ---------------------------------------------------------------------------
+
+test('S.2B-4C: arrival destination follows the first overnight when it differs from the title', () => {
+  // Aqaba×1 / Petra×1 / Wadi Rum×1 / Dead Sea×4 (7 nights). Night 1 = Aqaba (the
+  // narrative is rewritten), though the Day-1 title is still "Arrival Amman".
+  const seq = [{ city: 'Aqaba', nights: 1 }, { city: 'Petra', nights: 1 }, { city: 'Wadi Rum', nights: 1 }, { city: 'Dead Sea', nights: 4 }];
+  const byDay = Object.fromEntries(deriveTransportSuggestions(persistedDays({ ...DEFAULT_PANEL, overnightSequence: seq })).map((s) => [s.dayNumber, s]));
+  assert.equal(byDay[1].suggestedTransportType, 'ARRIVAL_TRANSFER');
+  assert.equal(byDay[1].destination, 'Aqaba');
+  assert.equal(byDay[1].routeLabel, 'QAIA → Aqaba');
+  // last overnight is still Dead Sea → departure unchanged
+  assert.equal(byDay[8].origin, 'Dead Sea');
+  assert.equal(byDay[8].routeLabel, 'Dead Sea → QAIA');
+  // touring days D2–D7 are byte-identical to the default (title-based, untouched)
+  const def = Object.fromEntries(deriveTransportSuggestions(persistedDays(DEFAULT_PANEL)).map((s) => [s.dayNumber, s]));
+  for (const d of [2, 3, 4, 5, 6, 7]) assert.deepEqual(byDay[d], def[d], `Day ${d} touring unchanged`);
+});
+
+test('S.2B-4C: departure origin follows the last overnight when the departure narrative is stale', () => {
+  // Amman×2 / Petra×1 / Wadi Rum×1 / Aqaba×3. Last overnight = Aqaba, but the
+  // generated departure narrative still reads "from Dead Sea" → origin becomes Aqaba.
+  const seq = [{ city: 'Amman', nights: 2 }, { city: 'Petra', nights: 1 }, { city: 'Wadi Rum', nights: 1 }, { city: 'Aqaba', nights: 3 }];
+  const byDay = Object.fromEntries(deriveTransportSuggestions(persistedDays({ ...DEFAULT_PANEL, overnightSequence: seq })).map((s) => [s.dayNumber, s]));
+  // arrival unchanged (first overnight still Amman)
+  assert.equal(byDay[1].destination, 'Amman');
+  assert.equal(byDay[1].routeLabel, 'QAIA → Amman');
+  // departure origin now Aqaba
+  assert.equal(byDay[8].suggestedTransportType, 'DEPARTURE_TRANSFER');
+  assert.equal(byDay[8].origin, 'Aqaba');
+  assert.equal(byDay[8].routeLabel, 'Aqaba → QAIA');
+  // no false same-city move; still descriptive (NO_RATE handling unchanged — no
+  // rate/route lookup happens here, so an uncovered Aqaba→QAIA stays non-fatal)
+  assert.notEqual(byDay[8].origin, byDay[8].destination);
+  assert.equal(byDay[8].matchedRouteId, null);
+  assert.deepEqual(byDay[8].candidateTransport, []);
+  // touring days unchanged
+  const def = Object.fromEntries(deriveTransportSuggestions(persistedDays(DEFAULT_PANEL)).map((s) => [s.dayNumber, s]));
+  for (const d of [2, 3, 4, 5, 6, 7]) assert.deepEqual(byDay[d], def[d], `Day ${d} touring unchanged`);
+});
+
+test('S.2B-4C: default + a same-first/last custom sequence stay byte-identical (no endpoint change)', () => {
+  const def = deriveTransportSuggestions(persistedDays(DEFAULT_PANEL));
+  // first overnight Amman + last overnight Dead Sea match the default → no override
+  const seq = [{ city: 'Amman', nights: 3 }, { city: 'Petra', nights: 1 }, { city: 'Wadi Rum', nights: 1 }, { city: 'Dead Sea', nights: 2 }];
+  const custom = deriveTransportSuggestions(persistedDays({ ...DEFAULT_PANEL, overnightSequence: seq }));
+  assert.deepEqual(custom, def, 'first=Amman & last=Dead Sea unchanged → transport identical');
+});
+
 // ---- Phase R.4: entrance / ticket / activity suggestions (pure, descriptive) ----
 
 import { deriveExperienceSuggestions, enrichExperienceMatches } from './tailor-made-draft';
