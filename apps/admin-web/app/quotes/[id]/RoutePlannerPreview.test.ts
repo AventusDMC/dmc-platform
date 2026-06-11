@@ -120,10 +120,23 @@ describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only
       "import { RoutePlannerPreview } from './RoutePlannerPreview';",
       '<RoutePlannerPreview',
       'apiBaseUrl={apiBaseUrl}',
-      // R.7A-1 — day notes are now forwarded so the narrative preview can read them.
-      'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes }))}',
+      // R.7A-1/-2 — day notes + applied services are forwarded to the preview.
+      'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: toRoutePlannerAppliedServices(day.dayItems) }))}',
       'id="qb-route-planner"',
     ]);
+  });
+
+  it('maps applied QuoteItems to client-safe service descriptors (R.7A-2)', () => {
+    expectSourceContains(workspaceSource, [
+      'function toRoutePlannerAppliedServices',
+      "{ kind: 'guide' as const }",
+      "{ kind: 'hotel' as const }",
+      "{ kind: 'transport' as const }",
+      "{ kind: 'activity' as const, name: qs.service?.name ?? null }",
+      "{ kind: 'entrance' as const, name: qs.service?.name ?? null }",
+    ]);
+    // The mapper must NOT forward pricing/supplier/contract/room/meal fields.
+    assert.ok(!/appliedVehicleRate\.vehicle|qs\.contract|qs\.roomCategory|pricingDescription|sellPrice|markupPercent/.test(workspaceSource.split('toRoutePlannerAppliedServices')[1]?.slice(0, 600) || ''), 'mapper forwards no pricing/supplier/room fields');
   });
 
   it('the preset catalog it reuses is unchanged (no new places exposed here)', () => {
@@ -134,8 +147,8 @@ describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only
 describe('Phase R.7A-1 — read-only client narrative preview (route/day text only)', () => {
   it('10/11. renders a "Client narrative preview" per day with the "not saved yet" label', () => {
     expectSourceContains(source, [
-      // reuses the pure helper (no services, no network)
-      "import { buildDayNarrativePreview } from './day-narrative-preview'",
+      // reuses the pure helper (no network)
+      "import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview'",
       'buildDayNarrativePreview({',
       'title: day.title',
       'notes: day.notes',
@@ -146,8 +159,21 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
       'Preview only — not saved yet',
     ]);
     // The preview is read-only — no <button> wraps the narrative, and there is no
-    // "Use this narrative" save action in R.7A-1.
-    assert.ok(!source.includes('Use this narrative'), 'no save action in R.7A-1');
+    // "Use this narrative" save action in R.7A-1/-2.
+    assert.ok(!source.includes('Use this narrative'), 'no save action');
+    assert.ok(!source.includes('Save narrative') && !source.includes('Apply narrative'), 'no save/apply narrative action');
+  });
+
+  it('R.7A-2: forwards applied services + shows "Includes applied services" only when service-aware', () => {
+    expectSourceContains(source, [
+      // helper import now also pulls the applied-service type
+      "import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview'",
+      // applied services threaded into the preview helper
+      'appliedServices: day.appliedServices',
+      // conditional label, only when the preview actually wove services in
+      "narrativePreview.sourceLayer === 'service-aware'",
+      'Includes applied services',
+    ]);
   });
 
   it('12/13/14/15. the preview adds no write/network/proposal/pricing coupling', () => {
