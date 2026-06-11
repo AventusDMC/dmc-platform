@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const source = readFileSync(new URL('./RoutePlannerPreview.tsx', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
 const presetsSource = readFileSync(new URL('./day-route-presets.ts', import.meta.url), 'utf8');
+const narrativeSource = readFileSync(new URL('./day-narrative-preview.ts', import.meta.url), 'utf8');
 
 function expectSourceContains(src: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -119,12 +120,49 @@ describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only
       "import { RoutePlannerPreview } from './RoutePlannerPreview';",
       '<RoutePlannerPreview',
       'apiBaseUrl={apiBaseUrl}',
-      'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title }))}',
+      // R.7A-1 — day notes are now forwarded so the narrative preview can read them.
+      'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes }))}',
       'id="qb-route-planner"',
     ]);
   });
 
   it('the preset catalog it reuses is unchanged (no new places exposed here)', () => {
     expectSourceContains(presetsSource, ['export const DAY_ROUTE_PRESETS', 'export const CUSTOM_DAY_PRESET_KEY']);
+  });
+});
+
+describe('Phase R.7A-1 — read-only client narrative preview (route/day text only)', () => {
+  it('10/11. renders a "Client narrative preview" per day with the "not saved yet" label', () => {
+    expectSourceContains(source, [
+      // reuses the pure helper (no services, no network)
+      "import { buildDayNarrativePreview } from './day-narrative-preview'",
+      'buildDayNarrativePreview({',
+      'title: day.title',
+      'notes: day.notes',
+      // the read-only block + copy
+      'aria-label="Client narrative preview"',
+      'Client narrative preview',
+      'narrativePreview.text',
+      'Preview only — not saved yet',
+    ]);
+    // The preview is read-only — no <button> wraps the narrative, and there is no
+    // "Use this narrative" save action in R.7A-1.
+    assert.ok(!source.includes('Use this narrative'), 'no save action in R.7A-1');
+  });
+
+  it('12/13/14/15. the preview adds no write/network/proposal/pricing coupling', () => {
+    // No suggestion endpoints called from the component (route/day text only).
+    assert.ok(!source.includes('tailor-made-draft'), 'preview must not call suggestion/generator endpoints');
+    // No new PATCH/POST/DELETE introduced by the narrative preview. The only
+    // network calls remain the pre-existing day PATCH apply handlers (S.2D-2/-3C).
+    const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
+    assert.equal(patchCount, 2, 'exactly the two pre-existing day-PATCH apply handlers remain');
+    assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
+    // The pure helper itself performs no I/O (call-shaped checks, so its own
+    // descriptive header comment — "NO PATCH", "NO proposal-v3 change" — doesn't
+    // false-positive).
+    assert.ok(!/fetch\s*\(/.test(narrativeSource), 'helper makes no network calls');
+    assert.ok(!/useRouter|router\.\w+\(/.test(narrativeSource), 'helper does not navigate/refresh');
+    assert.ok(!/method:\s*['"]/.test(narrativeSource), 'helper issues no HTTP method');
   });
 });
