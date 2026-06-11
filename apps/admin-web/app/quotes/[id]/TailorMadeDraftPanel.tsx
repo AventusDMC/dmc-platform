@@ -746,19 +746,43 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         });
         return;
       }
-      const response = await fetch(`${apiBaseUrl}/transport-pricing/calculate`, {
-        method: 'POST',
-        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          serviceTypeId: plan.serviceTypeId,
-          routeId: plan.routeId,
-          normalizedKey: plan.normalizedKey,
-          routeName: '',
-          paxCount: defaultPax ?? 2,
-        }),
-      });
-      if (!response.ok) {
-        // A 404 = "no matching vehicle rate" → a clean NO_RATE status (not an error).
+      // T.2 — price a leg under a single service type. Returns the priced result
+      // (cost non-null) or null when the engine has no usable rate (404 / no
+      // price). No writes; same canonical calculate endpoint as before.
+      const priceWith = async (serviceTypeId: string) => {
+        const response = await fetch(`${apiBaseUrl}/transport-pricing/calculate`, {
+          method: 'POST',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            serviceTypeId,
+            routeId: plan.routeId,
+            normalizedKey: plan.normalizedKey,
+            routeName: '',
+            paxCount: defaultPax ?? 2,
+          }),
+        });
+        if (!response.ok) return null;
+        const result = await response.json();
+        const cost = typeof result?.price === 'number' ? result.price : null;
+        return cost === null ? null : { result, cost };
+      };
+
+      // Try the resolved PRIMARY service type first (unchanged behaviour). Only if
+      // it yields no usable rate, retry once with the resolver's fallback service
+      // type (airport/departure legs → POINT_TO_POINT, where some legs' rates live,
+      // e.g. Dead Sea → QAIA). Legs already priced under the primary are untouched.
+      let effectiveServiceTypeId = plan.serviceTypeId;
+      let priced = await priceWith(plan.serviceTypeId);
+      if (!priced && plan.fallbackServiceTypeId && plan.fallbackServiceTypeId !== plan.serviceTypeId) {
+        const fallback = await priceWith(plan.fallbackServiceTypeId);
+        if (fallback) {
+          priced = fallback;
+          effectiveServiceTypeId = plan.fallbackServiceTypeId;
+        }
+      }
+
+      if (!priced) {
+        // No rate under the primary (or fallback) → a clean NO_RATE status.
         setTransportPreview({
           status: 'NO_RATE',
           routeLabel: plan.routeLabel,
@@ -776,23 +800,25 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         });
         return;
       }
-      const result = await response.json();
-      const cost = typeof result?.price === 'number' ? result.price : null;
+
+      const { result, cost } = priced;
       setTransportPreview({
-        status: cost === null ? 'NO_RATE' : 'OK',
+        status: 'OK',
         routeLabel: plan.routeLabel,
         serviceTypeName: result?.serviceType?.name ?? plan.serviceTypeName,
         pricingModeHint: plan.pricingModeHint,
         vehicleName: result?.vehicle?.name ?? null,
         cost,
-        sell: cost === null ? null : computeTransportSell(cost),
+        sell: computeTransportSell(cost),
         currency: result?.currency ?? null,
         markupPercent: TRANSPORT_DEFAULT_MARKUP,
-        reason: cost === null ? 'No rate returned for this leg.' : 'Estimated from the contracted transport rate.',
+        reason: 'Estimated from the contracted transport rate.',
         // Resolved identifiers for the canonical createItem transport apply (R.6B-1).
+        // serviceTypeId is the EFFECTIVE type that priced, so apply re-prices the
+        // same way the preview showed (fallback type when the fallback was used).
         routeId: plan.routeId,
         normalizedKey: plan.normalizedKey,
-        serviceTypeId: plan.serviceTypeId,
+        serviceTypeId: effectiveServiceTypeId,
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');

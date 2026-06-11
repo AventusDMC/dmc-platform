@@ -37,6 +37,15 @@ export type TransportResolvedPlan = {
   routeLabel: string | null;
   serviceTypeId: string | null;
   serviceTypeName: string | null;
+  // T.2 — optional secondary service type to retry pricing with when the PRIMARY
+  // service type returns no rate. Airport/departure legs set this to the general
+  // transfer type (POINT_TO_POINT), because some airport legs only carry rates in
+  // the point-to-point pool (e.g. Dead Sea → QAIA has no AIRPORT_TRANSFER rate but
+  // a valid POINT_TO_POINT one). Null when there is no distinct fallback. The panel
+  // tries the primary first and only falls back when the primary yields NO_RATE,
+  // so legs already priced under the primary are unchanged.
+  fallbackServiceTypeId: string | null;
+  fallbackServiceTypeName: string | null;
   // Admin planning hint only — never client-facing text.
   pricingModeHint: 'POINT_TO_POINT' | 'FULL_DAY' | null;
   reason: string;
@@ -192,6 +201,8 @@ export function resolveTransportPlan(
     routeLabel: suggestion.routeLabel ?? null,
     serviceTypeId: null,
     serviceTypeName: null,
+    fallbackServiceTypeId: null,
+    fallbackServiceTypeName: null,
     pricingModeHint: suggestion.pricingModeSuggestion ?? null,
     reason,
   });
@@ -201,12 +212,19 @@ export function resolveTransportPlan(
 
   let route: RouteOption | null = null;
   let serviceType: TransportServiceTypeOption | null = null;
+  // T.2 — secondary service type for the panel's no-rate fallback (airport legs).
+  let fallbackServiceType: TransportServiceTypeOption | null = null;
 
   if (suggestion.suggestedTransportType === 'ARRIVAL_TRANSFER') {
     serviceType = airportTransferType(serviceTypes);
+    // Some airport legs only have rates under the general (point-to-point) pool.
+    const general = generalTransferType(serviceTypes);
+    fallbackServiceType = general && general.id !== serviceType?.id ? general : null;
     route = destination ? findAirportRoute(routes, destination, 'arrival') : null;
   } else if (suggestion.suggestedTransportType === 'DEPARTURE_TRANSFER') {
     serviceType = airportTransferType(serviceTypes);
+    const general = generalTransferType(serviceTypes);
+    fallbackServiceType = general && general.id !== serviceType?.id ? general : null;
     route = origin ? findAirportRoute(routes, origin, 'departure') : null;
   } else if (suggestion.suggestedTransportType === 'TOURING_FULL_DAY') {
     const intercity = Boolean(origin && destination && normalizeTransportText(origin) !== normalizeTransportText(destination));
@@ -232,6 +250,8 @@ export function resolveTransportPlan(
     routeLabel: suggestion.routeLabel || route.name || null,
     serviceTypeId: serviceType.id,
     serviceTypeName: serviceType.name,
+    fallbackServiceTypeId: fallbackServiceType?.id ?? null,
+    fallbackServiceTypeName: fallbackServiceType?.name ?? null,
     pricingModeHint: suggestion.pricingModeSuggestion ?? null,
     reason: 'Route and service type resolved.',
   };

@@ -127,6 +127,65 @@ describe('R.6B-0 — resolveTransportPlan', () => {
     assert.match(plan.reason, /no transport/i);
   });
 
+  it('T.2: arrival/departure legs carry a POINT_TO_POINT fallback service type', () => {
+    const arrival = resolveTransportPlan(
+      { dayNumber: 1, suggestedTransportType: 'ARRIVAL_TRANSFER', origin: 'QAIA', destination: 'Amman' },
+      ROUTES,
+      SERVICE_TYPES,
+    );
+    assert.equal(arrival.serviceTypeId, 'st-airport');
+    assert.equal(arrival.fallbackServiceTypeId, 'st-p2p', 'airport leg falls back to point-to-point');
+    assert.equal(arrival.fallbackServiceTypeName, 'Point to Point');
+
+    const departure = resolveTransportPlan(
+      { dayNumber: 8, suggestedTransportType: 'DEPARTURE_TRANSFER', origin: 'Dead Sea', destination: 'Airport' },
+      [...ROUTES, route({ id: 'r-deadsea-qaia', from: 'Dead Sea', to: 'Queen Alia International Airport', name: 'Dead Sea -> QAIA Airport' })],
+      SERVICE_TYPES,
+    );
+    assert.equal(departure.serviceTypeId, 'st-airport');
+    assert.equal(departure.fallbackServiceTypeId, 'st-p2p', 'departure leg falls back to point-to-point');
+  });
+
+  it('T.2: intercity touring + same-base legs have NO fallback (primary only)', () => {
+    const intercity = resolveTransportPlan(
+      { dayNumber: 4, suggestedTransportType: 'TOURING_FULL_DAY', origin: 'Petra', destination: 'Wadi Rum' },
+      ROUTES,
+      SERVICE_TYPES,
+    );
+    assert.equal(intercity.fallbackServiceTypeId, null);
+
+    const sameBase = resolveTransportPlan(
+      { dayNumber: 2, suggestedTransportType: 'TOURING_FULL_DAY', origin: 'Amman', destination: 'Amman' },
+      ROUTES,
+      SERVICE_TYPES,
+    );
+    assert.equal(sameBase.fallbackServiceTypeId, null);
+  });
+
+  it('T.2: no duplicate fallback when AIRPORT_TRANSFER is the only/general transfer type', () => {
+    // When the catalog has no distinct point-to-point type, airportTransferType
+    // and generalTransferType resolve to the same option → fallback must be null.
+    const onlyAirport: TransportServiceTypeOption[] = [{ id: 'st-airport', name: 'Airport Transfer', code: 'AIRPORT_TRANSFER' }];
+    const plan = resolveTransportPlan(
+      { dayNumber: 1, suggestedTransportType: 'ARRIVAL_TRANSFER', origin: 'QAIA', destination: 'Amman' },
+      ROUTES,
+      onlyAirport,
+    );
+    assert.equal(plan.serviceTypeId, 'st-airport');
+    assert.equal(plan.fallbackServiceTypeId, null, 'no fallback when it would equal the primary');
+  });
+
+  it('T.2: NO_ROUTE plans expose null fallback fields', () => {
+    const plan = resolveTransportPlan(
+      { dayNumber: 4, suggestedTransportType: 'TOURING_FULL_DAY', origin: 'Aqaba', destination: 'Salt' },
+      [route({ id: 'r-x', from: 'Amman', to: 'Petra' })],
+      SERVICE_TYPES,
+    );
+    assert.equal(plan.status, 'NO_ROUTE');
+    assert.equal(plan.fallbackServiceTypeId, null);
+    assert.equal(plan.fallbackServiceTypeName, null);
+  });
+
   it('markup constant is 20 and sell = cost × 1.20 rounded to cents', () => {
     assert.equal(TRANSPORT_DEFAULT_MARKUP, 20);
     assert.equal(computeTransportSell(100), 120);
