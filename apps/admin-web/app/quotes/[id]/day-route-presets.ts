@@ -116,6 +116,24 @@ export const DAY_ROUTE_PRESETS: DayRoutePreset[] = [
     narrative: 'Spend the morning exploring the rose-red city of Petra, then continue to the desert landscapes of Wadi Rum. Overnight in Wadi Rum.',
   },
   {
+    // Phase S.2D-3A — Petra → Dead Sea (the short-program leg that skips Wadi Rum;
+    // used by the curated 4-day classic template). Reuses the canonical Petra
+    // entrance + guide so experience/guide matching stays reliable.
+    key: 'petra-dead-sea',
+    label: 'Petra Visit → Dead Sea',
+    defaultTitle: 'Petra Visit / Dead Sea',
+    overnightCity: 'Dead Sea',
+    origin: 'Petra',
+    destination: 'Dead Sea',
+    stops: [],
+    transportHint: 'TOURING_FULL_DAY',
+    entranceKeys: ['petra'],
+    activityKeys: [],
+    guideHint: 'Local guide for Petra',
+    narrativeTemplateKey: 'petra-dead-sea',
+    narrative: 'Spend the morning exploring the rose-red city of Petra, then transfer to the Dead Sea. Overnight at the Dead Sea.',
+  },
+  {
     key: 'wadi-rum-dead-sea',
     label: 'Wadi Rum → Dead Sea',
     defaultTitle: 'Wadi Rum / Dead Sea',
@@ -185,4 +203,28 @@ export function getDayRoutePreset(key: string | null | undefined): DayRoutePrese
     return null;
   }
   return DAY_ROUTE_PRESETS.find((preset) => preset.key === key) || null;
+}
+
+// Phase S.2D-3A — curated classic-Jordan route templates as ordered preset-key
+// arrays, keyed by duration (days). CONFIG ONLY: no UI/apply yet (S.2D-3B/-3C).
+// Every key resolves to a DAY_ROUTE_PRESETS entry (8-day is intentionally absent
+// here — the 8-day classic stays the existing generator literal, untouched).
+// Each template's overnight chain equals durationDays - 1:
+//   4 → Amman, Petra, Dead Sea
+//   5 → Amman, Petra, Wadi Rum, Dead Sea
+//   6 → Amman, Amman, Petra, Wadi Rum, Dead Sea
+//   7 → Amman, Amman, Petra, Wadi Rum, Dead Sea, Dead Sea
+export const CLASSIC_JORDAN_ROUTE_TEMPLATES: Record<number, string[]> = {
+  4: ['qaia-amman', 'amman-madaba-nebo-petra', 'petra-dead-sea', 'dead-sea-qaia'],
+  5: ['qaia-amman', 'amman-madaba-nebo-petra', 'petra-wadi-rum', 'wadi-rum-dead-sea', 'dead-sea-qaia'],
+  6: ['qaia-amman', 'amman-jerash-amman', 'amman-madaba-nebo-petra', 'petra-wadi-rum', 'wadi-rum-dead-sea', 'dead-sea-qaia'],
+  7: ['qaia-amman', 'amman-jerash-amman', 'amman-madaba-nebo-petra', 'petra-wadi-rum', 'wadi-rum-dead-sea', 'dead-sea-bethany-dead-sea', 'dead-sea-qaia'],
+};
+
+/** Curated route template (ordered presets) for a duration, or null if none. */
+export function getClassicJordanRouteTemplate(durationDays: number | null | undefined): string[] | null {
+  if (!durationDays || !Number.isInteger(durationDays)) {
+    return null;
+  }
+  return CLASSIC_JORDAN_ROUTE_TEMPLATES[durationDays] ?? null;
 }
