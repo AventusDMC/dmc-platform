@@ -8,6 +8,7 @@ import type { RouteOption } from '../../lib/routes';
 import {
   resolveTransportPlan,
   computeTransportSell,
+  classifyPackageTransportPolicy,
   TRANSPORT_DEFAULT_MARKUP,
   type TransportServiceTypeOption,
 } from './tailor-made-transport-resolve';
@@ -1474,6 +1475,33 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
             <p className="form-help">{transportMessage || 'No itinerary days yet — apply a tailor-made draft first.'}</p>
           ) : (
             <>
+              {/* T.5C — package transport policy summary (DISPLAY ONLY). Uses the
+                  pure classifier to tell the operator whether touring days will
+                  price at regular route rates or the package full-day rate. This
+                  does NOT change any price preview or apply behaviour yet. */}
+              {(() => {
+                const policy = classifyPackageTransportPolicy(transport);
+                return (
+                  <div className="tailor-made-transport-policy" aria-label="Package transport policy">
+                    <p>
+                      <strong>Touring days:</strong> {policy.touringFullDayCount}
+                    </p>
+                    <p>
+                      <strong>Pricing rule:</strong>{' '}
+                      {policy.usePackageFullDay ? 'Package full-day vehicle rate' : 'Regular route rate'}
+                    </p>
+                    <p className="form-help">
+                      {policy.usePackageFullDay
+                        ? 'This package has 3 or more full touring days.'
+                        : 'This package has fewer than 3 full touring days.'}
+                    </p>
+                    <p className="form-help tailor-made-transport-policy-note">Preview only — pricing has not changed yet.</p>
+                    <p className="form-help tailor-made-transport-policy-note">
+                      Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.
+                    </p>
+                  </div>
+                );
+              })()}
               <ol className="tailor-made-transport-days">
                 {transport.map((t) => {
                   const activeDay = transportPreviewDay === t.dayNumber;

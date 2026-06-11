@@ -550,3 +550,39 @@ describe('R.6B-0 — transport resolver constant', () => {
     expectSourceContains(resolverSource, ['export const TRANSPORT_DEFAULT_MARKUP = 20', 'resolveTransportPlan', "'NO_ROUTE'"]);
   });
 });
+
+describe('T.5C — package transport policy display (preview-only)', () => {
+  it('renders the policy summary from the pure classifier with operator-safe labels', () => {
+    expectSourceContains(panelSource, [
+      // uses the T.5B pure helper for DISPLAY
+      'classifyPackageTransportPolicy(transport)',
+      'aria-label="Package transport policy"',
+      'Touring days:',
+      'policy.touringFullDayCount',
+      'Pricing rule:',
+      // operator labels (no raw enums)
+      'Package full-day vehicle rate',
+      'Regular route rate',
+      'This package has 3 or more full touring days.',
+      'This package has fewer than 3 full touring days.',
+      // required T.5C copy
+      'Preview only — pricing has not changed yet.',
+      // future-rule note only (no logic)
+      'Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.',
+    ]);
+  });
+
+  it('does not expose raw internal labels in the policy display, and adds no overnight/stationary logic', () => {
+    // The policy block is display-only — no raw enum/internal tokens introduced.
+    const policyBlock = panelSource.slice(panelSource.indexOf('Package transport policy'), panelSource.indexOf('tailor-made-transport-days'));
+    for (const raw of ['POINT_TO_POINT', 'capacity_unit', 'FULL_DAY', 'type internal', 'mode internal']) {
+      assert.ok(!policyBlock.includes(raw), `policy display must not expose "${raw}"`);
+    }
+    // No driver-overnight / stationary CALCULATION added (note text only — the
+    // word "add-ons are not included yet" is allowed; assert no ADD_ON service
+    // codes or overnight math are wired in the panel).
+    assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM|STATIONARY_WAITING/.test(panelSource), 'no overnight/stationary add-on logic in T.5C');
+    // Helper is used only for display — not in the apply path (apply still gates on transportPreview).
+    assert.ok(!/applySelectedTransport[\s\S]{0,400}classifyPackageTransportPolicy/.test(panelSource), 'classifier not used inside transport apply');
+  });
+});
