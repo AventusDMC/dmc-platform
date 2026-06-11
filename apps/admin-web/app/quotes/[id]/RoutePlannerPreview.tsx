@@ -34,10 +34,60 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
   const [applyingDay, setApplyingDay] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [appliedDay, setAppliedDay] = useState<number | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [templateApplied, setTemplateApplied] = useState(false);
 
   // S.2D-3B — the curated classic route template for the current duration (4/5/6/7
-  // days), or null for 8-day (existing generator) / other durations. Preview-only.
+  // days), or null for 8-day (existing generator) / other durations.
   const templateKeys = getClassicJordanRouteTemplate(sorted.length);
+
+  // S.2D-3C — apply the whole curated template to the existing days, ONE day at a
+  // time via the existing PATCH /itinerary/day/:dayId (title + notes only). No new
+  // endpoint, no generator, no services/QuoteItems/pricing, no day create/delete.
+  // Strong confirm first (it overwrites multiple days' titles/narratives). If the
+  // day count doesn't match the template length, refuses with a clear message. On
+  // any PATCH failure it surfaces the error and does NOT claim full success.
+  async function applyTemplate() {
+    if (!templateKeys) return;
+    if (templateKeys.length !== sorted.length) {
+      setError(`This template requires ${templateKeys.length} itinerary days. Please create or adjust the itinerary days first.`);
+      return;
+    }
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'This will replace the current day titles and narratives with the selected Classic Jordan route template. Services and pricing will not be changed. Continue?',
+      )
+    ) {
+      return;
+    }
+    setApplyingTemplate(true);
+    setError('');
+    setTemplateApplied(false);
+    try {
+      for (let i = 0; i < templateKeys.length; i++) {
+        const day = sorted[i];
+        const tp = getDayRoutePreset(templateKeys[i]);
+        if (!day || !tp) {
+          throw new Error('Template could not be matched to the itinerary days.');
+        }
+        const response = await fetch(`${apiBaseUrl}/itinerary/day/${day.id}`, {
+          method: 'PATCH',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ title: tp.defaultTitle, notes: tp.narrative }),
+        });
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, `Could not apply the template to day ${day.dayNumber} — stopped before completing.`));
+        }
+      }
+      setTemplateApplied(true);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not apply the route template.');
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }
 
   // S.2D-2 — apply ONE preset to ONE day via the existing day PATCH. Sends only
   // title + notes (a partial update; dayNumber/sortOrder/isActive are untouched
@@ -78,12 +128,13 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
       </p>
       {error ? <p className="form-error">{error}</p> : null}
 
-      {/* S.2D-3B — Classic Jordan Route Template PREVIEW for the current duration.
-          Read-only: no apply, no PATCH, no persistence. The Apply button is shown
-          but DISABLED (apply lands in S.2D-3C). */}
+      {/* S.2D-3B preview + S.2D-3C apply — Classic Jordan Route Template for the
+          current duration. Apply writes each day's title + notes via the existing
+          PATCH /itinerary/day (no services/pricing/generator). 8-day + other
+          durations have no template (Apply is not rendered). */}
       <section className="route-template-preview" aria-label="Classic Jordan Route Template">
         <h4>Classic Jordan Route Template</h4>
-        <p className="form-help">Preview only — templates are not saved yet.</p>
+        <p className="form-help">Preview the curated route below. &ldquo;Apply Template&rdquo; writes each day&rsquo;s title and narrative only — it does not add hotels, transport, tickets, guides, or pricing.</p>
         {templateKeys ? (
           <>
             {sorted.length === 4 ? (
@@ -109,9 +160,17 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
                 );
               })}
             </ol>
-            <button type="button" className="route-template-apply" disabled title="Template apply comes in the next phase.">
-              Apply Template (next phase)
+            <button
+              type="button"
+              className="route-template-apply"
+              disabled={applyingTemplate}
+              onClick={applyTemplate}
+            >
+              {applyingTemplate ? 'Applying template…' : `Apply ${sorted.length}-day Template to Days`}
             </button>
+            {templateApplied && !applyingTemplate ? (
+              <span className="route-template-applied">Template applied — day titles & narratives updated. Services and pricing were not changed.</span>
+            ) : null}
           </>
         ) : sorted.length === 8 ? (
           <p className="form-help">The 8-day classic route is currently generated by the existing structured generator.</p>
