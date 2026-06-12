@@ -279,28 +279,26 @@ describe('R.7B-1 — narrative locale scaffold (English byte-identical)', () => 
     assert.equal(a.text, b.text);
   });
 
-  it('ar falls back to byte-identical English output (R.7B-2: Arabic lands in R.7B-3)', () => {
+  it('es/pt/ar keep en STRUCTURE (sourceLayer/usedServices/flags) but localize the TEXT', () => {
     for (const c of CASES) {
       const en = buildDayNarrativePreview(c, { locale: 'en' });
-      const ar = buildDayNarrativePreview(c, { locale: 'ar' });
-      assert.equal(ar.text, en.text, `ar text must equal en for "${c.title}"`);
-      assert.equal(ar.sourceLayer, en.sourceLayer, 'ar sourceLayer must equal en');
-      assert.deepEqual(ar.usedServices, en.usedServices, 'ar usedServices must equal en');
-    }
-  });
-
-  it('es/pt keep en STRUCTURE (sourceLayer/usedServices/flags) but localize the TEXT', () => {
-    for (const c of CASES) {
-      const en = buildDayNarrativePreview(c, { locale: 'en' });
-      for (const loc of ['es', 'pt'] as const) {
+      for (const loc of ['es', 'pt', 'ar'] as const) {
         const out = buildDayNarrativePreview(c, { locale: loc });
         // Structure is locale-invariant …
         assert.equal(out.sourceLayer, en.sourceLayer, `${loc} sourceLayer must equal en for "${c.title}"`);
         assert.deepEqual(out.usedServices, en.usedServices, `${loc} usedServices must equal en for "${c.title}"`);
         assert.deepEqual(out.flags, en.flags, `${loc} flags must equal en for "${c.title}"`);
-        // … but the prose itself is now genuinely localized (R.7B-2).
+        // … but the prose itself is now genuinely localized (R.7B-2 es/pt, R.7B-3A ar).
         assert.notEqual(out.text, en.text, `${loc} text must differ from en for "${c.title}"`);
       }
+    }
+  });
+
+  it('R.7B-3A: Arabic no longer falls back to English', () => {
+    for (const c of CASES) {
+      const en = buildDayNarrativePreview(c, { locale: 'en' });
+      const ar = buildDayNarrativePreview(c, { locale: 'ar' });
+      assert.notEqual(ar.text, en.text, `ar text must differ from en for "${c.title}"`);
     }
   });
 
@@ -474,7 +472,7 @@ describe('R.7B-2 — Portuguese (pt) deterministic snapshots', () => {
   });
 });
 
-describe('R.7B-2 — leakage guard holds across en/es/pt', () => {
+describe('R.7B-2/-3A — leakage guard holds across en/es/pt/ar', () => {
   const DIRTY = {
     title: 'Petra (cost USD 500, supplier Alpha Tours, Coaster 30%, contract C-2026, code ABC123) Visit / Wadi Rum',
     notes: 'Overnight: No. markup 18%. vehicle Hiace. internal XZ99.',
@@ -484,14 +482,95 @@ describe('R.7B-2 — leakage guard holds across en/es/pt', () => {
     ],
   };
   const LEAKS = ['supplier', 'Alpha', 'contract', 'C-2026', 'C-9', 'cost', 'USD', '500', '80', 'markup', '18%', '22%', 'vehicle', 'Hiace', 'Coaster', '30%', 'ABC123', 'WR123', 'XZ99', 'Overnight: No'];
-  for (const loc of ['en', 'es', 'pt'] as const) {
+  // The clean activity surfaces in each locale (en/es/pt keep the English name; ar
+  // uses the curated MSA translation).
+  const CLEAN_ACTIVITY: Record<'en' | 'es' | 'pt' | 'ar', string> = {
+    en: 'Wadi Rum Jeep Tour',
+    es: 'Wadi Rum Jeep Tour',
+    pt: 'Wadi Rum Jeep Tour',
+    ar: 'جولة بسيارات الدفع الرباعي في وادي رم',
+  };
+  for (const loc of ['en', 'es', 'pt', 'ar'] as const) {
     it(`no internal/commercial leak in ${loc}`, () => {
       const { text } = buildDayNarrativePreview(DIRTY, { locale: loc });
       for (const token of LEAKS) {
         assert.ok(!text.includes(token), `${loc} preview must not contain "${token}" — got: ${text}`);
       }
-      // The clean activity name still surfaces (locale-appropriate connector).
-      assert.ok(text.includes('Wadi Rum Jeep Tour'), `${loc}: clean activity name should surface`);
+      assert.ok(text.includes(CLEAN_ACTIVITY[loc]), `${loc}: clean activity name should surface`);
     });
   }
+});
+
+// R.7B-3A — deterministic Modern Standard Arabic narrative output. Localized place
+// names (البتراء / البحر الميت / المغطس / …), Arabic punctuation (،), RTL-safe.
+describe('R.7B-3A — Arabic (ar) deterministic snapshots', () => {
+  it('Arrival', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Arrival', overnightCity: 'Amman' }, { locale: 'ar' }).text,
+      'عند الوصول، الاستقبال والمساعدة في المطار، ثم النقل إلى عمّان للمبيت.',
+    );
+  });
+  it('Departure', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Departure', notes: 'Transfer from Amman to the airport' }, { locale: 'ar' }).text,
+      'النقل من عمّان إلى المطار لرحلة المغادرة.',
+    );
+  });
+  it('Linear — Amman / Madaba / Mount Nebo / Petra', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'ar' }).text,
+      'بعد الإفطار، المغادرة من عمّان وزيارة مادبا، المشهورة بخريطتها الفسيفسائية القديمة، ثم المتابعة إلى جبل نيبو، المطلّ التقليدي على الأرض الموعودة. بعد ذلك، التوجه جنوباً إلى البتراء للمبيت.',
+    );
+  });
+  it('Visit-origin — Petra Visit / Wadi Rum', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum' }, { locale: 'ar' }).text,
+      'بعد الإفطار، زيارة البتراء، المدينة الوردية وإحدى أشهر المواقع الأثرية في الأردن. بعد ذلك، المتابعة إلى وادي رم للمبيت.',
+    );
+  });
+  it('Transition — Wadi Rum / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }, { locale: 'ar' }).text,
+      'استمتعوا بالمناظر الصحراوية في وادي رم قبل المتابعة إلى البحر الميت، أخفض نقطة على وجه الأرض، للمبيت.',
+    );
+  });
+  it('Round-trip — Dead Sea / Bethany / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Dead Sea / Bethany / Dead Sea' }, { locale: 'ar' }).text,
+      'بعد الإفطار، زيارة المغطس، موقع المعمودية على نهر الأردن، ثم العودة إلى البحر الميت للمبيت.',
+    );
+  });
+  it('localized place labels — no raw "Mount Nebo" / "Dead Sea" / "Bethany"', () => {
+    const titles = [
+      'Amman / Madaba / Mount Nebo / Petra',
+      'Wadi Rum / Dead Sea',
+      'Dead Sea / Bethany / Dead Sea',
+      'Departure',
+    ];
+    for (const title of titles) {
+      const { text } = buildDayNarrativePreview({ title, notes: 'Transfer from the Dead Sea to the airport' }, { locale: 'ar' });
+      for (const raw of ['Mount Nebo', 'Dead Sea', 'Bethany']) {
+        assert.ok(!text.includes(raw), `ar must not contain raw "${raw}" — got: ${text}`);
+      }
+    }
+  });
+  it('applied local guide phrase woven in Arabic', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Petra Visit / Wadi Rum', appliedServices: [{ kind: 'guide' }] },
+      { locale: 'ar' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes('، مع مرشد محلي'), `got: ${out.text}`);
+  });
+  it('applied Wadi Rum Jeep Tour phrase woven in Arabic', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Wadi Rum / Dead Sea', appliedServices: [{ kind: 'activity', name: 'Wadi Rum Jeep Tour' }] },
+      { locale: 'ar' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes('، بما في ذلك جولة بسيارات الدفع الرباعي في وادي رم'), `got: ${out.text}`);
+  });
+  it('narrativeTextDirection(ar) = rtl', () => {
+    assert.equal(narrativeTextDirection('ar'), 'rtl');
+  });
 });
