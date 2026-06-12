@@ -349,10 +349,10 @@ describe('R.7B-2 — Spanish (es) deterministic snapshots', () => {
       'Traslado desde Amman al aeropuerto para tomar su vuelo de salida.',
     );
   });
-  it('Linear — Amman / Madaba / Mount Nebo / Petra', () => {
+  it('Linear — Amman / Madaba / Mount Nebo / Petra (Monte Nebo, contracted "al")', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'es' }).text,
-      'Tras el desayuno, salga de Amman y visite Madaba, célebre por su antiguo mapa en mosaico, luego continúe a Mount Nebo, el mirador tradicional sobre la Tierra Prometida. A continuación, diríjase hacia el sur a Petra para pasar la noche.',
+      'Tras el desayuno, salga de Amman y visite Madaba, célebre por su antiguo mapa en mosaico, luego continúe al Monte Nebo, el mirador tradicional sobre la Tierra Prometida. A continuación, diríjase hacia el sur a Petra para pasar la noche.',
     );
   });
   it('Visit-origin — Petra Visit / Wadi Rum', () => {
@@ -361,17 +361,31 @@ describe('R.7B-2 — Spanish (es) deterministic snapshots', () => {
       'Tras el desayuno, visite Petra, la ciudad rosada y uno de los yacimientos arqueológicos más célebres de Jordania. Más tarde, continúe a Wadi Rum para pasar la noche.',
     );
   });
-  it('Transition — Wadi Rum / Dead Sea', () => {
+  it('Transition — Wadi Rum / Dead Sea (Mar Muerto, contracted "al")', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }, { locale: 'es' }).text,
-      'Disfrute del paisaje desértico de Wadi Rum antes de continuar a Dead Sea, el punto más bajo de la Tierra, para pasar la noche.',
+      'Disfrute del paisaje desértico de Wadi Rum antes de continuar al Mar Muerto, el punto más bajo de la Tierra, para pasar la noche.',
     );
   });
-  it('Round-trip — Dead Sea / Bethany / Dead Sea', () => {
+  it('Round-trip — Dead Sea / Bethany / Dead Sea (Betania, Mar Muerto, contracted "al")', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Dead Sea / Bethany / Dead Sea' }, { locale: 'es' }).text,
-      'Tras el desayuno, visite Bethany, el lugar del Bautismo a orillas del río Jordán y regrese a Dead Sea para pasar la noche.',
+      'Tras el desayuno, visite Betania, el lugar del Bautismo a orillas del río Jordán y regrese al Mar Muerto para pasar la noche.',
     );
+  });
+  it('localized place labels — no raw "Mount Nebo" / "Dead Sea" / "Bethany"', () => {
+    const titles = [
+      'Amman / Madaba / Mount Nebo / Petra',
+      'Wadi Rum / Dead Sea',
+      'Dead Sea / Bethany / Dead Sea',
+      'Departure',
+    ];
+    for (const title of titles) {
+      const { text } = buildDayNarrativePreview({ title, notes: 'Transfer from the Dead Sea to the airport' }, { locale: 'es' });
+      for (const raw of ['Mount Nebo', 'Dead Sea', 'Bethany']) {
+        assert.ok(!text.includes(raw), `es must not contain raw "${raw}" — got: ${text}`);
+      }
+    }
   });
   it('applied local guide phrase woven in Spanish', () => {
     const out = buildDayNarrativePreview(
@@ -404,10 +418,10 @@ describe('R.7B-2 — Portuguese (pt) deterministic snapshots', () => {
       'Transporte de Amman para o aeroporto para o seu voo de partida.',
     );
   });
-  it('Linear — Amman / Madaba / Mount Nebo / Petra', () => {
+  it('Linear — Amman / Madaba / Mount Nebo / Petra (Monte Nebo)', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'pt' }).text,
-      'Após o pequeno-almoço, parta de Amman e visite Madaba, conhecida pelo seu antigo mapa em mosaico, em seguida siga para Mount Nebo, o miradouro tradicional sobre a Terra Prometida. Em seguida, siga para sul até Petra para pernoitar.',
+      'Após o pequeno-almoço, parta de Amman e visite Madaba, conhecida pelo seu antigo mapa em mosaico, em seguida siga para o Monte Nebo, o miradouro tradicional sobre a Terra Prometida. Em seguida, siga para sul até Petra para pernoitar.',
     );
   });
   it('Visit-origin — Petra Visit / Wadi Rum', () => {
@@ -416,17 +430,31 @@ describe('R.7B-2 — Portuguese (pt) deterministic snapshots', () => {
       'Após o pequeno-almoço, visite Petra, a cidade rosada e um dos sítios arqueológicos mais famosos da Jordânia. Mais tarde, siga para Wadi Rum para pernoitar.',
     );
   });
-  it('Transition — Wadi Rum / Dead Sea', () => {
+  it('Transition — Wadi Rum / Dead Sea (Mar Morto)', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }, { locale: 'pt' }).text,
-      'Desfrute da paisagem desértica de Wadi Rum antes de seguir para Dead Sea, o ponto mais baixo da Terra, para pernoitar.',
+      'Desfrute da paisagem desértica de Wadi Rum antes de seguir para o Mar Morto, o ponto mais baixo da Terra, para pernoitar.',
     );
   });
-  it('Round-trip — Dead Sea / Bethany / Dead Sea', () => {
+  it('Round-trip — Dead Sea / Bethany / Dead Sea (Betânia, Mar Morto, contracted "ao")', () => {
     assert.equal(
       buildDayNarrativePreview({ title: 'Dead Sea / Bethany / Dead Sea' }, { locale: 'pt' }).text,
-      'Após o pequeno-almoço, visite Bethany, o local do Batismo às margens do rio Jordão e regresse a Dead Sea para pernoitar.',
+      'Após o pequeno-almoço, visite Betânia, o local do Batismo às margens do rio Jordão e regresse ao Mar Morto para pernoitar.',
     );
+  });
+  it('localized place labels — no raw "Mount Nebo" / "Dead Sea" / "Bethany"', () => {
+    const titles = [
+      'Amman / Madaba / Mount Nebo / Petra',
+      'Wadi Rum / Dead Sea',
+      'Dead Sea / Bethany / Dead Sea',
+      'Departure',
+    ];
+    for (const title of titles) {
+      const { text } = buildDayNarrativePreview({ title, notes: 'Transfer from the Dead Sea to the airport' }, { locale: 'pt' });
+      for (const raw of ['Mount Nebo', 'Dead Sea', 'Bethany']) {
+        assert.ok(!text.includes(raw), `pt must not contain raw "${raw}" — got: ${text}`);
+      }
+    }
   });
   it('applied local guide phrase woven in Portuguese', () => {
     const out = buildDayNarrativePreview(
