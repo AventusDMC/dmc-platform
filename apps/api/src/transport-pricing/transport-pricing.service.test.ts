@@ -329,3 +329,102 @@ test('route normalization treats imported supplier route labels as equivalent', 
   assert.equal(normalizeRouteName('Aqaba South Border → Petra'), normalizeRouteName('Aqaba South Border to Petra (1 day)'));
   assert.notEqual(normalizeRouteName('Petra → Amman'), normalizeRouteName('Amman → Aqaba'));
 });
+
+// ---------------------------------------------------------------------------
+// Bugfix — ADD_ON VehicleRates must never be applied as the PRIMARY transport rate
+// ---------------------------------------------------------------------------
+function addOnRate(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'rate-petra-overnight',
+    vehicleId: 'vehicle-sedan',
+    routeId: 'route-amman',
+    routeName: 'Jordan Program',
+    minPax: 1,
+    maxPax: 999,
+    price: 15,
+    currency: 'JOD',
+    active: true,
+    validFrom: new Date('2026-01-01'),
+    validTo: new Date('2026-12-31'),
+    vehicle: { id: 'vehicle-sedan', name: 'Sedan 2', vehicleType: 'Sedan', maxPax: 2 },
+    serviceType: { id: 'st-petra-overnight', name: 'Petra Overnight', code: 'PETRA_OVERNIGHT', classification: 'ADD_ON' },
+    supplier: { id: 'supplier-almushtari', name: 'Almushtari Logistics Services' },
+    route: null,
+    fromPlace: null,
+    toPlace: null,
+    ...overrides,
+  };
+}
+
+test('findMatchingRate rejects an ADD_ON (Petra Overnight) vehicleRateId as primary transport', async () => {
+  const service = new TransportPricingService({
+    route: { findUnique: async () => ({ id: 'route-amman', name: 'QAIA -> Amman', fromPlaceId: 'qaia', toPlaceId: 'amman', fromPlace: { id: 'qaia', name: 'QAIA' }, toPlace: { id: 'amman', name: 'Amman' } }) },
+    vehicleRate: { findFirst: async () => addOnRate(), findMany: async () => [] },
+  } as any);
+
+  await assert.rejects(
+    () => service.findMatchingRate({ serviceTypeId: 'st-petra-overnight', vehicleRateId: 'rate-petra-overnight', routeId: 'route-amman', paxCount: 2 }),
+    /add-on transport rate.*cannot be applied as the primary transport rate/i,
+  );
+});
+
+test('findMatchingRate rejects a STATIONARY_WAITING ADD_ON vehicleRateId as primary transport', async () => {
+  const service = new TransportPricingService({
+    route: { findUnique: async () => ({ id: 'route-amman', name: 'QAIA -> Amman', fromPlaceId: 'qaia', toPlaceId: 'amman', fromPlace: { id: 'qaia', name: 'QAIA' }, toPlace: { id: 'amman', name: 'Amman' } }) },
+    vehicleRate: {
+      findFirst: async () => addOnRate({
+        id: 'rate-stationary',
+        serviceType: { id: 'st-stationary', name: 'Stationary / Waiting', code: 'STATIONARY_WAITING', classification: 'ADD_ON' },
+        price: 40,
+      }),
+      findMany: async () => [],
+    },
+  } as any);
+
+  await assert.rejects(
+    () => service.findMatchingRate({ serviceTypeId: 'st-stationary', vehicleRateId: 'rate-stationary', routeId: 'route-amman', paxCount: 2 }),
+    /add-on transport rate.*cannot be applied as the primary transport rate/i,
+  );
+});
+
+test('findMatchingRate fallback never selects an ADD_ON rate even when it is the cheapest', async () => {
+  // findMany returns a cheap ADD_ON (15) + a legitimate route-transfer (30). The
+  // cheapest-fitting picker would grab the 15 ADD_ON without the guard; with the
+  // guard it must pick the 30 primary rate.
+  const primary = addOnRate({
+    id: 'rate-suv-airport',
+    price: 30,
+    vehicle: { id: 'vehicle-suv', name: 'SUV 4', vehicleType: 'SUV', maxPax: 4 },
+    serviceType: { id: 'st-airport', name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+  });
+  const service = new TransportPricingService({
+    route: { findUnique: async () => ({ id: 'route-amman', name: 'QAIA -> Amman', fromPlaceId: 'qaia', toPlaceId: 'amman', fromPlace: { id: 'qaia', name: 'QAIA' }, toPlace: { id: 'amman', name: 'Amman' } }) },
+    vehicleRate: {
+      findFirst: async () => null,
+      findMany: async () => [addOnRate({ id: 'rate-overnight-cheap', price: 15 }), primary],
+    },
+  } as any);
+
+  const rate = await service.findMatchingRate({ serviceTypeId: 'st-airport', routeId: 'route-amman', paxCount: 4 });
+  assert.equal(rate.id, 'rate-suv-airport');
+  assert.equal(rate.serviceType.classification, 'ROUTE_TRANSFER');
+});
+
+test('findMatchingRate still returns a legitimate non-ADD_ON vehicleRateId (package full-day pin unaffected)', async () => {
+  const service = new TransportPricingService({
+    route: { findUnique: async () => ({ id: 'route-amman', name: 'QAIA -> Amman', fromPlaceId: 'qaia', toPlaceId: 'amman', fromPlace: { id: 'qaia', name: 'QAIA' }, toPlace: { id: 'amman', name: 'Amman' } }) },
+    vehicleRate: {
+      findFirst: async () => addOnRate({
+        id: 'rate-disposal-sedan',
+        price: 75,
+        routeName: 'Jordan Program',
+        serviceType: { id: 'st-daily', name: 'Daily Full Day', code: 'DAILY_FULL_DAY', classification: 'DAILY_PACKAGE' },
+      }),
+      findMany: async () => [],
+    },
+  } as any);
+
+  const rate = await service.findMatchingRate({ serviceTypeId: 'st-daily', vehicleRateId: 'rate-disposal-sedan', routeId: 'route-amman', paxCount: 2 });
+  assert.equal(rate.id, 'rate-disposal-sedan');
+  assert.equal(rate.price, 75);
+});

@@ -476,6 +476,22 @@ export class TransportPricingService {
     });
   }
 
+  /**
+   * True when a VehicleRate's service type is classified ADD_ON (driver overnight
+   * / stationary / waiting / extra-km/hour). Such rates are supplements and must
+   * NEVER be selected as the PRIMARY transport rate for a day — only via the
+   * dedicated add-on path. Null/missing classification is treated as NOT add-on
+   * (legitimate primary rates may have no explicit classification).
+   */
+  private isAddOnRate(rate: { serviceType?: { classification?: string | null } | null } | null | undefined): boolean {
+    return ((rate?.serviceType as { classification?: string | null } | null | undefined)?.classification ?? null) === 'ADD_ON';
+  }
+
+  /** Drop ADD_ON-classified rates from a primary-transport candidate list. */
+  private excludeAddOnRates<T extends { serviceType?: { classification?: string | null } | null }>(rates: T[]): T[] {
+    return rates.filter((rate) => !this.isAddOnRate(rate));
+  }
+
   async findMatchingRate(data: FindTransportRateInput) {
     if (!data.serviceTypeId) {
       throw new BadRequestException('serviceTypeId is required');
@@ -515,11 +531,22 @@ export class TransportPricingService {
       });
 
       if (selectedRate) {
+        // Bugfix — an ADD_ON rate (driver overnight / stationary / waiting) must
+        // never be applied as the PRIMARY transport rate. Reject explicitly so the
+        // caller cannot silently price or persist it as a transport line. ADD_ON
+        // rates remain available through the dedicated add-on path (optionalAddOns
+        // / calculateTransportAddOnsForQuoteItem), not here.
+        if (this.isAddOnRate(selectedRate)) {
+          throw new BadRequestException(
+            'An add-on transport rate (driver overnight / stationary / waiting) cannot be applied as the primary transport rate.',
+          );
+        }
         return selectedRate;
       }
     }
 
-    const fittingRates = await this.prisma.vehicleRate.findMany({
+    const fittingRates = this.excludeAddOnRates(
+      await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
         ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
@@ -562,37 +589,40 @@ export class TransportPricingService {
           minPax: 'desc',
         },
       ],
-    });
+      }),
+    );
     // Pick the cheapest vehicle that fits (best rate), not the smallest-capacity one.
     let rate: any = this.pickCheapestFittingRate(fittingRates);
 
     if (!rate && data.vehicleId) {
       const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
-      const candidateRates = await this.prisma.vehicleRate.findMany({
-        where: {
-          serviceTypeId: data.serviceTypeId,
-          active: true,
-          ...routeFilter,
-          minPax: { lte: data.paxCount },
-          maxPax: { gte: data.paxCount },
-          validFrom: { lte: pricingDate },
-          validTo: { gte: pricingDate },
-        },
-        include: {
-          vehicle: true,
-          serviceType: true,
-          supplier: true,
-          route: {
-            include: {
-              fromPlace: true,
-              toPlace: true,
-            },
+      const candidateRates = this.excludeAddOnRates(
+        await this.prisma.vehicleRate.findMany({
+          where: {
+            serviceTypeId: data.serviceTypeId,
+            active: true,
+            ...routeFilter,
+            minPax: { lte: data.paxCount },
+            maxPax: { gte: data.paxCount },
+            validFrom: { lte: pricingDate },
+            validTo: { gte: pricingDate },
           },
-          fromPlace: true,
-          toPlace: true,
-        },
-        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
-      });
+          include: {
+            vehicle: true,
+            serviceType: true,
+            supplier: true,
+            route: {
+              include: {
+                fromPlace: true,
+                toPlace: true,
+              },
+            },
+            fromPlace: true,
+            toPlace: true,
+          },
+          orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
+        }),
+      );
       rate = candidateRates.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType)) || null;
     }
 
@@ -602,30 +632,32 @@ export class TransportPricingService {
         normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
       });
       const selectedVehicleType = data.vehicleId ? await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId) : '';
-      const broadCandidateRates = await this.prisma.vehicleRate.findMany({
-        where: {
-          serviceTypeId: data.serviceTypeId,
-          active: true,
-          minPax: { lte: data.paxCount },
-          maxPax: { gte: data.paxCount },
-          validFrom: { lte: pricingDate },
-          validTo: { gte: pricingDate },
-        },
-        include: {
-          vehicle: true,
-          serviceType: true,
-          supplier: true,
-          route: {
-            include: {
-              fromPlace: true,
-              toPlace: true,
-            },
+      const broadCandidateRates = this.excludeAddOnRates(
+        await this.prisma.vehicleRate.findMany({
+          where: {
+            serviceTypeId: data.serviceTypeId,
+            active: true,
+            minPax: { lte: data.paxCount },
+            maxPax: { gte: data.paxCount },
+            validFrom: { lte: pricingDate },
+            validTo: { gte: pricingDate },
           },
-          fromPlace: true,
-          toPlace: true,
-        },
-        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
-      });
+          include: {
+            vehicle: true,
+            serviceType: true,
+            supplier: true,
+            route: {
+              include: {
+                fromPlace: true,
+                toPlace: true,
+              },
+            },
+            fromPlace: true,
+            toPlace: true,
+          },
+          orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
+        }),
+      );
       const routeMatchedRates = broadCandidateRates.filter((entry: any) => this.rateMatchesRouteOrServiceArea(entry, route, data));
       const exactVehicleRate = data.vehicleId ? routeMatchedRates.find((entry: any) => entry.vehicleId === data.vehicleId) : null;
       rate =
