@@ -106,7 +106,17 @@ const PLACE_DESCRIPTORS_BY_LOCALE: Record<NarrativeLocale, Record<string, string
     'dead sea': 'o ponto mais baixo da Terra',
     bethany: 'o local do Batismo às margens do rio Jordão',
   },
-  ar: {},
+  // R.7B-3A — Modern Standard Arabic descriptors (professional proposal tone).
+  ar: {
+    amman: 'عاصمة الأردن',
+    jerash: 'إحدى أفضل المدن الرومانية حفظاً في المنطقة',
+    madaba: 'المشهورة بخريطتها الفسيفسائية القديمة',
+    'mount nebo': 'المطلّ التقليدي على الأرض الموعودة',
+    petra: 'المدينة الوردية وإحدى أشهر المواقع الأثرية في الأردن',
+    'wadi rum': 'صحراء الأردن المعروفة بجبالها الرملية المهيبة',
+    'dead sea': 'أخفض نقطة على وجه الأرض',
+    bethany: 'موقع المعمودية على نهر الأردن',
+  },
 };
 
 // R.7B-2 — locale-specific DISPLAY NAMES for the obvious translatable places.
@@ -117,7 +127,18 @@ const PLACE_NAME_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
   en: {},
   es: { 'mount nebo': 'Monte Nebo', 'dead sea': 'Mar Muerto', bethany: 'Betania' },
   pt: { 'mount nebo': 'Monte Nebo', 'dead sea': 'Mar Morto', bethany: 'Betânia' },
-  ar: {},
+  // R.7B-3A — Arabic display names. The Arabic forms carry their own definite
+  // article (ال) where natural, so no separate article word is needed (see below).
+  ar: {
+    amman: 'عمّان',
+    jerash: 'جرش',
+    madaba: 'مادبا',
+    'mount nebo': 'جبل نيبو',
+    petra: 'البتراء',
+    'wadi rum': 'وادي رم',
+    'dead sea': 'البحر الميت',
+    bethany: 'المغطس',
+  },
 };
 
 // The DEFINITE ARTICLE a place reads with, per locale ('' = none). English uses
@@ -144,7 +165,9 @@ const TRANSITION_OPENER_BY_LOCALE: Record<NarrativeLocale, Record<string, string
   pt: {
     'wadi rum': 'Desfrute da paisagem desértica de Wadi Rum',
   },
-  ar: {},
+  ar: {
+    'wadi rum': 'استمتعوا بالمناظر الصحراوية في وادي رم',
+  },
 };
 
 // Compass hint used only when a place is the DESTINATION of a depart-and-visit
@@ -184,7 +207,18 @@ const DIRECTION_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
     bethany: 'oeste',
     amman: '',
   },
-  ar: {},
+  // R.7B-3A — Arabic compass adverbs (منصوب): جنوباً / شمالاً / غرباً.
+  ar: {
+    petra: 'جنوباً',
+    'wadi rum': 'جنوباً',
+    aqaba: 'جنوباً',
+    jerash: 'شمالاً',
+    madaba: 'جنوباً',
+    'mount nebo': 'غرباً',
+    'dead sea': 'غرباً',
+    bethany: 'غرباً',
+    amman: '',
+  },
 };
 
 // Tokens that must never reach client-facing text. Used to scrub parsed names.
@@ -229,10 +263,9 @@ function parseSegments(title: string): Segment[] {
 // turn the parsed places of one day into a single client-facing paragraph. The
 // place dictionaries (descriptors / articles / openers / directions) live in the
 // *_BY_LOCALE maps above and are resolved per locale ALONGSIDE the pack. English
-// (`en`) reproduces the R.7A wording byte-for-byte; `es`/`pt` are professional
-// tourism-tone (NOT literal translation); `ar` falls back to `en` until R.7B-3.
-// Place NAMES stay in their recognizable proper form across all locales — only
-// descriptors + connectives are localized. Pure + deterministic; no AI.
+// (`en`) reproduces the R.7A wording byte-for-byte; `es`/`pt`/`ar` are professional
+// tourism-tone (NOT literal translation). Latin-script names stay proper-form; the
+// Arabic pack uses localized names + Arabic punctuation. Pure + deterministic; no AI.
 // ---------------------------------------------------------------------------
 type LocalePlace = { disp: string; art: string; desc: string };
 type NarrativePhrases = {
@@ -283,6 +316,21 @@ const esTail = (destPhrase: string, dest: LocalePlace): string =>
   dest.desc ? `${destPhrase}, ${dest.desc}, para pasar la noche.` : `${destPhrase} para pasar la noche.`;
 const ptTail = (destPhrase: string, dest: LocalePlace): string =>
   dest.desc ? `${destPhrase}, ${dest.desc}, para pernoitar.` : `${destPhrase} para pernoitar.`;
+
+// R.7B-3A — Arabic surface helpers. Arabic place names are self-contained (the
+// definite article ال is part of the display name) and the prepositions إلى/من
+// attach directly, so there is NO contraction to do. Descriptor clauses + tails
+// use the Arabic comma (،) for clean RTL proposal flow.
+const arWithDesc = (p: LocalePlace): string => (p.desc ? `${p.disp}، ${p.desc}` : p.disp);
+const arTail = (dest: LocalePlace): string =>
+  dest.desc ? `${dest.disp}، ${dest.desc}، للمبيت.` : `${dest.disp} للمبيت.`;
+
+// Known activity-name translations (MSA). Unknown activity names fall back to the
+// (already sanitized) source name — never invent an unsafe translation.
+const AR_ACTIVITY_NAMES: Record<string, string> = {
+  'wadi rum jeep tour': 'جولة بسيارات الدفع الرباعي في وادي رم',
+};
+const arActivity = (name: string): string => AR_ACTIVITY_NAMES[key(name)] || name;
 
 // English — reproduces R.7A wording EXACTLY (byte-identical regression guard).
 const EN_PHRASES: NarrativePhrases = {
@@ -377,11 +425,43 @@ const PT_PHRASES: NarrativePhrases = {
   },
 };
 
-// Real renderers exist for en/es/pt; ar maps to en (R.7B-3 adds Arabic).
-const NARRATIVE_PHRASES: Record<'en' | 'es' | 'pt', NarrativePhrases> = {
+// Arabic (MSA) — professional travel-proposal tone, RTL-safe, Arabic punctuation.
+// Place names are self-contained (carry their own ال); إلى/من attach directly, so
+// no contraction. The "و" conjunction in `linear` attaches to the chain (وزيارة …).
+const AR_PHRASES: NarrativePhrases = {
+  dayAtLeisure: 'يوم حر.',
+  chainJoin: '، ثم ',
+  guideClause: '، مع مرشد محلي',
+  activityFragment: (names) => `، بما في ذلك ${names.map((n) => arActivity(n)).join(' و')}`,
+  arrival: (dest) =>
+    `عند الوصول، الاستقبال والمساعدة في المطار، ثم النقل إلى ${dest ? dest.disp : 'فندقكم'} للمبيت.`,
+  departure: (origin) =>
+    origin ? `النقل من ${origin.disp} إلى المطار لرحلة المغادرة.` : 'النقل إلى المطار لرحلة المغادرة.',
+  cityTour: (place) =>
+    `بعد الإفطار، استمتعوا بجولة برفقة مرشد في ${arWithDesc(place)}، ثم العودة إلى الفندق للمبيت.`,
+  leisure: (place) => `استمتعوا بيوم حر${place ? ` في ${place.disp}` : ''} للمبيت.`,
+  chainItem: (place, isFirst) => (isFirst ? `زيارة ${arWithDesc(place)}` : `المتابعة إلى ${arWithDesc(place)}`),
+  continueItem: (place) => `المتابعة إلى ${place.disp}`,
+  roundTrip: (chain, enrich, origin) => `بعد الإفطار، ${chain}${enrich}، ثم العودة إلى ${origin.disp} للمبيت.`,
+  visitOrigin: (origin, enrich, continueParts) =>
+    `بعد الإفطار، زيارة ${arWithDesc(origin)}${enrich}. بعد ذلك، ${continueParts} للمبيت.`,
+  transitionOpener: (opener, enrich, dest) => {
+    const sep = enrich ? '، قبل المتابعة إلى ' : ' قبل المتابعة إلى ';
+    return `${opener}${enrich}${sep}${arTail(dest)}`;
+  },
+  transitionNoOpener: (origin, dest) => `بعد الإفطار، المغادرة من ${origin.disp} والمتابعة إلى ${arTail(dest)}`,
+  linear: (origin, chain, enrich, dir, last) => {
+    const directionPhrase = dir ? `التوجه ${dir} إلى ${last.disp}` : `المتابعة إلى ${last.disp}`;
+    return `بعد الإفطار، المغادرة من ${origin.disp} و${chain}${enrich}. بعد ذلك، ${directionPhrase} للمبيت.`;
+  },
+};
+
+// R.7B-3A — real deterministic renderers now exist for all four locales (en/es/pt/ar).
+const NARRATIVE_PHRASES: Record<NarrativeLocale, NarrativePhrases> = {
   en: EN_PHRASES,
   es: ES_PHRASES,
   pt: PT_PHRASES,
+  ar: AR_PHRASES,
 };
 
 /**
@@ -394,7 +474,7 @@ const NARRATIVE_PHRASES: Record<'en' | 'es' | 'pt', NarrativePhrases> = {
  */
 function renderNarrative(
   input: DayNarrativePreviewInput,
-  locale: 'en' | 'es' | 'pt',
+  locale: NarrativeLocale,
 ): DayNarrativePreview {
   const P = NARRATIVE_PHRASES[locale];
   const descriptors = PLACE_DESCRIPTORS_BY_LOCALE[locale];
@@ -533,20 +613,20 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
   return renderNarrative(input, 'en');
 }
 
-// R.7B-2 — per-locale renderer map. en/es/pt are real deterministic renderers;
-// `ar` still falls back to the English renderer (Arabic + RTL UI land in R.7B-3).
+// R.7B-3A — per-locale renderer map. All four locales (en/es/pt/ar) are now real
+// deterministic renderers; nothing falls back to English. (R.7B-3B wires the UI.)
 const NARRATIVE_RENDERERS: Record<NarrativeLocale, (input: DayNarrativePreviewInput) => DayNarrativePreview> = {
   en: (input) => renderNarrative(input, 'en'),
   es: (input) => renderNarrative(input, 'es'),
   pt: (input) => renderNarrative(input, 'pt'),
-  ar: (input) => renderNarrative(input, 'en'),
+  ar: (input) => renderNarrative(input, 'ar'),
 };
 
 /**
  * Phase R.7A — build the read-only client narrative preview for one day.
- * R.7B-1: accepts an optional locale (en/es/pt/ar, default en). English output is
- * byte-identical to R.7A; es/pt/ar fall back to the English renderer until their
- * own renderers land (R.7B-2/-3). Pure + deterministic; no AI, no network.
+ * R.7B-1/-2/-3A: accepts an optional locale (en/es/pt/ar, default en). All four
+ * locales are now real deterministic renderers (no English fallback); English
+ * output stays byte-identical to R.7A. Pure + deterministic; no AI, no network.
  */
 export function buildDayNarrativePreview(
   input: DayNarrativePreviewInput,
