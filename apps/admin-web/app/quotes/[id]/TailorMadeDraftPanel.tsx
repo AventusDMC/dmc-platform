@@ -9,9 +9,12 @@ import {
   resolveTransportPlan,
   computeTransportSell,
   classifyPackageTransportPolicy,
+  buildTransportAddOnPreview,
+  normalizeTransportAddOnRates,
   TRANSPORT_DEFAULT_MARKUP,
   type TransportServiceTypeOption,
   type TransportPricingBasis,
+  type TransportAddOnRate,
 } from './tailor-made-transport-resolve';
 
 // T.5D-2 — operator-safe pricing-basis labels for the transport price preview.
@@ -426,6 +429,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [transportPreviewDay, setTransportPreviewDay] = useState<number | null>(null);
   const [transportPreview, setTransportPreview] = useState<TransportPreview | null>(null);
   const [transportPreviewLoading, setTransportPreviewLoading] = useState(false);
+  // T.5F — add-on rates + vehicle captured from the most recent PACKAGE_FULL_DAY
+  // transport price preview (the calculate response's optionalAddOns). Drives the
+  // PREVIEW-ONLY driver-overnight / stationary add-on lines below the policy
+  // summary. Captured only for package full-day previews; never applied.
+  const [transportAddOnRates, setTransportAddOnRates] = useState<TransportAddOnRate[]>([]);
+  const [transportAddOnVehicle, setTransportAddOnVehicle] = useState<string | null>(null);
 
   // Phase R.6B-1 — apply one OK-priced transport day as a single TRANSPORT
   // QuoteItem. Per-DAY conflict guard: a day is blocked only when it already has
@@ -856,6 +865,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         // package full-day disposal rate; absent for rate-rule per-leg legs).
         vehicleRateId: result?.vehicleRateId ?? null,
       });
+
+      // T.5F — capture the optional add-on rates the engine already returns for a
+      // PACKAGE_FULL_DAY day (driver overnight + stationary) so the package-level
+      // add-on PREVIEW below can render them. Normalization (and the raw add-on
+      // type tokens) lives in the resolver helper, not here. Preview only.
+      if (plan.pricingBasis === 'PACKAGE_FULL_DAY') {
+        setTransportAddOnRates(normalizeTransportAddOnRates(result?.optionalAddOns));
+        setTransportAddOnVehicle(result?.vehicle?.name ?? null);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');
     } finally {
@@ -1546,12 +1564,68 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     <p className="form-help tailor-made-transport-policy-note">
                       Preview and apply use the same package full-day vehicle rate.
                     </p>
-                    <p className="form-help tailor-made-transport-policy-note">
-                      Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.
-                    </p>
                   </div>
                 );
               })()}
+              {/* T.5F — PREVIEW-ONLY transport add-on lines (driver overnight +
+                  stationary). Driver overnight is suggested only in package
+                  full-day mode for car/van classes (Petra/Wadi Rum/Aqaba auto;
+                  Dead Sea operator-confirm only; Amman/base never shown; buses
+                  excluded). Stationary is an optional add-on for any class. Built
+                  from the calculate add-on rates + the quote's overnight stays.
+                  Nothing is applied and no transportAddOns are sent. */}
+              {transportAddOnRates.length > 0
+                ? (() => {
+                    const policy = classifyPackageTransportPolicy(transport);
+                    const overnightStays = (hotelStays ?? []).map((s) => ({ city: s.city, nights: s.nights }));
+                    const addOns = buildTransportAddOnPreview({
+                      usePackageFullDay: policy.usePackageFullDay,
+                      vehicleName: transportAddOnVehicle,
+                      overnightStays,
+                      addOnRates: transportAddOnRates,
+                    });
+                    if (addOns.driverOvernight.length === 0 && !addOns.stationary) {
+                      return null;
+                    }
+                    return (
+                      <div className="tailor-made-transport-addons" aria-label="Transport add-ons preview">
+                        <p>
+                          <strong>Transport add-ons (preview only)</strong>
+                        </p>
+                        {addOns.driverOvernight.length > 0 ? (
+                          <ul className="tailor-made-transport-addon-list">
+                            {addOns.driverOvernight.map((line) => (
+                              <li key={line.label}>
+                                {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} × {line.unitCost}{' '}
+                                {line.currency} = {line.total} {line.currency}
+                                {line.status === 'suggested' ? (
+                                  <span className="form-help"> (suggested)</span>
+                                ) : (
+                                  <span className="form-help"> (optional — operator confirm)</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {addOns.driverOvernight.some((l) => l.status === 'suggested') ? (
+                          <p>
+                            <strong>Suggested driver overnight total:</strong> {addOns.suggestedOvernightTotal}{' '}
+                            {addOns.currency}
+                          </p>
+                        ) : null}
+                        {addOns.stationary ? (
+                          <p className="form-help">
+                            Optional stationary / waiting add-on — {addOns.stationary.unitCost}{' '}
+                            {addOns.stationary.currency} (off by default, not included in totals)
+                          </p>
+                        ) : null}
+                        <p className="form-help tailor-made-transport-policy-note">
+                          Add-ons are preview only and are not applied yet.
+                        </p>
+                      </div>
+                    );
+                  })()
+                : null}
               <ol className="tailor-made-transport-days">
                 {transport.map((t) => {
                   const activeDay = transportPreviewDay === t.dayNumber;
