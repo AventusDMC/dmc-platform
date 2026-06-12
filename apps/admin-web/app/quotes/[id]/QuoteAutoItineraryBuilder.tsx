@@ -17,6 +17,7 @@ import {
 } from '../../lib/route-standards';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
+import { NICHE_TRANSPORT_SERVICE_PATTERN, selectGeneralTransportService } from './transport-service-select';
 import {
   assignGeneratedItineraryCities,
   assignGeneratedItineraryCitiesByNights,
@@ -533,18 +534,11 @@ function findService(services: SupplierService[], category: 'hotel' | 'transport
   if (category === 'transport') {
     // This representative transport service is linked to EVERY auto-generated
     // transfer line (its name is what the day card shows). Skip niche add-on
-    // services — driver overnight, stationary, extra-km, border — the same way
-    // NICHE_TRANSPORT_SERVICE_TYPE guards service-type selection. Picking the
-    // first transport-category service used to land on "Petra Overnight", so
-    // every daily-package line read "Petra Overnight" regardless of the day's
-    // city. Fall back to the first match when no general transfer service exists.
-    const general = matches.find(
-      (service) =>
-        !NICHE_TRANSPORT_SERVICE_TYPE.test(
-          `${service.name || ''} ${service.category || ''} ${service.serviceType?.name || ''} ${service.serviceType?.code || ''}`,
-        ),
-    );
-    if (general) return general;
+    // services — driver overnight, stationary, extra-km, border — via the shared
+    // selector (same logic the tailor-made planner uses). Picking the first
+    // transport-category service used to land on "Petra Overnight", so every
+    // line read "Petra Overnight" regardless of the day's city.
+    return selectGeneralTransportService(matches);
   }
   return matches[0] || null;
 }
@@ -555,7 +549,7 @@ function findService(services: SupplierService[], category: 'hotel' | 'transport
 // land on "Border Transfer" (it contains "transfer"), so airport + intercity
 // legs were priced against a service type that has no rate on those routes →
 // "No matching vehicle rate found" and a dead generation.
-const NICHE_TRANSPORT_SERVICE_TYPE = /border|overnight|extra|stationary|per.?hour|add.?on|\bkm\b|waiting/i;
+const NICHE_TRANSPORT_SERVICE_TYPE = NICHE_TRANSPORT_SERVICE_PATTERN;
 
 /**
  * Pick the transport service type best suited to a leg. Tries an explicit

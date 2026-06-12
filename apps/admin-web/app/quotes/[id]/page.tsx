@@ -52,6 +52,7 @@ import { formatNightCountLabel } from '../../lib/formatters';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getQuoteMarginWarning } from '../../lib/financials';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, getQuoteServiceCategoryKey, isActiveImportedQuoteServiceUnresolved, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
+import { selectGeneralTransportService } from './transport-service-select';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { readSessionActor } from '../../lib/auth-session';
@@ -2214,8 +2215,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     services.find((service) => getQuoteServiceCategoryKey(service) === 'hotel')?.id ?? null;
   // Phase R.6B-1 — representative TRANSPORT-type service the applied tailor-made
   // transport item attaches to (canonical createItem transport branch).
+  // Emergency fix: pick a GENERAL transport container (skip niche/add-on services
+  // like "Petra Overnight" / stationary / extra-km / border), matching the Auto
+  // Itinerary Builder. Picking the first transport-category service used to land
+  // on "Petra Overnight", which then surfaced as the item label for transfers.
   const tailorMadeTransportServiceId =
-    services.find((service) => getQuoteServiceCategoryKey(service) === 'transport')?.id ?? null;
+    selectGeneralTransportService(services.filter((service) => getQuoteServiceCategoryKey(service) === 'transport'))?.id ??
+    null;
   // Phase R.6D-1 — representative GUIDE-type service the applied tailor-made guide
   // item attaches to (canonical createItem guide branch).
   const tailorMadeGuideServiceId =

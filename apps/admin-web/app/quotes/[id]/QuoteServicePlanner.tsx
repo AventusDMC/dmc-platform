@@ -18,6 +18,7 @@ import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
 import { formatOriginAwareExcursionName, getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
 import { resolveTouringRoutePackageLabel } from './quote-item-label';
+import { deriveTransportFallbackLabel } from './transport-fallback-label';
 import { CUSTOM_DAY_PRESET_KEY, DAY_ROUTE_PRESETS, getDayRoutePreset, type DayRoutePreset } from './day-route-presets';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
@@ -1148,6 +1149,15 @@ function getItemServiceName(item: QuoteItem) {
       getTransportPricingModeDisplayName(item),
       getTransportSupplierDisplayName(item),
     );
+  }
+
+  // Emergency display hardening — a transport item with a route/service type but
+  // no vehicle rate and no operator label must not show its raw container service
+  // name (which can be a mislabelled row like "Petra Overnight"). Derive a safe
+  // route-based label instead. Non-transport items return null here → unchanged.
+  const transportFallback = deriveTransportFallbackLabel(item);
+  if (transportFallback) {
+    return transportFallback;
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
@@ -2497,7 +2507,14 @@ function QuoteServiceCard({
       </div>
       <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`} aria-label="Pricing diagnostics">
         {pricingDiagnostics.rows
-          .filter((row) => ['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Saved total', 'Calculated total', 'Status'].includes(row.label))
+          // Nights is inherited from quote duration and is not meaningful for a
+          // transport transfer/disposal line (priced per trip/day, never per night)
+          // — hide it for transport so transfers don't read "Nights: 7".
+          .filter((row) =>
+            ['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Saved total', 'Calculated total', 'Status'].includes(
+              row.label,
+            ) && !(category === 'transport' && row.label === 'Nights'),
+          )
           .map((row) => (
             <span key={row.label}>{row.label}: {row.value}</span>
           ))}
