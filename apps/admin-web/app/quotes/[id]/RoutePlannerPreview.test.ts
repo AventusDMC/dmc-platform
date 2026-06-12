@@ -149,7 +149,7 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
   it('10/11. renders a "Client narrative preview" per day with the "not saved yet" label', () => {
     expectSourceContains(source, [
       // reuses the pure helper (no network)
-      "import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview'",
+      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
       'buildDayNarrativePreview({',
       'title: day.title',
       'notes: day.notes',
@@ -159,16 +159,16 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
       'narrativePreview.text',
       'Preview only — not saved yet',
     ]);
-    // The preview is read-only — no <button> wraps the narrative, and there is no
-    // "Use this narrative" save action in R.7A-1/-2.
-    assert.ok(!source.includes('Use this narrative'), 'no save action');
-    assert.ok(!source.includes('Save narrative') && !source.includes('Apply narrative'), 'no save/apply narrative action');
+    // R.7A-3 adds an opt-in "Use this narrative" save action; the "Preview only —
+    // not saved yet" flag still renders (the preview itself is never auto-saved).
+    assert.ok(source.includes('Use this narrative'), 'R.7A-3 save action present');
+    assert.ok(source.includes('Preview only — not saved yet'), 'preview-not-saved flag retained');
   });
 
   it('R.7A-2: forwards applied services + shows "Includes applied services" only when service-aware', () => {
     expectSourceContains(source, [
       // helper import now also pulls the applied-service type
-      "import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview'",
+      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
       // applied services threaded into the preview helper
       'appliedServices: day.appliedServices',
       // conditional label, only when the preview actually wove services in
@@ -180,10 +180,11 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
   it('12/13/14/15. the preview adds no write/network/proposal/pricing coupling', () => {
     // No suggestion endpoints called from the component (route/day text only).
     assert.ok(!source.includes('tailor-made-draft'), 'preview must not call suggestion/generator endpoints');
-    // No new PATCH/POST/DELETE introduced by the narrative preview. The only
-    // network calls remain the pre-existing day PATCH apply handlers (S.2D-2/-3C).
+    // The only network calls are day-PATCH apply handlers: the two pre-existing
+    // (S.2D-2 applyPresetToDay, S.2D-3C applyTemplate) + R.7A-3 applyNarrativeToDay
+    // (notes-only). All PATCH /itinerary/day; no POST/DELETE, no /items, no generator.
     const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
-    assert.equal(patchCount, 2, 'exactly the two pre-existing day-PATCH apply handlers remain');
+    assert.equal(patchCount, 3, 'three day-PATCH apply handlers (preset, template, R.7A-3 narrative)');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
     // The pure helper itself performs no I/O (call-shaped checks, so its own
     // descriptive header comment — "NO PATCH", "NO proposal-v3 change" — doesn't
@@ -191,5 +192,59 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
     assert.ok(!/fetch\s*\(/.test(narrativeSource), 'helper makes no network calls');
     assert.ok(!/useRouter|router\.\w+\(/.test(narrativeSource), 'helper does not navigate/refresh');
     assert.ok(!/method:\s*['"]/.test(narrativeSource), 'helper issues no HTTP method');
+  });
+});
+
+describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (notes-only PATCH)', () => {
+  it('renders a Use this narrative button gated on a client-safe preview', () => {
+    expectSourceContains(source, [
+      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
+      'Use this narrative',
+      'const canSave = isClientSafeNarrative(narrativePreview.text)',
+      'disabled={!canSave || savingThis}',
+      'onClick={() => applyNarrativeToDay(day, narrativePreview.text)}',
+      // empty/unsafe disables save + shows a clear message
+      'Narrative preview is empty or not client-safe — it cannot be saved to the day notes.',
+      // success state
+      'Saved to day notes. The preview now matches the saved notes.',
+    ]);
+  });
+
+  it('confirms before overwrite, with a stronger warning when notes look manually edited', () => {
+    expectSourceContains(source, [
+      'function isManuallyEditedNotes(day: RoutePlannerDay, generatedText: string)',
+      'PRESET_NARRATIVES.has(notes)',
+      'This will replace the current day narrative/notes with the client narrative preview. Continue?',
+      'This day’s notes may have been manually edited. Replacing them may overwrite operator changes.',
+      'window.confirm(message)',
+    ]);
+  });
+
+  it('saves via the EXISTING day PATCH with a NOTES-ONLY payload', () => {
+    expectSourceContains(source, [
+      'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string)',
+      '`${apiBaseUrl}/itinerary/day/${day.id}`',
+      "method: 'PATCH'",
+      'JSON.stringify({ notes: generatedText })',
+      'router.refresh()',
+    ]);
+    // The narrative-save PATCH BODY must be notes-only — scope the field checks to
+    // the JSON.stringify(...) payload (the handler legitimately reads day.dayNumber
+    // for its save-state keys, which is not part of the payload).
+    const handlerStart = source.indexOf('async function applyNarrativeToDay');
+    const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
+    const payloadMatch = handler.match(/JSON\.stringify\((\{[^}]*\})\)/);
+    assert.ok(payloadMatch, 'narrative save has a JSON.stringify payload');
+    const payload = payloadMatch![1];
+    assert.ok(payload.includes('notes'), 'payload includes notes');
+    for (const forbidden of ['title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'serviceId', 'poi', 'markup', 'overrideCost', 'paxCount', 'price']) {
+      assert.ok(!payload.includes(forbidden), `narrative save payload must not include ${forbidden}`);
+    }
+    // (No /items / generator / proposal coupling is asserted by the pre-existing
+    // S.2D + "no write/network/proposal/pricing coupling" tests above.)
+  });
+
+  it('exposes the client-safe save guard from the pure narrative module', () => {
+    expectSourceContains(narrativeSource, ['export function isClientSafeNarrative']);
   });
 });

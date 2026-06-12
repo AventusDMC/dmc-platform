@@ -284,3 +284,21 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     woven,
   );
 }
+
+// ---------------------------------------------------------------------------
+// R.7A-3 — client-safe guard for SAVING a narrative preview into day notes.
+// The preview produced by buildDayNarrativePreview is already curated client copy,
+// but this is a belt-and-suspenders check before the operator persists it: refuse
+// to save text that carries supplier / commercial / internal-pricing / raw-enum /
+// vehicle-class leakage, or the "Overnight: No" internal marker. Word boundaries
+// keep legitimate prose safe (e.g. "Pentecost" does not trip "cost").
+// ---------------------------------------------------------------------------
+const UNSAFE_NARRATIVE_PATTERN =
+  /\b(?:supplier|contract|markup|margin|cost|sell|sedan|suv|mini\s*van|coaster|stationary)\b|capacity[_ ]unit|point[_ ]to[_ ]point|daily[_ ]full[_ ]day|airport[_ ]transfer|add[_ ]on\b|pricingdescription|overnight:\s*no/i;
+
+/** True when the narrative text is non-empty and safe to persist to day notes. */
+export function isClientSafeNarrative(text: string | null | undefined): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return !UNSAFE_NARRATIVE_PATTERN.test(trimmed);
+}
