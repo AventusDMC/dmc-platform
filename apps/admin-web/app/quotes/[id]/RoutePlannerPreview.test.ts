@@ -123,7 +123,12 @@ describe('Phase S.2D-2 — Route Planner "Apply to Day" (existing day PATCH only
       // R.7A-1/-2 — day notes + applied services are forwarded to the preview.
       'days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: toRoutePlannerAppliedServices(day.dayItems) }))}',
       'id="qb-route-planner"',
+      // R.7B-5B — the already-loaded proposal language is forwarded (advisory hint only).
+      'proposalLanguage={quote.proposalLanguage ?? null}',
     ]);
+    // R.7B-5B — the workspace quote type carries the optional proposalLanguage field
+    // (admin-web type only; no backend/schema change).
+    expectSourceContains(workspaceSource, ['proposalLanguage?: string | null;']);
   });
 
   it('maps applied QuoteItems to client-safe service descriptors (R.7A-2)', () => {
@@ -308,7 +313,10 @@ describe('R.7B-3B — narrative language selector + RTL preview (preview-only)',
   it('13. no proposal/backend/schema/pricing/QuoteItem/apply-flow coupling added', () => {
     assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
     assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
-    assert.ok(!/proposal/i.test(source), 'no proposal coupling');
+    // R.7B-5B — the component reads the quote's `proposalLanguage` (data only) for an
+    // advisory hint; assert no proposal-v3 RENDERING coupling (no module import / no
+    // proposal endpoint fetch) rather than banning the word "proposal".
+    assert.ok(!/proposal-v3|getProposalHtml|getProposalPdf|['"`][^'"`]*\/proposal[^'"`]*['"`]/i.test(source), 'no proposal-v3 rendering coupling');
   });
 });
 
@@ -382,8 +390,69 @@ describe('R.7B-4 — save the selected-language narrative into day notes (notes-
   it('13/14. no backend/proposal/schema/pricing/QuoteItem/apply coupling; notes-only single-day write', () => {
     assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
     assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
-    assert.ok(!/proposal/i.test(source), 'no proposal coupling');
+    // R.7B-5B — the component reads the quote's `proposalLanguage` (data only) for an
+    // advisory hint; assert no proposal-v3 RENDERING coupling (no module import / no
+    // proposal endpoint fetch) rather than banning the word "proposal".
+    assert.ok(!/proposal-v3|getProposalHtml|getProposalPdf|['"`][^'"`]*\/proposal[^'"`]*['"`]/i.test(source), 'no proposal-v3 rendering coupling');
     // Still exactly the three day-PATCH handlers (preset, template, narrative).
     assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added');
+  });
+});
+
+describe('R.7B-5B — proposal-language mismatch hints (advisory, non-blocking)', () => {
+  it('reads the quote proposal language (data only) and normalizes it', () => {
+    expectSourceContains(source, [
+      // new advisory-only prop (already-loaded data, no backend call)
+      'proposalLanguage?: string | null;',
+      // normalized to a NarrativeLocale (en/es/pt/ar) for comparison
+      'const quoteProposalLocale: NarrativeLocale = resolveNarrativeLocale(proposalLanguage)',
+    ]);
+  });
+
+  it('1/2/3/4. warns when the selected preview language differs from the proposal language', () => {
+    expectSourceContains(source, [
+      'const previewLanguageMismatch = narrativeLocaleForDay !== quoteProposalLocale',
+      // advisory copy naming both languages
+      'The selected narrative language is {NARRATIVE_LANGUAGE_LABELS[narrativeLocaleForDay]}, but the proposal',
+      'language is {NARRATIVE_LANGUAGE_LABELS[quoteProposalLocale]}. Saving this may create a mixed-language proposal.',
+      // gated render
+      '{previewLanguageMismatch ? (',
+    ]);
+  });
+
+  it('5/6/7. warns when saved notes look Arabic and the proposal is not Arabic (Arabic-only detector)', () => {
+    expectSourceContains(source, [
+      'const savedNotesLookArabic = ARABIC_SCRIPT_PATTERN.test(day.notes || \'\')',
+      // only flags when the proposal language is NOT Arabic (#6: ar proposal → no warning)
+      "const savedNotesArabicMismatch = savedNotesLookArabic && quoteProposalLocale !== 'ar'",
+      'This day’s saved notes appear to be Arabic, but the proposal language is {NARRATIVE_LANGUAGE_LABELS[quoteProposalLocale]}.',
+      '{savedNotesArabicMismatch ? (',
+    ]);
+    // The detector is Arabic-script only — Latin text (en/es/pt) is never flagged (#7).
+    const m = source.match(/const ARABIC_SCRIPT_PATTERN = (\/\[[^\n]*?\]\/);/);
+    assert.ok(m, 'ARABIC_SCRIPT_PATTERN defined as a regex literal');
+    const re = eval(m![1]) as RegExp;
+    assert.equal(re.test('عمّان'), true, 'matches Arabic');
+    assert.equal(re.test('Amman'), false, 'does not match Latin English');
+    assert.equal(re.test('Petra, la ciudad rosada'), false, 'does not match Latin Spanish');
+  });
+
+  it('8/9/10/11. hints are advisory — save is unchanged (notes-only PATCH, no locale sent)', () => {
+    // No new PATCH/POST; payload still { notes }; no locale/language ever sent.
+    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added by the hints');
+    assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
+    assert.ok(!/JSON\.stringify\([^)]*locale/.test(source), 'no locale/language sent to backend');
+    // The narrative-save PATCH body remains exactly { notes }.
+    const handlerStart = source.indexOf('async function applyNarrativeToDay');
+    const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
+    const payload = handler.match(/JSON\.stringify\((\{[^}]*\})\)/)![1];
+    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText}', 'save payload is still { notes }');
+    // Hints never disable/guard the save button or the preview.
+    assert.ok(!/disabled=\{[^}]*Mismatch/.test(source), 'mismatch never disables a control');
+  });
+
+  it('12. Arabic preview direction is still rtl (selector/direction unchanged)', () => {
+    expectSourceContains(source, ['dir={narrativeDir}', 'const narrativeDir = narrativeTextDirection(narrativeLocaleForDay)']);
+    expectSourceContains(narrativeSource, ["return locale === 'ar' ? 'rtl' : 'ltr';"]);
   });
 });
