@@ -38,6 +38,7 @@ import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
+import { isNicheTransportPrimaryService, isPrimaryTransportRequest } from './transport-primary-guard';
 import { resolveProposalLanguage } from './proposal-i18n';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
@@ -5542,6 +5543,22 @@ export class QuotesService {
 
     if (!effectiveService) {
       throw new BadRequestException('Service not found');
+    }
+
+    // Emergency defense-in-depth (transport-petra-overnight-fix): a PRIMARY
+    // transport line must never attach a niche/add-on transport container service
+    // (driver overnight, stationary/waiting, extra km/hour, border) — e.g. the
+    // row named "Petra Overnight". Valid transfer / full-day / point-to-point
+    // services pass. This guards the SupplierService name/category layer; the
+    // ADD_ON service-type/vehicle-rate classification guard lives in
+    // TransportPricingService. The T.5G add-on attachment path is separate.
+    if (
+      isPrimaryTransportRequest(data) &&
+      isNicheTransportPrimaryService(effectiveService as { name?: string | null; category?: string | null })
+    ) {
+      throw new BadRequestException(
+        'A niche/add-on transport service (driver overnight, stationary/waiting, extra km/hour, border) cannot be used as the primary transport item. Choose a general transfer, full-day, or point-to-point transport service.',
+      );
     }
 
     if (data.activityId && !activity) {
