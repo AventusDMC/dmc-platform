@@ -342,3 +342,117 @@ describe('T.5D-1 — resolveTransportPlan package full-day pricing basis', () =>
     assert.equal(plan.serviceTypeId, 'st-p2p');
   });
 });
+
+// ---------------------------------------------------------------------------
+// T.5D-2 — PRICE PREVIEW wiring: the panel feeds policy.usePackageFullDay into
+// resolveTransportPlan, so each day's resolved (routeId, serviceTypeId) — and
+// therefore its priced rate — follows the package policy. These tests model that
+// end-to-end at the pure layer: classify → resolve every day → look the priced
+// net up in a fixture rate table that mirrors the -4gu9 pax-2 Sedan rates, and
+// assert both the per-day pricing basis sequence AND the package net total.
+// (Apply is NOT wired to the policy yet — that's T.5D-3.)
+// ---------------------------------------------------------------------------
+describe('T.5D-2 — price preview uses package full-day basis (pax-2 sedan net totals)', () => {
+  // Routes extended with the legs the curated 4/5/6/7-day packages use.
+  const PREVIEW_ROUTES: RouteOption[] = [
+    ...ROUTES,
+    route({ id: 'r-petra-deadsea', from: 'Petra', to: 'Dead Sea' }),
+    route({ id: 'r-deadsea-qaia', from: 'Dead Sea', to: 'Queen Alia International Airport', name: 'Dead Sea -> QAIA Airport' }),
+  ];
+
+  // Net JOD per (routeId|serviceTypeId), pax-2 Sedan — mirrors the documented
+  // -4gu9 rates: arrival 20, Amman→Petra 90, Petra→Dead Sea 100, departure 35,
+  // and the canonical Amman-disposal DAILY_FULL_DAY Sedan 75.
+  const NET: Record<string, number> = {
+    'r-qaia-amman|st-airport': 20,
+    'r-amman-petra|st-p2p': 90,
+    'r-petra-deadsea|st-p2p': 100,
+    'r-deadsea-qaia|st-airport': 35,
+    'r-amman-amman|st-daily': 75,
+  };
+  const netFor = (plan: ReturnType<typeof resolveTransportPlan>) => {
+    const key = `${plan.routeId}|${plan.serviceTypeId}`;
+    const value = NET[key];
+    assert.ok(value !== undefined, `no fixture net rate for resolved ${key}`);
+    return value;
+  };
+
+  type Day = {
+    type: TransportSuggestionLike['suggestedTransportType'];
+    origin?: string;
+    destination?: string;
+    routeLabel?: string;
+  };
+  const ARRIVAL: Day = { type: 'ARRIVAL_TRANSFER', origin: 'QAIA', destination: 'Amman', routeLabel: 'QAIA → Amman' };
+  const DEPARTURE: Day = { type: 'DEPARTURE_TRANSFER', origin: 'Dead Sea', destination: 'Airport', routeLabel: 'Dead Sea → Airport' };
+  const AMMAN_PETRA: Day = { type: 'TOURING_FULL_DAY', origin: 'Amman', destination: 'Petra', routeLabel: 'Amman / Petra' };
+  const PETRA_DEADSEA: Day = { type: 'TOURING_FULL_DAY', origin: 'Petra', destination: 'Dead Sea', routeLabel: 'Petra / Dead Sea' };
+  // Generic touring day — in package mode every touring day prices at the
+  // disposal full-day rate regardless of its real legs.
+  const TOUR: Day = { type: 'TOURING_FULL_DAY', origin: 'Petra', destination: 'Wadi Rum', routeLabel: 'Petra / Wadi Rum' };
+
+  // Resolve a whole package the way the panel does: classify all days, then feed
+  // policy.usePackageFullDay into every per-day resolve.
+  const pricePackage = (days: Day[]) => {
+    const policy = classifyPackageTransportPolicy(days.map((d) => tt(d.type)));
+    const plans = days.map((d, i) =>
+      resolveTransportPlan(
+        { dayNumber: i + 1, suggestedTransportType: d.type, origin: d.origin, destination: d.destination, routeLabel: d.routeLabel },
+        PREVIEW_ROUTES,
+        SERVICE_TYPES,
+        { usePackageFullDay: policy.usePackageFullDay },
+      ),
+    );
+    const bases = plans.map((p) => p.pricingBasis);
+    const total = plans.reduce((sum, p) => sum + netFor(p), 0);
+    return { policy, plans, bases, total };
+  };
+
+  it('2/8. 4-day: usePackageFullDay false → touring days stay ROUTE_RATE, total 245 JOD', () => {
+    const { policy, bases, total } = pricePackage([ARRIVAL, AMMAN_PETRA, PETRA_DEADSEA, DEPARTURE]);
+    assert.equal(policy.usePackageFullDay, false);
+    assert.deepEqual(bases, ['ARRIVAL_TRANSFER', 'ROUTE_RATE', 'ROUTE_RATE', 'DEPARTURE_TRANSFER']);
+    assert.equal(total, 245); // 20 + 90 + 100 + 35
+  });
+
+  it('3/8. 5-day: usePackageFullDay true → all 3 touring days PACKAGE_FULL_DAY, total 280 JOD', () => {
+    const { policy, bases, total } = pricePackage([ARRIVAL, TOUR, TOUR, TOUR, DEPARTURE]);
+    assert.equal(policy.usePackageFullDay, true);
+    assert.deepEqual(bases, ['ARRIVAL_TRANSFER', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'DEPARTURE_TRANSFER']);
+    assert.equal(total, 280); // 20 + 3×75 + 35
+  });
+
+  it('4/8. 6-day: usePackageFullDay true → all 4 touring days PACKAGE_FULL_DAY, total 355 JOD', () => {
+    const { policy, bases, total } = pricePackage([ARRIVAL, TOUR, TOUR, TOUR, TOUR, DEPARTURE]);
+    assert.equal(policy.usePackageFullDay, true);
+    assert.deepEqual(bases, ['ARRIVAL_TRANSFER', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'DEPARTURE_TRANSFER']);
+    assert.equal(total, 355); // 20 + 4×75 + 35
+  });
+
+  it('5/8. 7-day: usePackageFullDay true → all 5 touring days PACKAGE_FULL_DAY, total 430 JOD', () => {
+    const { policy, bases, total } = pricePackage([ARRIVAL, TOUR, TOUR, TOUR, TOUR, TOUR, DEPARTURE]);
+    assert.equal(policy.usePackageFullDay, true);
+    assert.deepEqual(bases, ['ARRIVAL_TRANSFER', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'PACKAGE_FULL_DAY', 'DEPARTURE_TRANSFER']);
+    assert.equal(total, 430); // 20 + 5×75 + 35
+  });
+
+  it('6. arrival/departure keep transfer basis under package policy (not full-day)', () => {
+    const { plans } = pricePackage([ARRIVAL, TOUR, TOUR, TOUR, DEPARTURE]);
+    assert.equal(plans[0].pricingBasis, 'ARRIVAL_TRANSFER');
+    assert.equal(plans[0].serviceTypeId, 'st-airport');
+    assert.equal(plans[4].pricingBasis, 'DEPARTURE_TRANSFER');
+    assert.equal(plans[4].serviceTypeId, 'st-airport');
+  });
+
+  it('7. NONE/leisure day in a package still resolves to no transport (no pricing)', () => {
+    const policy = classifyPackageTransportPolicy([ARRIVAL, TOUR, TOUR, TOUR, DEPARTURE].map((d) => tt(d.type)));
+    const leisure = resolveTransportPlan(
+      { dayNumber: 3, suggestedTransportType: 'NONE' },
+      PREVIEW_ROUTES,
+      SERVICE_TYPES,
+      { usePackageFullDay: policy.usePackageFullDay },
+    );
+    assert.equal(leisure.status, 'NO_ROUTE');
+    assert.equal(leisure.pricingBasis, 'NO_TRANSPORT');
+  });
+});
