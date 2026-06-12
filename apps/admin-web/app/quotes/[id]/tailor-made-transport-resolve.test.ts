@@ -6,6 +6,7 @@ import {
   resolveTransportPlan,
   classifyPackageTransportPolicy,
   buildTransportAddOnPreview,
+  cleanVehicleClassName,
   PACKAGE_FULL_DAY_MIN_TOURING_DAYS,
   type TransportServiceTypeOption,
   type TransportSuggestionLike,
@@ -557,5 +558,27 @@ describe('T.5F — buildTransportAddOnPreview', () => {
     for (const label of labels) {
       assert.ok(!/OVERNIGHT|STATIONARY_WAITING|ADD_ON|_/.test(label), `clean label: ${label}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T.6 — cleanVehicleClassName (operator-safe vehicle label, display only)
+// ---------------------------------------------------------------------------
+describe('T.6 — cleanVehicleClassName', () => {
+  it('strips the trailing capacity number from the class name', () => {
+    assert.equal(cleanVehicleClassName('Sedan 2'), 'Sedan');
+    assert.equal(cleanVehicleClassName('SUV 4'), 'SUV');
+    assert.equal(cleanVehicleClassName('Mini Van 5'), 'Mini Van');
+    assert.equal(cleanVehicleClassName('Van 9'), 'Van');
+    assert.equal(cleanVehicleClassName('Coaster 17'), 'Coaster');
+  });
+  it('handles a capacity range and extra spacing', () => {
+    assert.equal(cleanVehicleClassName('Large VIP 31-33'), 'Large VIP');
+    assert.equal(cleanVehicleClassName('  Van 10  '), 'Van');
+  });
+  it('returns null for empty/nullish input and keeps a name with no capacity token', () => {
+    assert.equal(cleanVehicleClassName(null), null);
+    assert.equal(cleanVehicleClassName(''), null);
+    assert.equal(cleanVehicleClassName('Sedan'), 'Sedan');
   });
 });

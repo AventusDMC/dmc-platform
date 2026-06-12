@@ -655,7 +655,9 @@ describe('T.5F — transport add-on preview (driver overnight + stationary, prev
       'aria-label="Transport add-ons preview"',
       'Transport add-ons (preview only)',
       'Suggested driver overnight total:',
-      'Optional stationary / waiting add-on',
+      // T.6 groups stationary under "Optional add-ons:" with the clean label
+      'Optional add-ons:',
+      'addOns.stationary.label',
       // required preview-only note
       'Add-ons are preview only and are not applied yet.',
     ]);
@@ -674,5 +676,54 @@ describe('T.5F — transport add-on preview (driver overnight + stationary, prev
     for (const raw of ['DEAD_SEA_OVERNIGHT', 'WADI_RUM_OVERNIGHT', 'PETRA_OVERNIGHT', 'AQABA_OVERNIGHT', 'STATIONARY_WAITING', 'ADD_ON']) {
       assert.ok(!panelSource.includes(raw), `panel must not contain raw add-on code "${raw}"`);
     }
+  });
+});
+
+describe('T.6 — transport preview UI cleanup (operator-safe labels)', () => {
+  it('per-day OK preview shows clean labelled rows', () => {
+    expectSourceContains(panelSource, [
+      '<strong>Route:</strong>',
+      '<strong>Pricing basis:</strong>',
+      '<strong>Vehicle:</strong>',
+      'cleanVehicleClassName(transportPreview.vehicleName)',
+      '<strong>Net cost:</strong>',
+      '<strong>Sell price:</strong>',
+      '<strong>Rate status:</strong>',
+      // operator-safe rate-status label map (no raw OK/NO_ROUTE/NO_RATE shown)
+      "OK: 'Matched'",
+      "NO_RATE: 'No rate'",
+      "NO_ROUTE: 'Needs review'",
+      'RATE_STATUS_LABELS[transportPreview.status]',
+    ]);
+  });
+
+  it('add-ons preview is grouped into Suggested / Optional with clean labels', () => {
+    expectSourceContains(panelSource, [
+      'Suggested add-ons:',
+      'Optional add-ons:',
+      'Suggested driver overnight total:',
+      'Add-ons are preview only and are not applied yet.',
+    ]);
+  });
+
+  it('removes the old internal-flavoured transport preview copy', () => {
+    assert.ok(!panelSource.includes('vehicle (internal)'), 'no "vehicle (internal)" label');
+    assert.ok(!panelSource.includes('type (internal)'), 'no "type (internal)" label');
+    assert.ok(!panelSource.includes('mode (internal)'), 'no "mode (internal)" label');
+    // The old "Estimated cost X / sell Y" combined line is replaced by Net cost / Sell price rows.
+    assert.ok(!/Estimated cost \{transportPreview\.cost\}/.test(panelSource), 'old combined cost/sell line removed');
+  });
+
+  it('does not render raw internal pricing tokens in the transport preview UI', () => {
+    // Strip line comments first — the tokens legitimately appear in explanatory
+    // comments ("never the raw POINT_TO_POINT / FULL_DAY / DAILY_FULL_DAY tokens").
+    // What matters is they are not RENDERED.
+    const code = panelSource.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!code.includes('DAILY_FULL_DAY'), 'no DAILY_FULL_DAY in rendered panel code');
+    assert.ok(!code.includes('capacity_unit'), 'no capacity_unit in rendered panel code');
+    // Pricing basis + rate status are rendered only via the operator-safe label maps.
+    assert.ok(/PRICING_BASIS_LABELS\[transportPreview\.pricingBasis\]/.test(code), 'basis via label map');
+    // The Route row prints the human route label, never the internal route id.
+    assert.ok(!/Route:[\s\S]{0,40}transportPreview\.routeId/.test(code), 'route id not shown as Route');
   });
 });

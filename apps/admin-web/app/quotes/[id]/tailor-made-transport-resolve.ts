@@ -347,6 +347,20 @@ export function classifyPackageTransportPolicy(
 }
 
 // ---------------------------------------------------------------------------
+// Phase T.6 — operator-safe vehicle class label. The engine vehicle names carry
+// a trailing capacity number ("Sedan 2", "Mini Van 5", "Van 9", "Coaster 17",
+// "Large VIP 31-33"); operators want the class only ("Sedan", "Mini Van", "Van",
+// "Coaster", "Large VIP"). Pure + display-only — does NOT affect pricing/apply.
+// ---------------------------------------------------------------------------
+export function cleanVehicleClassName(vehicleName: string | null | undefined): string | null {
+  const raw = (vehicleName || '').trim();
+  if (!raw) return null;
+  // Drop a trailing capacity token: " 2", " 31-33", " 9" etc. Keep the class words.
+  const cleaned = raw.replace(/\s+\d+(?:\s*-\s*\d+)?\s*$/, '').trim();
+  return cleaned || raw;
+}
+
+// ---------------------------------------------------------------------------
 // Phase T.5F — transport ADD-ON PREVIEW (driver overnight + stationary/waiting).
 //
 // PURE + PREVIEW ONLY. Builds an operator-facing preview model from the add-on
