@@ -202,7 +202,8 @@ describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (note
       'Use this narrative',
       'const canSave = isClientSafeNarrative(narrativePreview.text)',
       'disabled={!canSave || savingThis}',
-      'onClick={() => applyNarrativeToDay(day, narrativePreview.text)}',
+      // R.7B-4 — the save now passes the selected locale (English still uses 'en').
+      'onClick={() => applyNarrativeToDay(day, narrativePreview.text, narrativeLocaleForDay)}',
       // empty/unsafe disables save + shows a clear message
       'Narrative preview is empty or not client-safe — it cannot be saved to the day notes.',
       // success state
@@ -214,6 +215,7 @@ describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (note
     expectSourceContains(source, [
       'function isManuallyEditedNotes(day: RoutePlannerDay, generatedText: string)',
       'PRESET_NARRATIVES.has(notes)',
+      // English confirmation copy is unchanged (R.7A-3); the manual-edit prefix is shared.
       'This will replace the current day narrative/notes with the client narrative preview. Continue?',
       'This day’s notes may have been manually edited. Replacing them may overwrite operator changes.',
       'window.confirm(message)',
@@ -222,7 +224,7 @@ describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (note
 
   it('saves via the EXISTING day PATCH with a NOTES-ONLY payload', () => {
     expectSourceContains(source, [
-      'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string)',
+      'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string, locale: NarrativeLocale)',
       '`${apiBaseUrl}/itinerary/day/${day.id}`',
       "method: 'PATCH'",
       'JSON.stringify({ notes: generatedText })',
@@ -282,29 +284,24 @@ describe('R.7B-3B — narrative language selector + RTL preview (preview-only)',
     ]);
   });
 
-  it('8/9/10. English keeps the save action; non-English hides it and shows the later-phase note', () => {
+  it('keeps the language selector; the save label is English by default (R.7B-4 enables non-English saves)', () => {
     expectSourceContains(source, [
       'const narrativeIsEnglish = narrativeLocaleForDay === \'en\'',
-      // non-English branch: note, no save button
-      '{!narrativeIsEnglish ? (',
-      'Saving translated narratives will be enabled in a later phase.',
-      // English branch keeps the R.7A-3 save action verbatim
-      'const canSave = isClientSafeNarrative(narrativePreview.text)',
-      'onClick={() => applyNarrativeToDay(day, narrativePreview.text)}',
-      'Use this narrative',
+      // English keeps its original button label
+      "? 'Use this narrative'",
     ]);
+    // R.7B-4 removed the "saving is a later phase" placeholder — it now saves.
+    assert.ok(!source.includes('Saving translated narratives will be enabled in a later phase.'), 'later-phase placeholder removed');
   });
 
-  it('11. selecting a non-English language triggers NO save/PATCH (still exactly 3 day-PATCH handlers)', () => {
-    // The language selector is pure client state — it adds no network call. The
-    // only PATCH calls remain the three pre-existing day-PATCH handlers.
+  it('the language selector adds no new PATCH and never persists locale', () => {
+    // The narrative save reuses the existing day-PATCH; no new endpoint is added,
+    // and the selected language is never sent in any request body.
     const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
-    assert.equal(patchCount, 3, 'no new PATCH added by the language selector');
+    assert.equal(patchCount, 3, 'no new PATCH added');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
-    // applyNarrativeToDay is only wired to the English-branch button onClick.
     const onClickCount = (source.match(/onClick=\{\(\) => applyNarrativeToDay\(/g) || []).length;
-    assert.equal(onClickCount, 1, 'narrative save is wired once (English branch only)');
-    // The selector does not persist language anywhere (no PATCH/POST of locale).
+    assert.equal(onClickCount, 1, 'narrative save is wired once');
     assert.ok(!/JSON\.stringify\([^)]*locale/.test(source), 'selected language is never sent to the backend');
   });
 
@@ -312,5 +309,81 @@ describe('R.7B-3B — narrative language selector + RTL preview (preview-only)',
     assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
     assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
     assert.ok(!/proposal/i.test(source), 'no proposal coupling');
+  });
+});
+
+describe('R.7B-4 — save the selected-language narrative into day notes (notes-only)', () => {
+  it('1. English save behaviour is unchanged (label + exact confirm copy + en path)', () => {
+    expectSourceContains(source, [
+      // English keeps the original button label …
+      "? 'Use this narrative'",
+      // … selects on the en locale …
+      "locale === 'en'",
+      // … and keeps the original English confirmation copy (no language suffix).
+      '`${manualPrefix}This will replace the current day narrative/notes with the client narrative preview. Continue?`',
+    ]);
+  });
+
+  it('2/3/4. save is enabled per language; the button + handler carry the selected locale', () => {
+    expectSourceContains(source, [
+      // language label map (en/es/pt/ar)
+      'const NARRATIVE_LANGUAGE_LABELS: Record<NarrativeLocale, string> = {',
+      "es: 'Spanish'",
+      "pt: 'Portuguese'",
+      "ar: 'Arabic'",
+      // non-English button label: "Use this Spanish/Portuguese/Arabic narrative"
+      '`Use this ${NARRATIVE_LANGUAGE_LABELS[narrativeLocaleForDay]} narrative`',
+      // the save passes the selected locale through to the handler
+      'onClick={() => applyNarrativeToDay(day, narrativePreview.text, narrativeLocaleForDay)}',
+      'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string, locale: NarrativeLocale)',
+    ]);
+  });
+
+  it('5. non-English confirmation names the language + warns notes stores one language', () => {
+    expectSourceContains(source, [
+      'This will replace the current day notes with the ${NARRATIVE_LANGUAGE_LABELS[locale]} narrative. Continue?',
+      'Day notes stores only one language. Saving this will replace the current notes with the selected-language text.',
+    ]);
+  });
+
+  it('6. manual-edit warning is still applied (shared prefix)', () => {
+    expectSourceContains(source, [
+      'const manual = isManuallyEditedNotes(day, generatedText)',
+      'This day’s notes may have been manually edited. Replacing them may overwrite operator changes.',
+    ]);
+  });
+
+  it('7/8/9/10. PATCH stays notes-only — no locale/title/etc, no sibling/pricing writes', () => {
+    // The only mutation is the notes-only day PATCH; payload field-scoped check.
+    const handlerStart = source.indexOf('async function applyNarrativeToDay');
+    const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
+    const payload = handler.match(/JSON\.stringify\((\{[^}]*\})\)/)![1];
+    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText}', 'payload is exactly { notes }');
+    for (const forbidden of ['locale', 'language', 'title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'poi', 'serviceId', 'price', 'markup']) {
+      assert.ok(!payload.includes(forbidden), `payload must not include ${forbidden}`);
+    }
+    // PATCH targets only the selected day's id; no loop over sibling days here.
+    assert.ok(source.includes('`${apiBaseUrl}/itinerary/day/${day.id}`'), 'targets the selected day id');
+  });
+
+  it('11. empty/unsafe preview still disables save (guard retained)', () => {
+    expectSourceContains(source, [
+      'const canSave = isClientSafeNarrative(narrativePreview.text)',
+      'disabled={!canSave || savingThis}',
+      'if (!isClientSafeNarrative(generatedText)) return;',
+    ]);
+  });
+
+  it('12. Arabic preview still renders rtl (selector + direction unchanged)', () => {
+    expectSourceContains(source, ['dir={narrativeDir}', 'const narrativeDir = narrativeTextDirection(narrativeLocaleForDay)']);
+    expectSourceContains(narrativeSource, ["return locale === 'ar' ? 'rtl' : 'ltr';"]);
+  });
+
+  it('13/14. no backend/proposal/schema/pricing/QuoteItem/apply coupling; notes-only single-day write', () => {
+    assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
+    assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
+    assert.ok(!/proposal/i.test(source), 'no proposal coupling');
+    // Still exactly the three day-PATCH handlers (preset, template, narrative).
+    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added');
   });
 });
