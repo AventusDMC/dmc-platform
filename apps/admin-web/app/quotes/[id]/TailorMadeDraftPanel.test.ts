@@ -571,7 +571,7 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
     ]);
   });
 
-  it('T.5D-2: price preview is wired to the package policy, and warns apply is updated next phase', () => {
+  it('T.5D-2: price preview is wired to the package policy', () => {
     expectSourceContains(panelSource, [
       // policy fed into the resolver for the PRICE PREVIEW
       'const policy = classifyPackageTransportPolicy(transport ?? [])',
@@ -587,11 +587,38 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
       "ARRIVAL_TRANSFER: 'Arrival transfer'",
       "DEPARTURE_TRANSFER: 'Departure transfer'",
       "NO_TRANSPORT: 'No transport / leisure day'",
-      // required T.5D-2 operator warning (preview vs apply may differ until T.5D-3)
-      'Price preview uses this package policy. Apply will be updated in the next phase',
     ]);
     // The stale T.5C "pricing has not changed yet" copy is gone — preview DOES use the policy now.
     assert.ok(!panelSource.includes('Preview only — pricing has not changed yet.'), 'stale T.5C preview-only copy removed');
+  });
+
+  it('T.5D-3a: package full-day apply pins the previewed VehicleRate + carries the real route label', () => {
+    expectSourceContains(panelSource, [
+      // preview captures the exact VehicleRate the engine priced
+      'vehicleRateId: result?.vehicleRateId ?? null',
+      // apply gate: only for a package full-day day that actually has a pinned rate
+      "const isPackageFullDay = p.pricingBasis === 'PACKAGE_FULL_DAY' && Boolean(p.vehicleRateId)",
+      // package apply pins the rate + passes the real day route as the display label
+      'body.vehicleRateId = p.vehicleRateId',
+      'body.transportLabel = p.routeLabel ?? undefined',
+      // service type stays the effective (DAILY_FULL_DAY) type the preview used
+      'transportServiceTypeId: p.serviceTypeId',
+      // updated warning — preview and apply now match
+      'Preview and apply use the same package full-day vehicle rate.',
+    ]);
+    // The pin is gated on the package branch — vehicleRateId is NOT added unconditionally
+    // (non-package / regular route-rate days apply unchanged, with no vehicleRateId).
+    assert.ok(
+      /if \(isPackageFullDay\) \{\s*body\.vehicleRateId = p\.vehicleRateId;/.test(panelSource),
+      'vehicleRateId is only added inside the package-full-day branch',
+    );
+    // The stale T.5D-2 "apply will be updated next phase" warning is gone (apply now matches preview).
+    assert.ok(
+      !panelSource.includes('Apply will be updated in the next phase'),
+      'stale T.5D-2 divergence warning removed',
+    );
+    // Apply still posts to the canonical /items path — no parallel transport-apply endpoint.
+    assert.ok(!/tailor-made-draft\/transport-apply/.test(panelSource), 'no parallel transport apply endpoint');
   });
 
   it('does not expose raw internal labels, and adds no overnight/stationary logic', () => {

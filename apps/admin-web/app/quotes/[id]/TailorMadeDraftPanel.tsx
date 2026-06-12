@@ -127,6 +127,11 @@ type TransportPreview = {
   routeId?: string | null;
   normalizedKey?: string | null;
   serviceTypeId?: string | null;
+  // T.5D-3a — the exact VehicleRate row the preview priced against, when the
+  // engine returned one (package full-day disposal rate). Passed back on apply so
+  // createItem pins this rate instead of re-resolving — preview and apply cannot
+  // diverge. Null for rate-rule (per-leg) legs, which apply unchanged.
+  vehicleRateId?: string | null;
   reason: string;
 };
 
@@ -847,6 +852,9 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         routeId: plan.routeId,
         normalizedKey: plan.normalizedKey,
         serviceTypeId: effectiveServiceTypeId,
+        // T.5D-3a — the exact VehicleRate the engine priced (present for the
+        // package full-day disposal rate; absent for rate-rule per-leg legs).
+        vehicleRateId: result?.vehicleRateId ?? null,
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');
@@ -883,20 +891,33 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     }
     setTransportApplying(true);
     try {
+      // T.5D-3a — for a PACKAGE_FULL_DAY day, pin the exact VehicleRate the
+      // preview priced (vehicleRateId) so createItem applies the same package
+      // full-day rate it previewed (no re-resolution → preview and apply cannot
+      // diverge), and carry the REAL day route as transportLabel for operator
+      // display (the pricing route stays the canonical disposal route, whose rate
+      // name is client-safe). Non-package days are unchanged: no vehicleRateId,
+      // no transportLabel — regular route-rate apply as before.
+      const isPackageFullDay = p.pricingBasis === 'PACKAGE_FULL_DAY' && Boolean(p.vehicleRateId);
+      const body: Record<string, unknown> = {
+        serviceId: transportServiceId,
+        itineraryId: t.itineraryDayId,
+        quantity: 1,
+        paxCount: defaultPax ?? 2,
+        markupPercent: TRANSPORT_DEFAULT_MARKUP,
+        transportServiceTypeId: p.serviceTypeId,
+        routeId: p.routeId,
+        normalizedKey: p.normalizedKey ?? undefined,
+        routeName: '',
+      };
+      if (isPackageFullDay) {
+        body.vehicleRateId = p.vehicleRateId;
+        body.transportLabel = p.routeLabel ?? undefined;
+      }
       const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
         method: 'POST',
         headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          serviceId: transportServiceId,
-          itineraryId: t.itineraryDayId,
-          quantity: 1,
-          paxCount: defaultPax ?? 2,
-          markupPercent: TRANSPORT_DEFAULT_MARKUP,
-          transportServiceTypeId: p.serviceTypeId,
-          routeId: p.routeId,
-          normalizedKey: p.normalizedKey ?? undefined,
-          routeName: '',
-        }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not apply the selected transport.'));
@@ -1523,8 +1544,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                         : 'This package has fewer than 3 full touring days, so touring days preview at regular route rates.'}
                     </p>
                     <p className="form-help tailor-made-transport-policy-note">
-                      Price preview uses this package policy. Apply will be updated in the next phase — until then,
-                      the applied transport price may differ from this preview.
+                      Preview and apply use the same package full-day vehicle rate.
                     </p>
                     <p className="form-help tailor-made-transport-policy-note">
                       Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.
