@@ -83,11 +83,31 @@ const PLACE_DESCRIPTORS_BY_LOCALE: Record<NarrativeLocale, Record<string, string
     'dead sea': 'the lowest point on earth',
     bethany: 'the Baptism Site on the Jordan River',
   },
-  es: {},
-  pt: {},
+  // R.7B-2 — professional tourism-tone Spanish descriptors (not literal). Place
+  // NAMES stay in their recognizable proper form; only the descriptor is localized.
+  es: {
+    amman: 'la capital de Jordania',
+    jerash: 'una de las ciudades romanas mejor conservadas de la región',
+    madaba: 'célebre por su antiguo mapa en mosaico',
+    'mount nebo': 'el mirador tradicional sobre la Tierra Prometida',
+    petra: 'la ciudad rosada y uno de los yacimientos arqueológicos más célebres de Jordania',
+    'wadi rum': 'el paisaje desértico de Jordania, famoso por sus espectaculares montañas de arenisca',
+    'dead sea': 'el punto más bajo de la Tierra',
+    bethany: 'el lugar del Bautismo a orillas del río Jordán',
+  },
+  // R.7B-2 — professional tourism-tone Portuguese (pt-PT) descriptors.
+  pt: {
+    amman: 'a capital da Jordânia',
+    jerash: 'uma das cidades romanas mais bem preservadas da região',
+    madaba: 'conhecida pelo seu antigo mapa em mosaico',
+    'mount nebo': 'o miradouro tradicional sobre a Terra Prometida',
+    petra: 'a cidade rosada e um dos sítios arqueológicos mais famosos da Jordânia',
+    'wadi rum': 'a paisagem desértica da Jordânia, conhecida pelas suas imponentes montanhas de arenito',
+    'dead sea': 'o ponto mais baixo da Terra',
+    bethany: 'o local do Batismo às margens do rio Jordão',
+  },
   ar: {},
 };
-const PLACE_DESCRIPTORS = PLACE_DESCRIPTORS_BY_LOCALE.en;
 
 // Places that read with a definite article ("the Dead Sea"), keyed by locale.
 const ARTICLE_THE_BY_LOCALE: Record<NarrativeLocale, Set<string>> = {
@@ -96,7 +116,6 @@ const ARTICLE_THE_BY_LOCALE: Record<NarrativeLocale, Set<string>> = {
   pt: new Set(),
   ar: new Set(),
 };
-const ARTICLE_THE = ARTICLE_THE_BY_LOCALE.en;
 
 // Bespoke opening clause when a place is the ORIGIN of a simple two-stop
 // transition day (no intermediate sightseeing). Falls back to a neutral
@@ -105,11 +124,14 @@ const TRANSITION_OPENER_BY_LOCALE: Record<NarrativeLocale, Record<string, string
   en: {
     'wadi rum': 'Enjoy the desert scenery of Wadi Rum',
   },
-  es: {},
-  pt: {},
+  es: {
+    'wadi rum': 'Disfrute del paisaje desértico de Wadi Rum',
+  },
+  pt: {
+    'wadi rum': 'Desfrute da paisagem desértica de Wadi Rum',
+  },
   ar: {},
 };
-const TRANSITION_OPENER = TRANSITION_OPENER_BY_LOCALE.en;
 
 // Compass hint used only when a place is the DESTINATION of a depart-and-visit
 // day (e.g. Amman → … → Petra reads "proceed south to Petra"). Keyed by locale.
@@ -125,11 +147,31 @@ const DIRECTION_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
     bethany: 'west',
     amman: '',
   },
-  es: {},
-  pt: {},
+  // R.7B-2 — direction words localized; same place→compass mapping as `en`.
+  es: {
+    petra: 'sur',
+    'wadi rum': 'sur',
+    aqaba: 'sur',
+    jerash: 'norte',
+    madaba: 'sur',
+    'mount nebo': 'oeste',
+    'dead sea': 'oeste',
+    bethany: 'oeste',
+    amman: '',
+  },
+  pt: {
+    petra: 'sul',
+    'wadi rum': 'sul',
+    aqaba: 'sul',
+    jerash: 'norte',
+    madaba: 'sul',
+    'mount nebo': 'oeste',
+    'dead sea': 'oeste',
+    bethany: 'oeste',
+    amman: '',
+  },
   ar: {},
 };
-const DIRECTION = DIRECTION_BY_LOCALE.en;
 
 // Tokens that must never reach client-facing text. Used to scrub parsed names.
 const LEAK_WORDS =
@@ -155,22 +197,6 @@ function key(name: string): string {
   return name.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function descriptorFor(name: string): string {
-  return PLACE_DESCRIPTORS[key(name)] || '';
-}
-
-/** "the Dead Sea" / "Petra" — applies the definite article where natural. */
-function artName(name: string): string {
-  if (!name) return '';
-  return ARTICLE_THE.has(key(name)) ? `the ${name}` : name;
-}
-
-/** "Petra, the rose-red city …" or just "Karak" when unknown. */
-function visitClause(name: string): string {
-  const desc = descriptorFor(name);
-  return desc ? `${artName(name)}, ${desc}` : artName(name);
-}
-
 type Segment = { name: string; wasVisit: boolean };
 
 function parseSegments(title: string): Segment[] {
@@ -184,40 +210,175 @@ function parseSegments(title: string): Segment[] {
     .filter((seg) => seg.name.length > 0);
 }
 
-/** "visit A, descA, then continue to B, descB" */
-function visitChain(names: string[]): string {
-  return names
-    .map((n, i) => `${i === 0 ? 'visit' : 'continue to'} ${visitClause(n)}`)
-    .join(', then ');
-}
+// ---------------------------------------------------------------------------
+// R.7B-2 — per-locale PHRASE PACK: the connective templates + word choices that
+// turn the parsed places of one day into a single client-facing paragraph. The
+// place dictionaries (descriptors / articles / openers / directions) live in the
+// *_BY_LOCALE maps above and are resolved per locale ALONGSIDE the pack. English
+// (`en`) reproduces the R.7A wording byte-for-byte; `es`/`pt` are professional
+// tourism-tone (NOT literal translation); `ar` falls back to `en` until R.7B-3.
+// Place NAMES stay in their recognizable proper form across all locales — only
+// descriptors + connectives are localized. Pure + deterministic; no AI.
+// ---------------------------------------------------------------------------
+type NarrativePhrases = {
+  dayAtLeisure: string;
+  yourHotel: string;
+  visitWord: string;
+  continueToWord: string;
+  chainJoin: string;
+  guideClause: string;
+  activityFragment: (names: string[]) => string;
+  arrival: (dest: string) => string;
+  departure: (origin: string) => string;
+  departureNoOrigin: string;
+  cityTour: (placeClause: string) => string;
+  leisure: (place: string) => string;
+  roundTrip: (chain: string, enrich: string, origin: string) => string;
+  visitOrigin: (originClause: string, enrich: string, continueParts: string) => string;
+  transitionTail: (dest: string, desc: string) => string;
+  transitionOpenerSentence: (opener: string, enrich: string, tail: string) => string;
+  transitionNoOpener: (origin: string, tail: string) => string;
+  linear: (origin: string, chain: string, enrich: string, directionPhrase: string, last: string) => string;
+  directionPhrase: (dir: string) => string;
+};
+
+// English — reproduces R.7A wording EXACTLY (byte-identical regression guard).
+const EN_PHRASES: NarrativePhrases = {
+  dayAtLeisure: 'Day at leisure.',
+  yourHotel: 'your hotel',
+  visitWord: 'visit',
+  continueToWord: 'continue to',
+  chainJoin: ', then ',
+  guideClause: ', with a local guide',
+  activityFragment: (names) => `, including ${names.map((n) => `a ${n}`).join(' and ')}`,
+  arrival: (dest) => `On arrival, meet and assist at the airport, then transfer to ${dest} for overnight.`,
+  departure: (origin) => `Transfer from ${origin} to the airport for your departure flight.`,
+  departureNoOrigin: 'Transfer to the airport for your departure flight.',
+  cityTour: (placeClause) => `After breakfast, enjoy a guided city tour of ${placeClause}, then return to your hotel for overnight.`,
+  leisure: (place) => `Enjoy a day at leisure${place ? ` at ${place}` : ''} for overnight.`,
+  roundTrip: (chain, enrich, origin) => `After breakfast, ${chain}${enrich}, then return to ${origin} for overnight.`,
+  visitOrigin: (originClause, enrich, continueParts) =>
+    `After breakfast, visit ${originClause}${enrich}. Later, ${continueParts} for overnight.`,
+  transitionTail: (dest, desc) => (desc ? `${dest}, ${desc}, for overnight.` : `${dest} for overnight.`),
+  transitionOpenerSentence: (opener, enrich, tail) => {
+    const sep = enrich ? ', before continuing to ' : ' before continuing to ';
+    return `${opener}${enrich}${sep}${tail}`;
+  },
+  transitionNoOpener: (origin, tail) => `After breakfast, depart ${origin} and continue to ${tail}`,
+  linear: (origin, chain, enrich, directionPhrase, last) =>
+    `After breakfast, depart ${origin} and ${chain}${enrich}. Afterwards, ${directionPhrase} ${last} for overnight.`,
+  directionPhrase: (dir) => (dir ? `proceed ${dir} to` : 'continue on to'),
+};
+
+// Spanish — professional tourism tone (es), deterministic.
+const ES_PHRASES: NarrativePhrases = {
+  dayAtLeisure: 'Día libre.',
+  yourHotel: 'su hotel',
+  visitWord: 'visite',
+  continueToWord: 'continúe a',
+  chainJoin: ', luego ',
+  guideClause: ', con guía local',
+  activityFragment: (names) => `, que incluye ${names.map((n) => `un ${n}`).join(' y ')}`,
+  arrival: (dest) => `A su llegada, recepción y asistencia en el aeropuerto y traslado a ${dest} para pasar la noche.`,
+  departure: (origin) => `Traslado desde ${origin} al aeropuerto para tomar su vuelo de salida.`,
+  departureNoOrigin: 'Traslado al aeropuerto para tomar su vuelo de salida.',
+  cityTour: (placeClause) => `Tras el desayuno, disfrute de una visita guiada por ${placeClause} y regrese a su hotel para pasar la noche.`,
+  leisure: (place) => `Disfrute de un día libre${place ? ` en ${place}` : ''} para pasar la noche.`,
+  roundTrip: (chain, enrich, origin) => `Tras el desayuno, ${chain}${enrich} y regrese a ${origin} para pasar la noche.`,
+  visitOrigin: (originClause, enrich, continueParts) =>
+    `Tras el desayuno, visite ${originClause}${enrich}. Más tarde, ${continueParts} para pasar la noche.`,
+  transitionTail: (dest, desc) => (desc ? `${dest}, ${desc}, para pasar la noche.` : `${dest} para pasar la noche.`),
+  transitionOpenerSentence: (opener, enrich, tail) => {
+    const sep = enrich ? ', antes de continuar a ' : ' antes de continuar a ';
+    return `${opener}${enrich}${sep}${tail}`;
+  },
+  transitionNoOpener: (origin, tail) => `Tras el desayuno, salga de ${origin} y continúe a ${tail}`,
+  linear: (origin, chain, enrich, directionPhrase, last) =>
+    `Tras el desayuno, salga de ${origin} y ${chain}${enrich}. A continuación, ${directionPhrase} ${last} para pasar la noche.`,
+  directionPhrase: (dir) => (dir ? `diríjase hacia el ${dir} a` : 'continúe hacia'),
+};
+
+// Portuguese (pt-PT) — professional tourism tone, deterministic.
+const PT_PHRASES: NarrativePhrases = {
+  dayAtLeisure: 'Dia livre.',
+  yourHotel: 'o seu hotel',
+  visitWord: 'visite',
+  continueToWord: 'siga para',
+  chainJoin: ', em seguida ',
+  guideClause: ', com guia local',
+  activityFragment: (names) => `, incluindo ${names.map((n) => `um ${n}`).join(' e ')}`,
+  arrival: (dest) => `À chegada, receção e assistência no aeroporto e transporte para ${dest} para pernoitar.`,
+  departure: (origin) => `Transporte de ${origin} para o aeroporto para o seu voo de partida.`,
+  departureNoOrigin: 'Transporte para o aeroporto para o seu voo de partida.',
+  cityTour: (placeClause) => `Após o pequeno-almoço, desfrute de uma visita guiada por ${placeClause} e regresse ao seu hotel para pernoitar.`,
+  leisure: (place) => `Desfrute de um dia livre${place ? ` em ${place}` : ''} para pernoitar.`,
+  roundTrip: (chain, enrich, origin) => `Após o pequeno-almoço, ${chain}${enrich} e regresse a ${origin} para pernoitar.`,
+  visitOrigin: (originClause, enrich, continueParts) =>
+    `Após o pequeno-almoço, visite ${originClause}${enrich}. Mais tarde, ${continueParts} para pernoitar.`,
+  transitionTail: (dest, desc) => (desc ? `${dest}, ${desc}, para pernoitar.` : `${dest} para pernoitar.`),
+  transitionOpenerSentence: (opener, enrich, tail) => {
+    const sep = enrich ? ', antes de seguir para ' : ' antes de seguir para ';
+    return `${opener}${enrich}${sep}${tail}`;
+  },
+  transitionNoOpener: (origin, tail) => `Após o pequeno-almoço, parta de ${origin} e siga para ${tail}`,
+  linear: (origin, chain, enrich, directionPhrase, last) =>
+    `Após o pequeno-almoço, parta de ${origin} e ${chain}${enrich}. Em seguida, ${directionPhrase} ${last} para pernoitar.`,
+  directionPhrase: (dir) => (dir ? `siga para ${dir} até` : 'continue até'),
+};
+
+// Real renderers exist for en/es/pt; ar maps to en (R.7B-3 adds Arabic).
+const NARRATIVE_PHRASES: Record<'en' | 'es' | 'pt', NarrativePhrases> = {
+  en: EN_PHRASES,
+  es: ES_PHRASES,
+  pt: PT_PHRASES,
+};
 
 /**
- * Phase R.7A-1/-2 — the ENGLISH client-narrative renderer for one day.
- * R.7A-1: composed from route/day text only (title + notes). R.7A-2: if services
- * are already applied to the day, an applied local guide and client-safe activity
- * callouts are woven into the sightseeing sentence. Pure + deterministic.
- * R.7B-1: this is the `en` renderer; locale dispatch lives in
- * buildDayNarrativePreview below (es/pt/ar fall back here for now).
+ * Phase R.7A/R.7B — the deterministic client-narrative renderer for one day, in a
+ * given locale. R.7A-1: composed from route/day text only (title + notes). R.7A-2:
+ * applied guide/activity services woven into the sightseeing sentence. R.7B-2:
+ * locale-parameterized — the structural logic + flags are locale-INVARIANT; only
+ * the phrase pack (connectives) + place dictionaries (descriptors/articles/
+ * openers/directions) vary by locale. English output is byte-identical to R.7A.
  */
-function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview {
+function renderNarrative(
+  input: DayNarrativePreviewInput,
+  locale: 'en' | 'es' | 'pt',
+): DayNarrativePreview {
+  const P = NARRATIVE_PHRASES[locale];
+  const descriptors = PLACE_DESCRIPTORS_BY_LOCALE[locale];
+  const articleThe = ARTICLE_THE_BY_LOCALE[locale];
+  const openers = TRANSITION_OPENER_BY_LOCALE[locale];
+  const directions = DIRECTION_BY_LOCALE[locale];
+
+  const descriptorFor = (name: string): string => descriptors[key(name)] || '';
+  const artName = (name: string): string => {
+    if (!name) return '';
+    return articleThe.has(key(name)) ? `the ${name}` : name;
+  };
+  const visitClause = (name: string): string => {
+    const desc = descriptorFor(name);
+    return desc ? `${artName(name)}, ${desc}` : artName(name);
+  };
+  const visitChain = (chainNames: string[]): string =>
+    chainNames.map((n, i) => `${i === 0 ? P.visitWord : P.continueToWord} ${visitClause(n)}`).join(P.chainJoin);
+
   const title = (input.title || '').trim();
   const notes = String(input.notes || '');
   const flags: string[] = [];
 
   // R.7A-2 — client-safe enrichment fragment from APPLIED services only.
-  // Applied guide → ", with a local guide"; applied activities → ", including a
-  // <name>". Entrances are no-ops (the place is already named); hotel/transport
-  // are intentionally never mentioned (no name/vehicle class/supplier leak).
+  // Applied guide → guide clause; applied activities → activity callout(s).
+  // Entrances are no-ops (the place is already named); hotel/transport are
+  // intentionally never mentioned (no name/vehicle class/supplier leak).
   const services = input.appliedServices || [];
   const guideApplied = services.some((s) => s.kind === 'guide');
   const activityNames = services
     .filter((s) => s.kind === 'activity')
     .map((s) => sanitizePlace(s.name))
     .filter((n) => n.length > 0);
-  const activityClause = activityNames.length
-    ? `, including ${activityNames.map((n) => `a ${n}`).join(' and ')}`
-    : '';
-  const guideClause = guideApplied ? ', with a local guide' : '';
+  const activityClause = activityNames.length ? P.activityFragment(activityNames) : '';
+  const guideClause = guideApplied ? P.guideClause : '';
   // Order: activity callout(s) then the guide mention.
   const enrich = `${activityClause}${guideClause}`;
   const usedServices: string[] = [
@@ -237,7 +398,7 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
 
   if (!title) {
     flags.push('empty');
-    return finalize('Day at leisure.', false);
+    return finalize(P.dayAtLeisure, false);
   }
 
   // Arrival day → airport meet & assist + transfer to the overnight city.
@@ -246,8 +407,8 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
     const fromTitle = sanitizePlace(title.replace(/^arrival\b/i, ' '));
     const city = fromTitle || sanitizePlace(input.overnightCity);
     if (city && !descriptorFor(city)) flags.push('unknown-place');
-    const dest = city ? artName(city) : 'your hotel';
-    return finalize(`On arrival, meet and assist at the airport, then transfer to ${dest} for overnight.`, false);
+    const dest = city ? artName(city) : P.yourHotel;
+    return finalize(P.arrival(dest), false);
   }
 
   // Departure day → transfer from the last city to the airport.
@@ -255,12 +416,7 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
     flags.push('departure');
     const m = notes.match(/from\s+(?:the\s+)?(.+?)\s+to\b/i);
     const origin = sanitizePlace(m ? m[1] : input.overnightCity);
-    return finalize(
-      origin
-        ? `Transfer from ${artName(origin)} to the airport for your departure flight.`
-        : 'Transfer to the airport for your departure flight.',
-      false,
-    );
+    return finalize(origin ? P.departure(artName(origin)) : P.departureNoOrigin, false);
   }
 
   const segments = parseSegments(title);
@@ -274,12 +430,10 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
     if (/\btour\b/i.test(title)) {
       const tourPlace = sanitizePlace(title.replace(/\b(city|half[- ]?day|full[- ]?day|tour)\b/gi, ' ')) || place;
       const desc = descriptorFor(tourPlace);
-      return finalize(
-        `After breakfast, enjoy a guided city tour of ${artName(tourPlace)}${desc ? `, ${desc}` : ''}, then return to your hotel for overnight.`,
-        false,
-      );
+      const placeClause = `${artName(tourPlace)}${desc ? `, ${desc}` : ''}`;
+      return finalize(P.cityTour(placeClause), false);
     }
-    return finalize(`Enjoy a day at leisure${place ? ` at ${artName(place)}` : ''} for overnight.`, false);
+    return finalize(P.leisure(place ? artName(place) : ''), false);
   }
 
   flags.push('touring');
@@ -296,7 +450,7 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
   if (roundTrip) {
     flags.push('round-trip');
     const middles = names.slice(1, names.length - 1);
-    return finalize(`After breakfast, ${visitChain(middles)}${enrich}, then return to ${artName(origin)} for overnight.`, woven);
+    return finalize(P.roundTrip(visitChain(middles), enrich, artName(origin)), woven);
   }
 
   // Visit-the-origin day ("Petra Visit / Wadi Rum"): visit origin, then continue.
@@ -305,8 +459,8 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
     const rest = names.slice(1);
     // The origin is the sightseeing stop (keep its descriptor); the place(s) we
     // then continue to are move-to destinations (name only — see examples).
-    const continueParts = rest.map((n) => `continue to ${artName(n)}`).join(', then ');
-    return finalize(`After breakfast, visit ${visitClause(origin)}${enrich}. Later, ${continueParts} for overnight.`, woven);
+    const continueParts = rest.map((n) => `${P.continueToWord} ${artName(n)}`).join(P.chainJoin);
+    return finalize(P.visitOrigin(visitClause(origin), enrich, continueParts), woven);
   }
 
   // Simple two-stop transition (origin → destination, no intermediate sights).
@@ -314,35 +468,34 @@ function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview
     flags.push('transition');
     const dest = last;
     const desc = descriptorFor(dest);
-    const tail = desc ? `${artName(dest)}, ${desc}, for overnight.` : `${artName(dest)} for overnight.`;
-    const opener = TRANSITION_OPENER[key(origin)];
+    const tail = P.transitionTail(artName(dest), desc);
+    const opener = openers[key(origin)];
     if (opener) {
-      const sep = enrich ? ', before continuing to ' : ' before continuing to ';
-      return finalize(`${opener}${enrich}${sep}${tail}`, woven);
+      return finalize(P.transitionOpenerSentence(opener, enrich, tail), woven);
     }
     // Fallback (no bespoke opener) has no clean sightseeing slot → route-only.
-    return finalize(`After breakfast, depart ${artName(origin)} and continue to ${tail}`, false);
+    return finalize(P.transitionNoOpener(artName(origin), tail), false);
   }
 
   // Depart base, visit intermediate stops, proceed to the overnight destination.
   flags.push('linear');
   const middles = names.slice(1, names.length - 1);
-  const dir = DIRECTION[key(last)];
-  const directionPhrase = dir ? `proceed ${dir} to` : 'continue on to';
-  return finalize(
-    `After breakfast, depart ${artName(origin)} and ${visitChain(middles)}${enrich}. Afterwards, ${directionPhrase} ${artName(last)} for overnight.`,
-    woven,
-  );
+  const directionPhrase = P.directionPhrase(directions[key(last)] || '');
+  return finalize(P.linear(artName(origin), visitChain(middles), enrich, directionPhrase, artName(last)), woven);
 }
 
-// R.7B-1 — per-locale renderer map. English is the real renderer; es/pt/ar
-// deliberately fall back to the English renderer in R.7B-1 (no partial output).
-// R.7B-2/-3 replace the es/pt/ar entries with their own deterministic renderers.
+/** Back-compat alias: the English renderer is `renderNarrative(input, 'en')`. */
+function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview {
+  return renderNarrative(input, 'en');
+}
+
+// R.7B-2 — per-locale renderer map. en/es/pt are real deterministic renderers;
+// `ar` still falls back to the English renderer (Arabic + RTL UI land in R.7B-3).
 const NARRATIVE_RENDERERS: Record<NarrativeLocale, (input: DayNarrativePreviewInput) => DayNarrativePreview> = {
-  en: renderNarrativeEn,
-  es: renderNarrativeEn,
-  pt: renderNarrativeEn,
-  ar: renderNarrativeEn,
+  en: (input) => renderNarrative(input, 'en'),
+  es: (input) => renderNarrative(input, 'es'),
+  pt: (input) => renderNarrative(input, 'pt'),
+  ar: (input) => renderNarrative(input, 'en'),
 };
 
 /**

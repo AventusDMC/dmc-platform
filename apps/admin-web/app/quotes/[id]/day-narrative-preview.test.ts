@@ -279,14 +279,27 @@ describe('R.7B-1 — narrative locale scaffold (English byte-identical)', () => 
     assert.equal(a.text, b.text);
   });
 
-  it('4/5/6. es/pt/ar fall back to byte-identical English output (no partial translation)', () => {
+  it('ar falls back to byte-identical English output (R.7B-2: Arabic lands in R.7B-3)', () => {
     for (const c of CASES) {
       const en = buildDayNarrativePreview(c, { locale: 'en' });
-      for (const loc of ['es', 'pt', 'ar'] as const) {
+      const ar = buildDayNarrativePreview(c, { locale: 'ar' });
+      assert.equal(ar.text, en.text, `ar text must equal en for "${c.title}"`);
+      assert.equal(ar.sourceLayer, en.sourceLayer, 'ar sourceLayer must equal en');
+      assert.deepEqual(ar.usedServices, en.usedServices, 'ar usedServices must equal en');
+    }
+  });
+
+  it('es/pt keep en STRUCTURE (sourceLayer/usedServices/flags) but localize the TEXT', () => {
+    for (const c of CASES) {
+      const en = buildDayNarrativePreview(c, { locale: 'en' });
+      for (const loc of ['es', 'pt'] as const) {
         const out = buildDayNarrativePreview(c, { locale: loc });
-        assert.equal(out.text, en.text, `${loc} text must equal en for "${c.title}"`);
-        assert.equal(out.sourceLayer, en.sourceLayer, `${loc} sourceLayer must equal en`);
-        assert.deepEqual(out.usedServices, en.usedServices, `${loc} usedServices must equal en`);
+        // Structure is locale-invariant …
+        assert.equal(out.sourceLayer, en.sourceLayer, `${loc} sourceLayer must equal en for "${c.title}"`);
+        assert.deepEqual(out.usedServices, en.usedServices, `${loc} usedServices must equal en for "${c.title}"`);
+        assert.deepEqual(out.flags, en.flags, `${loc} flags must equal en for "${c.title}"`);
+        // … but the prose itself is now genuinely localized (R.7B-2).
+        assert.notEqual(out.text, en.text, `${loc} text must differ from en for "${c.title}"`);
       }
     }
   });
@@ -317,4 +330,140 @@ describe('R.7B-1 — narrative locale scaffold (English byte-identical)', () => 
     assert.ok(out.text.includes('with a local guide'));
     assert.ok(out.text.includes('Wadi Rum Jeep Tour'));
   });
+});
+
+// R.7B-2 — real, deterministic Spanish + Portuguese narrative output. Place NAMES
+// stay in their recognizable proper form; descriptors + connectives are localized
+// (professional tourism tone, not literal translation). English stays byte-identical
+// (asserted by the R.7A blocks above); Arabic still falls back to English.
+describe('R.7B-2 — Spanish (es) deterministic snapshots', () => {
+  it('Arrival', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Arrival', overnightCity: 'Amman' }, { locale: 'es' }).text,
+      'A su llegada, recepción y asistencia en el aeropuerto y traslado a Amman para pasar la noche.',
+    );
+  });
+  it('Departure', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Departure', notes: 'Transfer from Amman to the airport' }, { locale: 'es' }).text,
+      'Traslado desde Amman al aeropuerto para tomar su vuelo de salida.',
+    );
+  });
+  it('Linear — Amman / Madaba / Mount Nebo / Petra', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'es' }).text,
+      'Tras el desayuno, salga de Amman y visite Madaba, célebre por su antiguo mapa en mosaico, luego continúe a Mount Nebo, el mirador tradicional sobre la Tierra Prometida. A continuación, diríjase hacia el sur a Petra para pasar la noche.',
+    );
+  });
+  it('Visit-origin — Petra Visit / Wadi Rum', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum' }, { locale: 'es' }).text,
+      'Tras el desayuno, visite Petra, la ciudad rosada y uno de los yacimientos arqueológicos más célebres de Jordania. Más tarde, continúe a Wadi Rum para pasar la noche.',
+    );
+  });
+  it('Transition — Wadi Rum / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }, { locale: 'es' }).text,
+      'Disfrute del paisaje desértico de Wadi Rum antes de continuar a Dead Sea, el punto más bajo de la Tierra, para pasar la noche.',
+    );
+  });
+  it('Round-trip — Dead Sea / Bethany / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Dead Sea / Bethany / Dead Sea' }, { locale: 'es' }).text,
+      'Tras el desayuno, visite Bethany, el lugar del Bautismo a orillas del río Jordán y regrese a Dead Sea para pasar la noche.',
+    );
+  });
+  it('applied local guide phrase woven in Spanish', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Petra Visit / Wadi Rum', appliedServices: [{ kind: 'guide' }] },
+      { locale: 'es' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes(', con guía local'), `got: ${out.text}`);
+  });
+  it('applied Wadi Rum Jeep Tour phrase woven in Spanish', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Wadi Rum / Dead Sea', appliedServices: [{ kind: 'activity', name: 'Wadi Rum Jeep Tour' }] },
+      { locale: 'es' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes(', que incluye un Wadi Rum Jeep Tour'), `got: ${out.text}`);
+  });
+});
+
+describe('R.7B-2 — Portuguese (pt) deterministic snapshots', () => {
+  it('Arrival', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Arrival', overnightCity: 'Amman' }, { locale: 'pt' }).text,
+      'À chegada, receção e assistência no aeroporto e transporte para Amman para pernoitar.',
+    );
+  });
+  it('Departure', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Departure', notes: 'Transfer from Amman to the airport' }, { locale: 'pt' }).text,
+      'Transporte de Amman para o aeroporto para o seu voo de partida.',
+    );
+  });
+  it('Linear — Amman / Madaba / Mount Nebo / Petra', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'pt' }).text,
+      'Após o pequeno-almoço, parta de Amman e visite Madaba, conhecida pelo seu antigo mapa em mosaico, em seguida siga para Mount Nebo, o miradouro tradicional sobre a Terra Prometida. Em seguida, siga para sul até Petra para pernoitar.',
+    );
+  });
+  it('Visit-origin — Petra Visit / Wadi Rum', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Petra Visit / Wadi Rum' }, { locale: 'pt' }).text,
+      'Após o pequeno-almoço, visite Petra, a cidade rosada e um dos sítios arqueológicos mais famosos da Jordânia. Mais tarde, siga para Wadi Rum para pernoitar.',
+    );
+  });
+  it('Transition — Wadi Rum / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Wadi Rum / Dead Sea' }, { locale: 'pt' }).text,
+      'Desfrute da paisagem desértica de Wadi Rum antes de seguir para Dead Sea, o ponto mais baixo da Terra, para pernoitar.',
+    );
+  });
+  it('Round-trip — Dead Sea / Bethany / Dead Sea', () => {
+    assert.equal(
+      buildDayNarrativePreview({ title: 'Dead Sea / Bethany / Dead Sea' }, { locale: 'pt' }).text,
+      'Após o pequeno-almoço, visite Bethany, o local do Batismo às margens do rio Jordão e regresse a Dead Sea para pernoitar.',
+    );
+  });
+  it('applied local guide phrase woven in Portuguese', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Petra Visit / Wadi Rum', appliedServices: [{ kind: 'guide' }] },
+      { locale: 'pt' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes(', com guia local'), `got: ${out.text}`);
+  });
+  it('applied Wadi Rum Jeep Tour phrase woven in Portuguese', () => {
+    const out = buildDayNarrativePreview(
+      { title: 'Wadi Rum / Dead Sea', appliedServices: [{ kind: 'activity', name: 'Wadi Rum Jeep Tour' }] },
+      { locale: 'pt' },
+    );
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes(', incluindo um Wadi Rum Jeep Tour'), `got: ${out.text}`);
+  });
+});
+
+describe('R.7B-2 — leakage guard holds across en/es/pt', () => {
+  const DIRTY = {
+    title: 'Petra (cost USD 500, supplier Alpha Tours, Coaster 30%, contract C-2026, code ABC123) Visit / Wadi Rum',
+    notes: 'Overnight: No. markup 18%. vehicle Hiace. internal XZ99.',
+    appliedServices: [
+      { kind: 'activity' as const, name: 'Wadi Rum Jeep Tour (cost USD 80, supplier Alpha, contract C-9, markup 22%, code WR123)' },
+      { kind: 'guide' as const },
+    ],
+  };
+  const LEAKS = ['supplier', 'Alpha', 'contract', 'C-2026', 'C-9', 'cost', 'USD', '500', '80', 'markup', '18%', '22%', 'vehicle', 'Hiace', 'Coaster', '30%', 'ABC123', 'WR123', 'XZ99', 'Overnight: No'];
+  for (const loc of ['en', 'es', 'pt'] as const) {
+    it(`no internal/commercial leak in ${loc}`, () => {
+      const { text } = buildDayNarrativePreview(DIRTY, { locale: loc });
+      for (const token of LEAKS) {
+        assert.ok(!text.includes(token), `${loc} preview must not contain "${token}" — got: ${text}`);
+      }
+      // The clean activity name still surfaces (locale-appropriate connector).
+      assert.ok(text.includes('Wadi Rum Jeep Tour'), `${loc}: clean activity name should surface`);
+    });
+  }
 });
