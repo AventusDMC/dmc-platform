@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildDayNarrativePreview, isClientSafeNarrative } from './day-narrative-preview';
+import { buildDayNarrativePreview, isClientSafeNarrative, resolveNarrativeLocale, narrativeTextDirection } from './day-narrative-preview';
 
 // Phase R.7A-1 — English client narrative preview from route/day text only.
 // Pure + deterministic; no services, no network, no save.
@@ -247,5 +247,74 @@ describe('R.7A-3 — isClientSafeNarrative', () => {
   });
   it('does not false-positive on legitimate prose containing substrings (e.g. Pentecost)', () => {
     assert.equal(isClientSafeNarrative('Visit the site associated with Pentecost and the Baptism Site.'), true);
+  });
+});
+
+// R.7B-1 — narrative locale scaffold: locale option + helpers; es/pt/ar fall back
+// to English byte-identically (no real translations yet). The existing R.7A
+// describe blocks above already assert the English output is byte-identical
+// (they call buildDayNarrativePreview with no locale → en).
+describe('R.7B-1 — narrative locale scaffold (English byte-identical)', () => {
+  const CASES: { title: string; notes?: string; overnightCity?: string; appliedServices?: any[] }[] = [
+    { title: 'Amman / Madaba / Mount Nebo / Petra' },
+    { title: 'Arrival Amman', overnightCity: 'Amman' },
+    { title: 'Departure', notes: 'Transfer from Petra to the airport' },
+    { title: 'Amman / Jerash / Amman' },
+    { title: 'Petra Visit / Wadi Rum' },
+    { title: 'Wadi Rum / Dead Sea' },
+    { title: 'Amman City Tour' },
+    { title: 'Petra / Wadi Rum', appliedServices: [{ kind: 'guide' }, { kind: 'activity', name: 'Wadi Rum Jeep Tour' }] },
+    { title: '' },
+  ];
+
+  it('1/3. default locale === explicit en for every case', () => {
+    for (const c of CASES) {
+      assert.deepEqual(buildDayNarrativePreview(c), buildDayNarrativePreview(c, { locale: 'en' }));
+    }
+  });
+
+  it('2. default locale is en (omitting options)', () => {
+    const a = buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' });
+    const b = buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' }, { locale: 'en' });
+    assert.equal(a.text, b.text);
+  });
+
+  it('4/5/6. es/pt/ar fall back to byte-identical English output (no partial translation)', () => {
+    for (const c of CASES) {
+      const en = buildDayNarrativePreview(c, { locale: 'en' });
+      for (const loc of ['es', 'pt', 'ar'] as const) {
+        const out = buildDayNarrativePreview(c, { locale: loc });
+        assert.equal(out.text, en.text, `${loc} text must equal en for "${c.title}"`);
+        assert.equal(out.sourceLayer, en.sourceLayer, `${loc} sourceLayer must equal en`);
+        assert.deepEqual(out.usedServices, en.usedServices, `${loc} usedServices must equal en`);
+      }
+    }
+  });
+
+  it('7/8. narrativeTextDirection: ar → rtl, en/es/pt → ltr', () => {
+    assert.equal(narrativeTextDirection('ar'), 'rtl');
+    assert.equal(narrativeTextDirection('en'), 'ltr');
+    assert.equal(narrativeTextDirection('es'), 'ltr');
+    assert.equal(narrativeTextDirection('pt'), 'ltr');
+  });
+
+  it('resolveNarrativeLocale normalizes + defaults to en', () => {
+    assert.equal(resolveNarrativeLocale('es'), 'es');
+    assert.equal(resolveNarrativeLocale('AR'), 'ar');
+    assert.equal(resolveNarrativeLocale(' Pt '), 'pt');
+    assert.equal(resolveNarrativeLocale('fr'), 'en');
+    assert.equal(resolveNarrativeLocale(null), 'en');
+    assert.equal(resolveNarrativeLocale(undefined), 'en');
+    assert.equal(resolveNarrativeLocale(''), 'en');
+  });
+
+  it('10. applied guide/activity enrichment still works (English, via default + en)', () => {
+    // A linear depart-and-visit day weaves applied services into the sightseeing
+    // sentence (a 2-stop transition like "Petra / Wadi Rum" stays route-only).
+    const c = { title: 'Amman / Madaba / Mount Nebo / Petra', appliedServices: [{ kind: 'guide' as const }, { kind: 'activity' as const, name: 'Wadi Rum Jeep Tour' }] };
+    const out = buildDayNarrativePreview(c);
+    assert.equal(out.sourceLayer, 'service-aware');
+    assert.ok(out.text.includes('with a local guide'));
+    assert.ok(out.text.includes('Wadi Rum Jeep Tour'));
   });
 });

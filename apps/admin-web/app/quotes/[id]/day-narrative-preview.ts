@@ -47,41 +47,89 @@ export type DayNarrativePreview = {
   usedServices: string[];
 };
 
-// Curated, client-safe descriptors keyed by the lowercased place name.
-const PLACE_DESCRIPTORS: Record<string, string> = {
-  amman: 'Jordan’s capital city',
-  jerash: 'one of the best-preserved Roman cities in the region',
-  madaba: 'known for its ancient mosaic map',
-  'mount nebo': 'the traditional viewpoint over the Promised Land',
-  petra: 'the rose-red city and one of Jordan’s most famous archaeological sites',
-  'wadi rum': 'Jordan’s desert landscape known for dramatic sandstone mountains',
-  'dead sea': 'the lowest point on earth',
-  bethany: 'the Baptism Site on the Jordan River',
-};
+// ---------------------------------------------------------------------------
+// Phase R.7B-1 — narrative locale scaffold. Mirrors the proposal locale set
+// (en/pt/es/ar) so the planner narrative can later render in multiple languages.
+// THIS PHASE ADDS NO REAL TRANSLATIONS: es/pt/ar fall back to the English
+// renderer, and English output stays byte-identical. Real es/pt/ar renderers
+// land in R.7B-2/-3.
+// ---------------------------------------------------------------------------
+export const NARRATIVE_LOCALES = ['en', 'es', 'pt', 'ar'] as const;
+export type NarrativeLocale = (typeof NARRATIVE_LOCALES)[number];
 
-// Places that read with a definite article ("the Dead Sea").
-const ARTICLE_THE = new Set(['dead sea']);
+/** Normalize an arbitrary value to a supported narrative locale (defaults en). */
+export function resolveNarrativeLocale(value: string | null | undefined): NarrativeLocale {
+  const normalized = String(value || '').trim().toLowerCase();
+  return (NARRATIVE_LOCALES as readonly string[]).includes(normalized) ? (normalized as NarrativeLocale) : 'en';
+}
+
+/** Text direction for the preview container — Arabic is RTL, the rest LTR. */
+export function narrativeTextDirection(locale: NarrativeLocale): 'ltr' | 'rtl' {
+  return locale === 'ar' ? 'rtl' : 'ltr';
+}
+
+// R.7B-1 — curated, client-safe descriptors keyed by lowercased place name, now
+// keyed by locale. Only `en` is populated in R.7B-1; es/pt/ar are intentionally
+// empty and the English renderer reads `*.en`, so output stays byte-identical.
+// R.7B-2/-3 will fill the es/pt/ar slices (consumed by their own renderers).
+const PLACE_DESCRIPTORS_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
+  en: {
+    amman: 'Jordan’s capital city',
+    jerash: 'one of the best-preserved Roman cities in the region',
+    madaba: 'known for its ancient mosaic map',
+    'mount nebo': 'the traditional viewpoint over the Promised Land',
+    petra: 'the rose-red city and one of Jordan’s most famous archaeological sites',
+    'wadi rum': 'Jordan’s desert landscape known for dramatic sandstone mountains',
+    'dead sea': 'the lowest point on earth',
+    bethany: 'the Baptism Site on the Jordan River',
+  },
+  es: {},
+  pt: {},
+  ar: {},
+};
+const PLACE_DESCRIPTORS = PLACE_DESCRIPTORS_BY_LOCALE.en;
+
+// Places that read with a definite article ("the Dead Sea"), keyed by locale.
+const ARTICLE_THE_BY_LOCALE: Record<NarrativeLocale, Set<string>> = {
+  en: new Set(['dead sea']),
+  es: new Set(),
+  pt: new Set(),
+  ar: new Set(),
+};
+const ARTICLE_THE = ARTICLE_THE_BY_LOCALE.en;
 
 // Bespoke opening clause when a place is the ORIGIN of a simple two-stop
 // transition day (no intermediate sightseeing). Falls back to a neutral
-// "depart …" opener for places without one.
-const TRANSITION_OPENER: Record<string, string> = {
-  'wadi rum': 'Enjoy the desert scenery of Wadi Rum',
+// "depart …" opener for places without one. Keyed by locale.
+const TRANSITION_OPENER_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
+  en: {
+    'wadi rum': 'Enjoy the desert scenery of Wadi Rum',
+  },
+  es: {},
+  pt: {},
+  ar: {},
 };
+const TRANSITION_OPENER = TRANSITION_OPENER_BY_LOCALE.en;
 
 // Compass hint used only when a place is the DESTINATION of a depart-and-visit
-// day (e.g. Amman → … → Petra reads "proceed south to Petra").
-const DIRECTION: Record<string, string> = {
-  petra: 'south',
-  'wadi rum': 'south',
-  aqaba: 'south',
-  jerash: 'north',
-  madaba: 'south',
-  'mount nebo': 'west',
-  'dead sea': 'west',
-  bethany: 'west',
-  amman: '',
+// day (e.g. Amman → … → Petra reads "proceed south to Petra"). Keyed by locale.
+const DIRECTION_BY_LOCALE: Record<NarrativeLocale, Record<string, string>> = {
+  en: {
+    petra: 'south',
+    'wadi rum': 'south',
+    aqaba: 'south',
+    jerash: 'north',
+    madaba: 'south',
+    'mount nebo': 'west',
+    'dead sea': 'west',
+    bethany: 'west',
+    amman: '',
+  },
+  es: {},
+  pt: {},
+  ar: {},
 };
+const DIRECTION = DIRECTION_BY_LOCALE.en;
 
 // Tokens that must never reach client-facing text. Used to scrub parsed names.
 const LEAK_WORDS =
@@ -144,12 +192,14 @@ function visitChain(names: string[]): string {
 }
 
 /**
- * Phase R.7A-1/-2 — build the read-only English client narrative for one day.
+ * Phase R.7A-1/-2 — the ENGLISH client-narrative renderer for one day.
  * R.7A-1: composed from route/day text only (title + notes). R.7A-2: if services
  * are already applied to the day, an applied local guide and client-safe activity
  * callouts are woven into the sightseeing sentence. Pure + deterministic.
+ * R.7B-1: this is the `en` renderer; locale dispatch lives in
+ * buildDayNarrativePreview below (es/pt/ar fall back here for now).
  */
-export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNarrativePreview {
+function renderNarrativeEn(input: DayNarrativePreviewInput): DayNarrativePreview {
   const title = (input.title || '').trim();
   const notes = String(input.notes || '');
   const flags: string[] = [];
@@ -283,6 +333,30 @@ export function buildDayNarrativePreview(input: DayNarrativePreviewInput): DayNa
     `After breakfast, depart ${artName(origin)} and ${visitChain(middles)}${enrich}. Afterwards, ${directionPhrase} ${artName(last)} for overnight.`,
     woven,
   );
+}
+
+// R.7B-1 — per-locale renderer map. English is the real renderer; es/pt/ar
+// deliberately fall back to the English renderer in R.7B-1 (no partial output).
+// R.7B-2/-3 replace the es/pt/ar entries with their own deterministic renderers.
+const NARRATIVE_RENDERERS: Record<NarrativeLocale, (input: DayNarrativePreviewInput) => DayNarrativePreview> = {
+  en: renderNarrativeEn,
+  es: renderNarrativeEn,
+  pt: renderNarrativeEn,
+  ar: renderNarrativeEn,
+};
+
+/**
+ * Phase R.7A — build the read-only client narrative preview for one day.
+ * R.7B-1: accepts an optional locale (en/es/pt/ar, default en). English output is
+ * byte-identical to R.7A; es/pt/ar fall back to the English renderer until their
+ * own renderers land (R.7B-2/-3). Pure + deterministic; no AI, no network.
+ */
+export function buildDayNarrativePreview(
+  input: DayNarrativePreviewInput,
+  options?: { locale?: NarrativeLocale },
+): DayNarrativePreview {
+  const locale = resolveNarrativeLocale(options?.locale);
+  return (NARRATIVE_RENDERERS[locale] || renderNarrativeEn)(input);
 }
 
 // ---------------------------------------------------------------------------
