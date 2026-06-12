@@ -11,7 +11,19 @@ import {
   classifyPackageTransportPolicy,
   TRANSPORT_DEFAULT_MARKUP,
   type TransportServiceTypeOption,
+  type TransportPricingBasis,
 } from './tailor-made-transport-resolve';
+
+// T.5D-2 — operator-safe pricing-basis labels for the transport price preview.
+// Never expose raw internal tokens (POINT_TO_POINT / FULL_DAY / DAILY_FULL_DAY /
+// capacity_unit / service-type or mode internals) — only these clean phrases.
+const PRICING_BASIS_LABELS: Record<TransportPricingBasis, string> = {
+  PACKAGE_FULL_DAY: 'Package full-day vehicle rate',
+  ROUTE_RATE: 'Regular route rate',
+  ARRIVAL_TRANSFER: 'Arrival transfer',
+  DEPARTURE_TRANSFER: 'Departure transfer',
+  NO_TRANSPORT: 'No transport / leisure day',
+};
 
 // Phase R.1c — UI for the Phase R.1/R.1b tailor-made draft endpoints. This panel
 // only PREVIEWS and APPLIES editable itinerary days. It never creates priced
@@ -101,6 +113,9 @@ type TransportSuggestion = {
 type TransportPreview = {
   status: 'OK' | 'NO_ROUTE' | 'NO_RATE';
   routeLabel: string | null;
+  // T.5D-2 — operator-safe pricing basis from the resolver (drives the clean
+  // label shown in the preview; raw internal tokens are never displayed).
+  pricingBasis: TransportPricingBasis;
   serviceTypeName: string | null;
   pricingModeHint: 'POINT_TO_POINT' | 'FULL_DAY' | null;
   vehicleName: string | null;
@@ -731,11 +746,21 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     setTransportPreview(null);
     setError('');
     try {
-      const plan = resolveTransportPlan(t, routes ?? [], transportServiceTypes ?? []);
+      // T.5D-2 — feed the package transport policy into the resolver for the
+      // PRICE PREVIEW only. When the package has 3+ full touring days
+      // (usePackageFullDay), each TOURING_FULL_DAY prices against the canonical
+      // Amman-disposal DAILY_FULL_DAY rate while keeping its real route label;
+      // otherwise touring days keep regular route rates. Apply is NOT wired to
+      // this yet — that's T.5D-3 (so preview and apply may differ until then).
+      const policy = classifyPackageTransportPolicy(transport ?? []);
+      const plan = resolveTransportPlan(t, routes ?? [], transportServiceTypes ?? [], {
+        usePackageFullDay: policy.usePackageFullDay,
+      });
       if (plan.status === 'NO_ROUTE' || !plan.routeId || !plan.serviceTypeId) {
         setTransportPreview({
           status: 'NO_ROUTE',
           routeLabel: plan.routeLabel,
+          pricingBasis: plan.pricingBasis,
           serviceTypeName: plan.serviceTypeName,
           pricingModeHint: plan.pricingModeHint,
           vehicleName: null,
@@ -787,6 +812,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         setTransportPreview({
           status: 'NO_RATE',
           routeLabel: plan.routeLabel,
+          pricingBasis: plan.pricingBasis,
           serviceTypeName: plan.serviceTypeName,
           pricingModeHint: plan.pricingModeHint,
           vehicleName: null,
@@ -806,6 +832,7 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       setTransportPreview({
         status: 'OK',
         routeLabel: plan.routeLabel,
+        pricingBasis: plan.pricingBasis,
         serviceTypeName: result?.serviceType?.name ?? plan.serviceTypeName,
         pricingModeHint: plan.pricingModeHint,
         vehicleName: result?.vehicle?.name ?? null,
@@ -1475,10 +1502,10 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
             <p className="form-help">{transportMessage || 'No itinerary days yet — apply a tailor-made draft first.'}</p>
           ) : (
             <>
-              {/* T.5C — package transport policy summary (DISPLAY ONLY). Uses the
-                  pure classifier to tell the operator whether touring days will
-                  price at regular route rates or the package full-day rate. This
-                  does NOT change any price preview or apply behaviour yet. */}
+              {/* T.5C/T.5D-2 — package transport policy summary. The pure classifier
+                  tells the operator whether touring days price at regular route rates
+                  or the package full-day rate. As of T.5D-2 the PRICE PREVIEW below
+                  follows this policy; the transport APPLY path does not yet (T.5D-3). */}
               {(() => {
                 const policy = classifyPackageTransportPolicy(transport);
                 return (
@@ -1492,10 +1519,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     </p>
                     <p className="form-help">
                       {policy.usePackageFullDay
-                        ? 'This package has 3 or more full touring days.'
-                        : 'This package has fewer than 3 full touring days.'}
+                        ? 'This package has 3 or more full touring days, so touring days preview at the package full-day vehicle rate.'
+                        : 'This package has fewer than 3 full touring days, so touring days preview at regular route rates.'}
                     </p>
-                    <p className="form-help tailor-made-transport-policy-note">Preview only — pricing has not changed yet.</p>
+                    <p className="form-help tailor-made-transport-policy-note">
+                      Price preview uses this package policy. Apply will be updated in the next phase — until then,
+                      the applied transport price may differ from this preview.
+                    </p>
                     <p className="form-help tailor-made-transport-policy-note">
                       Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.
                     </p>
@@ -1535,17 +1565,25 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                           {activeDay && transportPreview ? (
                             <div className="tailor-made-transport-preview">
                               {transportPreview.status === 'OK' ? (
-                                <p className="form-help">
-                                  Estimated cost {transportPreview.cost} / sell {transportPreview.sell}{' '}
-                                  {transportPreview.currency || ''} (markup {transportPreview.markupPercent}%)
-                                  {/* Admin-only planning detail — never shown in the client proposal. */}
-                                  {transportPreview.vehicleName ? ` • vehicle (internal): ${transportPreview.vehicleName}` : ''}
-                                  {transportPreview.serviceTypeName ? ` • type (internal): ${transportPreview.serviceTypeName}` : ''}
-                                  {transportPreview.pricingModeHint ? ` • mode (internal): ${transportPreview.pricingModeHint}` : ''}
-                                </p>
+                                <>
+                                  {/* T.5D-2 — clean, operator-safe pricing basis. Never the raw
+                                      service-type / pricing-mode tokens (POINT_TO_POINT / FULL_DAY /
+                                      DAILY_FULL_DAY / capacity_unit). */}
+                                  <p className="form-help">
+                                    <strong>Pricing basis:</strong> {PRICING_BASIS_LABELS[transportPreview.pricingBasis]}
+                                  </p>
+                                  <p className="form-help">
+                                    Estimated cost {transportPreview.cost} / sell {transportPreview.sell}{' '}
+                                    {transportPreview.currency || ''} (markup {transportPreview.markupPercent}%)
+                                    {/* Vehicle class is an admin planning detail — never the client proposal. */}
+                                    {transportPreview.vehicleName ? ` • vehicle (internal): ${transportPreview.vehicleName}` : ''}
+                                  </p>
+                                </>
                               ) : (
                                 <p className="form-help">
-                                  {transportPreview.status === 'NO_ROUTE' ? 'NO_ROUTE' : 'NO_RATE'} — {transportPreview.reason}
+                                  <strong>Pricing basis:</strong> {PRICING_BASIS_LABELS[transportPreview.pricingBasis]}
+                                  {' — '}
+                                  {transportPreview.status === 'NO_ROUTE' ? 'no route resolved' : 'no contracted rate'} ({transportPreview.reason})
                                 </p>
                               )}
                               {/* Phase R.6B-1 — Apply enabled only after an OK preview AND only for a

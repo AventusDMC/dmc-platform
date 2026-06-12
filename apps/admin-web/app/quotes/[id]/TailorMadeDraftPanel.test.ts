@@ -551,7 +551,7 @@ describe('R.6B-0 — transport resolver constant', () => {
   });
 });
 
-describe('T.5C — package transport policy display (preview-only)', () => {
+describe('T.5C/T.5D-2 — package transport policy display + price-preview wiring', () => {
   it('renders the policy summary from the pure classifier with operator-safe labels', () => {
     expectSourceContains(panelSource, [
       // uses the T.5B pure helper for DISPLAY
@@ -563,26 +563,50 @@ describe('T.5C — package transport policy display (preview-only)', () => {
       // operator labels (no raw enums)
       'Package full-day vehicle rate',
       'Regular route rate',
-      'This package has 3 or more full touring days.',
-      'This package has fewer than 3 full touring days.',
-      // required T.5C copy
-      'Preview only — pricing has not changed yet.',
+      // T.5D-2 — explanation now states which basis the PREVIEW uses
+      'This package has 3 or more full touring days, so touring days preview at the package full-day vehicle rate.',
+      'This package has fewer than 3 full touring days, so touring days preview at regular route rates.',
       // future-rule note only (no logic)
       'Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.',
     ]);
   });
 
-  it('does not expose raw internal labels in the policy display, and adds no overnight/stationary logic', () => {
+  it('T.5D-2: price preview is wired to the package policy, and warns apply is updated next phase', () => {
+    expectSourceContains(panelSource, [
+      // policy fed into the resolver for the PRICE PREVIEW
+      'const policy = classifyPackageTransportPolicy(transport ?? [])',
+      'usePackageFullDay: policy.usePackageFullDay',
+      // resolver now called with the options arg (4th argument)
+      'resolveTransportPlan(t, routes ?? [], transportServiceTypes ?? [], {',
+      // the resolved basis flows into the preview state + UI
+      'pricingBasis: plan.pricingBasis',
+      'PRICING_BASIS_LABELS[transportPreview.pricingBasis]',
+      // operator-safe basis label map (all five values)
+      "PACKAGE_FULL_DAY: 'Package full-day vehicle rate'",
+      "ROUTE_RATE: 'Regular route rate'",
+      "ARRIVAL_TRANSFER: 'Arrival transfer'",
+      "DEPARTURE_TRANSFER: 'Departure transfer'",
+      "NO_TRANSPORT: 'No transport / leisure day'",
+      // required T.5D-2 operator warning (preview vs apply may differ until T.5D-3)
+      'Price preview uses this package policy. Apply will be updated in the next phase',
+    ]);
+    // The stale T.5C "pricing has not changed yet" copy is gone — preview DOES use the policy now.
+    assert.ok(!panelSource.includes('Preview only — pricing has not changed yet.'), 'stale T.5C preview-only copy removed');
+  });
+
+  it('does not expose raw internal labels, and adds no overnight/stationary logic', () => {
     // The policy block is display-only — no raw enum/internal tokens introduced.
     const policyBlock = panelSource.slice(panelSource.indexOf('Package transport policy'), panelSource.indexOf('tailor-made-transport-days'));
     for (const raw of ['POINT_TO_POINT', 'capacity_unit', 'FULL_DAY', 'type internal', 'mode internal']) {
       assert.ok(!policyBlock.includes(raw), `policy display must not expose "${raw}"`);
     }
-    // No driver-overnight / stationary CALCULATION added (note text only — the
-    // word "add-ons are not included yet" is allowed; assert no ADD_ON service
-    // codes or overnight math are wired in the panel).
-    assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM|STATIONARY_WAITING/.test(panelSource), 'no overnight/stationary add-on logic in T.5C');
-    // Helper is used only for display — not in the apply path (apply still gates on transportPreview).
+    // T.5D-2 — the raw service-type / pricing-mode internal lines are removed from
+    // the price-preview render (req #10): only the clean pricing basis is shown.
+    assert.ok(!panelSource.includes('type (internal):'), 'raw service-type internal line removed from preview');
+    assert.ok(!panelSource.includes('mode (internal):'), 'raw pricing-mode internal line removed from preview');
+    // No driver-overnight / stationary CALCULATION added (note text only).
+    assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM|STATIONARY_WAITING/.test(panelSource), 'no overnight/stationary add-on logic');
+    // Classifier feeds PREVIEW only — never the apply path (apply still gates on transportPreview).
     assert.ok(!/applySelectedTransport[\s\S]{0,400}classifyPackageTransportPolicy/.test(panelSource), 'classifier not used inside transport apply');
   });
 });
