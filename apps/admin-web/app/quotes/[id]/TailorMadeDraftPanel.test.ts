@@ -566,9 +566,13 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
       // T.5D-2 — explanation now states which basis the PREVIEW uses
       'This package has 3 or more full touring days, so touring days preview at the package full-day vehicle rate.',
       'This package has fewer than 3 full touring days, so touring days preview at regular route rates.',
-      // future-rule note only (no logic)
-      'Driver overnight / stationary add-ons are not included yet and will be handled in a later phase.',
     ]);
+    // T.5F replaced the "add-ons not included yet" placeholder with a real
+    // preview block, so the placeholder copy is gone.
+    assert.ok(
+      !panelSource.includes('Driver overnight / stationary add-ons are not included yet'),
+      'stale add-on placeholder note removed',
+    );
   });
 
   it('T.5D-2: price preview is wired to the package policy', () => {
@@ -635,5 +639,40 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
     assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM|STATIONARY_WAITING/.test(panelSource), 'no overnight/stationary add-on logic');
     // Classifier feeds PREVIEW only — never the apply path (apply still gates on transportPreview).
     assert.ok(!/applySelectedTransport[\s\S]{0,400}classifyPackageTransportPolicy/.test(panelSource), 'classifier not used inside transport apply');
+  });
+});
+
+describe('T.5F — transport add-on preview (driver overnight + stationary, preview only)', () => {
+  it('captures package add-on rates from the preview and renders the preview block', () => {
+    expectSourceContains(panelSource, [
+      // capture optionalAddOns from a PACKAGE_FULL_DAY preview via the resolver helper
+      'normalizeTransportAddOnRates(result?.optionalAddOns)',
+      'setTransportAddOnRates',
+      'setTransportAddOnVehicle',
+      // build + render the preview model
+      'buildTransportAddOnPreview({',
+      'usePackageFullDay: policy.usePackageFullDay',
+      'aria-label="Transport add-ons preview"',
+      'Transport add-ons (preview only)',
+      'Suggested driver overnight total:',
+      'Optional stationary / waiting add-on',
+      // required preview-only note
+      'Add-ons are preview only and are not applied yet.',
+    ]);
+    // overnight stays feed the helper (nights source)
+    assert.ok(/overnightStays/.test(panelSource), 'overnight stays passed to the add-on helper');
+  });
+
+  it('is preview-only: no transportAddOns are sent on apply, no add-on apply path', () => {
+    // The apply payload must NOT include transportAddOns in this phase.
+    assert.ok(!/transportAddOns\s*:/.test(panelSource), 'no transportAddOns sent on apply');
+    // No add-on apply endpoint / no QuoteItem creation for add-ons.
+    assert.ok(!/addon-apply|add-on-apply/i.test(panelSource), 'no add-on apply endpoint');
+  });
+
+  it('does not leak raw add-on service-type codes in the panel source', () => {
+    for (const raw of ['DEAD_SEA_OVERNIGHT', 'WADI_RUM_OVERNIGHT', 'PETRA_OVERNIGHT', 'AQABA_OVERNIGHT', 'STATIONARY_WAITING', 'ADD_ON']) {
+      assert.ok(!panelSource.includes(raw), `panel must not contain raw add-on code "${raw}"`);
+    }
   });
 });

@@ -5,9 +5,11 @@ import {
   computeTransportSell,
   resolveTransportPlan,
   classifyPackageTransportPolicy,
+  buildTransportAddOnPreview,
   PACKAGE_FULL_DAY_MIN_TOURING_DAYS,
   type TransportServiceTypeOption,
   type TransportSuggestionLike,
+  type TransportAddOnRate,
 } from './tailor-made-transport-resolve';
 import type { RouteOption } from '../../lib/routes';
 
@@ -454,5 +456,106 @@ describe('T.5D-2 — price preview uses package full-day basis (pax-2 sedan net 
     );
     assert.equal(leisure.status, 'NO_ROUTE');
     assert.equal(leisure.pricingBasis, 'NO_TRANSPORT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T.5F — buildTransportAddOnPreview (driver overnight + stationary, PREVIEW only)
+// ---------------------------------------------------------------------------
+describe('T.5F — buildTransportAddOnPreview', () => {
+  const RATES: TransportAddOnRate[] = [
+    { rateId: 'ov-petra', addOnType: 'DRIVER_OVERNIGHT', name: 'Petra Overnight', unitCost: 15, currency: 'JOD' },
+    { rateId: 'ov-rum', addOnType: 'DRIVER_OVERNIGHT', name: 'Wadi Rum Overnight', unitCost: 15, currency: 'JOD' },
+    { rateId: 'ov-aqaba', addOnType: 'DRIVER_OVERNIGHT', name: 'Aqaba Overnight', unitCost: 15, currency: 'JOD' },
+    { rateId: 'ov-deadsea', addOnType: 'DRIVER_OVERNIGHT', name: 'Dead Sea Overnight', unitCost: 15, currency: 'JOD' },
+    { rateId: 'stationary', addOnType: 'STATIONARY_WAITING', name: 'Stationary / Waiting', unitCost: 40, currency: 'JOD' },
+  ];
+  const STAYS_6D = [
+    { city: 'Amman', nights: 2 },
+    { city: 'Petra', nights: 1 },
+    { city: 'Wadi Rum', nights: 1 },
+    { city: 'Dead Sea', nights: 1 },
+  ];
+
+  it('1. package-mode Sedan suggests Petra/Wadi Rum overnight (auto cities present)', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    const suggested = r.driverOvernight.filter((l) => l.status === 'suggested').map((l) => l.city);
+    assert.deepEqual(suggested, ['Petra', 'Wadi Rum']);
+    assert.ok(r.driverOvernight.find((l) => l.city === 'Petra')?.label === 'Driver overnight — Petra');
+  });
+
+  it('1b. Aqaba overnight is auto-suggested for an eligible vehicle when present', () => {
+    const r = buildTransportAddOnPreview({
+      usePackageFullDay: true, vehicleName: 'Mini Van 5',
+      overnightStays: [{ city: 'Aqaba', nights: 1 }], addOnRates: RATES,
+    });
+    assert.equal(r.driverOvernight.length, 1);
+    assert.equal(r.driverOvernight[0].status, 'suggested');
+    assert.equal(r.driverOvernight[0].label, 'Driver overnight — Aqaba');
+    assert.equal(r.suggestedOvernightTotal, 15);
+  });
+
+  it('2. Dead Sea is NOT auto-suggested — shown as optional / operator-confirm', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    const deadSea = r.driverOvernight.find((l) => l.city === 'Dead Sea');
+    assert.ok(deadSea, 'Dead Sea line present');
+    assert.equal(deadSea?.status, 'optional');
+  });
+
+  it('3. Amman (base) is excluded entirely', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    assert.equal(r.driverOvernight.some((l) => /amman/i.test(l.city)), false);
+  });
+
+  it('4. 4-day / regular-route mode (usePackageFullDay false) shows NO driver overnight', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: false, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    assert.equal(r.driverOvernight.length, 0);
+    assert.equal(r.suggestedOvernightTotal, 0);
+  });
+
+  it('5. bus/coach is NOT eligible for driver overnight (even in package mode)', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Coaster 17', overnightStays: STAYS_6D, addOnRates: RATES });
+    assert.equal(r.eligibleForDriverOvernight, false);
+    assert.equal(r.driverOvernight.length, 0);
+  });
+
+  it('6. stationary/waiting is an optional add-on for any class (incl. bus), off by default', () => {
+    const car = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    const bus = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Coaster 17', overnightStays: STAYS_6D, addOnRates: RATES });
+    assert.equal(car.stationary?.status, 'optional');
+    assert.equal(car.stationary?.label, 'Stationary / waiting');
+    assert.equal(bus.stationary?.status, 'optional', 'bus still gets the optional stationary line');
+    assert.equal(bus.stationary?.unitCost, 40);
+  });
+
+  it('7. suggested driver overnight total = sum of suggested only (6-day Petra+Wadi Rum = 30)', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    assert.equal(r.suggestedOvernightTotal, 30); // Petra 15 + Wadi Rum 15; Dead Sea optional excluded
+  });
+
+  it('8. stationary is never folded into the suggested total', () => {
+    const r = buildTransportAddOnPreview({
+      usePackageFullDay: true, vehicleName: 'Sedan 2',
+      overnightStays: [{ city: 'Petra', nights: 1 }], addOnRates: RATES,
+    });
+    assert.equal(r.suggestedOvernightTotal, 15); // Petra only — the 40 stationary is NOT added
+  });
+
+  it('multi-night overnight multiplies by nights', () => {
+    const r = buildTransportAddOnPreview({
+      usePackageFullDay: true, vehicleName: 'Van 9',
+      overnightStays: [{ city: 'Petra', nights: 2 }], addOnRates: RATES,
+    });
+    assert.equal(r.driverOvernight[0].nights, 2);
+    assert.equal(r.driverOvernight[0].total, 30);
+    assert.equal(r.suggestedOvernightTotal, 30);
+  });
+
+  it('no labels leak raw service-type codes', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    const labels = [...r.driverOvernight.map((l) => l.label), r.stationary?.label ?? ''];
+    for (const label of labels) {
+      assert.ok(!/OVERNIGHT|STATIONARY_WAITING|ADD_ON|_/.test(label), `clean label: ${label}`);
+    }
   });
 });
