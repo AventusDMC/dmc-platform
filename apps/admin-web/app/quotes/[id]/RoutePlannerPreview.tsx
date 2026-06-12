@@ -22,7 +22,12 @@ import { DAY_ROUTE_PRESETS, getDayRoutePreset, getClassicJordanRouteTemplate } f
 // Phase R.7A-1/-2 — read-only English client narrative preview, generated purely
 // from the day's route/day text (title + notes) and, when present, the day's
 // already-applied services (R.7A-2). No network, no save.
-import { buildDayNarrativePreview, type AppliedNarrativeService } from './day-narrative-preview';
+import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview';
+
+// R.7A-3 — set of known route-preset narratives, used to tell whether a day's
+// current notes came from a preset/template (safe to replace quietly) or look
+// manually edited (warrants a stronger overwrite warning).
+const PRESET_NARRATIVES = new Set(DAY_ROUTE_PRESETS.map((p) => (p.narrative || '').trim()).filter(Boolean));
 
 // Local sentinels for the two non-preset choices (UI-only; never submitted).
 const KEEP_CURRENT_KEY = '__keep_current__';
@@ -47,6 +52,9 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
   const [appliedDay, setAppliedDay] = useState<number | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [templateApplied, setTemplateApplied] = useState(false);
+  // R.7A-3 — per-day "Use this narrative" save state.
+  const [savingNarrativeDay, setSavingNarrativeDay] = useState<number | null>(null);
+  const [savedNarrativeDay, setSavedNarrativeDay] = useState<number | null>(null);
 
   // S.2D-3B — the curated classic route template for the current duration (4/5/6/7
   // days), or null for 8-day (existing generator) / other durations.
@@ -129,6 +137,53 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
       setError(caught instanceof Error ? caught.message : 'Could not apply the route preset to this day.');
     } finally {
       setApplyingDay(null);
+    }
+  }
+
+  // R.7A-3 — does this day's current notes look manually edited? True when the
+  // notes are non-blank AND match neither a known route-preset narrative nor the
+  // generated narrative preview — i.e. an operator likely hand-wrote them.
+  function isManuallyEditedNotes(day: RoutePlannerDay, generatedText: string): boolean {
+    const notes = (day.notes || '').trim();
+    if (!notes) return false;
+    if (PRESET_NARRATIVES.has(notes)) return false;
+    if (notes === generatedText.trim()) return false;
+    return true;
+  }
+
+  // R.7A-3 — save ONE day's generated client narrative into its notes via the
+  // EXISTING PATCH /itinerary/day/:dayId. Sends ONLY { notes } (no title /
+  // dayNumber / services / pricing / QuoteItems). Confirms first (stronger warning
+  // when the current notes look manually edited), and refuses unsafe/empty text.
+  async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string) {
+    if (!isClientSafeNarrative(generatedText)) return; // button is disabled in this case
+    const manual = isManuallyEditedNotes(day, generatedText);
+    const message = manual
+      ? 'This day’s notes may have been manually edited. Replacing them may overwrite operator changes. This will replace the current day narrative/notes with the client narrative preview. Continue?'
+      : 'This will replace the current day narrative/notes with the client narrative preview. Continue?';
+    if (typeof window !== 'undefined' && !window.confirm(message)) {
+      return;
+    }
+    setSavingNarrativeDay(day.dayNumber);
+    setError('');
+    setSavedNarrativeDay(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/itinerary/day/${day.id}`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        // NOTES ONLY — title / dayNumber / sortOrder / isActive / country / POIs /
+        // services / QuoteItems / pricing are all left untouched (partial update).
+        body: JSON.stringify({ notes: generatedText }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not save the narrative to this day.'));
+      }
+      setSavedNarrativeDay(day.dayNumber);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not save the narrative to this day.');
+    } finally {
+      setSavingNarrativeDay(null);
     }
   }
 
@@ -217,6 +272,32 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
                 {narrativePreview.sourceLayer === 'service-aware' ? (
                   <span className="route-narrative-preview-services">Includes applied services</span>
                 ) : null}
+                {/* R.7A-3 — save THIS day's narrative into its notes (one day only,
+                    notes-only PATCH). Disabled when the preview is empty/unsafe. */}
+                {(() => {
+                  const canSave = isClientSafeNarrative(narrativePreview.text);
+                  const savingThis = savingNarrativeDay === day.dayNumber;
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        className="route-narrative-use"
+                        disabled={!canSave || savingThis}
+                        onClick={() => applyNarrativeToDay(day, narrativePreview.text)}
+                      >
+                        {savingThis ? 'Saving…' : 'Use this narrative'}
+                      </button>
+                      {!canSave ? (
+                        <span className="form-help">
+                          Narrative preview is empty or not client-safe — it cannot be saved to the day notes.
+                        </span>
+                      ) : null}
+                      {savedNarrativeDay === day.dayNumber ? (
+                        <span className="form-success" role="status">Saved to day notes. The preview now matches the saved notes.</span>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
 
               <label>

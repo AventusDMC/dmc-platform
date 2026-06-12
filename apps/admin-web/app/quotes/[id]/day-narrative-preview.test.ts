@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildDayNarrativePreview } from './day-narrative-preview';
+import { buildDayNarrativePreview, isClientSafeNarrative } from './day-narrative-preview';
 
 // Phase R.7A-1 — English client narrative preview from route/day text only.
 // Pure + deterministic; no services, no network, no save.
@@ -221,5 +221,31 @@ describe('R.7A-2 — applied services woven into the preview (applied wins; no s
     const b = buildDayNarrativePreview(input);
     assert.equal(a.text, b.text);
     assert.deepEqual(a.usedServices, b.usedServices);
+  });
+});
+
+// R.7A-3 — client-safe guard before SAVING a narrative into day notes.
+describe('R.7A-3 — isClientSafeNarrative', () => {
+  it('accepts a normal generated client narrative', () => {
+    const { text } = buildDayNarrativePreview({ title: 'Amman / Madaba / Mount Nebo / Petra' });
+    assert.equal(isClientSafeNarrative(text), true);
+    assert.equal(isClientSafeNarrative('Depart Amman and proceed south to Petra for overnight.'), true);
+  });
+  it('rejects empty/blank text', () => {
+    assert.equal(isClientSafeNarrative(''), false);
+    assert.equal(isClientSafeNarrative('   '), false);
+    assert.equal(isClientSafeNarrative(null), false);
+    assert.equal(isClientSafeNarrative(undefined), false);
+  });
+  it('rejects supplier / commercial / vehicle-class / enum / internal leakage', () => {
+    assert.equal(isClientSafeNarrative('Transfer by Sedan 2 from the supplier.'), false);
+    assert.equal(isClientSafeNarrative('Net cost 75 JOD before markup.'), false);
+    assert.equal(isClientSafeNarrative('Contract rate applies; margin included.'), false);
+    assert.equal(isClientSafeNarrative('Visit Petra. DAILY_FULL_DAY | Jordan Program | Sedan 2'), false);
+    assert.equal(isClientSafeNarrative('Private transfer. Overnight: No'), false);
+    assert.equal(isClientSafeNarrative('Coaster 17 point_to_point capacity_unit'), false);
+  });
+  it('does not false-positive on legitimate prose containing substrings (e.g. Pentecost)', () => {
+    assert.equal(isClientSafeNarrative('Visit the site associated with Pentecost and the Baptism Site.'), true);
   });
 });
