@@ -48,6 +48,10 @@ const NARRATIVE_LANGUAGE_LABELS: Record<NarrativeLocale, string> = {
 // R.7A-3 — set of known route-preset narratives, used to tell whether a day's
 // current notes came from a preset/template (safe to replace quietly) or look
 // manually edited (warrants a stronger overwrite warning).
+// R.7B-5B — high-confidence Arabic-script detector (Unicode Arabic block). Used only
+// for the advisory saved-notes mismatch hint; Latin scripts (en/es/pt) are NOT detected.
+const ARABIC_SCRIPT_PATTERN = /[؀-ۿ]/;
+
 const PRESET_NARRATIVES = new Set(DAY_ROUTE_PRESETS.map((p) => (p.narrative || '').trim()).filter(Boolean));
 
 // Local sentinels for the two non-preset choices (UI-only; never submitted).
@@ -63,9 +67,22 @@ export type RoutePlannerDay = {
   appliedServices?: AppliedNarrativeService[];
 };
 
-export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; days: RoutePlannerDay[] }) {
+export function RoutePlannerPreview({
+  apiBaseUrl,
+  days,
+  proposalLanguage,
+}: {
+  apiBaseUrl: string;
+  days: RoutePlannerDay[];
+  // R.7B-5B — the quote's proposal language (already-loaded data, advisory only).
+  proposalLanguage?: string | null;
+}) {
   const router = useRouter();
   const sorted = [...(days || [])].sort((a, b) => a.dayNumber - b.dayNumber);
+  // R.7B-5B — normalize the quote proposal language to a NarrativeLocale (en/es/pt/ar,
+  // default en) for the advisory mismatch hints below. Preview/advisory only — never
+  // sent to the backend, never changes save behaviour.
+  const quoteProposalLocale: NarrativeLocale = resolveNarrativeLocale(proposalLanguage);
   // Preview-only selection state, keyed by day number. Not persisted on its own.
   const [selected, setSelected] = useState<Record<number, string>>({});
   const [applyingDay, setApplyingDay] = useState<number | null>(null);
@@ -288,6 +305,15 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
           const narrativeLocaleForDay: NarrativeLocale = narrativeLocale[day.dayNumber] ?? 'en';
           const narrativeIsEnglish = narrativeLocaleForDay === 'en';
           const narrativeDir = narrativeTextDirection(narrativeLocaleForDay);
+          // R.7B-5B — advisory (non-blocking) language-mismatch hints. Never block
+          // preview/save, never change the PATCH payload.
+          //  (a) selected preview language ≠ quote proposal language.
+          //  (b) saved notes contain Arabic script but the proposal isn't Arabic
+          //      (high-confidence Arabic detector only — Latin es/pt/en can't be told
+          //      apart from content, so they are intentionally NOT flagged here).
+          const previewLanguageMismatch = narrativeLocaleForDay !== quoteProposalLocale;
+          const savedNotesLookArabic = ARABIC_SCRIPT_PATTERN.test(day.notes || '');
+          const savedNotesArabicMismatch = savedNotesLookArabic && quoteProposalLocale !== 'ar';
           const narrativePreview = buildDayNarrativePreview({
             dayNumber: day.dayNumber,
             title: day.title,
@@ -319,6 +345,19 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
                 <span className="route-narrative-preview-flag">Preview only — not saved yet</span>
                 {narrativePreview.sourceLayer === 'service-aware' ? (
                   <span className="route-narrative-preview-services">Includes applied services</span>
+                ) : null}
+                {/* R.7B-5B — advisory (non-blocking) proposal-language mismatch hints.
+                    They never block preview/save and never change the PATCH payload. */}
+                {previewLanguageMismatch ? (
+                  <span className="form-help route-narrative-language-mismatch" role="note">
+                    The selected narrative language is {NARRATIVE_LANGUAGE_LABELS[narrativeLocaleForDay]}, but the proposal
+                    language is {NARRATIVE_LANGUAGE_LABELS[quoteProposalLocale]}. Saving this may create a mixed-language proposal.
+                  </span>
+                ) : null}
+                {savedNotesArabicMismatch ? (
+                  <span className="form-help route-narrative-language-mismatch" role="note">
+                    This day’s saved notes appear to be Arabic, but the proposal language is {NARRATIVE_LANGUAGE_LABELS[quoteProposalLocale]}.
+                  </span>
                 ) : null}
                 {/* R.7A-3 / R.7B-4 — save THIS day's narrative (in the selected
                     language) into its notes (one day only, notes-only PATCH; disabled

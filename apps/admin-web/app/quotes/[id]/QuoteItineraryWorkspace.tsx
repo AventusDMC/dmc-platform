@@ -23,6 +23,9 @@ type QuoteItineraryWorkspaceQuote = {
   passengers: QuotePassenger[];
   singleSupplement: number | null;
   quoteCurrency?: string | null;
+  // R.7B-5B — the quote's proposal language (already loaded server-side; used by
+  // the Route Planner only to surface an advisory language-mismatch hint).
+  proposalLanguage?: string | null;
 };
 
 type QuoteItineraryWorkspaceProps = {
@@ -257,6 +260,7 @@ export function QuoteItineraryWorkspace({
           </summary>
           <RoutePlannerPreview
             apiBaseUrl={apiBaseUrl}
+            proposalLanguage={quote.proposalLanguage ?? null}
             days={quoteItinerary.days.map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: toRoutePlannerAppliedServices(day.dayItems) }))}
           />
         </details>
