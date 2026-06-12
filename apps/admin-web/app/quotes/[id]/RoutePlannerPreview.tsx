@@ -22,9 +22,11 @@ import { DAY_ROUTE_PRESETS, getDayRoutePreset, getClassicJordanRouteTemplate } f
 // Phase R.7A-1/-2 — read-only English client narrative preview, generated purely
 // from the day's route/day text (title + notes) and, when present, the day's
 // already-applied services (R.7A-2). No network, no save.
-// R.7B-3B — the preview is now language-aware (en/es/pt/ar) via a UI selector;
-// narrativeTextDirection drives RTL for Arabic. Preview-only: no save for
-// non-English yet; the backend and client document rendering are untouched.
+// R.7B-3B/-4 — the preview is language-aware (en/es/pt/ar) via a UI selector;
+// narrativeTextDirection drives RTL for Arabic. R.7B-4 allows saving the selected
+// language into the existing day notes (notes-only PATCH, one day at a time). The
+// backend/API, schema, and client document rendering are untouched; the selected
+// language is never persisted as a separate field.
 import { buildDayNarrativePreview, isClientSafeNarrative, narrativeTextDirection, resolveNarrativeLocale, type AppliedNarrativeService, type NarrativeLocale } from './day-narrative-preview';
 
 // R.7B-3B — supported client-narrative PREVIEW languages (label + code).
@@ -34,6 +36,14 @@ const NARRATIVE_LANGUAGE_OPTIONS: { code: NarrativeLocale; label: string }[] = [
   { code: 'pt', label: 'Portuguese' },
   { code: 'ar', label: 'Arabic' },
 ];
+
+// R.7B-4 — display label per locale (used in the save button + confirmation copy).
+const NARRATIVE_LANGUAGE_LABELS: Record<NarrativeLocale, string> = {
+  en: 'English',
+  es: 'Spanish',
+  pt: 'Portuguese',
+  ar: 'Arabic',
+};
 
 // R.7A-3 — set of known route-preset narratives, used to tell whether a day's
 // current notes came from a preset/template (safe to replace quietly) or look
@@ -170,12 +180,19 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
   // EXISTING PATCH /itinerary/day/:dayId. Sends ONLY { notes } (no title /
   // dayNumber / services / pricing / QuoteItems). Confirms first (stronger warning
   // when the current notes look manually edited), and refuses unsafe/empty text.
-  async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string) {
+  async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string, locale: NarrativeLocale) {
     if (!isClientSafeNarrative(generatedText)) return; // button is disabled in this case
     const manual = isManuallyEditedNotes(day, generatedText);
-    const message = manual
-      ? 'This day’s notes may have been manually edited. Replacing them may overwrite operator changes. This will replace the current day narrative/notes with the client narrative preview. Continue?'
-      : 'This will replace the current day narrative/notes with the client narrative preview. Continue?';
+    // R.7A-3 — English keeps its exact confirmation copy (behaviour unchanged).
+    // R.7B-4 — non-English mentions the selected language and warns that day notes
+    // stores only ONE language, so saving replaces the current notes.
+    const manualPrefix = manual
+      ? 'This day’s notes may have been manually edited. Replacing them may overwrite operator changes. '
+      : '';
+    const message =
+      locale === 'en'
+        ? `${manualPrefix}This will replace the current day narrative/notes with the client narrative preview. Continue?`
+        : `${manualPrefix}Day notes stores only one language. Saving this will replace the current notes with the selected-language text. This will replace the current day notes with the ${NARRATIVE_LANGUAGE_LABELS[locale]} narrative. Continue?`;
     if (typeof window !== 'undefined' && !window.confirm(message)) {
       return;
     }
@@ -303,27 +320,32 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
                 {narrativePreview.sourceLayer === 'service-aware' ? (
                   <span className="route-narrative-preview-services">Includes applied services</span>
                 ) : null}
-                {/* English (R.7A-3): save THIS day's narrative into its notes (one day
-                    only, notes-only PATCH; disabled when empty/unsafe). Non-English
-                    (R.7B-3B): saving translated narratives is not enabled yet — hide the
-                    save action and show a note. */}
-                {!narrativeIsEnglish ? (
-                  <span className="form-help route-narrative-translated-note">
-                    Saving translated narratives will be enabled in a later phase.
-                  </span>
-                ) : (() => {
+                {/* R.7A-3 / R.7B-4 — save THIS day's narrative (in the selected
+                    language) into its notes (one day only, notes-only PATCH; disabled
+                    when empty/unsafe). English keeps its original copy; non-English
+                    uses a language-specific label + a single-language warning, and the
+                    confirmation names the language (see applyNarrativeToDay). */}
+                {(() => {
                   const canSave = isClientSafeNarrative(narrativePreview.text);
                   const savingThis = savingNarrativeDay === day.dayNumber;
+                  const saveLabel = narrativeIsEnglish
+                    ? 'Use this narrative'
+                    : `Use this ${NARRATIVE_LANGUAGE_LABELS[narrativeLocaleForDay]} narrative`;
                   return (
                     <>
                       <button
                         type="button"
                         className="route-narrative-use"
                         disabled={!canSave || savingThis}
-                        onClick={() => applyNarrativeToDay(day, narrativePreview.text)}
+                        onClick={() => applyNarrativeToDay(day, narrativePreview.text, narrativeLocaleForDay)}
                       >
-                        {savingThis ? 'Saving…' : 'Use this narrative'}
+                        {savingThis ? 'Saving…' : saveLabel}
                       </button>
+                      {!narrativeIsEnglish ? (
+                        <span className="form-help route-narrative-translated-note">
+                          Day notes stores only one language — saving replaces the current notes with the selected-language text.
+                        </span>
+                      ) : null}
                       {!canSave ? (
                         <span className="form-help">
                           Narrative preview is empty or not client-safe — it cannot be saved to the day notes.
