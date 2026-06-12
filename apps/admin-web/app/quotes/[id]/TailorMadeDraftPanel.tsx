@@ -11,11 +11,20 @@ import {
   classifyPackageTransportPolicy,
   buildTransportAddOnPreview,
   normalizeTransportAddOnRates,
+  cleanVehicleClassName,
   TRANSPORT_DEFAULT_MARKUP,
   type TransportServiceTypeOption,
   type TransportPricingBasis,
   type TransportAddOnRate,
 } from './tailor-made-transport-resolve';
+
+// T.6 — operator-safe rate-status labels for the transport preview (never the
+// raw OK / NO_ROUTE / NO_RATE tokens).
+const RATE_STATUS_LABELS: Record<'OK' | 'NO_ROUTE' | 'NO_RATE', string> = {
+  OK: 'Matched',
+  NO_RATE: 'No rate',
+  NO_ROUTE: 'Needs review',
+};
 
 // T.5D-2 — operator-safe pricing-basis labels for the transport price preview.
 // Never expose raw internal tokens (POINT_TO_POINT / FULL_DAY / DAILY_FULL_DAY /
@@ -1587,37 +1596,48 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     if (addOns.driverOvernight.length === 0 && !addOns.stationary) {
                       return null;
                     }
+                    const suggested = addOns.driverOvernight.filter((l) => l.status === 'suggested');
+                    const optionalOvernight = addOns.driverOvernight.filter((l) => l.status === 'optional');
                     return (
                       <div className="tailor-made-transport-addons" aria-label="Transport add-ons preview">
                         <p>
                           <strong>Transport add-ons (preview only)</strong>
                         </p>
-                        {addOns.driverOvernight.length > 0 ? (
-                          <ul className="tailor-made-transport-addon-list">
-                            {addOns.driverOvernight.map((line) => (
-                              <li key={line.label}>
-                                {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} × {line.unitCost}{' '}
-                                {line.currency} = {line.total} {line.currency}
-                                {line.status === 'suggested' ? (
-                                  <span className="form-help"> (suggested)</span>
-                                ) : (
-                                  <span className="form-help"> (optional — operator confirm)</span>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
+                        {suggested.length > 0 ? (
+                          <>
+                            <p><strong>Suggested add-ons:</strong></p>
+                            <ul className="tailor-made-transport-addon-list">
+                              {suggested.map((line) => (
+                                <li key={line.label}>
+                                  {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} × {line.unitCost}{' '}
+                                  {line.currency} = {line.total} {line.currency}
+                                </li>
+                              ))}
+                            </ul>
+                            <p>
+                              <strong>Suggested driver overnight total:</strong> {addOns.suggestedOvernightTotal}{' '}
+                              {addOns.currency}
+                            </p>
+                          </>
                         ) : null}
-                        {addOns.driverOvernight.some((l) => l.status === 'suggested') ? (
-                          <p>
-                            <strong>Suggested driver overnight total:</strong> {addOns.suggestedOvernightTotal}{' '}
-                            {addOns.currency}
-                          </p>
-                        ) : null}
-                        {addOns.stationary ? (
-                          <p className="form-help">
-                            Optional stationary / waiting add-on — {addOns.stationary.unitCost}{' '}
-                            {addOns.stationary.currency} (off by default, not included in totals)
-                          </p>
+                        {optionalOvernight.length > 0 || addOns.stationary ? (
+                          <>
+                            <p><strong>Optional add-ons:</strong></p>
+                            <ul className="tailor-made-transport-addon-list">
+                              {optionalOvernight.map((line) => (
+                                <li key={line.label}>
+                                  {line.label} — {line.unitCost} {line.currency}/night{' '}
+                                  <span className="form-help">(operator confirm — not included in totals)</span>
+                                </li>
+                              ))}
+                              {addOns.stationary ? (
+                                <li>
+                                  {addOns.stationary.label} — {addOns.stationary.unitCost} {addOns.stationary.currency}{' '}
+                                  <span className="form-help">(off by default — not included in totals)</span>
+                                </li>
+                              ) : null}
+                            </ul>
+                          </>
                         ) : null}
                         <p className="form-help tailor-made-transport-policy-note">
                           Add-ons are preview only and are not applied yet.
@@ -1658,27 +1678,50 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                           </button>
                           {activeDay && transportPreview ? (
                             <div className="tailor-made-transport-preview">
+                              {/* T.6 — operator-safe transport preview. Clean labelled rows only;
+                                  never the raw service-type / pricing-mode / capacity tokens
+                                  (POINT_TO_POINT / FULL_DAY / DAILY_FULL_DAY / capacity_unit), the
+                                  internal route id, or a "(internal)" suffix. */}
                               {transportPreview.status === 'OK' ? (
                                 <>
-                                  {/* T.5D-2 — clean, operator-safe pricing basis. Never the raw
-                                      service-type / pricing-mode tokens (POINT_TO_POINT / FULL_DAY /
-                                      DAILY_FULL_DAY / capacity_unit). */}
+                                  {transportPreview.routeLabel ? (
+                                    <p className="form-help">
+                                      <strong>Route:</strong> {transportPreview.routeLabel}
+                                    </p>
+                                  ) : null}
+                                  <p className="form-help">
+                                    <strong>Pricing basis:</strong> {PRICING_BASIS_LABELS[transportPreview.pricingBasis]}
+                                  </p>
+                                  {cleanVehicleClassName(transportPreview.vehicleName) ? (
+                                    <p className="form-help">
+                                      <strong>Vehicle:</strong> {cleanVehicleClassName(transportPreview.vehicleName)}
+                                    </p>
+                                  ) : null}
+                                  <p className="form-help">
+                                    <strong>Net cost:</strong> {transportPreview.cost} {transportPreview.currency || ''}
+                                  </p>
+                                  <p className="form-help">
+                                    <strong>Sell price:</strong> {transportPreview.sell} {transportPreview.currency || ''}{' '}
+                                    (markup {transportPreview.markupPercent}%)
+                                  </p>
+                                  <p className="form-help">
+                                    <strong>Rate status:</strong> {RATE_STATUS_LABELS[transportPreview.status]}
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  {transportPreview.routeLabel ? (
+                                    <p className="form-help">
+                                      <strong>Route:</strong> {transportPreview.routeLabel}
+                                    </p>
+                                  ) : null}
                                   <p className="form-help">
                                     <strong>Pricing basis:</strong> {PRICING_BASIS_LABELS[transportPreview.pricingBasis]}
                                   </p>
                                   <p className="form-help">
-                                    Estimated cost {transportPreview.cost} / sell {transportPreview.sell}{' '}
-                                    {transportPreview.currency || ''} (markup {transportPreview.markupPercent}%)
-                                    {/* Vehicle class is an admin planning detail — never the client proposal. */}
-                                    {transportPreview.vehicleName ? ` • vehicle (internal): ${transportPreview.vehicleName}` : ''}
+                                    <strong>Rate status:</strong> {RATE_STATUS_LABELS[transportPreview.status]} — {transportPreview.reason}
                                   </p>
                                 </>
-                              ) : (
-                                <p className="form-help">
-                                  <strong>Pricing basis:</strong> {PRICING_BASIS_LABELS[transportPreview.pricingBasis]}
-                                  {' — '}
-                                  {transportPreview.status === 'NO_ROUTE' ? 'no route resolved' : 'no contracted rate'} ({transportPreview.reason})
-                                </p>
                               )}
                               {/* Phase R.6B-1 — Apply enabled only after an OK preview AND only for a
                                   day with no transport item yet. One day, one TRANSPORT QuoteItem;
