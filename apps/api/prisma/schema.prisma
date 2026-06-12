@@ -2656,6 +2656,12 @@ model Vehicle {
   supplierName         String?
   name                 String
   vehicleType          String?                @map("vehicle_type")
+  // Canonical fleet class (PR1 of transport contract-regime refactor). Nullable,
+  // free-text-validated against the VehicleClass TS const (no DB enum yet); the
+  // legacy `vehicleType` string is preserved untouched. Backfilled by capacity band:
+  // Sedan ≤3 · SUV (name) · Mini Van 4–6 · Van 7–9 · Small Mini Bus 10–17 ·
+  // Medium Bus 18–30 · Large Bus 31–49 · Large Bus X 50+. Inert until later PRs.
+  vehicleClass         String?                @map("vehicle_class")
   // Plate number — surfaced on dispatch cards so the operator and the
   // arriving traveller can identify the vehicle on the curb.
   plateNumber          String?                @map("plate_number")
