@@ -22,7 +22,18 @@ import { DAY_ROUTE_PRESETS, getDayRoutePreset, getClassicJordanRouteTemplate } f
 // Phase R.7A-1/-2 — read-only English client narrative preview, generated purely
 // from the day's route/day text (title + notes) and, when present, the day's
 // already-applied services (R.7A-2). No network, no save.
-import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview';
+// R.7B-3B — the preview is now language-aware (en/es/pt/ar) via a UI selector;
+// narrativeTextDirection drives RTL for Arabic. Preview-only: no save for
+// non-English yet; the backend and client document rendering are untouched.
+import { buildDayNarrativePreview, isClientSafeNarrative, narrativeTextDirection, resolveNarrativeLocale, type AppliedNarrativeService, type NarrativeLocale } from './day-narrative-preview';
+
+// R.7B-3B — supported client-narrative PREVIEW languages (label + code).
+const NARRATIVE_LANGUAGE_OPTIONS: { code: NarrativeLocale; label: string }[] = [
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ar', label: 'Arabic' },
+];
 
 // R.7A-3 — set of known route-preset narratives, used to tell whether a day's
 // current notes came from a preset/template (safe to replace quietly) or look
@@ -55,6 +66,10 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
   // R.7A-3 — per-day "Use this narrative" save state.
   const [savingNarrativeDay, setSavingNarrativeDay] = useState<number | null>(null);
   const [savedNarrativeDay, setSavedNarrativeDay] = useState<number | null>(null);
+  // R.7B-3B — per-day client-narrative PREVIEW language (en/es/pt/ar). Default
+  // English. Preview-only: never persisted, never sent to the backend, never
+  // changes day notes or the stored document language.
+  const [narrativeLocale, setNarrativeLocale] = useState<Record<number, NarrativeLocale>>({});
 
   // S.2D-3B — the curated classic route template for the current duration (4/5/6/7
   // days), or null for 8-day (existing generator) / other durations.
@@ -250,14 +265,18 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
           const choice = selected[day.dayNumber] ?? KEEP_CURRENT_KEY;
           const preset = choice === KEEP_CURRENT_KEY || choice === LEISURE_KEY ? null : getDayRoutePreset(choice);
           const isApplying = applyingDay === day.dayNumber;
-          // R.7A-1/-2 — deterministic English client narrative preview from this
-          // day's route/day text + any already-applied services. Read-only.
+          // R.7A-1/-2 — deterministic client narrative preview from this day's
+          // route/day text + any already-applied services. Read-only.
+          // R.7B-3B — rendered in the selected preview language (default English).
+          const narrativeLocaleForDay: NarrativeLocale = narrativeLocale[day.dayNumber] ?? 'en';
+          const narrativeIsEnglish = narrativeLocaleForDay === 'en';
+          const narrativeDir = narrativeTextDirection(narrativeLocaleForDay);
           const narrativePreview = buildDayNarrativePreview({
             dayNumber: day.dayNumber,
             title: day.title,
             notes: day.notes,
             appliedServices: day.appliedServices,
-          });
+          }, { locale: narrativeLocaleForDay });
           return (
             <div key={day.dayNumber} className="route-planner-row">
               <div className="route-planner-day">
@@ -267,14 +286,32 @@ export function RoutePlannerPreview({ apiBaseUrl, days }: { apiBaseUrl: string; 
 
               <div className="route-narrative-preview" aria-label="Client narrative preview">
                 <span className="form-help">Client narrative preview</span>
-                <p className="route-narrative-preview-text">{narrativePreview.text}</p>
+                {/* R.7B-3B — preview language selector (preview-only; not persisted). */}
+                <label className="route-narrative-language">
+                  Preview language
+                  <select
+                    value={narrativeLocaleForDay}
+                    onChange={(e) => setNarrativeLocale((prev) => ({ ...prev, [day.dayNumber]: resolveNarrativeLocale(e.target.value) }))}
+                  >
+                    {NARRATIVE_LANGUAGE_OPTIONS.map((opt) => (
+                      <option key={opt.code} value={opt.code}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <p className="route-narrative-preview-text" dir={narrativeDir} lang={narrativeLocaleForDay}>{narrativePreview.text}</p>
                 <span className="route-narrative-preview-flag">Preview only — not saved yet</span>
                 {narrativePreview.sourceLayer === 'service-aware' ? (
                   <span className="route-narrative-preview-services">Includes applied services</span>
                 ) : null}
-                {/* R.7A-3 — save THIS day's narrative into its notes (one day only,
-                    notes-only PATCH). Disabled when the preview is empty/unsafe. */}
-                {(() => {
+                {/* English (R.7A-3): save THIS day's narrative into its notes (one day
+                    only, notes-only PATCH; disabled when empty/unsafe). Non-English
+                    (R.7B-3B): saving translated narratives is not enabled yet — hide the
+                    save action and show a note. */}
+                {!narrativeIsEnglish ? (
+                  <span className="form-help route-narrative-translated-note">
+                    Saving translated narratives will be enabled in a later phase.
+                  </span>
+                ) : (() => {
                   const canSave = isClientSafeNarrative(narrativePreview.text);
                   const savingThis = savingNarrativeDay === day.dayNumber;
                   return (

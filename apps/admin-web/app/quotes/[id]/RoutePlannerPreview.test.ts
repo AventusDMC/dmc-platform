@@ -149,7 +149,7 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
   it('10/11. renders a "Client narrative preview" per day with the "not saved yet" label', () => {
     expectSourceContains(source, [
       // reuses the pure helper (no network)
-      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
+      "import { buildDayNarrativePreview, isClientSafeNarrative, narrativeTextDirection, resolveNarrativeLocale, type AppliedNarrativeService, type NarrativeLocale } from './day-narrative-preview'",
       'buildDayNarrativePreview({',
       'title: day.title',
       'notes: day.notes',
@@ -168,7 +168,7 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
   it('R.7A-2: forwards applied services + shows "Includes applied services" only when service-aware', () => {
     expectSourceContains(source, [
       // helper import now also pulls the applied-service type
-      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
+      "import { buildDayNarrativePreview, isClientSafeNarrative, narrativeTextDirection, resolveNarrativeLocale, type AppliedNarrativeService, type NarrativeLocale } from './day-narrative-preview'",
       // applied services threaded into the preview helper
       'appliedServices: day.appliedServices',
       // conditional label, only when the preview actually wove services in
@@ -198,7 +198,7 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
 describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (notes-only PATCH)', () => {
   it('renders a Use this narrative button gated on a client-safe preview', () => {
     expectSourceContains(source, [
-      "import { buildDayNarrativePreview, isClientSafeNarrative, type AppliedNarrativeService } from './day-narrative-preview'",
+      "import { buildDayNarrativePreview, isClientSafeNarrative, narrativeTextDirection, resolveNarrativeLocale, type AppliedNarrativeService, type NarrativeLocale } from './day-narrative-preview'",
       'Use this narrative',
       'const canSave = isClientSafeNarrative(narrativePreview.text)',
       'disabled={!canSave || savingThis}',
@@ -246,5 +246,71 @@ describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (note
 
   it('exposes the client-safe save guard from the pure narrative module', () => {
     expectSourceContains(narrativeSource, ['export function isClientSafeNarrative']);
+  });
+});
+
+describe('R.7B-3B — narrative language selector + RTL preview (preview-only)', () => {
+  it('1/2. preview defaults to English and renders in the selected language', () => {
+    expectSourceContains(source, [
+      // 4 supported preview languages
+      "{ code: 'en', label: 'English' }",
+      "{ code: 'es', label: 'Spanish' }",
+      "{ code: 'pt', label: 'Portuguese' }",
+      "{ code: 'ar', label: 'Arabic' }",
+      // per-day language state, default English
+      'const [narrativeLocale, setNarrativeLocale] = useState<Record<number, NarrativeLocale>>({})',
+      'const narrativeLocaleForDay: NarrativeLocale = narrativeLocale[day.dayNumber] ?? \'en\'',
+      // the selector itself
+      'Preview language',
+      'value={narrativeLocaleForDay}',
+      'setNarrativeLocale((prev) => ({ ...prev, [day.dayNumber]: resolveNarrativeLocale(e.target.value) }))',
+      'NARRATIVE_LANGUAGE_OPTIONS.map((opt) =>',
+      // the selected locale drives the preview render
+      '}, { locale: narrativeLocaleForDay });',
+    ]);
+  });
+
+  it('3/4/5/6/7. preview text uses narrativeTextDirection for dir (Arabic rtl, others ltr)', () => {
+    expectSourceContains(source, [
+      'const narrativeDir = narrativeTextDirection(narrativeLocaleForDay)',
+      'dir={narrativeDir}',
+      'lang={narrativeLocaleForDay}',
+    ]);
+    // the direction helper itself maps ar → rtl, en/es/pt → ltr (asserted at the source)
+    expectSourceContains(narrativeSource, [
+      "return locale === 'ar' ? 'rtl' : 'ltr';",
+    ]);
+  });
+
+  it('8/9/10. English keeps the save action; non-English hides it and shows the later-phase note', () => {
+    expectSourceContains(source, [
+      'const narrativeIsEnglish = narrativeLocaleForDay === \'en\'',
+      // non-English branch: note, no save button
+      '{!narrativeIsEnglish ? (',
+      'Saving translated narratives will be enabled in a later phase.',
+      // English branch keeps the R.7A-3 save action verbatim
+      'const canSave = isClientSafeNarrative(narrativePreview.text)',
+      'onClick={() => applyNarrativeToDay(day, narrativePreview.text)}',
+      'Use this narrative',
+    ]);
+  });
+
+  it('11. selecting a non-English language triggers NO save/PATCH (still exactly 3 day-PATCH handlers)', () => {
+    // The language selector is pure client state — it adds no network call. The
+    // only PATCH calls remain the three pre-existing day-PATCH handlers.
+    const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
+    assert.equal(patchCount, 3, 'no new PATCH added by the language selector');
+    assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
+    // applyNarrativeToDay is only wired to the English-branch button onClick.
+    const onClickCount = (source.match(/onClick=\{\(\) => applyNarrativeToDay\(/g) || []).length;
+    assert.equal(onClickCount, 1, 'narrative save is wired once (English branch only)');
+    // The selector does not persist language anywhere (no PATCH/POST of locale).
+    assert.ok(!/JSON\.stringify\([^)]*locale/.test(source), 'selected language is never sent to the backend');
+  });
+
+  it('13. no proposal/backend/schema/pricing/QuoteItem/apply-flow coupling added', () => {
+    assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
+    assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
+    assert.ok(!/proposal/i.test(source), 'no proposal coupling');
   });
 });
