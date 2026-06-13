@@ -145,6 +145,7 @@ import { SupportTextTemplatesController } from './support-text-templates/support
 import { SupportTextTemplatesService } from './support-text-templates/support-text-templates.service';
 import { TransportPricingController } from './transport-pricing/transport-pricing.controller';
 import { TransportPricingService } from './transport-pricing/transport-pricing.service';
+import { PackageEligibilityShadowService } from './transport-pricing/package-eligibility-shadow.service';
 import { TransportServiceTypesController } from './transport-service-types/transport-service-types.controller';
 import { TransportServiceTypesService } from './transport-service-types/transport-service-types.service';
 import { TouringRoutesController } from './touring-routes/touring-routes.controller';
@@ -321,6 +322,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     TouringRoutesService,
     VehicleRatesService,
     TransportPricingService,
+    PackageEligibilityShadowService,
     UsersService,
     UserInvitationsService,
   ],
