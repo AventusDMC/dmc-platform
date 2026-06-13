@@ -559,6 +559,15 @@ describe('T.5F — buildTransportAddOnPreview', () => {
       assert.ok(!/OVERNIGHT|STATIONARY_WAITING|ADD_ON|_/.test(label), `clean label: ${label}`);
     }
   });
+
+  it('T.5G-2A: each driver-overnight line carries the matched per-city ADD_ON rateId', () => {
+    const r = buildTransportAddOnPreview({ usePackageFullDay: true, vehicleName: 'Sedan 2', overnightStays: STAYS_6D, addOnRates: RATES });
+    // Per-city rateId lets apply fold one entry per city (quantity = nights), so
+    // the admin breakdown reads "Petra Overnight x1 / Wadi Rum Overnight x1".
+    assert.equal(r.driverOvernight.find((l) => l.city === 'Petra')?.rateId, 'ov-petra');
+    assert.equal(r.driverOvernight.find((l) => l.city === 'Wadi Rum')?.rateId, 'ov-rum');
+    assert.equal(r.driverOvernight.find((l) => l.city === 'Dead Sea')?.rateId, 'ov-deadsea');
+  });
 });
 
 // ---------------------------------------------------------------------------
