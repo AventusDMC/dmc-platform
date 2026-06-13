@@ -386,6 +386,21 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
     es: 'Transporte turístico privado según el itinerario.',
     ar: 'نقل سياحي خاص حسب البرنامج.',
   },
+  // Phase P.3X-2 — client-safe TITLE for a transport line when no client-safe
+  // route label can be derived. The raw SupplierService name ("Airport Transfer")
+  // must never title a non-airport touring day.
+  transportTouringTitle: {
+    en: 'Private touring transport',
+    pt: 'Transporte turístico privado',
+    es: 'Transporte turístico privado',
+    ar: 'نقل سياحي خاص',
+  },
+  transportAirportTitle: {
+    en: 'Private airport transfer',
+    pt: 'Transfer privado de aeroporto',
+    es: 'Traslado privado de aeropuerto',
+    ar: 'نقل خاص من وإلى المطار',
+  },
   // Phase Q — client-safe guide descriptions composed from the guide TYPE
   // (local/escort) since no guide-language field exists in the data model.
   guideLocalLicensed: {
