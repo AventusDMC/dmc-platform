@@ -104,3 +104,30 @@ test('guide description is localized (PT/ES/AR) with no English leak', () => {
     assert.doesNotMatch(guide.description, /Local guide for/i, `${lang} no English leak`);
   }
 });
+
+// Phase P.3X-4 — a "<City> Visit / <onward city>" day titles the guide by the
+// FEATURED visited site, not the onward/overnight city (Q-2026-0073 Day 04 read
+// "Local guide for Wadi Rum" for a "Petra Visit / Wadi Rum" day).
+test('P.3X-4: "Petra Visit / Wadi Rum" guide reads "Local guide for Petra" (not Wadi Rum)', () => {
+  const vm: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 4: Petra Visit / Wadi Rum' }) as any);
+  const guide = guideCard(vm);
+  assert.ok(guide, 'guide line present');
+  assert.equal(guide.description, 'Local guide for Petra');
+});
+
+test('P.3X-4: Spanish "Petra Visit / Wadi Rum" guide reads "Guía local para Petra"', () => {
+  const vm: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 4: Petra Visit / Wadi Rum' }) as any, 'es');
+  const guide = guideCard(vm);
+  assert.equal(guide.description, 'Guía local para Petra');
+});
+
+test('P.3X-4: regression — route day titles without a "Visit" marker are unchanged', () => {
+  // Round-trip → featured non-origin stop.
+  const roundTrip: any = mapQuoteToProposalV3(quoteWithGuide({ dayTitle: 'Day 1: Amman / Jerash / Amman' }) as any);
+  assert.equal(guideCard(roundTrip).description, 'Local guide for Jerash');
+  // One-way → final destination.
+  const oneWay: any = mapQuoteToProposalV3(
+    quoteWithGuide({ dayTitle: 'Day 1: Amman / Madaba / Mount Nebo / Petra' }) as any,
+  );
+  assert.equal(guideCard(oneWay).description, 'Local guide for Petra');
+});

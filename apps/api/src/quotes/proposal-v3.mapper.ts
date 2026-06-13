@@ -735,6 +735,18 @@ function pickGuideDestination(location: string | null): string | null {
     return null;
   }
   const parts = raw.split('/').map((p) => p.trim()).filter(Boolean);
+  // Phase P.3X-4 — a "<City> Visit" / "Visit <City>" segment names the day's
+  // FEATURED sightseeing site; a local guide belongs to that site, not to an
+  // onward move-to / overnight city. So "Petra Visit / Wadi Rum" → "Petra"
+  // (not the trailing "Wadi Rum"). Falls through to the route heuristics below
+  // when no segment carries a "Visit" marker.
+  const visitSegment = parts.find((p) => /\bvisit\b/i.test(p));
+  if (visitSegment) {
+    const featured = visitSegment.replace(/\bvisit\b/gi, '').replace(/\s+/g, ' ').trim();
+    if (featured && !/^Destination\s+\d+$/i.test(featured)) {
+      return featured;
+    }
+  }
   if (parts.length <= 1) {
     return raw;
   }
