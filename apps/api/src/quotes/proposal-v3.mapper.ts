@@ -252,8 +252,36 @@ function conciseCopy(value: string | null | undefined, maxLength = 130) {
   return truncated ? `${truncated}.` : '';
 }
 
+// P.3X-1 — tokens that must NEVER survive into a client-facing route anchor /
+// destination line / cover subtitle. cleanText rewrites the internal " | "
+// pricing descriptor into a comma chain (e.g. "Airport Transfer, QAIA → Amman,
+// Sedan 2, ROUTE_TRANSFER, Capacity unit x 1"), so without this guard the route
+// parser can pull a fragment like "Amman, Sedan 2, ROUTE_TRANSFER, Capacity unit
+// x 1" into the destination text. Matches vehicle class+capacity (Sedan/SUV/Mini
+// Van/Van/Coaster/coach/bus), the "Transfer"/transfer-service word, service
+// classification (ROUTE_TRANSFER/POINT_TO_POINT/FULL_DAY/DAILY_PACKAGE/
+// DAILY_FULL_DAY/ADD_ON/AIRPORT_TRANSFER), pricing mode (capacity_unit/
+// per_vehicle), and "Capacity unit"/"N pax". NOT arrows — a real "QAIA → Amman"
+// route segment is legitimate. Real Jordan destinations (Amman, Jerash, Madaba,
+// Mount Nebo, Petra, Wadi Musa, Wadi Rum, Dead Sea, Bethany, Aqaba, QAIA) contain
+// none of these tokens, so they are never rejected.
+const INTERNAL_TRANSPORT_ANCHOR_TOKENS =
+  /\b(?:sedan|suv|mini\s*van|van|coaster|coach|bus|minibus|vehicle|transfer)\b|\bcapacity[_\s]?unit\b|\bunit[_\s]?capacity\b|\bpricing[_\s]?mode\b|\bper[_\s]?(?:vehicle|person|room|night)\b|\b\d{1,3}\s*pax\b|\b(?:route[_\s]?transfer|point[_\s]?to[_\s]?point|full[_\s]?day|daily[_\s]?package|daily[_\s]?full[_\s]?day|add[_\s]?on|airport[_\s]?transfer)\b/i;
+
+function containsInternalTransportToken(value: string | null | undefined): boolean {
+  return Boolean(value) && INTERNAL_TRANSPORT_ANCHOR_TOKENS.test(String(value));
+}
+
 function summarizeDestinations(destinations: string[]) {
-  const cleaned = Array.from(new Set(destinations.map((destination) => cleanText(destination)).filter(Boolean)));
+  const cleaned = Array.from(
+    new Set(
+      destinations
+        .map((destination) => cleanText(destination))
+        // P.3X-1 — final guard: never emit a destination still carrying internal
+        // transport metadata, even if it reached here outside the anchor path.
+        .filter((destination) => destination && !containsInternalTransportToken(destination)),
+    ),
+  );
   // Phase 3D.1N — localized connector ("and"/"e"/"y"/"و"); English output is
   // byte-identical to the prior hardcoded join. The cover subtitle keeps its
   // language-neutral middle-dot join (formatDestinationSubtitle), unchanged.
@@ -261,7 +289,14 @@ function summarizeDestinations(destinations: string[]) {
 }
 
 function formatDestinationSubtitle(destinations: string[]) {
-  const cleaned = Array.from(new Set(destinations.map((destination) => cleanText(destination)).filter(Boolean)));
+  const cleaned = Array.from(
+    new Set(
+      destinations
+        .map((destination) => cleanText(destination))
+        // P.3X-1 — final guard (mirror of summarizeDestinations) for the cover subtitle.
+        .filter((destination) => destination && !containsInternalTransportToken(destination)),
+    ),
+  );
   return cleaned.join(' · ');
 }
 
@@ -277,6 +312,15 @@ function isGenericRouteLabel(value: string | null | undefined) {
 }
 
 function cleanRouteAnchor(value: string | null | undefined) {
+  // P.3X-1 — reject the whole fragment up front if it carries any internal
+  // transport metadata (tested on the raw cleanText output, BEFORE the
+  // airport/intl/hotel word-stripping below could mangle a token). A polluted
+  // fragment like "Amman, Sedan 2, ROUTE_TRANSFER, Capacity unit x 1" is dropped
+  // entirely rather than half-cleaned; the genuine city is recovered separately
+  // by parseTransportRouteSegments (adjacent-segment extraction).
+  if (containsInternalTransportToken(cleanText(value))) {
+    return '';
+  }
   const cleaned = cleanText(value)
     .replace(/\bairport\b/gi, '')
     .replace(/\bintl\.?\b/gi, '')
@@ -311,8 +355,18 @@ export function parseTransportRouteSegments(routeName: string | null | undefined
     return [];
   }
 
-  const from = cleanRouteAnchor(routeMatch[1]);
-  const to = cleanRouteAnchor(routeMatch[2]);
+  // P.3X-1 — cleanText collapses the internal " | " descriptor into a comma chain,
+  // so the route arrow can sit inside a longer string ("Airport Transfer, QAIA →
+  // Amman, Sedan 2, ROUTE_TRANSFER, Capacity unit x 1"). Take only the comma-
+  // segment ADJACENT to the arrow on each side — the endpoint city — discarding the
+  // leading service-name fragment and the trailing vehicle/classification/pricing
+  // fragments. A clean "QAIA → Amman" (no commas) is unaffected.
+  const segmentNearArrow = (side: string, position: 'last' | 'first') => {
+    const parts = side.split(',').map((part) => part.trim()).filter(Boolean);
+    return (position === 'last' ? parts[parts.length - 1] : parts[0]) || '';
+  };
+  const from = cleanRouteAnchor(segmentNearArrow(routeMatch[1], 'last'));
+  const to = cleanRouteAnchor(segmentNearArrow(routeMatch[2], 'first'));
   return from && to && normalizeComparisonText(from) !== normalizeComparisonText(to) ? [{ from, to }] : [];
 }
 
