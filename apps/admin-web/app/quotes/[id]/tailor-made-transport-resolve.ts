@@ -420,6 +420,10 @@ export type DriverOvernightPreviewLine = {
   city: string;
   /** Operator-safe label, e.g. "Driver overnight — Petra". Never a raw code. */
   label: string;
+  /** The matched per-city ADD_ON rate id (T.5G-2A). Carried so apply can fold it
+   *  into the package-full-day parent transport item; the rate is already scoped
+   *  to the parent vehicle by the calculate endpoint. */
+  rateId: string;
   nights: number;
   unitCost: number;
   currency: string;
@@ -505,6 +509,7 @@ export function buildTransportAddOnPreview(input: {
       driverOvernight.push({
         city: cityLabel,
         label: `Driver overnight — ${cityLabel}`,
+        rateId: rate.rateId,
         nights,
         unitCost: rate.unitCost,
         currency: rate.currency,

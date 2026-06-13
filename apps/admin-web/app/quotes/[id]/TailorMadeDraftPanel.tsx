@@ -450,6 +450,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   // Off by default; reset whenever a new day is previewed. When checked on a
   // capacity-unit day, apply folds the add-on into that day's transport cost.
   const [stationaryAddOnSelected, setStationaryAddOnSelected] = useState(false);
+  // T.5G-2A — per-city driver-overnight opt-in for PACKAGE_FULL_DAY car/van days.
+  // Keyed by normalized city; an explicit entry overrides the per-line default
+  // (Petra/Wadi Rum/Aqaba auto-checked; Dead Sea optional/unchecked). Reset on
+  // each new preview so defaults reapply. Selected cities fold into the package
+  // transport item at apply (one entry per city, quantity = that city's nights).
+  const [driverOvernightSelection, setDriverOvernightSelection] = useState<Record<string, boolean>>({});
 
   // Phase R.6B-1 — apply one OK-priced transport day as a single TRANSPORT
   // QuoteItem. Per-DAY conflict guard: a day is blocked only when it already has
@@ -763,6 +769,15 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     }
   }
 
+  // T.5G-2A — driver-overnight selection helpers. Default-checked follows the
+  // line status (Petra/Wadi Rum/Aqaba = 'suggested' → on; Dead Sea = 'optional'
+  // → off); an explicit operator toggle in driverOvernightSelection overrides it.
+  const driverOvernightCityKey = (city: string) => city.trim().toLowerCase();
+  const isDriverOvernightLineSelected = (line: { city: string; status: 'suggested' | 'optional' }) => {
+    const explicit = driverOvernightSelection[driverOvernightCityKey(line.city)];
+    return explicit ?? line.status === 'suggested';
+  };
+
   // Phase R.6B-0 — READ-ONLY transport price preview for one day. Resolves the
   // suggestion to a route + service type (pure resolver), then prices via the
   // canonical POST /transport-pricing/calculate (the same endpoint the Auto
@@ -773,11 +788,13 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     setTransportPreviewDay(t.dayNumber);
     setTransportPreviewLoading(true);
     setTransportPreview(null);
-    // T.5G-1A — clear any add-on rates / stationary opt-in from the previous
-    // day so a new preview never shows or applies stale add-ons.
+    // T.5G-1A / T.5G-2A — clear any add-on rates / opt-ins from the previous day
+    // so a new preview never shows or applies stale add-ons, and driver-overnight
+    // defaults (suggested-on / optional-off) reapply cleanly.
     setTransportAddOnRates([]);
     setTransportAddOnVehicle(null);
     setStationaryAddOnSelected(false);
+    setDriverOvernightSelection({});
     setError('');
     try {
       // T.5D-2 — feed the package transport policy into the resolver for the
@@ -954,14 +971,37 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         body.vehicleRateId = p.vehicleRateId;
         body.transportLabel = p.routeLabel ?? undefined;
       }
-      // T.5G-1A — fold the optional stationary/waiting add-on into THIS day's
-      // transport cost when the operator opted in. CAPACITY-UNIT ONLY: never
-      // sent on a PACKAGE_FULL_DAY apply (driver overnight / package add-ons stay
-      // preview-only, pending the package full-day rate-basis decision). createItem
-      // gates the fold to transportPricingMode === 'capacity_unit' (Option B), so
-      // sending it on a package day would be ignored anyway — we still guard here
-      // to keep apply intent explicit. Quantity is fixed at 1 (capacity unit).
-      if (!isPackageFullDay && stationaryAddOnSelected) {
+      // Transport add-on fold (Option B) — mutually exclusive by day basis:
+      //  • PACKAGE_FULL_DAY (T.5G-2A): selected per-city DRIVER OVERNIGHT add-ons.
+      //  • capacity-unit route day (T.5G-1A): the optional STATIONARY/WAITING add-on.
+      // Either way createItem folds the add-on into the parent transport item's
+      // cost (no separate add-on QuoteItem) and gates on transportPricingMode ===
+      // 'capacity_unit' (which the package-full-day apply also resolves to).
+      const isPackageFullDayBasis = p.pricingBasis === 'PACKAGE_FULL_DAY';
+      if (isPackageFullDayBasis) {
+        // T.5G-2A — fold each SELECTED driver-overnight city into the package
+        // transport item. One entry per city with quantity = that city's nights,
+        // so the admin breakdown reads "Petra Overnight x1 / Wadi Rum Overnight x1".
+        // Each line's rateId is the per-city add-on rate already scoped to the
+        // parent vehicle by /transport-pricing/calculate; the createItem fold
+        // re-validates the vehicle/currency/add-on classification. Driver overnight
+        // scales per vehicle downstream (× unitCount) and is NOT × dayCount.
+        const policy = classifyPackageTransportPolicy(transport ?? []);
+        const overnightStays = (hotelStays ?? []).map((s) => ({ city: s.city, nights: s.nights }));
+        const addOnPreview = buildTransportAddOnPreview({
+          usePackageFullDay: policy.usePackageFullDay,
+          vehicleName: transportAddOnVehicle,
+          overnightStays,
+          addOnRates: transportAddOnRates,
+        });
+        const driverOvernightAddOns = addOnPreview.driverOvernight
+          .filter((line) => line.rateId && line.nights >= 1 && isDriverOvernightLineSelected(line))
+          .map((line) => ({ rateId: line.rateId, quantity: line.nights }));
+        if (driverOvernightAddOns.length > 0) {
+          body.transportAddOns = driverOvernightAddOns;
+        }
+      } else if (stationaryAddOnSelected) {
+        // T.5G-1A — capacity-unit-only stationary/waiting add-on (unchanged).
         const stationaryRate = transportAddOnRates.find((r) => r.addOnType === 'STATIONARY_WAITING');
         if (stationaryRate) {
           body.transportAddOns = [{ rateId: stationaryRate.rateId, quantity: 1 }];
@@ -1602,14 +1642,14 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                   </div>
                 );
               })()}
-              {/* T.5F / T.5G-1A — transport add-on lines (driver overnight +
-                  stationary). Driver overnight is suggested only in package
-                  full-day mode for car/van classes (Petra/Wadi Rum/Aqaba auto;
-                  Dead Sea operator-confirm only; Amman/base never shown; buses
-                  excluded) and remains PREVIEW-ONLY. Stationary/waiting is an
-                  optional add-on; on capacity-unit days it can be APPLIED via the
-                  toggle below (folds into that day's transport cost). Built from
-                  the calculate add-on rates + the quote's overnight stays. */}
+              {/* T.5F / T.5G-1A / T.5G-2A — transport add-on lines. Driver
+                  overnight shows only in package full-day mode for car/van classes
+                  (Petra/Wadi Rum/Aqaba auto-checked; Dead Sea optional/unchecked;
+                  Amman/base never shown; buses excluded) and on a PACKAGE_FULL_DAY
+                  day it can be APPLIED — each selected city folds into the package
+                  transport item (one entry, quantity = that city's nights).
+                  Stationary/waiting is an optional add-on applied on capacity-unit
+                  days. Built from the calculate add-on rates + the overnight stays. */}
               {transportAddOnRates.length > 0
                 ? (() => {
                     const policy = classifyPackageTransportPolicy(transport);
@@ -1632,6 +1672,12 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     const stationaryApplyable =
                       transportPreview?.status === 'OK' &&
                       transportPreview.pricingBasis !== 'PACKAGE_FULL_DAY';
+                    // T.5G-2A — driver overnight is applyable on the currently-
+                    // previewed day when that day is PACKAGE_FULL_DAY (the fold
+                    // gate). On any other basis the lines stay display-only.
+                    const driverOvernightApplyable =
+                      transportPreview?.status === 'OK' &&
+                      transportPreview.pricingBasis === 'PACKAGE_FULL_DAY';
                     return (
                       <div className="tailor-made-transport-addons" aria-label="Transport add-ons preview">
                         <p>
@@ -1643,8 +1689,27 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                             <ul className="tailor-made-transport-addon-list">
                               {suggested.map((line) => (
                                 <li key={line.label}>
-                                  {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} × {line.unitCost}{' '}
-                                  {line.currency} = {line.total} {line.currency}
+                                  {driverOvernightApplyable ? (
+                                    <label className="tailor-made-driver-overnight-toggle">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDriverOvernightLineSelected(line)}
+                                        onChange={(e) =>
+                                          setDriverOvernightSelection((prev) => ({
+                                            ...prev,
+                                            [driverOvernightCityKey(line.city)]: e.target.checked,
+                                          }))
+                                        }
+                                      />{' '}
+                                      {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} ×{' '}
+                                      {line.unitCost} {line.currency} = {line.total} {line.currency}
+                                    </label>
+                                  ) : (
+                                    <>
+                                      {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} ×{' '}
+                                      {line.unitCost} {line.currency} = {line.total} {line.currency}
+                                    </>
+                                  )}
                                 </li>
                               ))}
                             </ul>
@@ -1660,8 +1725,28 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                             <ul className="tailor-made-transport-addon-list">
                               {optionalOvernight.map((line) => (
                                 <li key={line.label}>
-                                  {line.label} — {line.unitCost} {line.currency}/night{' '}
-                                  <span className="form-help">(operator confirm — not included in totals)</span>
+                                  {driverOvernightApplyable ? (
+                                    <label className="tailor-made-driver-overnight-toggle">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDriverOvernightLineSelected(line)}
+                                        onChange={(e) =>
+                                          setDriverOvernightSelection((prev) => ({
+                                            ...prev,
+                                            [driverOvernightCityKey(line.city)]: e.target.checked,
+                                          }))
+                                        }
+                                      />{' '}
+                                      {line.label} — {line.nights} night{line.nights === 1 ? '' : 's'} ×{' '}
+                                      {line.unitCost} {line.currency} = {line.total} {line.currency}{' '}
+                                      <span className="form-help">(operator confirm — off by default)</span>
+                                    </label>
+                                  ) : (
+                                    <>
+                                      {line.label} — {line.unitCost} {line.currency}/night{' '}
+                                      <span className="form-help">(operator confirm — not included in totals)</span>
+                                    </>
+                                  )}
                                 </li>
                               ))}
                               {addOns.stationary ? (
@@ -1692,13 +1777,21 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                           </>
                         ) : null}
                         {addOns.driverOvernight.length > 0 ? (
-                          <p className="form-help tailor-made-driver-overnight-pending">
-                            Driver overnight apply is pending package full-day rate-basis decision.
-                          </p>
+                          driverOvernightApplyable ? (
+                            <p className="form-help tailor-made-driver-overnight-note">
+                              Selected driver overnight nights fold into this package transport day&apos;s cost
+                              (per vehicle). Never shown as a separate client line.
+                            </p>
+                          ) : (
+                            <p className="form-help tailor-made-driver-overnight-note">
+                              Preview a package full-day touring day to apply driver overnight.
+                            </p>
+                          )
                         ) : null}
                         <p className="form-help tailor-made-transport-policy-note">
-                          Stationary/waiting add-ons fold into this day&apos;s transport cost when selected and
-                          applied (capacity-unit days). Driver overnight is preview only.
+                          Add-ons fold into the transport item&apos;s cost when applied — driver overnight on
+                          package full-day days, stationary/waiting on capacity-unit days. Never separate
+                          client lines.
                         </p>
                       </div>
                     );

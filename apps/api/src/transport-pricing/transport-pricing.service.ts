@@ -728,6 +728,13 @@ export class TransportPricingService {
           candidates,
           optionalAddOns: await this.findTransportAddOns({
             supplierId: resolvedPricing.rule.supplierId,
+            // T.5G-2A — scope add-ons to the resolved vehicle (mirrors the
+            // capacity_unit path below) so package-full-day previews surface ONLY
+            // the parent vehicle's ADD_ON rates. The createItem fold enforces a
+            // vehicle match on apply; without this scoping the preview could
+            // surface a same-named overnight rate for a different vehicle, which
+            // apply would then reject.
+            vehicleId: resolvedPricing.rule.vehicleId,
             paxCount: data.paxCount,
             routeName: resolvedPricing.rule.route.name,
             travelDate: data.travelDate,
