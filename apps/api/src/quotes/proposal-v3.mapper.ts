@@ -2071,6 +2071,49 @@ function formatDurationLabel(dayCount: number, nightCount: number) {
   return `${dayCount} ${dayWord} / ${nightCount} ${nightWord}`;
 }
 
+// Phase P.3X-3 — resolve the night count to DISPLAY. quote.nightCount can be
+// stale/wrong (PDF Q-2026-0073 showed "8 Days / 1 Night" for a 7-night itinerary).
+// Prefer an itinerary-derived count when the accommodation clearly evidences MORE
+// nights than the stored value (the stale-low case); otherwise keep the stored
+// value. Never REDUCE a stored count (hotels may not cover every night) and never
+// invent nights without overnight evidence — so one-day tours, transfer-only and
+// incomplete shell quotes, and already-correct quotes are left unchanged.
+function resolveProposalNightCount(
+  quote: ProposalV3Quote,
+  daySources: ProposalV3DaySource[],
+  hotelOptionSets: ProposalV3HotelOptionSet[],
+): number {
+  const stored = Math.max(0, Math.floor(Number(quote.nightCount) || 0));
+
+  // Evidence A — hotel option sets: the primary (recommended) option's nights per set.
+  let optionSetNights = 0;
+  for (const optionSet of hotelOptionSets) {
+    const primary = optionSet.options.find((option) => option.isPrimary) || optionSet.options[0] || null;
+    optionSetNights += getPositiveOptionNights(primary?.nights) || 0;
+  }
+
+  // Evidence B — day-attached accommodation rows: overnight-bearing days and the
+  // sum of their stay night counts (grouped stays carry nightCount > 1).
+  let overnightDays = 0;
+  let dayHotelNights = 0;
+  for (const day of daySources) {
+    const hotels = (day.items || []).filter((item) => isHotelItem(item));
+    if (hotels.length === 0) {
+      continue;
+    }
+    overnightDays += 1;
+    for (const hotel of hotels) {
+      const nights = Math.floor(Number((hotel as { nightCount?: number | null }).nightCount) || 0);
+      if (nights > 0) {
+        dayHotelNights += nights;
+      }
+    }
+  }
+
+  const derived = Math.max(optionSetNights, dayHotelNights, overnightDays);
+  return derived > stored ? derived : stored;
+}
+
 export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string | null): ProposalV3ViewModel {
   // Resolve + set the active proposal locale for this (synchronous) render.
   // Explicit `language` (render-time override) wins over the quote's stored
@@ -2088,7 +2131,10 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string |
   const coverSubtitle = routeIntelligence.coverSubtitle || destinationLine || 'Travel';
   const currency = getProposalCurrency(quote);
   const documentTitle = buildProposalDocumentTitle(quote, destinationLine);
-  const durationLabel = formatDurationLabel(dayCount, quote.nightCount || Math.max(dayCount - 1, 0));
+  // Phase P.3X-3 — display night count derived from itinerary evidence when the
+  // stored quote.nightCount is stale-low; otherwise the stored value is kept.
+  const displayNightCount = resolveProposalNightCount(quote, sortedDays, hotelOptionSets);
+  const durationLabel = formatDurationLabel(dayCount, displayNightCount);
   const coverIntro = buildCoverIntro(quote, destinationLine);
   const journeySummary = buildJourneySummary(quote, destinationLine, dayCount, totalPax, hotelOptionSets);
   const coverSignature = buildDestinationAwareCoverSignature(quote, destinationLine, hotelOptionSets);
@@ -2124,7 +2170,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string |
     coverIntro,
     coverSignature,
     dayByDayIntro,
-    subtitle: `${formatNightCountLabel(quote.nightCount)} · ${formatGuestCountLabel(totalPax)}${destinationLine ? ` · ${destinationLine}` : ''}`,
+    subtitle: `${formatNightCountLabel(displayNightCount)} · ${formatGuestCountLabel(totalPax)}${destinationLine ? ` · ${destinationLine}` : ''}`,
     proposalDateLabel: formatDate(quote.createdAt) || formatDate(new Date()) || '',
     travelerCountLabel: formatGuestCountLabel(totalPax),
     servicesCountLabel: `${quote.quoteItems.length} ${unitLabel(activeProposalLocale, 'service', quote.quoteItems.length)}`,
