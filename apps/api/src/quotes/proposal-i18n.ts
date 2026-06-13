@@ -415,6 +415,33 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
     es: 'Guía acompañante según el itinerario.',
     ar: 'مرشد مرافق حسب البرنامج.',
   },
+  // Phase P.3X-5B — service-card operational meta labels (prefixes joined with
+  // their value, e.g. "Fecha 1 Jun 2026"). English output is byte-identical to
+  // the prior hardcoded literals.
+  serviceMetaDate: {
+    en: 'Date',
+    pt: 'Data',
+    es: 'Fecha',
+    ar: 'التاريخ',
+  },
+  serviceMetaStart: {
+    en: 'Start',
+    pt: 'Início',
+    es: 'Inicio',
+    ar: 'البداية',
+  },
+  serviceMetaPickup: {
+    en: 'Pickup',
+    pt: 'Recolha',
+    es: 'Recogida',
+    ar: 'الاستلام',
+  },
+  serviceMetaMeeting: {
+    en: 'Meeting',
+    pt: 'Encontro',
+    es: 'Encuentro',
+    ar: 'نقطة اللقاء',
+  },
 };
 
 export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRASES): string {

@@ -634,12 +634,16 @@ function getFallbackServiceTitle(groupLabel: string, location: string | null) {
 }
 
 function buildOperationalMeta(item: ProposalV3QuoteItem) {
+  // Phase P.3X-5B — meta labels are locale-aware (prefix + value). English output
+  // is byte-identical to the prior hardcoded literals. "pax" is an industry-standard
+  // unit kept consistent across locales (and unchanged in English).
+  const loc = activeProposalLocale;
   return [
-    formatDate(item.serviceDate) ? `Date ${formatDate(item.serviceDate)}` : null,
-    item.startTime ? `Start ${item.startTime}` : null,
-    item.pickupTime ? `Pickup ${item.pickupTime}` : null,
-    item.pickupLocation ? `Pickup ${cleanText(item.pickupLocation)}` : null,
-    item.meetingPoint ? `Meeting ${cleanText(item.meetingPoint)}` : null,
+    formatDate(item.serviceDate) ? `${prosePhrase(loc, 'serviceMetaDate')} ${formatDate(item.serviceDate)}` : null,
+    item.startTime ? `${prosePhrase(loc, 'serviceMetaStart')} ${item.startTime}` : null,
+    item.pickupTime ? `${prosePhrase(loc, 'serviceMetaPickup')} ${item.pickupTime}` : null,
+    item.pickupLocation ? `${prosePhrase(loc, 'serviceMetaPickup')} ${cleanText(item.pickupLocation)}` : null,
+    item.meetingPoint ? `${prosePhrase(loc, 'serviceMetaMeeting')} ${cleanText(item.meetingPoint)}` : null,
     item.participantCount ? `${item.participantCount} pax` : null,
   ]
     .filter(Boolean)
