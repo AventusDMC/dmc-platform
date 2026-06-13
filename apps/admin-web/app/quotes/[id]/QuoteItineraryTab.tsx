@@ -101,6 +101,10 @@ type QuoteItineraryDay = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  transportDayType: string | null;
+  vehicleRetained: boolean | null;
+  vehicleReleased: boolean | null;
+  inRetainedBlock: boolean | null;
   dayItems: QuoteItineraryDayItem[];
 };
 
@@ -269,6 +273,10 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
                         notes: day.notes || '',
                         sortOrder: String(day.sortOrder),
                         isActive: day.isActive,
+                        transportDayType: day.transportDayType,
+                        vehicleRetained: day.vehicleRetained,
+                        vehicleReleased: day.vehicleReleased,
+                        inRetainedBlock: day.inRetainedBlock,
                       }}
                     />
                   </InlineEntityActions>

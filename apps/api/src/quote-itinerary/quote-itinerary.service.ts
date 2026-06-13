@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { buildTailorMadeJordanDraft, deriveExperienceSuggestions, deriveGuideSuggestions, deriveOvernightStays, deriveTransportSuggestions, enrichExperienceMatches, matchHotelCandidatesForStay, validateOvernightSequence, type ActivityMasterRecord, type HotelMasterRecord, type ServiceMasterRecord, type TailorMadeDraft, type TailorMadeDraftInput } from '../quotes/tailor-made-draft';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
+import { OPERATIONAL_TRANSPORT_TYPES } from '../common/transport-day-classification';
 import { HOTEL_DEFAULT_MARKUP, EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP, GUIDE_LOCAL_FULL_DAY_COST } from '../common/pricing-constants';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 import { PrismaService } from '../prisma/prisma.service';
@@ -753,6 +754,8 @@ export class QuoteItineraryService {
           title: normalized.title,
           notes: normalized.notes,
           country: normalized.country,
+          transportDayType: normalized.transportDayType,
+          ...(normalized.retentionUpdate ?? {}),
           isActive: normalized.isActive,
         },
       });
@@ -1241,11 +1244,48 @@ export class QuoteItineraryService {
       throw new BadRequestException('sortOrder must be zero or greater');
     }
 
+    // Transport day-classification metadata (PR7). Optional; omitted = unchanged.
+    // Metadata only — never touches live pricing. Contradiction is rejected.
+    let nextTransportDayType: string | null;
+    if (data.transportDayType === undefined) {
+      nextTransportDayType = existing.transportDayType ?? null;
+    } else if (data.transportDayType === null || data.transportDayType === '') {
+      nextTransportDayType = null;
+    } else if ((OPERATIONAL_TRANSPORT_TYPES as readonly string[]).includes(data.transportDayType)) {
+      nextTransportDayType = data.transportDayType;
+    } else {
+      throw new BadRequestException(`Invalid transportDayType: ${data.transportDayType}`);
+    }
+
+    // Retention booleans are only validated + written when the request actually touches
+    // them. This keeps a (rare) pre-existing contradictory day still editable (e.g. a
+    // title-only save) — the contradiction is only rejected when the request sets it.
+    const nextNullableBool = (field: string, value: boolean | null | undefined, current: boolean | null | undefined): boolean | null => {
+      if (value === undefined) return current ?? null;
+      if (value === null) return null;
+      if (typeof value !== 'boolean') throw new BadRequestException(`${field} must be a boolean or null`);
+      return value;
+    };
+    const retentionTouched =
+      data.vehicleRetained !== undefined || data.vehicleReleased !== undefined || data.inRetainedBlock !== undefined;
+    let retentionUpdate: { vehicleRetained: boolean | null; vehicleReleased: boolean | null; inRetainedBlock: boolean | null } | undefined;
+    if (retentionTouched) {
+      const r = nextNullableBool('vehicleRetained', data.vehicleRetained, existing.vehicleRetained);
+      const rel = nextNullableBool('vehicleReleased', data.vehicleReleased, existing.vehicleReleased);
+      const blk = nextNullableBool('inRetainedBlock', data.inRetainedBlock, existing.inRetainedBlock);
+      if (r === true && rel === true) {
+        throw new BadRequestException('vehicleRetained and vehicleReleased cannot both be true');
+      }
+      retentionUpdate = { vehicleRetained: r, vehicleReleased: rel, inRetainedBlock: blk };
+    }
+
     return {
       dayNumber: nextDayNumber,
       title: data.title === undefined ? existing.title : requireTrimmedString(data.title, 'title'),
       notes: data.notes === undefined ? existing.notes : normalizeOptionalString(data.notes),
       country: data.country === undefined ? existing.country : normalizeOptionalString(data.country),
+      transportDayType: nextTransportDayType,
+      retentionUpdate,
       sortOrder: nextSortOrder,
       isActive: data.isActive ?? existing.isActive,
     };

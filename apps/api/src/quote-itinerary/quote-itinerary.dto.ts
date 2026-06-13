@@ -16,6 +16,12 @@ export type UpdateQuoteItineraryDayDto = {
   title?: string;
   notes?: string | null;
   country?: string | null;
+  // Transport day-classification metadata (PR6 fields, PR7 planner capture). Optional;
+  // omitted = unchanged. Metadata only — never touches live pricing.
+  transportDayType?: string | null;
+  vehicleRetained?: boolean | null;
+  vehicleReleased?: boolean | null;
+  inRetainedBlock?: boolean | null;
   sortOrder?: number;
   isActive?: boolean;
 };
