@@ -438,12 +438,18 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
   const [transportPreviewDay, setTransportPreviewDay] = useState<number | null>(null);
   const [transportPreview, setTransportPreview] = useState<TransportPreview | null>(null);
   const [transportPreviewLoading, setTransportPreviewLoading] = useState(false);
-  // T.5F — add-on rates + vehicle captured from the most recent PACKAGE_FULL_DAY
-  // transport price preview (the calculate response's optionalAddOns). Drives the
-  // PREVIEW-ONLY driver-overnight / stationary add-on lines below the policy
-  // summary. Captured only for package full-day previews; never applied.
+  // T.5F / T.5G-1A — add-on rates + vehicle captured from the most recent
+  // transport price preview (the calculate response's optionalAddOns), for
+  // EVERY priced day. Drives the driver-overnight / stationary add-on lines
+  // below the policy summary. Driver overnight stays preview-only; the optional
+  // stationary/waiting add-on can be applied on capacity-unit days via the
+  // toggle below.
   const [transportAddOnRates, setTransportAddOnRates] = useState<TransportAddOnRate[]>([]);
   const [transportAddOnVehicle, setTransportAddOnVehicle] = useState<string | null>(null);
+  // T.5G-1A — operator opt-in for the optional stationary/waiting add-on.
+  // Off by default; reset whenever a new day is previewed. When checked on a
+  // capacity-unit day, apply folds the add-on into that day's transport cost.
+  const [stationaryAddOnSelected, setStationaryAddOnSelected] = useState(false);
 
   // Phase R.6B-1 — apply one OK-priced transport day as a single TRANSPORT
   // QuoteItem. Per-DAY conflict guard: a day is blocked only when it already has
@@ -767,6 +773,11 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
     setTransportPreviewDay(t.dayNumber);
     setTransportPreviewLoading(true);
     setTransportPreview(null);
+    // T.5G-1A — clear any add-on rates / stationary opt-in from the previous
+    // day so a new preview never shows or applies stale add-ons.
+    setTransportAddOnRates([]);
+    setTransportAddOnVehicle(null);
+    setStationaryAddOnSelected(false);
     setError('');
     try {
       // T.5D-2 — feed the package transport policy into the resolver for the
@@ -875,14 +886,16 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
         vehicleRateId: result?.vehicleRateId ?? null,
       });
 
-      // T.5F — capture the optional add-on rates the engine already returns for a
-      // PACKAGE_FULL_DAY day (driver overnight + stationary) so the package-level
-      // add-on PREVIEW below can render them. Normalization (and the raw add-on
-      // type tokens) lives in the resolver helper, not here. Preview only.
-      if (plan.pricingBasis === 'PACKAGE_FULL_DAY') {
-        setTransportAddOnRates(normalizeTransportAddOnRates(result?.optionalAddOns));
-        setTransportAddOnVehicle(result?.vehicle?.name ?? null);
-      }
+      // T.5F / T.5G-1A — capture the optional add-on rates the engine returns
+      // (driver overnight + stationary). PACKAGE_FULL_DAY previews surface the
+      // driver-overnight suggestions (still preview-only); capacity-unit previews
+      // surface the optional stationary/waiting add-on, which T.5G-1A can APPLY
+      // by folding it into this day's transport cost. Capture for every priced
+      // day so the add-on block + stationary toggle below have rates to work with.
+      // Normalization (and the raw add-on type tokens) lives in the resolver
+      // helper, not here.
+      setTransportAddOnRates(normalizeTransportAddOnRates(result?.optionalAddOns));
+      setTransportAddOnVehicle(result?.vehicle?.name ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not preview transport price.');
     } finally {
@@ -940,6 +953,19 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
       if (isPackageFullDay) {
         body.vehicleRateId = p.vehicleRateId;
         body.transportLabel = p.routeLabel ?? undefined;
+      }
+      // T.5G-1A — fold the optional stationary/waiting add-on into THIS day's
+      // transport cost when the operator opted in. CAPACITY-UNIT ONLY: never
+      // sent on a PACKAGE_FULL_DAY apply (driver overnight / package add-ons stay
+      // preview-only, pending the package full-day rate-basis decision). createItem
+      // gates the fold to transportPricingMode === 'capacity_unit' (Option B), so
+      // sending it on a package day would be ignored anyway — we still guard here
+      // to keep apply intent explicit. Quantity is fixed at 1 (capacity unit).
+      if (!isPackageFullDay && stationaryAddOnSelected) {
+        const stationaryRate = transportAddOnRates.find((r) => r.addOnType === 'STATIONARY_WAITING');
+        if (stationaryRate) {
+          body.transportAddOns = [{ rateId: stationaryRate.rateId, quantity: 1 }];
+        }
       }
       const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
         method: 'POST',
@@ -1576,13 +1602,14 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                   </div>
                 );
               })()}
-              {/* T.5F — PREVIEW-ONLY transport add-on lines (driver overnight +
+              {/* T.5F / T.5G-1A — transport add-on lines (driver overnight +
                   stationary). Driver overnight is suggested only in package
                   full-day mode for car/van classes (Petra/Wadi Rum/Aqaba auto;
                   Dead Sea operator-confirm only; Amman/base never shown; buses
-                  excluded). Stationary is an optional add-on for any class. Built
-                  from the calculate add-on rates + the quote's overnight stays.
-                  Nothing is applied and no transportAddOns are sent. */}
+                  excluded) and remains PREVIEW-ONLY. Stationary/waiting is an
+                  optional add-on; on capacity-unit days it can be APPLIED via the
+                  toggle below (folds into that day's transport cost). Built from
+                  the calculate add-on rates + the quote's overnight stays. */}
               {transportAddOnRates.length > 0
                 ? (() => {
                     const policy = classifyPackageTransportPolicy(transport);
@@ -1598,10 +1625,17 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                     }
                     const suggested = addOns.driverOvernight.filter((l) => l.status === 'suggested');
                     const optionalOvernight = addOns.driverOvernight.filter((l) => l.status === 'optional');
+                    // T.5G-1A — the stationary add-on is applyable only on the
+                    // currently-previewed day when that day is capacity-unit
+                    // (matches the apply gate: not PACKAGE_FULL_DAY). On a package
+                    // day it stays preview-only.
+                    const stationaryApplyable =
+                      transportPreview?.status === 'OK' &&
+                      transportPreview.pricingBasis !== 'PACKAGE_FULL_DAY';
                     return (
                       <div className="tailor-made-transport-addons" aria-label="Transport add-ons preview">
                         <p>
-                          <strong>Transport add-ons (preview only)</strong>
+                          <strong>Transport add-ons</strong>
                         </p>
                         {suggested.length > 0 ? (
                           <>
@@ -1632,15 +1666,39 @@ export function TailorMadeDraftPanel({ apiBaseUrl, quoteId, quoteCurrency, hotel
                               ))}
                               {addOns.stationary ? (
                                 <li>
-                                  {addOns.stationary.label} — {addOns.stationary.unitCost} {addOns.stationary.currency}{' '}
-                                  <span className="form-help">(off by default — not included in totals)</span>
+                                  {stationaryApplyable ? (
+                                    <label className="tailor-made-stationary-toggle">
+                                      <input
+                                        type="checkbox"
+                                        checked={stationaryAddOnSelected}
+                                        onChange={(e) => setStationaryAddOnSelected(e.target.checked)}
+                                      />{' '}
+                                      {addOns.stationary.label} — {addOns.stationary.unitCost}{' '}
+                                      {addOns.stationary.currency}{' '}
+                                      <span className="form-help">
+                                        (optional — off by default; folds into this day&apos;s transport cost when applied)
+                                      </span>
+                                    </label>
+                                  ) : (
+                                    <>
+                                      {addOns.stationary.label} — {addOns.stationary.unitCost}{' '}
+                                      {addOns.stationary.currency}{' '}
+                                      <span className="form-help">(preview only — applies on capacity-unit days)</span>
+                                    </>
+                                  )}
                                 </li>
                               ) : null}
                             </ul>
                           </>
                         ) : null}
+                        {addOns.driverOvernight.length > 0 ? (
+                          <p className="form-help tailor-made-driver-overnight-pending">
+                            Driver overnight apply is pending package full-day rate-basis decision.
+                          </p>
+                        ) : null}
                         <p className="form-help tailor-made-transport-policy-note">
-                          Add-ons are preview only and are not applied yet.
+                          Stationary/waiting add-ons fold into this day&apos;s transport cost when selected and
+                          applied (capacity-unit days). Driver overnight is preview only.
                         </p>
                       </div>
                     );
