@@ -627,7 +627,14 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
 
   it('does not expose raw internal labels, and adds no overnight/stationary logic', () => {
     // The policy block is display-only — no raw enum/internal tokens introduced.
-    const policyBlock = panelSource.slice(panelSource.indexOf('Package transport policy'), panelSource.indexOf('tailor-made-transport-days'));
+    // Slice ends at the add-on section's opening comment: the T.5G-1A add-on
+    // logic below legitimately references the 'PACKAGE_FULL_DAY' basis literal in
+    // a NON-rendered guard (stationaryApplyable / the apply gate), which is
+    // internal logic, not a policy-display leak.
+    const policyBlock = panelSource.slice(
+      panelSource.indexOf('Package transport policy'),
+      panelSource.indexOf('transport add-on lines (driver overnight'),
+    );
     for (const raw of ['POINT_TO_POINT', 'capacity_unit', 'FULL_DAY', 'type internal', 'mode internal']) {
       assert.ok(!policyBlock.includes(raw), `policy display must not expose "${raw}"`);
     }
@@ -635,17 +642,20 @@ describe('T.5C/T.5D-2 — package transport policy display + price-preview wirin
     // the price-preview render (req #10): only the clean pricing basis is shown.
     assert.ok(!panelSource.includes('type (internal):'), 'raw service-type internal line removed from preview');
     assert.ok(!panelSource.includes('mode (internal):'), 'raw pricing-mode internal line removed from preview');
-    // No driver-overnight / stationary CALCULATION added (note text only).
-    assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM|STATIONARY_WAITING/.test(panelSource), 'no overnight/stationary add-on logic');
+    // No driver-overnight CALCULATION added (driver overnight stays preview-only).
+    // NOTE: T.5G-1A added a stationary-only apply fold, so STATIONARY_WAITING now
+    // legitimately appears as an internal addOnType discriminator in the apply
+    // logic (not rendered to the client) — it is asserted separately below.
+    assert.ok(!/DEAD_SEA_OVERNIGHT|WADI_RUM_OVERNIGHT|PETRA_OVERNIGHT|AQABA_OVERNIGHT|EXTRA_KM/.test(panelSource), 'no per-route overnight add-on calculation logic');
     // Classifier feeds PREVIEW only — never the apply path (apply still gates on transportPreview).
     assert.ok(!/applySelectedTransport[\s\S]{0,400}classifyPackageTransportPolicy/.test(panelSource), 'classifier not used inside transport apply');
   });
 });
 
-describe('T.5F — transport add-on preview (driver overnight + stationary, preview only)', () => {
-  it('captures package add-on rates from the preview and renders the preview block', () => {
+describe('T.5G-1A — transport add-ons (stationary apply via fold; driver overnight preview-only)', () => {
+  it('captures add-on rates for EVERY priced day (not just package full-day) and renders the block', () => {
     expectSourceContains(panelSource, [
-      // capture optionalAddOns from a PACKAGE_FULL_DAY preview via the resolver helper
+      // capture optionalAddOns from the preview via the resolver helper
       'normalizeTransportAddOnRates(result?.optionalAddOns)',
       'setTransportAddOnRates',
       'setTransportAddOnVehicle',
@@ -653,27 +663,75 @@ describe('T.5F — transport add-on preview (driver overnight + stationary, prev
       'buildTransportAddOnPreview({',
       'usePackageFullDay: policy.usePackageFullDay',
       'aria-label="Transport add-ons preview"',
-      'Transport add-ons (preview only)',
+      'Transport add-ons',
       'Suggested driver overnight total:',
       // T.6 groups stationary under "Optional add-ons:" with the clean label
       'Optional add-ons:',
       'addOns.stationary.label',
-      // required preview-only note
-      'Add-ons are preview only and are not applied yet.',
     ]);
     // overnight stays feed the helper (nights source)
     assert.ok(/overnightStays/.test(panelSource), 'overnight stays passed to the add-on helper');
+    // T.5G-1A — capture is NO LONGER gated to PACKAGE_FULL_DAY previews: the
+    // setTransportAddOnRates call must not sit inside an `if (plan.pricingBasis
+    // === 'PACKAGE_FULL_DAY')` branch, so capacity-unit previews surface the
+    // optional stationary add-on too.
+    assert.ok(
+      !/if \(plan\.pricingBasis === 'PACKAGE_FULL_DAY'\)\s*\{\s*setTransportAddOnRates/.test(panelSource),
+      'add-on capture is not gated to package full-day previews',
+    );
   });
 
-  it('is preview-only: no transportAddOns are sent on apply, no add-on apply path', () => {
-    // The apply payload must NOT include transportAddOns in this phase.
-    assert.ok(!/transportAddOns\s*:/.test(panelSource), 'no transportAddOns sent on apply');
-    // No add-on apply endpoint / no QuoteItem creation for add-ons.
+  it('stationary add-on toggle exists, is off by default, and resets on each new preview', () => {
+    expectSourceContains(panelSource, [
+      // off-by-default opt-in state
+      'const [stationaryAddOnSelected, setStationaryAddOnSelected] = useState(false)',
+      // reset when a new day is previewed (alongside clearing stale rates)
+      'setStationaryAddOnSelected(false)',
+      'setTransportAddOnRates([])',
+      // the checkbox is only shown/actionable on capacity-unit (non-package) days
+      "transportPreview.pricingBasis !== 'PACKAGE_FULL_DAY'",
+      'const stationaryApplyable',
+      'checked={stationaryAddOnSelected}',
+      'onChange={(e) => setStationaryAddOnSelected(e.target.checked)}',
+    ]);
+  });
+
+  it('apply folds the stationary add-on (capacity-unit only) and sends transportAddOns gated', () => {
+    expectSourceContains(panelSource, [
+      // gated: only on a non-package (capacity-unit) day AND when the operator opted in
+      'if (!isPackageFullDay && stationaryAddOnSelected) {',
+      // resolves the stationary ADD_ON rate and sends its rateId, quantity 1
+      "transportAddOnRates.find((r) => r.addOnType === 'STATIONARY_WAITING')",
+      'body.transportAddOns = [{ rateId: stationaryRate.rateId, quantity: 1 }]',
+    ]);
+    // The transportAddOns assignment must live INSIDE the gated, non-package
+    // branch — never sent unconditionally and never on a package full-day apply.
+    assert.ok(
+      /if \(!isPackageFullDay && stationaryAddOnSelected\) \{[\s\S]{0,400}body\.transportAddOns = \[\{ rateId: stationaryRate\.rateId, quantity: 1 \}\]/.test(panelSource),
+      'transportAddOns is only sent inside the capacity-unit + opted-in branch',
+    );
+    // Still the canonical /items path — no parallel add-on apply endpoint, no
+    // separate ADD_ON QuoteItem creation.
     assert.ok(!/addon-apply|add-on-apply/i.test(panelSource), 'no add-on apply endpoint');
   });
 
-  it('does not leak raw add-on service-type codes in the panel source', () => {
-    for (const raw of ['DEAD_SEA_OVERNIGHT', 'WADI_RUM_OVERNIGHT', 'PETRA_OVERNIGHT', 'AQABA_OVERNIGHT', 'STATIONARY_WAITING', 'ADD_ON']) {
+  it('driver overnight stays preview-only with a clear pending note', () => {
+    expectSourceContains(panelSource, [
+      'Driver overnight apply is pending package full-day rate-basis decision.',
+      // the closing note states stationary folds in while driver overnight is preview-only
+      "Stationary/waiting add-ons fold into this day",
+      'Driver overnight is preview only.',
+    ]);
+    // Driver overnight is never folded into apply: transportAddOns must not be
+    // built from a DRIVER_OVERNIGHT rate anywhere.
+    assert.ok(!/addOnType === 'DRIVER_OVERNIGHT'[\s\S]{0,120}transportAddOns/.test(panelSource), 'driver overnight is not applied');
+  });
+
+  it('does not leak per-route add-on service-type codes in the panel source', () => {
+    // STATIONARY_WAITING is an internal addOnType discriminator used by the apply
+    // fold (asserted above) — it is NOT a client-facing service-type code, so it
+    // is intentionally excluded from this leak check.
+    for (const raw of ['DEAD_SEA_OVERNIGHT', 'WADI_RUM_OVERNIGHT', 'PETRA_OVERNIGHT', 'AQABA_OVERNIGHT', 'ADD_ON']) {
       assert.ok(!panelSource.includes(raw), `panel must not contain raw add-on code "${raw}"`);
     }
   });
@@ -702,7 +760,8 @@ describe('T.6 — transport preview UI cleanup (operator-safe labels)', () => {
       'Suggested add-ons:',
       'Optional add-ons:',
       'Suggested driver overnight total:',
-      'Add-ons are preview only and are not applied yet.',
+      // T.5G-1A — closing note replaced the blanket "preview only" copy
+      "Stationary/waiting add-ons fold into this day",
     ]);
   });
 
