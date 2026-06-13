@@ -476,6 +476,92 @@ export function localizePlaceName(locale: ProposalLocale, value: string | null |
   return entry ? entry[locale] || entry.en : raw;
 }
 
+// ---------------------------------------------------------------------------
+// Phase P.3X-5E-1 — controlled STRUCTURAL day-title localization.
+// proposal-v3 renders a present day.title verbatim, so non-English proposals
+// still show English structural titles ("Arrival Amman", "Departure",
+// "Petra Visit / Wadi Rum"). This localizes ONLY a small set of safe, parseable
+// structural shapes; any title that isn't one of them is returned UNCHANGED
+// (free-form titles are never machine-translated). English short-circuits →
+// byte-identical output. Place tokens reuse localizePlaceName (P.3X-5D), so only
+// Dead Sea/Mount Nebo/Bethany change; Amman/Jerash/Madaba/Petra/Wadi Rum/
+// Wadi Musa/QAIA stay as-is. Day NOTES/narrative are NOT touched here.
+// ---------------------------------------------------------------------------
+const DAY_TITLE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
+  // {place} filled at render time.
+  arrival: { en: 'Arrival {place}', es: 'Llegada a {place}', pt: 'Chegada a {place}', ar: 'الوصول إلى {place}' },
+  arrivalBare: { en: 'Arrival', es: 'Llegada', pt: 'Chegada', ar: 'الوصول' },
+  departure: { en: 'Departure', es: 'Salida', pt: 'Saída', ar: 'المغادرة' },
+  departureFrom: { en: 'Departure from {place}', es: 'Salida desde {place}', pt: 'Saída de {place}', ar: 'المغادرة من {place}' },
+  visit: { en: 'Visit {place}', es: 'Visita de {place}', pt: 'Visita a {place}', ar: 'زيارة {place}' },
+};
+
+function dayTitlePhrase(locale: ProposalLocale, key: keyof typeof DAY_TITLE_PHRASES, place?: string): string {
+  const entry = DAY_TITLE_PHRASES[key];
+  const template = (entry && (entry[locale] || entry.en)) || '';
+  return place === undefined ? template : template.split('{place}').join(place);
+}
+
+// A remainder after "Arrival"/"Departure" is treated as a place ONLY when it is a
+// short, clean place-like token (letters/spaces/.'- , ≤4 words, no conjunction or
+// "&"). This keeps free-form titles like "Arrival & welcome dinner" untouched.
+function isCleanPlaceToken(value: string): boolean {
+  const v = value.trim();
+  if (!v || v.length > 40) return false;
+  if (/[&]|\b(and|with|plus|y|e|con|com)\b/i.test(v)) return false;
+  if (!/^[\p{L}][\p{L} .'’-]*$/u.test(v)) return false;
+  return v.split(/\s+/).length <= 4;
+}
+
+// Generic words that are NOT a place after Arrival/Departure → render the bare form.
+const STRUCTURAL_FILLER = /^(?:day|transfer|transfers|flight|flights|arrival|departure|arrival day|departure day|transfer day)$/i;
+
+export function localizeStructuralDayTitle(locale: ProposalLocale, title: string | null | undefined): string {
+  const raw = String(title ?? '');
+  // English is byte-identical; empty passes through unchanged.
+  if (locale === 'en' || !raw.trim()) return raw;
+  const trimmed = raw.trim();
+
+  // Arrival [<place>] — e.g. "Arrival Amman" → "Llegada a Amman"; bare "Arrival" → "Llegada".
+  let m = trimmed.match(/^arrival\b[\s:–—-]*(.*)$/i);
+  if (m) {
+    const rest = m[1].trim().replace(/^(?:at|in|to)\s+/i, '').trim();
+    if (!rest || STRUCTURAL_FILLER.test(rest)) return dayTitlePhrase(locale, 'arrivalBare');
+    if (isCleanPlaceToken(rest)) return dayTitlePhrase(locale, 'arrival', localizePlaceName(locale, rest));
+    return raw; // remainder isn't a clean place → leave the whole title as free-form
+  }
+
+  // Departure [from <place>] — bare "Departure" → "Salida"; "Departure from Amman" → "Salida desde Amman".
+  m = trimmed.match(/^departure\b[\s:–—-]*(?:from\s+)?(.*)$/i);
+  if (m) {
+    const rest = m[1].trim().replace(/^(?:at|in)\s+/i, '').trim();
+    if (!rest || STRUCTURAL_FILLER.test(rest)) return dayTitlePhrase(locale, 'departure');
+    if (isCleanPlaceToken(rest)) return dayTitlePhrase(locale, 'departureFrom', localizePlaceName(locale, rest));
+    return raw;
+  }
+
+  // Slash route title: "A / B / C", incl. "X Visit / Y". Each segment: a "Visit"
+  // marker → localized "Visit <place>"; otherwise just the (controlled) place name.
+  // Non-place segments pass through unchanged, so a free-form slash title is safe.
+  if (trimmed.includes('/')) {
+    const segments = trimmed.split('/').map((s) => s.trim()).filter(Boolean);
+    // Require ≥2 segments and at least one alphabetic segment (skip bare dates like 06/13).
+    if (segments.length >= 2 && segments.some((s) => /[\p{L}]/u.test(s))) {
+      const parts = segments.map((seg) => {
+        const hadVisit = /\bvisit\b/i.test(seg);
+        const placeText = seg.replace(/\bvisit\b/gi, '').replace(/\s+/g, ' ').trim();
+        if (!placeText) return seg;
+        const localizedPlace = localizePlaceName(locale, placeText);
+        return hadVisit ? dayTitlePhrase(locale, 'visit', localizedPlace) : localizedPlace;
+      });
+      return parts.join(' / ');
+    }
+  }
+
+  // Not a recognized structural pattern → unchanged (free-form title).
+  return raw;
+}
+
 // Sentence templates. {token} placeholders are substituted at render time.
 const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   // Cover intro
