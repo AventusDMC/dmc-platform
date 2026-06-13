@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { Roles } from '../auth/auth.decorators';
 import { TransportPricingService } from './transport-pricing.service';
 import { PackageEligibilityShadowService } from './package-eligibility-shadow.service';
-import { isPackageEligibilityShadowEnabled, PACKAGE_ELIGIBILITY_SHADOW_FLAG } from './transport-feature-flags';
+import { isPackageEligibilityShadowEnabled, PACKAGE_ELIGIBILITY_SHADOW_FLAG, isPackagePricingShadowCompareEnabled, PACKAGE_PRICING_SHADOW_COMPARE_FLAG } from './transport-feature-flags';
 
 type CalculateTransportPricingBody = {
   serviceTypeId: string;
@@ -100,6 +100,18 @@ export class TransportPricingController {
       return { enabled: false, flag: PACKAGE_ELIGIBILITY_SHADOW_FLAG };
     }
     const result = await this.packageEligibilityShadowService.evaluateQuotePackageEligibilityShadow(id);
+    return { enabled: true, ...(result ?? {}) };
+  }
+
+  // PR9 — read-only pricing shadow-compare (route/transfer baseline vs package candidate).
+  // admin/finance only; flag-gated (default OFF). Never changes pricing/quote totals.
+  @Get('quotes/:id/package-pricing-shadow')
+  @Roles('admin', 'finance')
+  async packagePricingShadow(@Param('id') id: string) {
+    if (!isPackagePricingShadowCompareEnabled()) {
+      return { enabled: false, flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG };
+    }
+    const result = await this.packageEligibilityShadowService.evaluateQuotePackagePricingShadow(id);
     return { enabled: true, ...(result ?? {}) };
   }
 
