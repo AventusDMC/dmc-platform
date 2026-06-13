@@ -662,6 +662,33 @@ const INTERNAL_TRANSPORT_MARKERS = /->|→|\bPER[_\s]?(VEHICLE|PERSON|ROOM|NIGHT
 // clean hotel/room/board/location, so this internal text is dropped.
 const INTERNAL_RATE_MARKERS = /contractual agreement|agreement for|\brate\s+(usd|jod|eur|ils|aed|sar)\b|\bx\s*\d+\s*pax\b|\bPER[_\s]?(VEHICLE|PERSON|ROOM|NIGHT)\b/i;
 
+// Phase P.3X-5C — internal/archived product-NAME tokens that must never title a
+// client service line (e.g. "Petra 3 Days archived variant source"). These are
+// short internal product names; legitimate client titles never contain these
+// words, so the over-strip risk is low. Stripped from the title; the clean
+// remainder (e.g. "Petra 3 Days") is kept, else a group/location fallback.
+const INTERNAL_PRODUCT_TITLE_MARKERS = /\b(?:archived|variant|source|operational)\b|max(?:imum)?\s*capacity|capacity\s*per\b|duration\s*options/i;
+// Operational/internal phrases that must never appear in a client service
+// DESCRIPTION. Narrower than the title guard — bare "source"/"variant" are
+// allowed in prose (e.g. "source of the Jordan River"); only the operational
+// signatures and the "archived"/"variant source" markers are rejected.
+const INTERNAL_OPERATIONAL_DESC_MARKERS = /\boperational\b|max(?:imum)?\s*capacity|capacity\s*per\s*(?:jeep|vehicle|unit|person|pax)|duration\s*options|\barchived\b|\bvariant\s+source\b/i;
+
+function hasInternalProductTitle(text?: string | null): boolean {
+  return Boolean(text) && INTERNAL_PRODUCT_TITLE_MARKERS.test(String(text));
+}
+
+function hasInternalOperationalDescription(text?: string | null): boolean {
+  return Boolean(text) && INTERNAL_OPERATIONAL_DESC_MARKERS.test(String(text));
+}
+
+// Strip internal product-name tokens from a service title and collapse spacing.
+function stripInternalProductTitle(title: string): string {
+  return cleanText(
+    title.replace(new RegExp(INTERNAL_PRODUCT_TITLE_MARKERS.source, 'gi'), ' ').replace(/\s+/g, ' '),
+  );
+}
+
 function hasInternalTransportText(text?: string | null): boolean {
   return Boolean(text) && INTERNAL_TRANSPORT_MARKERS.test(String(text));
 }
@@ -709,7 +736,14 @@ export function getClientSafeActivityDescription(item: ProposalV3QuoteItem) {
   // as a day-card description or a "Key moments" highlight.
   const description = candidates
     .map((candidate) => conciseCopy(candidate))
-    .find((candidate) => isClientSafeCopy(candidate) && !hasInternalServiceDescriptor(candidate));
+    // Phase P.3X-5C — also reject operational/internal activity descriptions
+    // ("Operational jeep tour … max capacity per jeep").
+    .find(
+      (candidate) =>
+        isClientSafeCopy(candidate) &&
+        !hasInternalServiceDescriptor(candidate) &&
+        !hasInternalOperationalDescription(candidate),
+    );
   return description || null;
 }
 
@@ -1054,6 +1088,18 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       title = resolveTransportClientTitle(item, touringPathLabel);
     }
 
+    // Phase P.3X-5C — never let an internal/archived/operational product name title
+    // a client service line (e.g. "Petra 3 Days archived variant source"). Strip the
+    // internal tokens; keep the clean remainder ("Petra 3 Days") or fall back to the
+    // group/location label when nothing client-safe remains. Runs for every item.
+    if (hasInternalProductTitle(title)) {
+      const stripped = stripInternalProductTitle(title);
+      title =
+        stripped && !isWeakText(stripped) && !isPlaceholderText(stripped)
+          ? stripped
+          : getFallbackServiceTitle(groupLabel, location);
+    }
+
     if (isPlaceholderText(description) || isWeakText(description)) {
       description = null;
     }
@@ -1079,7 +1125,14 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       if (hasInternalServiceDescriptor(description) || !description) {
         description = buildGuideClientDescription(item, location);
       }
-    } else if (hasInternalContractText(description) || hasInternalTransportText(description)) {
+    } else if (
+      hasInternalContractText(description) ||
+      hasInternalTransportText(description) ||
+      // Phase P.3X-5C — drop operational/internal activity descriptions
+      // ("Operational jeep tour … max capacity per jeep"). The service title
+      // already conveys the experience.
+      hasInternalOperationalDescription(description)
+    ) {
       description = null;
     }
 
@@ -1750,7 +1803,11 @@ export function buildDeterministicHighlights(
 
   for (const item of quote.quoteItems) {
     if (isActivityItem(item) || isGuideItem(item)) {
-      pushHighlight(getClientSafeActivityDescription(item) || item.activity?.name || item.service.name);
+      // Phase P.3X-5C — the fallback service/activity NAME may be an internal
+      // product name ("Petra 3 Days archived variant source"); strip the internal
+      // tokens (same rule as the day-card title) before it can become a highlight.
+      const candidate = getClientSafeActivityDescription(item) || item.activity?.name || item.service.name;
+      pushHighlight(hasInternalProductTitle(candidate) ? stripInternalProductTitle(candidate) : candidate);
     }
     if (highlights.size >= 4) {
       break;
