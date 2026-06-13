@@ -2236,10 +2236,68 @@ model Supplier {
   transportPricingRules TransportPricingRule[]
   touringRoutePricings  TouringRoutePricing[]
   vehicleRates          VehicleRate[]
+  transportContracts    TransportContract[]
   vouchers              Voucher[]
   dmcQuoteDayServices   DmcQuoteDayService[]
 
   @@map("suppliers")
+}
+
+// Transport contract / rate-regime layer (PR2 of the contract-regime refactor).
+// Groups existing rate rows under supplier + vehicle class + regime + currency.
+// ADDITIVE and INERT: pricing/quote logic does not read this yet. PR2 backfills only
+// default ROUTE_TRANSFER contracts; PACKAGE_MIN_FULL_DAY and every package / half-day /
+// driver-overnight / stationary field below exists but is UNUSED until later PRs
+// (no DAILY_PACKAGE activation, no pricing change).
+model TransportContract {
+  id                            String                 @id @default(uuid()) @db.Uuid
+  supplierId                    String                 @db.Uuid
+  vehicleClass                  String                 @map("vehicle_class")
+  regime                        TransportRateRegime    @default(ROUTE_TRANSFER)
+  currency                      String
+  // Nullable: touring-only groups have no member validity (descriptive only).
+  validFrom                     DateTime?
+  validTo                       DateTime?
+  active                        Boolean                @default(true)
+
+  // PACKAGE_MIN_FULL_DAY terms — inert until a later PR.
+  minimumFullDays               Int?
+  minimumDayPolicy              MinimumDayPolicy       @default(INELIGIBLE_UNDER_MIN)
+  fullDayRate                   Float?
+  halfDayRate                   Float?
+  airportTransferIncluded       Boolean                @default(false)
+  pointToPointIncluded          Boolean                @default(false)
+  baseCityOverride              String?
+
+  // Half-day weighting — inert.
+  halfDayCountsTowardMin        Boolean                @default(false)
+  packageDayWeight              Float                  @default(0.5)
+  twoHalfDaysEqualFullDay       Boolean                @default(false)
+  halfDayChargedAsFullDay       Boolean                @default(false)
+  halfDayIncludedInPackage      Boolean                @default(false)
+
+  // Driver overnight — inert.
+  driverOvernightPolicy         DriverOvernightPolicy  @default(SEPARATE)
+  driverOvernightAmount         Float?
+
+  // Stationary policy — inert.
+  stationaryChargedSeparately   Boolean                @default(true)
+  stationaryIncludedInPackage   Boolean                @default(false)
+  stationaryCountsTowardMinDays Boolean                @default(false)
+  driverOvernightOnStationary   Boolean                @default(true)
+
+  notes                         String?
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+
+  supplier                      Supplier               @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  vehicleRates                  VehicleRate[]
+  transportPricingRules         TransportPricingRule[]
+  touringRoutePricings          TouringRoutePricing[]
+
+  @@index([supplierId])
+  @@index([supplierId, vehicleClass, regime, currency], map: "transport_contracts_lookup_idx")
+  @@map("transport_contracts")
 }
 
 model Season {
@@ -2268,8 +2326,10 @@ model TransportPricingRule {
   isActive               Boolean              @default(true)
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
+  transportContractId    String?              @db.Uuid
   route                  Route                @relation(fields: [routeId], references: [id], onDelete: Cascade)
   supplier               Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  transportContract      TransportContract?   @relation(fields: [transportContractId], references: [id], onDelete: SetNull)
   transportServiceType   TransportServiceType @relation(fields: [transportServiceTypeId], references: [id], onDelete: Cascade)
   vehicle                Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
@@ -2277,6 +2337,7 @@ model TransportPricingRule {
   @@index([supplierId])
   @@index([transportServiceTypeId])
   @@index([vehicleId])
+  @@index([transportContractId])
   @@index([isActive, routeId, transportServiceTypeId, minPax, maxPax])
   @@map("transport_pricing_rules")
 }
@@ -2573,8 +2634,10 @@ model TouringRoutePricing {
   notes                  String?
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
+  transportContractId    String?                  @db.Uuid
   supplier               Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   touringRoute           TouringRoute             @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+  transportContract      TransportContract?       @relation(fields: [transportContractId], references: [id], onDelete: SetNull)
   transportServiceType   TransportServiceType?    @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
   vehicle                Vehicle?                 @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   quoteItems             QuoteItem[]
@@ -2584,6 +2647,7 @@ model TouringRoutePricing {
   @@index([supplierId])
   @@index([vehicleId])
   @@index([transportServiceTypeId])
+  @@index([transportContractId])
   @@index([active, touringRouteId, minPax, maxPax])
   @@map("touring_route_pricings")
 }
@@ -2630,15 +2694,18 @@ model VehicleRate {
   fromPlaceId   String?              @db.Uuid
   toPlaceId     String?              @db.Uuid
   routeId       String?              @db.Uuid
+  transportContractId String?        @db.Uuid
   quoteItems    QuoteItem[]
   fromPlace     Place?               @relation("VehicleRateFromPlace", fields: [fromPlaceId], references: [id])
   route         Route?               @relation(fields: [routeId], references: [id])
   serviceType   TransportServiceType @relation(fields: [serviceTypeId], references: [id])
   supplier      Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  transportContract TransportContract? @relation(fields: [transportContractId], references: [id], onDelete: SetNull)
   toPlace       Place?               @relation("VehicleRateToPlace", fields: [toPlaceId], references: [id])
   vehicle       Vehicle              @relation(fields: [vehicleId], references: [id])
 
   @@index([fromPlaceId])
+  @@index([transportContractId])
   @@index([routeId])
   @@index([serviceTypeId, fromPlaceId, toPlaceId, minPax, maxPax], map: "vehicle_rates_serviceTypeId_fromPlaceId_toPlaceId_minPax_maxPax")
   @@index([serviceTypeId, routeId, minPax, maxPax])
@@ -3430,6 +3497,24 @@ enum TransportServiceClassification {
 enum TouringRoutePricingBasis {
   PER_VEHICLE
   PER_DAY
+}
+
+// Transport contract-regime enums (PR2). Inert until later PRs consume them.
+enum TransportRateRegime {
+  ROUTE_TRANSFER
+  PACKAGE_MIN_FULL_DAY
+}
+
+enum MinimumDayPolicy {
+  INELIGIBLE_UNDER_MIN
+  CHARGE_MINIMUM_DAYS
+}
+
+enum DriverOvernightPolicy {
+  INCLUDED
+  SEPARATE
+  WAIVED
+  NONE
 }
 
 enum ServiceUnitType {
