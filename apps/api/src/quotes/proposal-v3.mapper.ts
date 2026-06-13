@@ -929,6 +929,39 @@ export function buildAccommodationMatrix(hotelOptionSets: ProposalV3HotelOptionS
   };
 }
 
+// Phase P.3X-2 — is this transport item an ACTUAL airport transfer? Detected from
+// the ROUTE (route name / transport label / parsed route-path cities), NEVER from
+// the SupplierService name — many touring-day transport items are attached to a
+// generic "Airport Transfer" service, so the service name is not a reliable signal.
+function isAirportTransferRoute(item: ProposalV3QuoteItem, routePathCities: string[]): boolean {
+  const hay = [
+    item.appliedVehicleRate?.routeName,
+    (item as { transportLabel?: string | null }).transportLabel,
+    ...routePathCities,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return /\b(?:qaia|aqj)\b|\bairport\b/i.test(hay);
+}
+
+// Phase P.3X-2 — resolve a CLIENT-SAFE transport line title. A client-safe route
+// label (touring path, or a client-friendly routeName) wins; otherwise a safe
+// generic title by transfer type. The raw SupplierService name ("Airport Transfer")
+// is never used, so a non-airport touring day never reads "Airport Transfer".
+function resolveTransportClientTitle(item: ProposalV3QuoteItem, touringPathLabel: string): string {
+  if (touringPathLabel && !containsInternalTransportToken(touringPathLabel)) {
+    return touringPathLabel;
+  }
+  const routeName = cleanText(item.appliedVehicleRate?.routeName || '');
+  if (routeName && isClientFriendlyRouteName(routeName) && !containsInternalTransportToken(routeName)) {
+    return routeName;
+  }
+  const routePathCities = parseRoutePathCitiesFromDescription(item.pricingDescription);
+  return isAirportTransferRoute(item, routePathCities)
+    ? prosePhrase(activeProposalLocale, 'transportAirportTitle')
+    : prosePhrase(activeProposalLocale, 'transportTouringTitle');
+}
+
 function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[], currency = 'USD'): ProposalV3DayGroup[] {
   const location = extractDayLocation(day.title, day.dayNumber);
   const grouped = new Map<string, ProposalV3DayGroup['items']>();
@@ -992,6 +1025,17 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
 
     if (isPlaceholderText(title) || isWeakText(title)) {
       title = getFallbackServiceTitle(groupLabel, location);
+    }
+
+    // Phase P.3X-2 — a transport line is titled by its client-safe route label or a
+    // safe generic transfer title, never the raw SupplierService name. This stops a
+    // non-airport touring day (Amman / Jerash / Amman, etc.) from reading
+    // "Airport Transfer"; an actual airport transfer still shows its route /
+    // "Private airport transfer". Applied AFTER the weak/placeholder guard so a
+    // non-Latin localized title (e.g. Arabic) is not discarded as "weak" — the
+    // localized phrase is authoritative for transport lines.
+    if (isTransportItem(item) && !isExternalPackageItem(item)) {
+      title = resolveTransportClientTitle(item, touringPathLabel);
     }
 
     if (isPlaceholderText(description) || isWeakText(description)) {
