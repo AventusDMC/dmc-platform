@@ -5,6 +5,7 @@ import {
   PackageEligibilityShadowService,
   inferOperationalType,
   mapShadowDays,
+  resolveDayInput,
 } from './package-eligibility-shadow.service';
 import { evaluatePackageEligibilityForDays } from './package-eligibility';
 
@@ -35,8 +36,18 @@ function carrier(extra: Record<string, any> = {}) {
     touringRoutePricing: null,
   };
 }
-function day(dayNumber: number, item?: any) {
-  return { dayNumber, dayItems: item ? [{ quoteService: item }] : [] };
+function day(dayNumber: number, item?: any, meta: any = {}) {
+  return {
+    dayNumber,
+    transportDayType: meta.transportDayType ?? null,
+    vehicleRetained: meta.vehicleRetained ?? null,
+    vehicleReleased: meta.vehicleReleased ?? null,
+    inRetainedBlock: meta.inRetainedBlock ?? null,
+    dayItems: item ? [{ quoteService: item }] : [],
+  };
+}
+function p2pItem() {
+  return carrier({ code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER', supplierId: 'S1', vehicleClass: 'Sedan' });
 }
 
 const PKG_CONTRACT = {
@@ -119,6 +130,82 @@ test('flag ON, 3 same supplier+vehicle P2P (no retention signal) → manual-requ
   assert.equal(r!.eligibility.countedFullPackageDays, 0);
   assert.equal(r!.eligibility.manualRequiredDays, 3);
   assert.equal(r!.eligibility.eligible, false);
+  setFlag(false);
+});
+
+// ---- PR6: per-day retention metadata ----
+test('resolveDayInput: contradiction (retained && released) → metadataInvalid, no signals', () => {
+  const r = resolveDayInput({ dayNumber: 1, items: [p2pItem()], metadata: { vehicleRetained: true, vehicleReleased: true } } as any);
+  assert.equal(r.metadataInvalid, true);
+  assert.equal(r.input.retained, undefined);
+  assert.equal(r.input.vehicleReleased, undefined);
+});
+
+test('resolveDayInput: explicit transportDayType overrides inference; invalid value → infer', () => {
+  const over = resolveDayInput({ dayNumber: 1, items: [p2pItem()], metadata: { transportDayType: 'TOURING_ROUTE' } } as any);
+  assert.equal(over.input.operationalType, 'TOURING_ROUTE');
+  const bad = resolveDayInput({ dayNumber: 1, items: [p2pItem()], metadata: { transportDayType: 'NONSENSE' } } as any);
+  assert.equal(bad.input.operationalType, 'POINT_TO_POINT');
+});
+
+test('NULL metadata → inference unchanged (3 touring items eligible)', async () => {
+  setFlag(true);
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, carrier({ touring: true })), day(2, carrier({ touring: true })), day(3, carrier({ touring: true }))], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 3);
+  assert.equal(r!.eligibility.eligible, true);
+  setFlag(false);
+});
+
+test('metadata transportDayType=TOURING_ROUTE on P2P items → counts (eligible)', async () => {
+  setFlag(true);
+  const meta = { transportDayType: 'TOURING_ROUTE' };
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, p2pItem(), meta), day(2, p2pItem(), meta), day(3, p2pItem(), meta)], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 3);
+  assert.equal(r!.eligibility.eligible, true);
+  setFlag(false);
+});
+
+test('metadata vehicleReleased=true → weight 0 (ineligible)', async () => {
+  setFlag(true);
+  const meta = { vehicleReleased: true };
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, p2pItem(), meta), day(2, p2pItem(), meta), day(3, p2pItem(), meta)], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 0);
+  assert.equal(r!.eligibility.eligible, false);
+  setFlag(false);
+});
+
+test('metadata vehicleRetained=true on P2P → counts (eligible)', async () => {
+  setFlag(true);
+  const meta = { vehicleRetained: true };
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, p2pItem(), meta), day(2, p2pItem(), meta), day(3, p2pItem(), meta)], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 3);
+  assert.equal(r!.eligibility.eligible, true);
+  setFlag(false);
+});
+
+test('metadata inRetainedBlock=true on P2P → counts (eligible)', async () => {
+  setFlag(true);
+  const meta = { inRetainedBlock: true };
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, p2pItem(), meta), day(2, p2pItem(), meta), day(3, p2pItem(), meta)], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 3);
+  assert.equal(r!.eligibility.eligible, true);
+  setFlag(false);
+});
+
+test('contradiction retained && released → manual-required, NOT counted', async () => {
+  setFlag(true);
+  const meta = { vehicleRetained: true, vehicleReleased: true };
+  const svc = new PackageEligibilityShadowService(fakePrisma({ days: [day(1, p2pItem(), meta), day(2, p2pItem(), meta), day(3, p2pItem(), meta)], contract: PKG_CONTRACT }));
+  const r = await svc.evaluateQuotePackageEligibilityShadow('q1');
+  assert.equal(r!.eligibility.countedFullPackageDays, 0);
+  assert.equal(r!.eligibility.manualRequiredDays, 3);
+  assert.equal(r!.eligibility.eligible, false);
+  assert.ok(r!.dayPlan.every((d) => d.metadataInvalid === true && d.billedAs === 'manual-required'));
   setFlag(false);
 });
 

@@ -1294,6 +1294,17 @@ model QuoteItineraryDay {
   // the derived value in the builder + proposal grouping. Location metadata
   // only — never touches pricing.
   country              String?
+  // Transport day-classification metadata (PR6 of the contract-regime refactor).
+  // Additive, nullable, METADATA ONLY — never touches live pricing (like `country`).
+  // Read only by the package-eligibility SHADOW path; NULL = current conservative
+  // inference (existing behavior). No DB enum — `transportDayType` is validated against
+  // the OperationalTransportType TS const. Contradictory metadata (vehicleRetained=true
+  // AND vehicleReleased=true) is treated as manual-required/invalid in the shadow, never
+  // auto-counted.
+  transportDayType     String?
+  vehicleRetained      Boolean?
+  vehicleReleased      Boolean?
+  inRetainedBlock      Boolean?
   sortOrder            Int                      @default(0)
   isActive             Boolean                  @default(true)
   createdAt            DateTime                 @default(now())
