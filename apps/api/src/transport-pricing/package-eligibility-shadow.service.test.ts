@@ -209,6 +209,120 @@ test('contradiction retained && released → manual-required, NOT counted', asyn
   setFlag(false);
 });
 
+// ---- PR9: pricing shadow-compare ----
+const PRICE_FLAG = 'TRANSPORT_PACKAGE_PRICING_SHADOW_COMPARE';
+function setPriceFlag(on: boolean) { if (on) process.env[PRICE_FLAG] = 'true'; else delete process.env[PRICE_FLAG]; }
+const ALPHA = 'alpha-supplier-id';
+const PILOT = { id: 'pilot-1', supplierId: ALPHA, vehicleClass: 'Large Bus', currency: 'USD', regime: 'PACKAGE_MIN_FULL_DAY', active: true, minimumFullDays: 3, minimumDayPolicy: 'INELIGIBLE_UNDER_MIN', fullDayRate: 656, halfDayRate: 370, halfDayCountsTowardMin: false, halfDayChargedAsFullDay: false, stationaryCountsTowardMinDays: false, airportTransferIncluded: false };
+
+function pricingFake(opts: { days: any[]; contract?: any; discount?: number }) {
+  return {
+    quoteItineraryDay: { findMany: async () => opts.days },
+    transportContract: { findFirst: async () => opts.contract ?? null },
+    supplier: { findUnique: async () => ({ transportDiscountPercent: opts.discount ?? 25 }) },
+  } as any;
+}
+function costItem(cost: number, meta: any = {}) {
+  return {
+    transportServiceTypeId: meta.touring ? null : 'st1',
+    touringRouteId: meta.touring ? 'tr1' : null,
+    vehicleId: 'V1',
+    finalCost: cost, totalCost: cost, overrideCost: null, useOverride: false,
+    appliedVehicleRate: { supplierId: ALPHA, vehicle: { vehicleClass: 'Large Bus', resolvedSupplierId: ALPHA }, serviceType: meta.code ? { code: meta.code, classification: meta.classification ?? null } : null },
+    touringRoutePricing: null,
+  };
+}
+function costDay(dayNumber: number, cost: number | null, meta: any = {}) {
+  return {
+    dayNumber,
+    transportDayType: meta.transportDayType ?? null,
+    vehicleRetained: meta.vehicleRetained ?? null,
+    vehicleReleased: meta.vehicleReleased ?? null,
+    inRetainedBlock: meta.inRetainedBlock ?? null,
+    dayItems: cost == null ? [] : [{ quoteService: costItem(cost, meta) }],
+  };
+}
+
+test('PR9 flag OFF → pricing shadow returns null', async () => {
+  setPriceFlag(false);
+  const svc = new PackageEligibilityShadowService(pricingFake({ days: [costDay(1, 700, { touring: true })], contract: PILOT }));
+  assert.equal(await svc.evaluateQuotePackagePricingShadow('q1'), null);
+});
+
+test('PR9: 3 full days eligible → net package candidate with supplier discount applied', async () => {
+  setPriceFlag(true);
+  const days = [costDay(1, 700, { touring: true }), costDay(2, 700, { touring: true }), costDay(3, 700, { touring: true })];
+  const svc = new PackageEligibilityShadowService(pricingFake({ days, contract: PILOT, discount: 25 }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, true);
+  assert.equal(r.currentTransportTotal, 2100); // persisted baseline (read-only)
+  assert.equal(r.packageGrossTotal, 1968); // 3 × 656
+  assert.equal(r.supplierDiscountPercent, 25);
+  assert.equal(r.supplierDiscountAmount, 492);
+  assert.equal(r.packageNetTotal, 1476); // 1968 × 0.75
+  assert.equal(r.packageCandidateTotal, 1476);
+  assert.equal(r.difference, -624); // 1476 - 2100
+  assert.equal(r.notApplied, true);
+  assert.ok(r.warnings.includes('standard-large-bus-49-rate-only-not-vip-31-33'));
+  setPriceFlag(false);
+});
+
+test('PR9: 2 days below minimum → no package candidate; baseline still computed', async () => {
+  setPriceFlag(true);
+  const days = [costDay(1, 700, { touring: true }), costDay(2, 700, { touring: true })];
+  const svc = new PackageEligibilityShadowService(pricingFake({ days, contract: PILOT }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, false);
+  assert.equal(r.reason, 'below-minimum');
+  assert.equal(r.packageCandidateTotal, null);
+  assert.equal(r.currentTransportTotal, 1400);
+  setPriceFlag(false);
+});
+
+test('PR9: manual-required candidate days do not count (in excludedDays, no candidate total)', async () => {
+  setPriceFlag(true);
+  const p2p = (n: number) => costDay(n, 700, { code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' });
+  const svc = new PackageEligibilityShadowService(pricingFake({ days: [p2p(1), p2p(2), p2p(3)], contract: PILOT }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, false);
+  assert.equal(r.manualRequiredDays, 3);
+  assert.equal(r.packageCandidateTotal, null);
+  assert.ok(r.excludedDays.every((d: any) => d.reason === 'manual-required'));
+  setPriceFlag(false);
+});
+
+test('PR9: airport-only days do not count by default', async () => {
+  setPriceFlag(true);
+  const air = (n: number) => costDay(n, 200, { code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' });
+  const svc = new PackageEligibilityShadowService(pricingFake({ days: [air(1), air(2), air(3)], contract: PILOT }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, false);
+  assert.ok(r.excludedDays.every((d: any) => d.reason === 'airport'));
+  setPriceFlag(false);
+});
+
+test('PR9: stationary day excluded + warned, not priced', async () => {
+  setPriceFlag(true);
+  const days = [costDay(1, 300, { transportDayType: 'STATIONARY_FULL_DAY' }), costDay(2, 700, { touring: true }), costDay(3, 700, { touring: true }), costDay(4, 700, { touring: true })];
+  const svc = new PackageEligibilityShadowService(pricingFake({ days, contract: PILOT }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.ok(r.warnings.includes('stationary-not-priced-in-pr9'));
+  assert.ok(r.excludedDays.some((d: any) => d.reason === 'stationary' && d.dayNumber === 1));
+  assert.equal(r.packageEligible, true); // 3 touring days still qualify
+  setPriceFlag(false);
+});
+
+test('PR9: no PACKAGE contract → no-package-contract; baseline computed', async () => {
+  setPriceFlag(true);
+  const days = [costDay(1, 700, { touring: true }), costDay(2, 700, { touring: true }), costDay(3, 700, { touring: true })];
+  const svc = new PackageEligibilityShadowService(pricingFake({ days, contract: null }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.reason, 'no-package-contract');
+  assert.equal(r.packageCandidateTotal, null);
+  assert.equal(r.currentTransportTotal, 2100);
+  setPriceFlag(false);
+});
+
 // ---- diagnostic-level: explicit retained 3-day block is eligible (pure path) ----
 test('retained 3-day block is eligible diagnostically (explicit retained)', () => {
   const r = evaluatePackageEligibilityForDays(

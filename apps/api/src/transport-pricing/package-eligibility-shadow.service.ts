@@ -11,7 +11,12 @@ import {
   evaluatePackageEligibility,
   type PackageContractCandidate,
 } from './package-eligibility';
-import { isPackageEligibilityShadowEnabled, PACKAGE_ELIGIBILITY_SHADOW_FLAG } from './transport-feature-flags';
+import {
+  isPackageEligibilityShadowEnabled,
+  PACKAGE_ELIGIBILITY_SHADOW_FLAG,
+  isPackagePricingShadowCompareEnabled,
+  PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
+} from './transport-feature-flags';
 
 // PR5 + PR6 — Package-eligibility SHADOW service (read-only / diagnostic).
 //
@@ -231,6 +236,150 @@ export class PackageEligibilityShadowService {
         : { found: false },
       eligibility,
       dayPlan: adjustedDays.map((c, i) => ({ dayNumber: days[i]?.dayNumber ?? i + 1, metadataInvalid: invalidFlags[i], ...c })),
+    };
+  }
+
+  // PR9 — read-only pricing shadow-compare: route/transfer baseline (persisted) vs package
+  // candidate (net of supplier discount). Returns null when the flag is OFF. NEVER writes,
+  // never recalculates quote costs, never applies the package price.
+  async evaluateQuotePackagePricingShadow(quoteId: string): Promise<any | null> {
+    if (!isPackagePricingShadowCompareEnabled()) return null;
+    const round = (n: number) => Number((Number(n) || 0).toFixed(2));
+
+    const rawDays = await this.prisma.quoteItineraryDay.findMany({
+      where: { quoteId, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+      select: {
+        dayNumber: true, transportDayType: true, vehicleRetained: true, vehicleReleased: true, inRetainedBlock: true,
+        dayItems: {
+          where: { isActive: true },
+          select: {
+            quoteService: {
+              select: {
+                transportServiceTypeId: true, touringRouteId: true, vehicleId: true,
+                finalCost: true, totalCost: true, overrideCost: true, useOverride: true,
+                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
+                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const isTransport = (qs: any) => Boolean(qs.transportServiceTypeId || qs.touringRouteId || qs.vehicleId);
+    const persistedCost = (qs: any) => {
+      const eff = qs.useOverride ? (qs.finalCost ?? qs.overrideCost ?? qs.totalCost) : (qs.finalCost ?? qs.totalCost);
+      return Number(eff) || 0;
+    };
+
+    const days: ShadowDay[] = (rawDays as any[]).map((d) => ({
+      dayNumber: d.dayNumber,
+      metadata: { transportDayType: d.transportDayType, vehicleRetained: d.vehicleRetained, vehicleReleased: d.vehicleReleased, inRetainedBlock: d.inRetainedBlock },
+      items: (d.dayItems || []).map((di: any) => {
+        const qs = di.quoteService || {};
+        const avr = qs.appliedVehicleRate;
+        const trp = qs.touringRoutePricing;
+        const st = avr?.serviceType || trp?.transportServiceType || null;
+        const veh = avr?.vehicle || trp?.vehicle || null;
+        return {
+          transportServiceTypeId: qs.transportServiceTypeId ?? null,
+          touringRouteId: qs.touringRouteId ?? null,
+          vehicleId: qs.vehicleId ?? null,
+          serviceTypeCode: st?.code ?? null,
+          serviceTypeClassification: st?.classification ?? null,
+          vehicleClass: veh?.vehicleClass ?? null,
+          supplierId: avr?.supplierId || veh?.resolvedSupplierId || trp?.supplierId || null,
+        } as ShadowDayItem;
+      }),
+    }));
+    // Per-day persisted route cost (read-only baseline; NO recalculation).
+    const dayRouteCost = (rawDays as any[]).map((d) => (d.dayItems || []).reduce((s: number, di: any) => s + (isTransport(di.quoteService || {}) ? persistedCost(di.quoteService) : 0), 0));
+    const currentTransportTotal = round(dayRouteCost.reduce((a, b) => a + b, 0));
+
+    const { inputs, invalidFlags, primary } = mapShadowDays(days);
+
+    let contractRow: any = null;
+    if (primary.supplierId && primary.vehicleClass) {
+      contractRow = await this.prisma.transportContract.findFirst({ where: { supplierId: primary.supplierId, vehicleClass: primary.vehicleClass, regime: 'PACKAGE_MIN_FULL_DAY', active: true } });
+    }
+    const contractCandidate: PackageContractCandidate | null = contractRow
+      ? { minimumFullDays: contractRow.minimumFullDays ?? 3, minimumDayPolicy: contractRow.minimumDayPolicy ?? undefined, halfDayCountsTowardMin: contractRow.halfDayCountsTowardMin, halfDayChargedAsFullDay: contractRow.halfDayChargedAsFullDay, stationaryCountsTowardMinDays: contractRow.stationaryCountsTowardMinDays, airportTransferIncluded: contractRow.airportTransferIncluded }
+      : null;
+    const policy = contractCandidate
+      ? Object.fromEntries(Object.entries({ halfDayCountsTowardMin: contractCandidate.halfDayCountsTowardMin, halfDayChargedAsFullDay: contractCandidate.halfDayChargedAsFullDay, stationaryCountsTowardMinDays: contractCandidate.stationaryCountsTowardMinDays, airportTransferIncluded: contractCandidate.airportTransferIncluded }).filter(([, v]) => v !== undefined))
+      : {};
+
+    const classified = classifyItinerary(inputs, policy);
+    const adjustedDays: DayClassification[] = classified.days.map((c, i) => invalidFlags[i] ? { ...c, packageDayWeight: 0, countsAsFullPackageDay: false, countsTowardMinimum: false, billedAs: 'manual-required', retentionCandidate: true } : c);
+    const adjusted = { days: adjustedDays, countedFullPackageDays: round(adjustedDays.reduce((s, c) => s + c.packageDayWeight, 0)) };
+    const eligibility = evaluatePackageEligibility(adjusted, contractCandidate);
+
+    // Supplier discount (parity with the net persisted baseline).
+    let supplierDiscountPercent = 0;
+    if (primary.supplierId) {
+      const sup = await this.prisma.supplier.findUnique({ where: { id: primary.supplierId }, select: { transportDiscountPercent: true } });
+      supplierDiscountPercent = Number((sup as any)?.transportDiscountPercent ?? 0) || 0;
+    }
+
+    const fullDayRate = contractRow ? Number(contractRow.fullDayRate ?? 0) || 0 : 0;
+    const halfDayRate = contractRow ? Number(contractRow.halfDayRate ?? 0) || 0 : 0;
+    const fullDayCount = adjustedDays.filter((c) => c.packageDayWeight === 1).length;
+    const halfDayCount = adjustedDays.filter((c) => c.packageDayWeight === 0.5).length;
+
+    // Non-counted transport days keep their persisted route cost (covered in both totals).
+    const excludedDays: any[] = [];
+    adjustedDays.forEach((c, i) => {
+      if (c.packageDayWeight === 0 && c.operationalType !== 'FREE_DAY_NO_VEHICLE' && dayRouteCost[i] > 0) {
+        const reason = c.billedAs === 'manual-required' ? 'manual-required' : c.operationalType.startsWith('STATIONARY') ? 'stationary' : c.operationalType === 'STANDBY_WAITING' ? 'standby' : c.operationalType === 'AIRPORT_TRANSFER' ? 'airport' : 'not-counted';
+        excludedDays.push({ dayNumber: days[i].dayNumber, operationalType: c.operationalType, routeCost: round(dayRouteCost[i]), reason });
+      }
+    });
+    const excludedRouteCost = round(excludedDays.reduce((s, d) => s + d.routeCost, 0));
+
+    let packageGrossTotal: number | null = null;
+    let packageNetTotal: number | null = null;
+    let supplierDiscountAmount: number | null = null;
+    let difference: number | null = null;
+    if (eligibility.eligible) {
+      const packageDaysGross = eligibility.billedAtMinimum
+        ? round((contractCandidate!.minimumFullDays || 0) * fullDayRate)
+        : round(fullDayCount * fullDayRate + halfDayCount * halfDayRate);
+      const packageDaysNet = round(packageDaysGross * (1 - supplierDiscountPercent / 100));
+      supplierDiscountAmount = round(packageDaysGross - packageDaysNet);
+      packageGrossTotal = round(packageDaysGross + excludedRouteCost);
+      packageNetTotal = round(packageDaysNet + excludedRouteCost);
+      difference = round(packageNetTotal - currentTransportTotal);
+    }
+
+    const warnings: string[] = [];
+    if (contractRow) warnings.push('standard-large-bus-49-rate-only-not-vip-31-33');
+    warnings.push('excludes-driver-overnight');
+    if (adjustedDays.some((c) => c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY')) warnings.push('stationary-not-priced-in-pr9');
+
+    return {
+      quoteId,
+      flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
+      currentTransportTotal,
+      packageGrossTotal,
+      supplierDiscountPercent,
+      supplierDiscountAmount,
+      packageNetTotal,
+      packageCandidateTotal: packageNetTotal, // the apples-to-apples (net) comparison total
+      difference,
+      packageEligible: eligibility.eligible,
+      packageContractId: contractRow?.id ?? null,
+      countedFullPackageDays: eligibility.countedFullPackageDays,
+      fullDayCount,
+      halfDayCount,
+      billableDays: eligibility.billedDays,
+      billedAtMinimum: eligibility.billedAtMinimum,
+      manualRequiredDays: eligibility.manualRequiredDays,
+      excludedDays,
+      reason: eligibility.reason,
+      dayPlan: adjustedDays.map((c, i) => ({ dayNumber: days[i]?.dayNumber ?? i + 1, metadataInvalid: invalidFlags[i], ...c })),
+      warnings,
+      notApplied: true,
     };
   }
 }

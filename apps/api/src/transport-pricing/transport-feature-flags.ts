@@ -14,3 +14,12 @@ function readBooleanEnv(name: string): boolean {
 export function isPackageEligibilityShadowEnabled(): boolean {
   return readBooleanEnv('TRANSPORT_PACKAGE_ELIGIBILITY_SHADOW');
 }
+
+// `transport.packagePricingShadowCompare` (PR9) gates the read-only pricing shadow-compare
+// endpoint (route/transfer baseline vs package candidate). Independent of the eligibility
+// flag. OFF (default) → the comparison never runs.
+export const PACKAGE_PRICING_SHADOW_COMPARE_FLAG = 'transport.packagePricingShadowCompare';
+
+export function isPackagePricingShadowCompareEnabled(): boolean {
+  return readBooleanEnv('TRANSPORT_PACKAGE_PRICING_SHADOW_COMPARE');
+}
