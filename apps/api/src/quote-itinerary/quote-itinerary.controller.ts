@@ -15,6 +15,10 @@ type CreateDayBody = {
   title: string;
   notes?: string | null;
   country?: string | null;
+  transportDayType?: string | null;
+  vehicleRetained?: boolean | null;
+  vehicleReleased?: boolean | null;
+  inRetainedBlock?: boolean | null;
   sortOrder?: number | string;
   isActive?: boolean;
 };
@@ -247,6 +251,10 @@ export class QuoteItineraryController {
       title: body.title,
       notes: body.notes,
       country: body.country,
+      transportDayType: body.transportDayType,
+      vehicleRetained: body.vehicleRetained,
+      vehicleReleased: body.vehicleReleased,
+      inRetainedBlock: body.inRetainedBlock,
       sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       isActive: body.isActive,
     };

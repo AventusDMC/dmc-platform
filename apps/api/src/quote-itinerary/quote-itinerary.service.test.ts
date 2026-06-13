@@ -445,3 +445,96 @@ test('removeDay writes the DAY_DELETED audit with dayId null (no FK to the delet
   assert.match(audit.oldValue, /day day-1/); // deleted id preserved for traceability
   assert.equal(audit.actorUserId, (ACTOR as { id: string }).id);
 });
+
+// PR7 — transport day-classification metadata capture via updateDay.
+function createUpdateDayService(existing: any) {
+  const updates: any[] = [];
+  const txClient: any = {
+    quoteItineraryDay: {
+      findMany: async () => [{ id: existing.id, quoteId: existing.quoteId, dayNumber: existing.dayNumber, sortOrder: existing.sortOrder ?? 0 }],
+      update: async ({ data }: any) => { updates.push(data); return { ...existing, ...data }; },
+    },
+    quoteItineraryAuditLog: { create: async () => ({}) },
+  };
+  const prisma: any = {
+    quoteItineraryDay: { findUnique: async () => ({ dayItems: [], poiAssignments: [], ...existing }) },
+    $transaction: async (cb: any) => cb(txClient),
+  };
+  return { service: new QuoteItineraryService(prisma as any), updates };
+}
+const BASE_DAY = { id: 'day-1', quoteId: 'quote-1', dayNumber: 2, title: 'Petra', isActive: true, sortOrder: 1, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null };
+const mainUpdate = (updates: any[]) => updates.find((u) => 'title' in u);
+const ALLOWED_KEYS = new Set(['dayNumber', 'title', 'notes', 'country', 'transportDayType', 'vehicleRetained', 'vehicleReleased', 'inRetainedBlock', 'isActive']);
+
+test('PR7 updateDay: title-only edit leaves metadata untouched (NULL stays NULL, retention not written)', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { title: 'Petra revised' }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.transportDayType, null);
+  assert.equal('vehicleRetained' in m, false); // retention untouched → not written
+});
+
+test('PR7 updateDay: saves transportDayType only', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { transportDayType: 'TOURING_ROUTE' }, ACTOR);
+  assert.equal(mainUpdate(updates).transportDayType, 'TOURING_ROUTE');
+});
+
+test('PR7 updateDay: vehicle retained writes true + clears released/block', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { vehicleRetained: true, vehicleReleased: null, inRetainedBlock: null }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.vehicleRetained, true);
+  assert.equal(m.vehicleReleased, null);
+  assert.equal(m.inRetainedBlock, null);
+});
+
+test('PR7 updateDay: vehicle released writes true + clears retained/block', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { vehicleReleased: true, vehicleRetained: null, inRetainedBlock: null }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.vehicleReleased, true);
+  assert.equal(m.vehicleRetained, null);
+});
+
+test('PR7 updateDay: part of retained block writes true + clears retained/released', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { inRetainedBlock: true, vehicleRetained: null, vehicleReleased: null }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.inRetainedBlock, true);
+  assert.equal(m.vehicleRetained, null);
+});
+
+test('PR7 updateDay: Auto/Unset saves NULLs', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY, transportDayType: 'TOURING_ROUTE', vehicleRetained: true });
+  await service.updateDay('day-1', { transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.transportDayType, null);
+  assert.equal(m.vehicleRetained, null);
+});
+
+test('PR7 updateDay: rejects contradictory retained + released (400)', async () => {
+  const { service } = createUpdateDayService({ ...BASE_DAY });
+  await assert.rejects(() => service.updateDay('day-1', { vehicleRetained: true, vehicleReleased: true }, ACTOR), /cannot both be true/);
+});
+
+test('PR7 updateDay: rejects invalid transportDayType', async () => {
+  const { service } = createUpdateDayService({ ...BASE_DAY });
+  await assert.rejects(() => service.updateDay('day-1', { transportDayType: 'NONSENSE' }, ACTOR), /Invalid transportDayType/);
+});
+
+test('PR7 updateDay: omitted metadata preserved (existing type kept, retention not rewritten)', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY, transportDayType: 'TOURING_ROUTE', vehicleRetained: true });
+  await service.updateDay('day-1', { title: 'x' }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.transportDayType, 'TOURING_ROUTE'); // preserved
+  assert.equal('vehicleRetained' in m, false); // retention untouched, not rewritten
+});
+
+test('PR7 updateDay: writes ONLY day metadata keys (no pricing/total fields)', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { transportDayType: 'POINT_TO_POINT', vehicleRetained: true, vehicleReleased: null, inRetainedBlock: null }, ACTOR);
+  for (const key of Object.keys(mainUpdate(updates))) {
+    assert.ok(ALLOWED_KEYS.has(key), `unexpected write key (possible pricing leak): ${key}`);
+  }
+});
