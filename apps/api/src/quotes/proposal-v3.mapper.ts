@@ -18,6 +18,7 @@ import {
   intlLocale,
   joinDestinations,
   joinProseList,
+  localizePlaceName,
   localizePricingLine,
   localizeSnapshotLabel,
   prosePhrase,
@@ -285,7 +286,12 @@ function summarizeDestinations(destinations: string[]) {
   // Phase 3D.1N — localized connector ("and"/"e"/"y"/"و"); English output is
   // byte-identical to the prior hardcoded join. The cover subtitle keeps its
   // language-neutral middle-dot join (formatDestinationSubtitle), unchanged.
-  return joinDestinations(activeProposalLocale, cleaned);
+  // Phase P.3X-5D — localize selected place names (Dead Sea/Mount Nebo/Bethany)
+  // at this controlled display point; EN passes through unchanged.
+  return joinDestinations(
+    activeProposalLocale,
+    cleaned.map((destination) => localizePlaceName(activeProposalLocale, destination)),
+  );
 }
 
 function formatDestinationSubtitle(destinations: string[]) {
@@ -297,7 +303,8 @@ function formatDestinationSubtitle(destinations: string[]) {
         .filter((destination) => destination && !containsInternalTransportToken(destination)),
     ),
   );
-  return cleaned.join(' · ');
+  // Phase P.3X-5D — localize place names; the language-neutral middle-dot join is unchanged.
+  return cleaned.map((destination) => localizePlaceName(activeProposalLocale, destination)).join(' · ');
 }
 
 function isGenericRouteLabel(value: string | null | undefined) {
@@ -837,7 +844,8 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
       // Phase 3D.1L — prefer the hotel's own city; fall back to the day's derived
       // location only when the hotel has no city (so e.g. a Petra hotel on a "Dana"
       // day shows Location: Petra, not Dana).
-      const location = cleanText(item.hotel?.city || '') || dayLocation;
+      // Phase P.3X-5D — localize the accommodation city for non-English proposals.
+      const location = localizePlaceName(activeProposalLocale, cleanText(item.hotel?.city || '') || dayLocation);
       rows.push({
         dayLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
         hotelName: cleanText(item.hotel?.name || item.service.name) || 'Accommodation details to be confirmed',
@@ -915,7 +923,9 @@ function buildHotelOptionSets(quote: ProposalV3Quote): ProposalV3HotelOptionSet[
 }
 
 function getHotelOptionCity(option: ProposalV3HotelOptionSet['options'][number]) {
-  return cleanText(option.city || '') || 'City to be confirmed';
+  // Phase P.3X-5D — localize the accommodation-matrix city for non-English
+  // proposals. The mapping is deterministic, so it remains a stable grouping key.
+  return localizePlaceName(activeProposalLocale, cleanText(option.city || '')) || 'City to be confirmed';
 }
 
 function sortAccommodationCities(left: string, right: string) {
@@ -1549,7 +1559,10 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const assignedDayIds = new Set(daySources.map((day) => day.id));
   const activePlannerItemIds = new Set(daySources.flatMap((day) => day.items.map((item) => item.id)));
   const days = daySources.map((day) => {
-    const location = extractDayLocation(day.title, day.dayNumber);
+    // Phase P.3X-5D — the generated day-location label is a controlled display
+    // point; localize selected place names (Dead Sea/Mount Nebo/Bethany). The
+    // raw operator-authored day.title is NOT localized (see title below).
+    const location = localizePlaceName(activeProposalLocale, extractDayLocation(day.title, day.dayNumber));
     const dayItems = day.items.filter((item) => !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)));
     // Phase 3B.2 — day-summary precedence:
     //   1) composed POI narrative (when the day has usable POI assignments)
@@ -1565,8 +1578,9 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     // (the hotel's own city), not the day-title location. A "Dana" day whose
     // hotel is in Petra / Wadi Musa must read "Overnight: Petra / Wadi Musa".
     const overnightHotelItem = dayItems.find((item) => isHotelItem(item));
+    // Phase P.3X-5D — localize the overnight badge city (controlled display point).
     const overnightLocation = overnightHotelItem
-      ? cleanText(overnightHotelItem.hotel?.city || '') || location
+      ? localizePlaceName(activeProposalLocale, cleanText(overnightHotelItem.hotel?.city || '')) || location
       : null;
 
     return {
@@ -1794,7 +1808,12 @@ export function buildDeterministicHighlights(
   for (const day of days) {
     const destination = extractDayLocation(day.title, day.dayNumber);
     if (destination && !/^Destination\s+\d+$/i.test(destination)) {
-      pushHighlight(proseTemplate(activeProposalLocale, 'riTimeInProgram', { dest: destination }));
+      // Phase P.3X-5D — localize the cover-highlight destination label.
+      pushHighlight(
+        proseTemplate(activeProposalLocale, 'riTimeInProgram', {
+          dest: localizePlaceName(activeProposalLocale, destination),
+        }),
+      );
     }
     if (highlights.size >= 2) {
       break;

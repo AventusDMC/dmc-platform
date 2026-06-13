@@ -450,6 +450,32 @@ export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRA
   return entry[locale] || entry.en;
 }
 
+// ---------------------------------------------------------------------------
+// Phase P.3X-5D — controlled destination/place DISPLAY-name localization.
+// A small, curated dictionary of place names that surface in client-facing
+// proposal copy (cover/journey destination list, route/destination summary,
+// overnight badge city, accommodation city, generated day-location label).
+// English is returned byte-identical (short-circuit). Only EXACT, whole-string
+// matches (trimmed, case-insensitive) are localized — this is deliberately NOT
+// a blanket substring replacement, so raw day notes and arbitrary free text are
+// never rewritten. Names NOT listed here (Amman, Jerash, Madaba, Petra,
+// Wadi Rum, Wadi Musa, QAIA, …) pass through unchanged for now.
+// Translations are human-authored, not machine-translated.
+// ---------------------------------------------------------------------------
+const PLACE_DISPLAY_NAMES: Record<string, Record<ProposalLocale, string>> = {
+  'dead sea': { en: 'Dead Sea', pt: 'Mar Morto', es: 'Mar Muerto', ar: 'البحر الميت' },
+  'mount nebo': { en: 'Mount Nebo', pt: 'Monte Nebo', es: 'Monte Nebo', ar: 'جبل نيبو' },
+  bethany: { en: 'Bethany', pt: 'Betânia', es: 'Betania', ar: 'المغطس' },
+};
+
+export function localizePlaceName(locale: ProposalLocale, value: string | null | undefined): string {
+  const raw = String(value ?? '');
+  // English is unchanged; empty/whitespace passes through untouched.
+  if (locale === 'en' || !raw.trim()) return raw;
+  const entry = PLACE_DISPLAY_NAMES[raw.trim().toLowerCase()];
+  return entry ? entry[locale] || entry.en : raw;
+}
+
 // Sentence templates. {token} placeholders are substituted at render time.
 const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   // Cover intro
