@@ -20,6 +20,7 @@ import {
   joinProseList,
   localizePlaceName,
   localizeStructuralDayTitle,
+  localizeServiceDescriptor,
   localizePricingLine,
   localizeSnapshotLabel,
   prosePhrase,
@@ -1152,6 +1153,13 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       hasInternalOperationalDescription(description)
     ) {
       description = null;
+    }
+
+    // Phase P.3X-5F — localize the client-facing descriptor suffix (", Entrance
+    // fee." → ", Entrada.", etc.) for non-English proposals. Only exact descriptor
+    // comma-segments change; proper names are byte-preserved and EN is unchanged.
+    if (description) {
+      description = localizeServiceDescriptor(activeProposalLocale, description);
     }
 
     items.push({

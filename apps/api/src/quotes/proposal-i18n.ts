@@ -571,6 +571,44 @@ export function localizeStructuralDayTitle(locale: ProposalLocale, title: string
   return raw;
 }
 
+// ---------------------------------------------------------------------------
+// Phase P.3X-5F — client-facing service DESCRIPTOR-suffix localization.
+// Entrance/ticket/activity items carry a machine-built pricingDescription ending
+// in an English classification suffix ("… | Entrance fee" → cleanText →
+// "…, Entrance fee."). That English suffix surfaced in ES/PT/AR proposal service
+// cards (P.3X-QA1 B7). This localizes ONLY a whole comma-segment that is exactly
+// one of the known descriptor tokens — proper service/place NAME segments (which
+// are never one of these tokens) pass through untouched, and there is NO
+// substring replacement. English short-circuits → byte-identical. Internal tokens
+// (PER_GROUP / Capacity / Required units / operational / …) are NOT in this map
+// and are already dropped upstream (P.3X-5C / P.3X-5C.1), so none can reappear.
+// ---------------------------------------------------------------------------
+const SERVICE_DESCRIPTOR_SUFFIX: Record<string, Record<ProposalLocale, string>> = {
+  'entrance fee': { en: 'Entrance fee', es: 'Entrada', pt: 'Entrada', ar: 'رسوم الدخول' },
+  'entrance fees': { en: 'Entrance fees', es: 'Entradas', pt: 'Entradas', ar: 'رسوم الدخول' },
+  activity: { en: 'Activity', es: 'Actividad', pt: 'Atividade', ar: 'نشاط' },
+  experience: { en: 'Experience', es: 'Experiencia', pt: 'Experiência', ar: 'تجربة' },
+  ticket: { en: 'Ticket', es: 'Entrada', pt: 'Bilhete', ar: 'تذكرة' },
+};
+
+export function localizeServiceDescriptor(locale: ProposalLocale, text: string | null | undefined): string {
+  const raw = String(text ?? '');
+  // English byte-identical; empty passes through unchanged.
+  if (locale === 'en' || !raw.trim()) return raw;
+  // cleanText already collapsed any " | " into ", "; localize each comma-segment
+  // that is EXACTLY a known descriptor token (ignoring a trailing period), then
+  // re-join with ", " so non-matched segments (proper names) are byte-preserved.
+  return raw
+    .split(', ')
+    .map((segment) => {
+      const trailing = /\.\s*$/.test(segment) ? '.' : '';
+      const core = segment.replace(/\.\s*$/, '').trim();
+      const entry = SERVICE_DESCRIPTOR_SUFFIX[core.toLowerCase()];
+      return entry ? `${entry[locale] || entry.en}${trailing}` : segment;
+    })
+    .join(', ');
+}
+
 // Sentence templates. {token} placeholders are substituted at render time.
 const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   // Cover intro
