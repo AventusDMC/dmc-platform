@@ -6,6 +6,8 @@ import {
   inferOperationalType,
   mapShadowDays,
   resolveDayInput,
+  computePackageAllowlistDecision,
+  PACKAGE_VEHICLE_ALLOWLIST,
 } from './package-eligibility-shadow.service';
 import { evaluatePackageEligibilityForDays } from './package-eligibility';
 
@@ -671,6 +673,99 @@ test('PR11A: excluded transfer day (airport) retained — not part of the counte
   assert.equal(r.countedCost, 2100);          // airport 200 excluded from counted base
   assert.equal(r.previousTransportTotal, 2100);
   assert.equal(r.costDelta, -624);            // unchanged by the retained airport day
+});
+
+// ---- PR11B-2A: vehicle-aware allowlist DIAGNOSTIC (read-only; does NOT enforce live apply) ----
+const REAL_PILOT = '66f5de06-28df-426c-90b8-ffaa01ed5c5f';
+const LARGE49_ID = '6d575442-05fd-4cf6-bd22-5e8a0ee12303';
+const VIP_ID = '49c5fd5d-6abe-4633-a859-53cb35a04a07';
+const GRANDSTAR_ID = '94c1a79b-7039-41d2-8ce9-d8248b5ce880';
+const cv = (vehicleId: string | null, vehicleName: string | null, supplierId: string | null = ALPHA) => ({ vehicleId, vehicleName, supplierId });
+
+test('PR11B-2A allowlist: constant pins pilot contract to Large 49 only', () => {
+  assert.deepEqual(PACKAGE_VEHICLE_ALLOWLIST[REAL_PILOT], [LARGE49_ID]);
+});
+
+test('PR11B-2A allowlist: pilot + Large 49 → allowed', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(LARGE49_ID, 'Large 49'), cv(LARGE49_ID, 'Large 49'), cv(LARGE49_ID, 'Large 49')] });
+  assert.equal(d.allowed, true); assert.equal(d.reason, 'allowed'); assert.deepEqual(d.blockers, []);
+  assert.deepEqual(d.resolvedVehicleIds, [LARGE49_ID]); assert.deepEqual(d.allowedVehicleIds, [LARGE49_ID]);
+});
+
+test('PR11B-2A allowlist: pilot + VIP 31-33 → vehicle-not-allowlisted + vip-or-grand-star', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(VIP_ID, 'Large VIP 31-33'), cv(VIP_ID, 'Large VIP 31-33'), cv(VIP_ID, 'Large VIP 31-33')] });
+  assert.equal(d.allowed, false); assert.equal(d.reason, 'vehicle-not-allowlisted');
+  assert.ok(d.blockers.includes('vehicle-not-allowlisted')); assert.ok(d.blockers.includes('vip-or-grand-star-not-allowed'));
+});
+
+test('PR11B-2A allowlist: pilot + Grand Star → vehicle-not-allowlisted + vip-or-grand-star', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(GRANDSTAR_ID, 'Mercedes Grand Star 49 Pax'), cv(GRANDSTAR_ID, 'Mercedes Grand Star 49 Pax'), cv(GRANDSTAR_ID, 'Mercedes Grand Star 49 Pax')] });
+  assert.equal(d.allowed, false); assert.ok(d.blockers.includes('vehicle-not-allowlisted')); assert.ok(d.blockers.includes('vip-or-grand-star-not-allowed'));
+});
+
+test('PR11B-2A allowlist: non-allowlisted contract → not-allowlisted-contract', () => {
+  const d = computePackageAllowlistDecision({ contractId: 'some-other-contract', contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(LARGE49_ID, 'Large 49')] });
+  assert.equal(d.allowed, false); assert.equal(d.reason, 'not-allowlisted-contract'); assert.deepEqual(d.allowedVehicleIds, []);
+});
+
+test('PR11B-2A allowlist: missing vehicle id → missing-vehicle-id', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(LARGE49_ID, 'Large 49'), cv(null, null)] });
+  assert.equal(d.allowed, false); assert.ok(d.blockers.includes('missing-vehicle-id'));
+});
+
+test('PR11B-2A allowlist: mixed vehicles → mixed-vehicles', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(LARGE49_ID, 'Large 49'), cv(VIP_ID, 'Large VIP 31-33')] });
+  assert.equal(d.allowed, false); assert.ok(d.blockers.includes('mixed-vehicles'));
+});
+
+test('PR11B-2A allowlist: mixed suppliers → mixed-suppliers', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'USD', countedVehicles: [cv(LARGE49_ID, 'Large 49', 'alpha'), cv(LARGE49_ID, 'Large 49', 'other-supplier')] });
+  assert.equal(d.allowed, false); assert.ok(d.blockers.includes('mixed-suppliers'));
+});
+
+test('PR11B-2A allowlist: cross-currency → cross-currency', () => {
+  const d = computePackageAllowlistDecision({ contractId: REAL_PILOT, contractCurrency: 'USD', quoteCurrency: 'JOD', countedVehicles: [cv(LARGE49_ID, 'Large 49')] });
+  assert.equal(d.allowed, false); assert.ok(d.blockers.includes('cross-currency'));
+});
+
+// integration: shadow response carries the allowlist decision
+const REAL_PILOT_CONTRACT = { ...PILOT, id: REAL_PILOT };
+function vehDay(n: number, vehId: string, vehName: string) {
+  const qs = { transportServiceTypeId: null, touringRouteId: 'tr1', vehicleId: vehId, finalCost: 700, totalCost: 700, overrideCost: null, useOverride: false,
+    appliedVehicleRate: { supplierId: ALPHA, vehicle: { id: vehId, name: vehName, vehicleClass: 'Large Bus', resolvedSupplierId: ALPHA }, serviceType: { code: 'TOURING_ROUTE', classification: null } }, touringRoutePricing: null };
+  return { dayNumber: n, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null, dayItems: [{ quoteService: qs }] };
+}
+function allowlistShadowFake(days: any[], contract: any, quoteCurrency = 'USD') {
+  return { quoteItineraryDay: { findMany: async () => days }, transportContract: { findFirst: async () => contract }, supplier: { findUnique: async () => ({ transportDiscountPercent: 25 }) }, quote: { findUnique: async () => ({ quoteCurrency }) } } as any;
+}
+
+test('PR11B-2A shadow: includes allowlist block — Large 49 → allowed', async () => {
+  setPriceFlag(true); delete process.env[SEL_FLAG];
+  const svc = new PackageEligibilityShadowService(allowlistShadowFake([vehDay(1, LARGE49_ID, 'Large 49'), vehDay(2, LARGE49_ID, 'Large 49'), vehDay(3, LARGE49_ID, 'Large 49')], REAL_PILOT_CONTRACT));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, true); // shadow numbers unaffected (live behavior parity)
+  assert.equal(r.notApplied, true);
+  assert.ok(r.allowlist);
+  assert.equal(r.allowlist.allowed, true);
+  assert.equal(r.allowlist.reason, 'allowed');
+  assert.equal(r.allowlist.contractId, REAL_PILOT);
+  assert.deepEqual(r.allowlist.resolvedVehicleIds, [LARGE49_ID]);
+  assert.deepEqual(r.allowlist.allowedVehicleIds, [LARGE49_ID]);
+  assert.ok(r.allowlist.vehicleNames.includes('Large 49'));
+  assert.deepEqual(r.allowlist.blockers, []);
+  setPriceFlag(false);
+});
+
+test('PR11B-2A shadow: includes allowlist block — VIP 31-33 → blocked (conflation surfaced)', async () => {
+  setPriceFlag(true); delete process.env[SEL_FLAG];
+  const svc = new PackageEligibilityShadowService(allowlistShadowFake([vehDay(1, VIP_ID, 'Large VIP 31-33'), vehDay(2, VIP_ID, 'Large VIP 31-33'), vehDay(3, VIP_ID, 'Large VIP 31-33')], REAL_PILOT_CONTRACT));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, true); // eligibility unchanged; only the allowlist diagnostic flags it
+  assert.equal(r.allowlist.allowed, false);
+  assert.ok(r.allowlist.blockers.includes('vehicle-not-allowlisted'));
+  assert.ok(r.allowlist.blockers.includes('vip-or-grand-star-not-allowed'));
+  assert.deepEqual(r.allowlist.resolvedVehicleIds, [VIP_ID]);
+  setPriceFlag(false);
 });
 
 // ---- diagnostic-level: explicit retained 3-day block is eligible (pure path) ----
