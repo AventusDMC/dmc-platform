@@ -680,7 +680,14 @@ const INTERNAL_PRODUCT_TITLE_MARKERS = /\b(?:archived|variant|source|operational
 // DESCRIPTION. Narrower than the title guard — bare "source"/"variant" are
 // allowed in prose (e.g. "source of the Jordan River"); only the operational
 // signatures and the "archived"/"variant source" markers are rejected.
-const INTERNAL_OPERATIONAL_DESC_MARKERS = /\boperational\b|max(?:imum)?\s*capacity|capacity\s*per\s*(?:jeep|vehicle|unit|person|pax)|duration\s*options|\barchived\b|\bvariant\s+source\b/i;
+// Phase P.3X-5C.1 — also reject the activity-rate / capacity / unit metadata that
+// a machine-built activity pricingDescription emits ("… | Activity | PER_GROUP |
+// Capacity 6 pax/unit | Required units 1 | 120 minutes"; cleanText turns the " | "
+// separators into commas, so hasInternalServiceDescriptor no longer catches it).
+// Matching ANY token drops the WHOLE descriptor (so "120 minutes" goes with it);
+// a clean prose description with no rate-basis enum / "pax/unit" / "Required units"
+// / "rate|pricing basis" / "Capacity N pax" is untouched (e.g. a plain "120 minutes").
+const INTERNAL_OPERATIONAL_DESC_MARKERS = /\boperational\b|max(?:imum)?\s*capacity|capacity\s*per\s*(?:jeep|vehicle|unit|person|pax)|duration\s*options|\barchived\b|\bvariant\s+source\b|PER_(?:GROUP|PERSON|VEHICLE)|\bcapacity\s+\d+\s*pax\b|pax\s*\/\s*unit|\brequired\s+units?\b|\b(?:rate|pricing)\s*basis\b/i;
 
 function hasInternalProductTitle(text?: string | null): boolean {
   return Boolean(text) && INTERNAL_PRODUCT_TITLE_MARKERS.test(String(text));
