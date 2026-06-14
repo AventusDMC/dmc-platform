@@ -2297,10 +2297,21 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       })),
     })),
   };
-  // Phase P.3X-5E-2.1 — day notes from the SAME planner-vs-legacy source the proposal
-  // exports from (readinessQuote.itineraries), for the non-blocking export-language
-  // advisory in ProposalDocumentActions. Read-only; never sent to the backend.
-  const proposalDayNotes = readinessQuote.itineraries.map((day) => day.description ?? null);
+  // Phase P.3X-5E-2.1 / 5E-4C — day notes (+ notesLanguage metadata) from the SAME
+  // planner-vs-legacy source the proposal exports from, for the non-blocking export-
+  // language advisory in ProposalDocumentActions. notesLanguage comes from the
+  // already-loaded quote.quoteItineraryDays (findOne already returns it — no extra
+  // fetch / no backend change); legacy itinerary days have no planner id → unknown.
+  // Read-only; never sent to the backend.
+  const notesLanguageByDayId = new Map<string, string | null>(
+    ((quote as { quoteItineraryDays?: Array<{ id: string; notesLanguage?: string | null }> }).quoteItineraryDays ?? []).map(
+      (day) => [day.id, day.notesLanguage ?? null],
+    ),
+  );
+  const proposalDayNotes = readinessQuote.itineraries.map((day) => ({
+    notes: day.description ?? null,
+    notesLanguage: notesLanguageByDayId.get(day.id) ?? null,
+  }));
   const tripSummary = getValidatedTripSummary({
     quoteTitle: quote.title,
     quoteDescription: quote.description,

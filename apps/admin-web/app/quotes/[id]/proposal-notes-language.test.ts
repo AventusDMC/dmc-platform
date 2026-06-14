@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { detectNotesLanguageMismatch, proposalLanguageEnglishName } from './proposal-notes-language';
+import { detectNotesLanguageMismatch, evaluateNotesLanguageWarning, proposalLanguageEnglishName } from './proposal-notes-language';
 
 // Phase P.3X-5E-2.1 — non-blocking export notes-language advisory.
 
@@ -75,17 +75,73 @@ function readComponentSource(): string {
 
 describe('ProposalDocumentActions advisory wiring', () => {
   const src = readComponentSource();
-  test('uses the detector and renders an advisory note', () => {
-    assert.match(src, /detectNotesLanguageMismatch\(dayNotes, language\)/, 'computes the advisory from selected language + day notes');
+  test('uses the notesLanguage-aware evaluator and renders an advisory note', () => {
+    assert.match(src, /evaluateNotesLanguageWarning\(dayNotes, language\)/, 'computes the advisory from selected language + day notes/notesLanguage');
     assert.match(src, /role="note"/, 'advisory is a non-blocking note');
     assert.match(src, /Route Planner/, 'points the operator to the Route Planner workflow');
   });
   test('remains non-blocking: export button has no warning-driven disable', () => {
     // The only disable is the in-flight download guard, never the warning.
     assert.match(src, /disabled=\{isDownloading\}/, 'export button disabled only while downloading');
-    assert.ok(!/disabled=\{[^}]*showNotesLanguageWarning/.test(src), 'warning must not disable any control');
+    assert.ok(!/disabled=\{[^}]*notesWarning/.test(src), 'warning must not disable any control');
   });
   test('still a read-only view switch — no mutations', () => {
     assert.ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/.test(src), 'must not POST/PUT/PATCH/DELETE');
+  });
+});
+
+describe('evaluateNotesLanguageWarning — notesLanguage-first (P.3X-5E-4C)', () => {
+  const day = (notes: string | null, notesLanguage: string | null) => ({ notes, notesLanguage });
+
+  test('1. notesLanguage=en + selected es → warning (explicit, names English)', () => {
+    const w = evaluateNotesLanguageWarning([day('Overnight Amman.', 'en')], 'es');
+    assert.equal(w.warn, true);
+    assert.equal(w.mode, 'explicit');
+    if (w.warn && w.mode === 'explicit') assert.equal(w.fromLanguage, 'en');
+  });
+  test('2. notesLanguage=es + selected es → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('Noche en Amman.', 'es')], 'es'), { warn: false });
+  });
+  test('3. notesLanguage=es + selected en → warning (fires even for English selection)', () => {
+    const w = evaluateNotesLanguageWarning([day('Noche en Amman.', 'es')], 'en');
+    assert.equal(w.warn, true);
+    if (w.warn && w.mode === 'explicit') assert.equal(w.fromLanguage, 'es');
+  });
+  test('4. notesLanguage=ar + selected ar → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('المبيت في عمّان.', 'ar')], 'ar'), { warn: false });
+  });
+  test('5. notesLanguage=ar + selected es → warning', () => {
+    assert.equal(evaluateNotesLanguageWarning([day('x', 'ar')], 'es').warn, true);
+  });
+  test('6. notesLanguage=null + English notes + selected es → heuristic warning (generic)', () => {
+    const w = evaluateNotesLanguageWarning([day('Meet & assist at QAIA, transfer to Amman.', null)], 'es');
+    assert.equal(w.warn, true);
+    assert.equal(w.mode, 'generic');
+  });
+  test('7. notesLanguage=null + Spanish-looking notes + selected es → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('Visita de Petra, noche en Petra.', null)], 'es'), { warn: false });
+  });
+  test('8. notesLanguage=null + empty notes → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('', null), day(null, null)], 'es'), { warn: false });
+  });
+  test('9. proper-noun-only note "Visit Petra" stays below threshold → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('Visit Petra', null)], 'es'), { warn: false });
+  });
+
+  test('mixed explicit languages → generic warning', () => {
+    const w = evaluateNotesLanguageWarning([day('x', 'en'), day('y', 'pt')], 'es');
+    assert.equal(w.warn, true);
+    assert.equal(w.mode, 'generic');
+  });
+  test('explicit es-day matches + a null English-looking day → generic (heuristic contributes)', () => {
+    const w = evaluateNotesLanguageWarning(
+      [day('Noche en Petra.', 'es'), day('Meet & assist at QAIA, transfer to Amman.', null)],
+      'es',
+    );
+    assert.equal(w.warn, true);
+    assert.equal(w.mode, 'generic');
+  });
+  test('English selection + all-English explicit days → no warning', () => {
+    assert.deepEqual(evaluateNotesLanguageWarning([day('Overnight Amman.', 'en')], 'en'), { warn: false });
   });
 });
