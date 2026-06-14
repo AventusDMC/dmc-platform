@@ -522,6 +522,15 @@ export function localizeStructuralDayTitle(locale: ProposalLocale, title: string
   if (locale === 'en' || !raw.trim()) return raw;
   const trimmed = raw.trim();
 
+  // Phase P.3X-5E-1.1 — a BARE single controlled place-name title (exact whole-title
+  // match) localizes via localizePlaceName, so a "Dead Sea" day heading reads
+  // "Mar Muerto" like the other controlled display points. localizePlaceName is a
+  // no-op for non-controlled names (Amman/Petra/…) and for any multi-word free-form
+  // title ("Free day at the Dead Sea"), so only the exact controlled tokens change;
+  // everything else falls through to the structural branches below / stays raw.
+  const localizedWhole = localizePlaceName(locale, trimmed);
+  if (localizedWhole !== trimmed) return localizedWhole;
+
   // Arrival [<place>] — e.g. "Arrival Amman" → "Llegada a Amman"; bare "Arrival" → "Llegada".
   let m = trimmed.match(/^arrival\b[\s:–—-]*(.*)$/i);
   if (m) {
