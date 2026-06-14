@@ -124,8 +124,31 @@ export type PackageEligibilityShadowResult = {
   dayPlan: ShadowDayPlanEntry[];
 };
 
+// PR11A — result of the live-apply decision. `apply:false` carries a `reason` (used for logs /
+// fall-back to existing pricing). `apply:true` carries the total-level deltas + diagnostics.
+export type LivePackageApplyResult = {
+  apply: boolean;
+  reason: string | null;
+  costDelta: number;
+  sellDelta: number;
+  contractId?: string;
+  countedCost?: number;
+  countedSell?: number;
+  packageNet?: number;
+  weightedMarkupPercent?: number;
+  supplierDiscountPercent?: number;
+  previousTransportTotal?: number;
+  appliedTransportTotal?: number;
+  warnings?: string[];
+};
+
 @Injectable()
 export class PackageEligibilityShadowService {
+  // PR11A pilot pin — apply live package pricing ONLY for this single contract id (Alpha Large
+  // Bus USD). Pinning by id (not supplier+class+currency) avoids the unresolved Alpha Large Bus
+  // vs VIP 31-33 ambiguity. Broader activation is PR11B.
+  static readonly PILOT_PACKAGE_CONTRACT_ID = '66f5de06-28df-426c-90b8-ffaa01ed5c5f';
+
   constructor(private readonly prisma: PrismaService) {}
 
   async evaluateQuotePackageEligibilityShadow(quoteId: string): Promise<PackageEligibilityShadowResult | null> {
@@ -544,6 +567,187 @@ export class PackageEligibilityShadowService {
       transportSelectionAt: at,
       transportSelectionByUserId: by,
       notApplied: true,
+    };
+  }
+
+  // PR11A — decide whether a saved PACKAGE selection may be applied LIVE to this quote, and by
+  // how much (total-level deltas). Pure decision + math; performs NO writes. The caller
+  // (recalculateQuoteTotals) only invokes this when the live-apply flag is ON, and applies the
+  // returned deltas at total-assembly time without mutating any QuoteItem. Every gate falls back
+  // to `apply:false` (existing pricing) with a reason. Reuses the exact shadow classification +
+  // eligibility + pricing logic so "preview" equals "applied".
+  async computeQuotePackageLiveApply(
+    quoteId: string,
+    opts: { pricingIsSlab?: boolean; recalcItemIds?: Set<string> } = {},
+  ): Promise<LivePackageApplyResult> {
+    const round = (n: number) => Number((Number(n) || 0).toFixed(2));
+    const block = (reason: string): LivePackageApplyResult => ({ apply: false, reason, costDelta: 0, sellDelta: 0 });
+
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: { quoteCurrency: true, excursionPackageRate: true, selectedTransportPricingOption: true, selectedTransportContractId: true },
+    });
+    if (!quote) return block('quote-not-found');
+
+    const option = quote.selectedTransportPricingOption ?? null;
+    if (option === null) return block('no-selection');
+    if (option === 'ROUTE_TRANSFER') return block('route-selected');
+    if (option !== 'PACKAGE_MIN_FULL_DAY') return block('unknown-option');
+
+    // Strict pilot pin by contract id (D6). Anything else → existing pricing.
+    if (quote.selectedTransportContractId !== PackageEligibilityShadowService.PILOT_PACKAGE_CONTRACT_ID) return block('not-pilot-contract');
+    // SLAB sell is slab-driven (decoupled from item costs); a weighted-markup sell delta is
+    // meaningless there → not supported in PR11A.
+    if (opts.pricingIsSlab) return block('slab-mode-not-supported');
+    // Avoid double-charging against the legacy full-day/free-mileage mechanism.
+    if (quote.excursionPackageRate) return block('overlap-excursion-package-rate');
+
+    const contract: any = await this.prisma.transportContract.findFirst({ where: { id: quote.selectedTransportContractId } });
+    if (!contract || contract.active !== true) return block('contract-inactive-or-missing');
+    if (contract.regime !== 'PACKAGE_MIN_FULL_DAY') return block('contract-wrong-regime');
+    if (contract.currency !== 'USD') return block('contract-not-usd');
+    if ((quote.quoteCurrency ?? null) !== contract.currency) return block('cross-currency');
+
+    // Days with persisted cost + sell + class/supplier/classification (same join the totals use).
+    const rawDays: any[] = await this.prisma.quoteItineraryDay.findMany({
+      where: { quoteId, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+      select: {
+        dayNumber: true, transportDayType: true, vehicleRetained: true, vehicleReleased: true, inRetainedBlock: true,
+        dayItems: {
+          where: { isActive: true },
+          select: {
+            quoteService: {
+              select: {
+                id: true, optionId: true, transportServiceTypeId: true, touringRouteId: true, vehicleId: true,
+                finalCost: true, totalCost: true, totalSell: true, overrideCost: true, useOverride: true,
+                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
+                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const isTransport = (qs: any) => Boolean(qs.transportServiceTypeId || qs.touringRouteId || qs.vehicleId);
+    const lineCost = (qs: any) => { const eff = qs.useOverride ? (qs.finalCost ?? qs.overrideCost ?? qs.totalCost) : (qs.finalCost ?? qs.totalCost); return Number(eff) || 0; };
+    const lineSell = (qs: any) => Number(qs.totalSell) || 0;
+
+    const days: ShadowDay[] = rawDays.map((d) => ({
+      dayNumber: d.dayNumber,
+      metadata: { transportDayType: d.transportDayType, vehicleRetained: d.vehicleRetained, vehicleReleased: d.vehicleReleased, inRetainedBlock: d.inRetainedBlock },
+      items: (d.dayItems || []).map((di: any) => {
+        const qs = di.quoteService || {};
+        const avr = qs.appliedVehicleRate; const trp = qs.touringRoutePricing;
+        const st = avr?.serviceType || trp?.transportServiceType || null;
+        const veh = avr?.vehicle || trp?.vehicle || null;
+        return {
+          transportServiceTypeId: qs.transportServiceTypeId ?? null,
+          touringRouteId: qs.touringRouteId ?? null,
+          vehicleId: qs.vehicleId ?? null,
+          serviceTypeCode: st?.code ?? null,
+          serviceTypeClassification: st?.classification ?? null,
+          vehicleClass: veh?.vehicleClass ?? null,
+          supplierId: avr?.supplierId || veh?.resolvedSupplierId || trp?.supplierId || null,
+        } as ShadowDayItem;
+      }),
+    }));
+
+    // Per-day persisted transport cost/sell + add-on detection + day-membership check.
+    const dayTransport = rawDays.map((d) => {
+      let cost = 0, sell = 0, hasAddOn = false, nonRecalcItem = false;
+      for (const di of (d.dayItems || [])) {
+        const qs = di.quoteService || {};
+        if (!isTransport(qs)) continue;
+        cost += lineCost(qs); sell += lineSell(qs);
+        const cls = String(qs.appliedVehicleRate?.serviceType?.classification || qs.touringRoutePricing?.transportServiceType?.classification || '').toUpperCase();
+        if (cls === 'ADD_ON') hasAddOn = true;
+        // A counted transport line that the totals path does NOT sum (optionId null but absent
+        // from recalc set) would make the delta inconsistent → block + warn.
+        if (opts.recalcItemIds && qs.id && qs.optionId == null && !opts.recalcItemIds.has(qs.id)) nonRecalcItem = true;
+      }
+      return { cost, sell, hasAddOn, nonRecalcItem };
+    });
+
+    const { inputs, invalidFlags, primary } = mapShadowDays(days);
+    if (!primary.supplierId || !primary.vehicleClass) return block('no-primary-transport');
+    if (contract.supplierId !== primary.supplierId || contract.vehicleClass !== primary.vehicleClass) return block('supplier-class-mismatch');
+
+    const contractCandidate: PackageContractCandidate = {
+      minimumFullDays: contract.minimumFullDays ?? 3,
+      minimumDayPolicy: contract.minimumDayPolicy ?? undefined,
+      halfDayCountsTowardMin: contract.halfDayCountsTowardMin,
+      halfDayChargedAsFullDay: contract.halfDayChargedAsFullDay,
+      stationaryCountsTowardMinDays: contract.stationaryCountsTowardMinDays,
+      airportTransferIncluded: contract.airportTransferIncluded,
+    };
+    const policy = Object.fromEntries(
+      Object.entries({
+        halfDayCountsTowardMin: contractCandidate.halfDayCountsTowardMin,
+        halfDayChargedAsFullDay: contractCandidate.halfDayChargedAsFullDay,
+        stationaryCountsTowardMinDays: contractCandidate.stationaryCountsTowardMinDays,
+        airportTransferIncluded: contractCandidate.airportTransferIncluded,
+      }).filter(([, v]) => v !== undefined),
+    );
+
+    const classified = classifyItinerary(inputs, policy);
+    const adjustedDays: DayClassification[] = classified.days.map((c, i) => invalidFlags[i] ? { ...c, packageDayWeight: 0, countsAsFullPackageDay: false, countsTowardMinimum: false, billedAs: 'manual-required', retentionCandidate: true } : c);
+    const adjusted = { days: adjustedDays, countedFullPackageDays: round(adjustedDays.reduce((s, c) => s + c.packageDayWeight, 0)) };
+    const eligibility = evaluatePackageEligibility(adjusted, contractCandidate);
+
+    if (eligibility.manualRequiredDays > 0) return block('manual-required-days');
+    if (!eligibility.eligible) return block(eligibility.reason || 'ineligible');
+
+    // Not priced in PR11A: stationary / standby operational days, and driver-overnight /
+    // stationary-waiting ADD_ON items → block + fall back to existing pricing.
+    if (adjustedDays.some((c) => c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY' || c.operationalType === 'STANDBY_WAITING')) return block('stationary-standby-present');
+    if (dayTransport.some((d) => d.hasAddOn)) return block('addon-overnight-present');
+
+    // Counted days (weight > 0) are the ones the package replaces; their persisted cost/sell give
+    // the weighted-average transport markup (D1a). Excluded transfer days keep their existing cost
+    // (they are NOT in the delta, so they remain untouched in the item-sum totals).
+    let countedCost = 0, countedSell = 0, membershipMismatch = false;
+    adjustedDays.forEach((c, i) => {
+      if (c.packageDayWeight > 0) { countedCost += dayTransport[i].cost; countedSell += dayTransport[i].sell; if (dayTransport[i].nonRecalcItem) membershipMismatch = true; }
+    });
+    if (membershipMismatch) return block('day-membership-mismatch');
+    if (countedCost <= 0) return block('no-counted-cost');
+
+    // Supplier discount (parity with the PR9 shadow), applied EXACTLY ONCE on the package gross.
+    const sup: any = await this.prisma.supplier.findUnique({ where: { id: primary.supplierId }, select: { transportDiscountPercent: true } });
+    const supplierDiscountPercent = Number(sup?.transportDiscountPercent ?? 0) || 0;
+
+    const fullDayRate = Number(contract.fullDayRate ?? 0) || 0;
+    const halfDayRate = Number(contract.halfDayRate ?? 0) || 0;
+    const fullDayCount = adjustedDays.filter((c) => c.packageDayWeight === 1).length;
+    const halfDayCount = adjustedDays.filter((c) => c.packageDayWeight === 0.5).length;
+    const packageGross = eligibility.billedAtMinimum
+      ? round((contractCandidate.minimumFullDays || 0) * fullDayRate)
+      : round(fullDayCount * fullDayRate + halfDayCount * halfDayRate);
+    const packageNet = round(packageGross * (1 - supplierDiscountPercent / 100));
+
+    // Weighted-average markup of the replaced transport lines (sell/cost factor). If sell/cost
+    // is missing or non-positive, we cannot safely preserve margin → block + warn (D1).
+    const weightedMarkup = countedSell / countedCost;
+    if (!isFinite(weightedMarkup) || weightedMarkup <= 0) return block('markup-uncomputable');
+
+    const costDelta = round(packageNet - countedCost);
+    const sellDelta = round(packageNet * weightedMarkup - countedSell);
+    return {
+      apply: true,
+      reason: null,
+      costDelta,
+      sellDelta,
+      contractId: contract.id,
+      countedCost: round(countedCost),
+      countedSell: round(countedSell),
+      packageNet,
+      weightedMarkupPercent: round((weightedMarkup - 1) * 100),
+      supplierDiscountPercent,
+      previousTransportTotal: round(countedCost),
+      appliedTransportTotal: packageNet,
+      warnings: ['standard-large-bus-49-rate-only-not-vip-31-33', 'excludes-driver-overnight'],
     };
   }
 }

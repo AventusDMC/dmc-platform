@@ -34,6 +34,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
+import { PackageEligibilityShadowService } from '../transport-pricing/package-eligibility-shadow.service';
+import { isPackagePricingLiveApplyEnabled } from '../transport-pricing/transport-feature-flags';
 import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
@@ -544,6 +546,10 @@ export class QuotesService {
     private readonly transportPricingService: TransportPricingService,
     private readonly promotionsService: PromotionsService,
     private readonly quotePricingService: QuotePricingService,
+    // PR11A — optional so the many manual `new QuotesService(prisma, …5 args)` test sites keep
+    // working unchanged. In the app it is DI-injected (provider in app.module). Live apply only
+    // runs when this is present AND the live-apply flag is ON.
+    private readonly packageEligibilityShadowService?: PackageEligibilityShadowService,
   ) {}
 
   findAll(actor?: CompanyScopedActor) {
@@ -9203,7 +9209,36 @@ export class QuotesService {
       quote.adults + quote.children,
     );
     const passTotals = await this.calculateJordanPassTotals(quote);
-    const totalCost = Number((itemTotals.totalCost + passTotals.totalCost).toFixed(2));
+
+    const isSlabMode =
+      this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB';
+
+    // PR11A — apply a saved, valid PACKAGE selection to the transport totals as a total-level
+    // additive delta. NEVER mutates quote items. OFF by default → deltas are 0 → totals are
+    // computed exactly as before. The decision is pilot-pinned + fully re-validated inside the
+    // service; any gate failure (stale/ineligible/manual-required/stationary/overnight/non-pilot/
+    // cross-currency/slab/excursionPackageRate-overlap) falls back to existing pricing.
+    let packageCostDelta = 0;
+    let packageSellDelta = 0;
+    if (this.packageEligibilityShadowService && isPackagePricingLiveApplyEnabled()) {
+      try {
+        const recalcItemIds = new Set<string>((items as any[]).map((it: any) => it.id).filter(Boolean));
+        const applyResult = await this.packageEligibilityShadowService.computeQuotePackageLiveApply(quoteId, {
+          pricingIsSlab: isSlabMode,
+          recalcItemIds,
+        });
+        if (applyResult?.apply) {
+          packageCostDelta = applyResult.costDelta;
+          packageSellDelta = applyResult.sellDelta;
+        }
+      } catch {
+        // Fail safe: live apply must never break a recalculation → fall back to existing pricing.
+        packageCostDelta = 0;
+        packageSellDelta = 0;
+      }
+    }
+
+    const totalCost = Number((itemTotals.totalCost + passTotals.totalCost + packageCostDelta).toFixed(2));
     // For FIXED-mode quotes the client price is the sum of per-item sells
     // (markup-derived). For SLAB quotes the client price is determined by
     // the matched pricing slab × paying-pax — NOT the sum of items. Before
@@ -9211,9 +9246,6 @@ export class QuotesService {
     // (Financial Summary, Pricing Audit, Step 4 grid, Proposal PDF totals,
     // and the booking pricingSnapshot on convert) showed the wrong number
     // for SLAB quotes.
-    const isSlabMode =
-      this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB';
-
     let totalSell: number;
     let pricePerPax: number;
     if (isSlabMode) {
@@ -9248,11 +9280,11 @@ export class QuotesService {
       } else {
         // No slab covers current pax count — fall back to item sum (and the
         // Pricing Audit will flag the missing slab separately).
-        totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
+        totalSell = Number((itemTotals.totalSell + passTotals.totalSell + packageSellDelta).toFixed(2));
         pricePerPax = totalPax > 0 ? Number((totalSell / totalPax).toFixed(2)) : 0;
       }
     } else {
-      totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
+      totalSell = Number((itemTotals.totalSell + passTotals.totalSell + packageSellDelta).toFixed(2));
       pricePerPax = quote.adults + quote.children > 0 ? Number((totalSell / (quote.adults + quote.children)).toFixed(2)) : 0;
     }
 

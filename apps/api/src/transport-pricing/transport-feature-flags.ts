@@ -32,3 +32,13 @@ export const PACKAGE_OPTION_SELECTION_FLAG = 'transport.packageOptionSelection';
 export function isPackageOptionSelectionEnabled(): boolean {
   return readBooleanEnv('TRANSPORT_PACKAGE_OPTION_SELECTION');
 }
+
+// `transport.packagePricingLiveApply` (PR11A) gates the FIRST live-apply step: applying a saved,
+// valid PACKAGE selection to a quote's transport totals (total-level additive delta only — never
+// mutates quote items). OFF (default) → totals are computed exactly as today; the saved selection
+// stays metadata-only. PR11A applies ONLY for the single pinned pilot contract.
+export const PACKAGE_PRICING_LIVE_APPLY_FLAG = 'transport.packagePricingLiveApply';
+
+export function isPackagePricingLiveApplyEnabled(): boolean {
+  return readBooleanEnv('TRANSPORT_PACKAGE_PRICING_LIVE_APPLY');
+}
