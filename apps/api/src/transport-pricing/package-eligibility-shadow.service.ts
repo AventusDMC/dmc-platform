@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   classifyItinerary,
@@ -379,6 +379,124 @@ export class PackageEligibilityShadowService {
       reason: eligibility.reason,
       dayPlan: adjustedDays.map((c, i) => ({ dayNumber: days[i]?.dayNumber ?? i + 1, metadataInvalid: invalidFlags[i], ...c })),
       warnings,
+      notApplied: true,
+    };
+  }
+
+  // PR10B-1 — compute current package eligibility for a quote (flag-independent; used by the
+  // save endpoint to hard-block ineligible PACKAGE selections). Read-only.
+  private async computeQuoteEligibility(quoteId: string): Promise<{ contractRow: any; eligibility: ReturnType<typeof evaluatePackageEligibility> }> {
+    const rawDays = await this.prisma.quoteItineraryDay.findMany({
+      where: { quoteId, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
+      select: {
+        dayNumber: true, transportDayType: true, vehicleRetained: true, vehicleReleased: true, inRetainedBlock: true,
+        dayItems: {
+          where: { isActive: true },
+          select: {
+            quoteService: {
+              select: {
+                transportServiceTypeId: true, touringRouteId: true, vehicleId: true,
+                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
+                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const days: ShadowDay[] = (rawDays as any[]).map((d) => ({
+      dayNumber: d.dayNumber,
+      metadata: { transportDayType: d.transportDayType, vehicleRetained: d.vehicleRetained, vehicleReleased: d.vehicleReleased, inRetainedBlock: d.inRetainedBlock },
+      items: (d.dayItems || []).map((di: any) => {
+        const qs = di.quoteService || {};
+        const avr = qs.appliedVehicleRate;
+        const trp = qs.touringRoutePricing;
+        const st = avr?.serviceType || trp?.transportServiceType || null;
+        const veh = avr?.vehicle || trp?.vehicle || null;
+        return {
+          transportServiceTypeId: qs.transportServiceTypeId ?? null,
+          touringRouteId: qs.touringRouteId ?? null,
+          vehicleId: qs.vehicleId ?? null,
+          serviceTypeCode: st?.code ?? null,
+          serviceTypeClassification: st?.classification ?? null,
+          vehicleClass: veh?.vehicleClass ?? null,
+          supplierId: avr?.supplierId || veh?.resolvedSupplierId || trp?.supplierId || null,
+        } as ShadowDayItem;
+      }),
+    }));
+    const { inputs, invalidFlags, primary } = mapShadowDays(days);
+    let contractRow: any = null;
+    if (primary.supplierId && primary.vehicleClass) {
+      contractRow = await this.prisma.transportContract.findFirst({ where: { supplierId: primary.supplierId, vehicleClass: primary.vehicleClass, regime: 'PACKAGE_MIN_FULL_DAY', active: true } });
+    }
+    const contractCandidate: PackageContractCandidate | null = contractRow
+      ? { minimumFullDays: contractRow.minimumFullDays ?? 3, minimumDayPolicy: contractRow.minimumDayPolicy ?? undefined, halfDayCountsTowardMin: contractRow.halfDayCountsTowardMin, halfDayChargedAsFullDay: contractRow.halfDayChargedAsFullDay, stationaryCountsTowardMinDays: contractRow.stationaryCountsTowardMinDays, airportTransferIncluded: contractRow.airportTransferIncluded }
+      : null;
+    const policy = contractCandidate
+      ? Object.fromEntries(Object.entries({ halfDayCountsTowardMin: contractCandidate.halfDayCountsTowardMin, halfDayChargedAsFullDay: contractCandidate.halfDayChargedAsFullDay, stationaryCountsTowardMinDays: contractCandidate.stationaryCountsTowardMinDays, airportTransferIncluded: contractCandidate.airportTransferIncluded }).filter(([, v]) => v !== undefined))
+      : {};
+    const classified = classifyItinerary(inputs, policy);
+    const adjustedDays: DayClassification[] = classified.days.map((c, i) => invalidFlags[i] ? { ...c, packageDayWeight: 0, countsAsFullPackageDay: false, countsTowardMinimum: false, billedAs: 'manual-required', retentionCandidate: true } : c);
+    const adjusted = { days: adjustedDays, countedFullPackageDays: Number(adjustedDays.reduce((s, c) => s + c.packageDayWeight, 0).toFixed(2)) };
+    return { contractRow, eligibility: evaluatePackageEligibility(adjusted, contractCandidate) };
+  }
+
+  // PR10B-1 — save/clear a planner's manual route-vs-package selection. METADATA ONLY:
+  // writes only the selection columns on the Quote; NEVER touches quote items, totals,
+  // supplier, or method; NEVER recalculates. Ineligible PACKAGE is hard-blocked.
+  async saveQuotePackageSelection(
+    quoteId: string,
+    input: { option: string | null; manualOverride?: boolean },
+    actorUserId: string | null,
+  ) {
+    const option = input.option ?? null;
+    if (option !== null && option !== 'ROUTE_TRANSFER' && option !== 'PACKAGE_MIN_FULL_DAY') {
+      throw new BadRequestException('Invalid transport pricing option');
+    }
+    const quote = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { id: true } });
+    if (!quote) throw new NotFoundException('Quote not found');
+
+    if (option === null) {
+      return this.writeSelection(quoteId, null, null, null, null, null); // clear
+    }
+    if (option === 'ROUTE_TRANSFER') {
+      return this.writeSelection(quoteId, 'ROUTE_TRANSFER', null, false, new Date(), actorUserId);
+    }
+    // PACKAGE_MIN_FULL_DAY — hard-block ineligible (no manual override in PR10B-1).
+    const { contractRow, eligibility } = await this.computeQuoteEligibility(quoteId);
+    if (!contractRow) throw new BadRequestException('no-package-contract');
+    if (eligibility.manualRequiredDays > 0) throw new BadRequestException('manual-required-days');
+    if (!eligibility.eligible) throw new BadRequestException(eligibility.reason || 'below-minimum');
+    return this.writeSelection(quoteId, 'PACKAGE_MIN_FULL_DAY', contractRow.id, false, new Date(), actorUserId);
+  }
+
+  // Writes ONLY the 5 selection columns. No other quote field is touched.
+  private async writeSelection(
+    quoteId: string,
+    option: string | null,
+    contractId: string | null,
+    isManual: boolean | null,
+    at: Date | null,
+    by: string | null,
+  ) {
+    await this.prisma.quote.update({
+      where: { id: quoteId },
+      data: {
+        selectedTransportPricingOption: option,
+        selectedTransportContractId: contractId,
+        transportSelectionIsManual: isManual,
+        transportSelectionAt: at,
+        transportSelectionByUserId: by,
+      },
+    });
+    return {
+      quoteId,
+      selectedTransportPricingOption: option,
+      selectedTransportContractId: contractId,
+      transportSelectionIsManual: isManual,
+      transportSelectionAt: at,
+      transportSelectionByUserId: by,
       notApplied: true,
     };
   }

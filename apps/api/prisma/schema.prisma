@@ -1576,6 +1576,14 @@ model Quote {
   // "Use package rates" toggle. When on, large-vehicle (Alpha) excursion transport
   // gets free mileage (extra-km waived) — the supplier's 3+-full-day program discount.
   excursionPackageRate       Boolean                  @default(false)
+  // Manual transport pricing-option SELECTION (PR10B-1). Metadata only, additive, nullable —
+  // NEVER applied to live totals/items here (apply is a later, explicit PR). Plain columns
+  // (no FK relations) to keep this purely additive.
+  selectedTransportPricingOption String?
+  selectedTransportContractId    String?              @db.Uuid
+  transportSelectionIsManual     Boolean?
+  transportSelectionAt           DateTime?
+  transportSelectionByUserId     String?              @db.Uuid
   totalCost                  Float                    @default(0)
   totalSell                  Float                    @default(0)
   pricePerPax                Float                    @default(0)

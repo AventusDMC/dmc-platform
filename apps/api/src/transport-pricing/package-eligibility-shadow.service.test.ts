@@ -323,6 +323,100 @@ test('PR9: no PACKAGE contract → no-package-contract; baseline computed', asyn
   setPriceFlag(false);
 });
 
+// ---- PR10B-1: save/clear manual selection (metadata only) ----
+import { TransportPricingController } from './transport-pricing.controller';
+
+const PILOT_CONTRACT = { ...PKG_CONTRACT, id: 'pilot-x' };
+function selectionFake(opts: { quoteExists?: boolean; days?: any[]; contract?: any }) {
+  const updates: any[] = [];
+  const prisma = {
+    quote: {
+      findUnique: async () => (opts.quoteExists === false ? null : { id: 'q1' }),
+      update: async ({ data }: any) => { updates.push(data); return { id: 'q1', ...data }; },
+    },
+    quoteItineraryDay: { findMany: async () => opts.days ?? [] },
+    transportContract: { findFirst: async () => opts.contract ?? null },
+  } as any;
+  return { svc: new PackageEligibilityShadowService(prisma), updates };
+}
+const SELECTION_KEYS = new Set(['selectedTransportPricingOption', 'selectedTransportContractId', 'transportSelectionIsManual', 'transportSelectionAt', 'transportSelectionByUserId']);
+
+test('PR10B-1: save ROUTE_TRANSFER persists only selection metadata', async () => {
+  const { svc, updates } = selectionFake({});
+  const r: any = await svc.saveQuotePackageSelection('q1', { option: 'ROUTE_TRANSFER' }, 'user-1');
+  assert.equal(r.selectedTransportPricingOption, 'ROUTE_TRANSFER');
+  assert.equal(r.selectedTransportContractId, null);
+  assert.equal(r.transportSelectionByUserId, 'user-1');
+  assert.ok(r.transportSelectionAt);
+  // write payload contains ONLY the 5 selection columns (no totals/items)
+  for (const k of Object.keys(updates[0])) assert.ok(SELECTION_KEYS.has(k), `unexpected write key: ${k}`);
+});
+
+test('PR10B-1: save eligible PACKAGE persists option + contractId', async () => {
+  const days = [day(1, carrier({ touring: true })), day(2, carrier({ touring: true })), day(3, carrier({ touring: true }))];
+  const { svc, updates } = selectionFake({ days, contract: PILOT_CONTRACT });
+  const r: any = await svc.saveQuotePackageSelection('q1', { option: 'PACKAGE_MIN_FULL_DAY' }, 'user-1');
+  assert.equal(r.selectedTransportPricingOption, 'PACKAGE_MIN_FULL_DAY');
+  assert.equal(r.selectedTransportContractId, 'pilot-x');
+  for (const k of Object.keys(updates[0])) assert.ok(SELECTION_KEYS.has(k), `unexpected write key: ${k}`);
+});
+
+test('PR10B-1: clear selection sets all selection fields null', async () => {
+  const { svc, updates } = selectionFake({});
+  const r: any = await svc.saveQuotePackageSelection('q1', { option: null }, 'user-1');
+  assert.equal(r.selectedTransportPricingOption, null);
+  assert.equal(r.selectedTransportContractId, null);
+  assert.equal(r.transportSelectionAt, null);
+  assert.equal(r.transportSelectionByUserId, null);
+  for (const k of Object.keys(updates[0])) assert.ok(SELECTION_KEYS.has(k));
+});
+
+test('PR10B-1: PACKAGE with no contract is rejected', async () => {
+  const days = [day(1, carrier({ touring: true }))];
+  const { svc } = selectionFake({ days, contract: null });
+  await assert.rejects(() => svc.saveQuotePackageSelection('q1', { option: 'PACKAGE_MIN_FULL_DAY' }, null), /no-package-contract/);
+});
+
+test('PR10B-1: below-minimum PACKAGE is rejected', async () => {
+  const days = [day(1, carrier({ touring: true })), day(2, carrier({ touring: true }))];
+  const { svc } = selectionFake({ days, contract: PILOT_CONTRACT });
+  await assert.rejects(() => svc.saveQuotePackageSelection('q1', { option: 'PACKAGE_MIN_FULL_DAY' }, null), /below-minimum/);
+});
+
+test('PR10B-1: PACKAGE with manual-required days is rejected (even though manualOverride ignored)', async () => {
+  const p2p = (n: number) => day(n, carrier({ code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER', supplierId: 'S1', vehicleClass: 'Sedan' }));
+  const { svc } = selectionFake({ days: [p2p(1), p2p(2), p2p(3)], contract: PILOT_CONTRACT });
+  await assert.rejects(() => svc.saveQuotePackageSelection('q1', { option: 'PACKAGE_MIN_FULL_DAY', manualOverride: true }, null), /manual-required/);
+});
+
+test('PR10B-1: invalid option is rejected; unknown quote is rejected', async () => {
+  const { svc } = selectionFake({});
+  await assert.rejects(() => svc.saveQuotePackageSelection('q1', { option: 'NONSENSE' as any }, null), /Invalid transport pricing option/);
+  const { svc: svc2 } = selectionFake({ quoteExists: false });
+  await assert.rejects(() => svc2.saveQuotePackageSelection('q1', { option: 'ROUTE_TRANSFER' }, null), /not found/i);
+});
+
+const SEL_FLAG = 'TRANSPORT_PACKAGE_OPTION_SELECTION';
+test('PR10B-1 controller: flag OFF rejects save/clear (service not called)', async () => {
+  delete process.env[SEL_FLAG];
+  let called = false;
+  const fakeShadow: any = { saveQuotePackageSelection: async () => { called = true; return {}; } };
+  const controller = new TransportPricingController({} as any, fakeShadow);
+  await assert.rejects(() => controller.savePackageSelection('q1', { option: 'ROUTE_TRANSFER' }, null), /Disabled/);
+  assert.equal(called, false);
+});
+
+test('PR10B-1 controller: flag ON calls the service with option + actor id', async () => {
+  process.env[SEL_FLAG] = 'true';
+  let receivedArgs: any = null;
+  const fakeShadow: any = { saveQuotePackageSelection: async (id: string, input: any, by: string | null) => { receivedArgs = { id, input, by }; return { ok: true }; } };
+  const controller = new TransportPricingController({} as any, fakeShadow);
+  const r: any = await controller.savePackageSelection('q1', { option: 'PACKAGE_MIN_FULL_DAY', manualOverride: true }, { id: 'user-9' } as any);
+  assert.deepEqual(receivedArgs, { id: 'q1', input: { option: 'PACKAGE_MIN_FULL_DAY', manualOverride: true }, by: 'user-9' });
+  assert.equal(r.ok, true);
+  delete process.env[SEL_FLAG];
+});
+
 // ---- diagnostic-level: explicit retained 3-day block is eligible (pure path) ----
 test('retained 3-day block is eligible diagnostically (explicit retained)', () => {
   const r = evaluatePackageEligibilityForDays(

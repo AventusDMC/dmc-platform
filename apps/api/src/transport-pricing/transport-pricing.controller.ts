@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { Roles } from '../auth/auth.decorators';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post } from '@nestjs/common';
+import { Actor, Roles } from '../auth/auth.decorators';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { TransportPricingService } from './transport-pricing.service';
 import { PackageEligibilityShadowService } from './package-eligibility-shadow.service';
-import { isPackageEligibilityShadowEnabled, PACKAGE_ELIGIBILITY_SHADOW_FLAG, isPackagePricingShadowCompareEnabled, PACKAGE_PRICING_SHADOW_COMPARE_FLAG } from './transport-feature-flags';
+import { isPackageEligibilityShadowEnabled, PACKAGE_ELIGIBILITY_SHADOW_FLAG, isPackagePricingShadowCompareEnabled, PACKAGE_PRICING_SHADOW_COMPARE_FLAG, isPackageOptionSelectionEnabled, PACKAGE_OPTION_SELECTION_FLAG } from './transport-feature-flags';
 
 type CalculateTransportPricingBody = {
   serviceTypeId: string;
@@ -113,6 +114,25 @@ export class TransportPricingController {
     }
     const result = await this.packageEligibilityShadowService.evaluateQuotePackagePricingShadow(id);
     return { enabled: true, ...(result ?? {}) };
+  }
+
+  // PR10B-1 — save/clear a planner's manual route-vs-package selection. METADATA ONLY (no
+  // apply, no totals change). admin/finance; flag-gated (default OFF → rejected).
+  @Patch('quotes/:id/package-selection')
+  @Roles('admin', 'finance')
+  async savePackageSelection(
+    @Param('id') id: string,
+    @Body() body: { option?: string | null; manualOverride?: boolean },
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    if (!isPackageOptionSelectionEnabled()) {
+      throw new ForbiddenException(`Disabled: ${PACKAGE_OPTION_SELECTION_FLAG} is OFF`);
+    }
+    return this.packageEligibilityShadowService.saveQuotePackageSelection(
+      id,
+      { option: body.option ?? null, manualOverride: body.manualOverride },
+      actor?.id ?? null,
+    );
   }
 
   @Post('calculate')

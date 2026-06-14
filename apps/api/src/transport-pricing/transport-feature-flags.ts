@@ -23,3 +23,12 @@ export const PACKAGE_PRICING_SHADOW_COMPARE_FLAG = 'transport.packagePricingShad
 export function isPackagePricingShadowCompareEnabled(): boolean {
   return readBooleanEnv('TRANSPORT_PACKAGE_PRICING_SHADOW_COMPARE');
 }
+
+// `transport.packageOptionSelection` (PR10B-1) gates the save/clear of a planner's manual
+// route-vs-package selection (metadata only, never applied to totals). OFF (default) → the
+// save endpoint rejects.
+export const PACKAGE_OPTION_SELECTION_FLAG = 'transport.packageOptionSelection';
+
+export function isPackageOptionSelectionEnabled(): boolean {
+  return readBooleanEnv('TRANSPORT_PACKAGE_OPTION_SELECTION');
+}
