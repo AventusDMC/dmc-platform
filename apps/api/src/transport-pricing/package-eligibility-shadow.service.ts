@@ -124,6 +124,64 @@ export type PackageEligibilityShadowResult = {
   dayPlan: ShadowDayPlanEntry[];
 };
 
+// PR11B-2A — vehicle-aware allowlist for package live apply (DIAGNOSTICS ONLY in this PR).
+// Maps a package contract id → the set of vehicle ids it may price. Class-level package contracts
+// cannot distinguish standard vs VIP/VVIP/Grand-Star vehicles sharing one vehicleClass; this
+// allowlist pins the contract to its intended STANDARD vehicle(s). Pilot = Alpha "Large 49" only
+// (NOT Large VIP 31-33 49c5fd5d… nor Mercedes Grand Star 33906a47…/94c1a79b…). In-code constant:
+// small, closed, reviewed-in-PR; no schema. 11B-2A surfaces the decision in the shadow output but
+// does NOT enforce it in computeQuotePackageLiveApply (enforcement is PR 11B-2B).
+export const PACKAGE_VEHICLE_ALLOWLIST: Record<string, string[]> = {
+  '66f5de06-28df-426c-90b8-ffaa01ed5c5f': ['6d575442-05fd-4cf6-bd22-5e8a0ee12303'], // pilot → Alpha Large 49
+};
+
+const VIP_OR_GRAND_STAR_NAME = /VIP|VVIP|Grand\s*Star/i;
+
+export type PackageAllowlistDecision = {
+  allowed: boolean;
+  reason: string;
+  contractId: string | null;
+  resolvedVehicleIds: string[];
+  allowedVehicleIds: string[];
+  vehicleNames: string[];
+  blockers: string[];
+};
+
+// Pure, read-only decision over the COUNTED-day transport vehicles. Surfaces (does not enforce) the
+// VIP/standard conflation risk. `blockers` is the full list; `reason` is the first blocker (or
+// 'allowed'). Never mutates anything.
+export function computePackageAllowlistDecision(input: {
+  contractId: string | null;
+  contractCurrency: string | null;
+  quoteCurrency: string | null;
+  countedVehicles: Array<{ vehicleId: string | null; vehicleName: string | null; supplierId: string | null }>;
+}): PackageAllowlistDecision {
+  const blockers: string[] = [];
+  const contractId = input.contractId ?? null;
+  const inAllowlist = !!contractId && Object.prototype.hasOwnProperty.call(PACKAGE_VEHICLE_ALLOWLIST, contractId);
+  const allowedVehicleIds = (contractId && PACKAGE_VEHICLE_ALLOWLIST[contractId]) || [];
+  const resolvedVehicleIds = Array.from(new Set(input.countedVehicles.map((v) => v.vehicleId).filter(Boolean))) as string[];
+  const vehicleNames = Array.from(new Set(input.countedVehicles.map((v) => v.vehicleName).filter(Boolean))) as string[];
+  const supplierIds = Array.from(new Set(input.countedVehicles.map((v) => v.supplierId).filter(Boolean)));
+  const anyMissing = input.countedVehicles.length === 0 || input.countedVehicles.some((v) => !v.vehicleId);
+
+  if (!inAllowlist) blockers.push('not-allowlisted-contract');
+  if (input.quoteCurrency && input.contractCurrency && input.quoteCurrency !== input.contractCurrency) blockers.push('cross-currency');
+  if (supplierIds.length > 1) blockers.push('mixed-suppliers');
+  if (anyMissing) blockers.push('missing-vehicle-id');
+  else if (resolvedVehicleIds.length > 1) blockers.push('mixed-vehicles');
+  else {
+    const vid = resolvedVehicleIds[0];
+    if (!allowedVehicleIds.includes(vid)) {
+      blockers.push('vehicle-not-allowlisted');
+      if (vehicleNames.some((n) => VIP_OR_GRAND_STAR_NAME.test(n))) blockers.push('vip-or-grand-star-not-allowed');
+    }
+  }
+
+  const allowed = blockers.length === 0;
+  return { allowed, reason: allowed ? 'allowed' : blockers[0], contractId, resolvedVehicleIds, allowedVehicleIds, vehicleNames, blockers };
+}
+
 // PR11A — result of the live-apply decision. `apply:false` carries a `reason` (used for logs /
 // fall-back to existing pricing). `apply:true` carries the total-level deltas + diagnostics.
 export type LivePackageApplyResult = {
@@ -282,8 +340,8 @@ export class PackageEligibilityShadowService {
               select: {
                 transportServiceTypeId: true, touringRouteId: true, vehicleId: true,
                 finalCost: true, totalCost: true, overrideCost: true, useOverride: true,
-                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
-                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
+                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { id: true, name: true, vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
+                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { id: true, name: true, vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
               },
             },
           },
@@ -424,6 +482,30 @@ export class PackageEligibilityShadowService {
       }
     }
 
+    // PR11B-2A — read-only vehicle-aware allowlist decision (DIAGNOSTIC ONLY; does NOT enforce).
+    // Resolves the COUNTED-day transport vehicle(s) and reports whether the selected/resolved
+    // package contract is allowed to price them. Surfaces the VIP/standard conflation risk before
+    // any enforcement (PR 11B-2B). NEVER writes; live apply (computeQuotePackageLiveApply) unchanged.
+    const lineVehicle = (qs: any) => {
+      const avr = qs.appliedVehicleRate;
+      const trp = qs.touringRoutePricing;
+      const veh = avr?.vehicle || trp?.vehicle || null;
+      return {
+        vehicleId: (veh?.id ?? qs.vehicleId) || null,
+        vehicleName: veh?.name ?? null,
+        supplierId: avr?.supplierId || veh?.resolvedSupplierId || trp?.supplierId || null,
+      };
+    };
+    const dayVehicles = (rawDays as any[]).map((d) => (d.dayItems || []).filter((di: any) => isTransport(di.quoteService || {})).map((di: any) => lineVehicle(di.quoteService || {})));
+    const countedVehicles = adjustedDays.flatMap((c, i) => (c.packageDayWeight > 0 ? dayVehicles[i] : []));
+    const evalContractId = savedSelection?.contractId ?? contractRow?.id ?? null;
+    const allowlist = computePackageAllowlistDecision({
+      contractId: evalContractId,
+      contractCurrency: (contractRow?.currency ?? null) as string | null,
+      quoteCurrency: ((await this.prisma.quote?.findUnique?.({ where: { id: quoteId }, select: { quoteCurrency: true } }))?.quoteCurrency ?? null) as string | null,
+      countedVehicles,
+    });
+
     return {
       quoteId,
       flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
@@ -448,6 +530,7 @@ export class PackageEligibilityShadowService {
       warnings,
       savedSelection,
       selectionStale,
+      allowlist,
       notApplied: true,
     };
   }
