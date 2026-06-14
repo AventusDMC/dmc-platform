@@ -508,6 +508,171 @@ test('PR10B-2: PACKAGE stale when no longer eligible (below minimum)', async () 
   setPriceFlag(false);
 });
 
+// ---- PR11A: live-apply decision + delta math (computeQuotePackageLiveApply) ----
+const LIVE_PILOT_ID = '66f5de06-28df-426c-90b8-ffaa01ed5c5f';
+const LIVE_CONTRACT = {
+  id: LIVE_PILOT_ID, supplierId: ALPHA, vehicleClass: 'Large Bus', currency: 'USD',
+  regime: 'PACKAGE_MIN_FULL_DAY', active: true, minimumFullDays: 3, minimumDayPolicy: 'INELIGIBLE_UNDER_MIN',
+  fullDayRate: 656, halfDayRate: 370, halfDayCountsTowardMin: false, halfDayChargedAsFullDay: false,
+  stationaryCountsTowardMinDays: false, airportTransferIncluded: false,
+};
+function liveQS(o: { id: string; cost: number; sell: number; touring?: boolean; code?: string | null; classification?: string | null; vehicleClass?: string; optionId?: string | null }) {
+  const touring = o.touring ?? true;
+  return {
+    id: o.id, optionId: o.optionId ?? null,
+    transportServiceTypeId: touring ? null : 'st1', touringRouteId: touring ? 'tr1' : null, vehicleId: 'V1',
+    finalCost: o.cost, totalCost: o.cost, totalSell: o.sell, overrideCost: null, useOverride: false,
+    appliedVehicleRate: { supplierId: ALPHA, vehicle: { vehicleClass: o.vehicleClass ?? 'Large Bus', resolvedSupplierId: ALPHA }, serviceType: (o.code || o.classification) ? { code: o.code ?? null, classification: o.classification ?? null } : null },
+    touringRoutePricing: null,
+  };
+}
+function liveDayOf(dayNumber: number, items: any[], meta: any = {}) {
+  return {
+    dayNumber,
+    transportDayType: meta.transportDayType ?? null, vehicleRetained: meta.vehicleRetained ?? null,
+    vehicleReleased: meta.vehicleReleased ?? null, inRetainedBlock: meta.inRetainedBlock ?? null,
+    dayItems: items.map((qs) => ({ quoteService: qs })),
+  };
+}
+const tDay = (n: number, cost = 700, sell = 840) => liveDayOf(n, [liveQS({ id: `t${n}`, cost, sell })]);
+const threeTouringSell = () => [tDay(1), tDay(2), tDay(3)]; // cost 2100, sell 2520 (markup 20%)
+function liveFake(opts: { selection?: { option: string | null; contractId: string | null }; quoteCurrency?: string; excursionPackageRate?: boolean; days?: any[]; contract?: any; discount?: number; quoteExists?: boolean }) {
+  const writes: any[] = [];
+  const prisma = {
+    quote: {
+      findUnique: async () => opts.quoteExists === false ? null : {
+        quoteCurrency: opts.quoteCurrency ?? 'USD',
+        excursionPackageRate: opts.excursionPackageRate ?? false,
+        selectedTransportPricingOption: opts.selection?.option ?? null,
+        selectedTransportContractId: opts.selection?.contractId ?? null,
+      },
+      update: async ({ data }: any) => { writes.push(data); return { id: 'q1', ...data }; },
+    },
+    transportContract: { findFirst: async () => opts.contract ?? null },
+    quoteItineraryDay: { findMany: async () => opts.days ?? [] },
+    supplier: { findUnique: async () => ({ transportDiscountPercent: opts.discount ?? 25 }) },
+  } as any;
+  return { svc: new PackageEligibilityShadowService(prisma), writes };
+}
+const PKG_SEL = { option: 'PACKAGE_MIN_FULL_DAY', contractId: LIVE_PILOT_ID };
+
+test('PR11A: no saved selection → no apply', async () => {
+  const { svc } = liveFake({ selection: { option: null, contractId: null }, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'no-selection'); assert.equal(r.costDelta, 0); assert.equal(r.sellDelta, 0);
+});
+
+test('PR11A: ROUTE_TRANSFER selection → no apply (existing pricing)', async () => {
+  const { svc } = liveFake({ selection: { option: 'ROUTE_TRANSFER', contractId: null }, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'route-selected');
+});
+
+test('PR11A: valid pilot PACKAGE → apply with cost/sell deltas, discount once, weighted markup', async () => {
+  const { svc, writes } = liveFake({ selection: PKG_SEL, days: threeTouringSell(), contract: LIVE_CONTRACT, discount: 25 });
+  const r = await svc.computeQuotePackageLiveApply('q1', { recalcItemIds: new Set(['t1', 't2', 't3']) });
+  assert.equal(r.apply, true);
+  assert.equal(r.contractId, LIVE_PILOT_ID);
+  assert.equal(r.countedCost, 2100);
+  assert.equal(r.countedSell, 2520);
+  assert.equal(r.supplierDiscountPercent, 25);
+  assert.equal(r.packageNet, 1476);          // 3×656=1968, ×0.75
+  assert.equal(r.weightedMarkupPercent, 20); // 2520/2100 = 1.20
+  assert.equal(r.costDelta, -624);           // 1476 − 2100
+  assert.equal(r.sellDelta, -748.8);         // 1476×1.2 − 2520
+  assert.equal(writes.length, 0);            // decision/math only — NO writes
+});
+
+test('PR11A: selected contract not the pilot id → no apply', async () => {
+  const { svc } = liveFake({ selection: { option: 'PACKAGE_MIN_FULL_DAY', contractId: 'some-other-contract' }, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'not-pilot-contract');
+});
+
+test('PR11A: stale/deactivated pilot contract → no apply', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: threeTouringSell(), contract: { ...LIVE_CONTRACT, active: false } });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'contract-inactive-or-missing');
+});
+
+test('PR11A: ineligible / below minimum (2 days) → no apply', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [tDay(1), tDay(2)], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'below-minimum');
+});
+
+test('PR11A: manual-required days (3 unretained P2P) → no apply', async () => {
+  const p2p = (n: number) => liveDayOf(n, [liveQS({ id: `p${n}`, cost: 700, sell: 840, touring: false, code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' })]);
+  const { svc } = liveFake({ selection: PKG_SEL, days: [p2p(1), p2p(2), p2p(3)], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'manual-required-days');
+});
+
+test('PR11A: stationary day present (eligible otherwise) → no apply', async () => {
+  const stat = liveDayOf(4, [liveQS({ id: 's4', cost: 300, sell: 360, touring: false })], { transportDayType: 'STATIONARY_FULL_DAY' });
+  const { svc } = liveFake({ selection: PKG_SEL, days: [tDay(1), tDay(2), tDay(3), stat], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'stationary-standby-present');
+});
+
+test('PR11A: driver-overnight ADD_ON line → no apply', async () => {
+  const dayWithAddOn = liveDayOf(1, [
+    liveQS({ id: 't1', cost: 700, sell: 840 }),
+    liveQS({ id: 'ov1', cost: 50, sell: 60, touring: false, code: 'DRIVER_OVERNIGHT', classification: 'ADD_ON' }),
+  ]);
+  const { svc } = liveFake({ selection: PKG_SEL, days: [dayWithAddOn, tDay(2), tDay(3)], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'addon-overnight-present');
+});
+
+test('PR11A: cross-currency quote (JOD) → no apply', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, quoteCurrency: 'JOD', days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'cross-currency');
+});
+
+test('PR11A: Alpha VIP / different vehicle class → no apply (no borrowing Large Bus 49 rate)', async () => {
+  const vip = (n: number) => liveDayOf(n, [liveQS({ id: `v${n}`, cost: 900, sell: 1080, vehicleClass: 'VIP' })]);
+  const { svc } = liveFake({ selection: PKG_SEL, days: [vip(1), vip(2), vip(3)], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'supplier-class-mismatch');
+});
+
+test('PR11A: non-pilot supplier (primary supplier mismatch) → no apply', async () => {
+  const other = (n: number) => liveDayOf(n, [{ ...liveQS({ id: `o${n}`, cost: 700, sell: 840 }), appliedVehicleRate: { supplierId: 'almushtari', vehicle: { vehicleClass: 'Large Bus', resolvedSupplierId: 'almushtari' }, serviceType: null } }]);
+  const { svc } = liveFake({ selection: PKG_SEL, days: [other(1), other(2), other(3)], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'supplier-class-mismatch');
+});
+
+test('PR11A: excursionPackageRate overlap → no apply (no double-charge)', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, excursionPackageRate: true, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'overlap-excursion-package-rate');
+});
+
+test('PR11A: SLAB pricing → no apply (sell decoupled)', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1', { pricingIsSlab: true });
+  assert.equal(r.apply, false); assert.equal(r.reason, 'slab-mode-not-supported');
+});
+
+test('PR11A: day-membership mismatch (counted line absent from recalc set) → no apply', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: threeTouringSell(), contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1', { recalcItemIds: new Set() });
+  assert.equal(r.apply, false); assert.equal(r.reason, 'day-membership-mismatch');
+});
+
+test('PR11A: excluded transfer day (airport) retained — not part of the counted base/delta', async () => {
+  const air = liveDayOf(4, [liveQS({ id: 'air4', cost: 200, sell: 240, touring: false, code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' })]);
+  const { svc } = liveFake({ selection: PKG_SEL, days: [tDay(1), tDay(2), tDay(3), air], contract: LIVE_CONTRACT });
+  const r = await svc.computeQuotePackageLiveApply('q1', { recalcItemIds: new Set(['t1', 't2', 't3', 'air4']) });
+  assert.equal(r.apply, true);
+  assert.equal(r.countedCost, 2100);          // airport 200 excluded from counted base
+  assert.equal(r.previousTransportTotal, 2100);
+  assert.equal(r.costDelta, -624);            // unchanged by the retained airport day
+});
+
 // ---- diagnostic-level: explicit retained 3-day block is eligible (pure path) ----
 test('retained 3-day block is eligible diagnostically (explicit retained)', () => {
   const r = evaluatePackageEligibilityForDays(
