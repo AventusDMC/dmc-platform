@@ -16,6 +16,7 @@ import {
   PACKAGE_ELIGIBILITY_SHADOW_FLAG,
   isPackagePricingShadowCompareEnabled,
   PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
+  isPackageOptionSelectionEnabled,
 } from './transport-feature-flags';
 
 // PR5 + PR6 — Package-eligibility SHADOW service (read-only / diagnostic).
@@ -357,6 +358,49 @@ export class PackageEligibilityShadowService {
     warnings.push('excludes-driver-overnight');
     if (adjustedDays.some((c) => c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY')) warnings.push('stationary-not-priced-in-pr9');
 
+    // PR10B-2 — read-only persisted selection state (additive). Only populated when the
+    // selection flag is ON. NEVER writes. Staleness is recomputed here against the freshly
+    // resolved active package contract (contractRow) and the current eligibility result, so a
+    // selected contract that is later deactivated/deleted/mismatched/ineligible reads as stale.
+    let savedSelection: {
+      option: string;
+      contractId: string | null;
+      isManual: boolean | null;
+      at: Date | null;
+      byUserId: string | null;
+    } | null = null;
+    let selectionStale = false;
+    if (isPackageOptionSelectionEnabled()) {
+      const sel = await this.prisma.quote.findUnique({
+        where: { id: quoteId },
+        select: {
+          selectedTransportPricingOption: true,
+          selectedTransportContractId: true,
+          transportSelectionIsManual: true,
+          transportSelectionAt: true,
+          transportSelectionByUserId: true,
+        },
+      });
+      if (sel?.selectedTransportPricingOption) {
+        savedSelection = {
+          option: sel.selectedTransportPricingOption,
+          contractId: sel.selectedTransportContractId ?? null,
+          isManual: sel.transportSelectionIsManual ?? null,
+          at: sel.transportSelectionAt ?? null,
+          byUserId: sel.transportSelectionByUserId ?? null,
+        };
+        if (sel.selectedTransportPricingOption === 'PACKAGE_MIN_FULL_DAY') {
+          // Stale if the active package contract is now missing, no longer eligible, has
+          // manual-required days, or no longer matches the stored contract id.
+          selectionStale =
+            !contractRow ||
+            !eligibility.eligible ||
+            eligibility.manualRequiredDays > 0 ||
+            (sel.selectedTransportContractId ?? null) !== (contractRow?.id ?? null);
+        }
+      }
+    }
+
     return {
       quoteId,
       flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
@@ -379,6 +423,8 @@ export class PackageEligibilityShadowService {
       reason: eligibility.reason,
       dayPlan: adjustedDays.map((c, i) => ({ dayNumber: days[i]?.dayNumber ?? i + 1, metadataInvalid: invalidFlags[i], ...c })),
       warnings,
+      savedSelection,
+      selectionStale,
       notApplied: true,
     };
   }

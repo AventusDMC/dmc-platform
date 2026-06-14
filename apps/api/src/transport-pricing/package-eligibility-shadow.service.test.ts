@@ -417,6 +417,97 @@ test('PR10B-1 controller: flag ON calls the service with option + actor id', asy
   delete process.env[SEL_FLAG];
 });
 
+// ---- PR10B-2: read-only savedSelection + selectionStale on the pricing-shadow response ----
+function pricingSelectionFake(opts: { days: any[]; contract?: any; discount?: number; selection?: any }) {
+  const writes: any[] = [];
+  const prisma = {
+    quoteItineraryDay: { findMany: async () => opts.days },
+    transportContract: { findFirst: async () => opts.contract ?? null },
+    supplier: { findUnique: async () => ({ transportDiscountPercent: opts.discount ?? 25 }) },
+    quote: {
+      findUnique: async () => opts.selection ?? null,
+      update: async ({ data }: any) => { writes.push(data); return { id: 'q1', ...data }; },
+    },
+  } as any;
+  return { svc: new PackageEligibilityShadowService(prisma), writes };
+}
+const sel = (option: string | null, contractId: string | null = null) => ({
+  selectedTransportPricingOption: option,
+  selectedTransportContractId: contractId,
+  transportSelectionIsManual: false,
+  transportSelectionAt: new Date('2026-06-14T00:00:00Z'),
+  transportSelectionByUserId: 'user-1',
+});
+const threeTouring = () => [costDay(1, 700, { touring: true }), costDay(2, 700, { touring: true }), costDay(3, 700, { touring: true })];
+
+test('PR10B-2: savedSelection absent when selection flag OFF (read-only, no write)', async () => {
+  setPriceFlag(true);
+  delete process.env[SEL_FLAG];
+  const { svc, writes } = pricingSelectionFake({ days: threeTouring(), contract: PILOT, selection: sel('PACKAGE_MIN_FULL_DAY', 'pilot-1') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.savedSelection, null);
+  assert.equal(r.selectionStale, false);
+  assert.equal(writes.length, 0); // read path never writes
+  setPriceFlag(false);
+});
+
+test('PR10B-2: savedSelection surfaced when selection flag ON; valid PACKAGE not stale; no write', async () => {
+  setPriceFlag(true);
+  process.env[SEL_FLAG] = 'true';
+  const { svc, writes } = pricingSelectionFake({ days: threeTouring(), contract: PILOT, selection: sel('PACKAGE_MIN_FULL_DAY', 'pilot-1') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.savedSelection.option, 'PACKAGE_MIN_FULL_DAY');
+  assert.equal(r.savedSelection.contractId, 'pilot-1');
+  assert.equal(r.savedSelection.byUserId, 'user-1');
+  assert.equal(r.selectionStale, false);
+  assert.equal(writes.length, 0);
+  delete process.env[SEL_FLAG];
+  setPriceFlag(false);
+});
+
+test('PR10B-2: ROUTE selection is never stale', async () => {
+  setPriceFlag(true);
+  process.env[SEL_FLAG] = 'true';
+  const { svc } = pricingSelectionFake({ days: threeTouring(), contract: PILOT, selection: sel('ROUTE_TRANSFER') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.savedSelection.option, 'ROUTE_TRANSFER');
+  assert.equal(r.selectionStale, false);
+  delete process.env[SEL_FLAG];
+  setPriceFlag(false);
+});
+
+test('PR10B-2: PACKAGE stale when stored contract id no longer matches the active contract', async () => {
+  setPriceFlag(true);
+  process.env[SEL_FLAG] = 'true';
+  const { svc } = pricingSelectionFake({ days: threeTouring(), contract: PILOT, selection: sel('PACKAGE_MIN_FULL_DAY', 'old-deactivated-contract') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.selectionStale, true);
+  delete process.env[SEL_FLAG];
+  setPriceFlag(false);
+});
+
+test('PR10B-2: PACKAGE stale when the active package contract is now missing', async () => {
+  setPriceFlag(true);
+  process.env[SEL_FLAG] = 'true';
+  const { svc } = pricingSelectionFake({ days: threeTouring(), contract: null, selection: sel('PACKAGE_MIN_FULL_DAY', 'pilot-1') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.selectionStale, true);
+  delete process.env[SEL_FLAG];
+  setPriceFlag(false);
+});
+
+test('PR10B-2: PACKAGE stale when no longer eligible (below minimum)', async () => {
+  setPriceFlag(true);
+  process.env[SEL_FLAG] = 'true';
+  const days = [costDay(1, 700, { touring: true }), costDay(2, 700, { touring: true })];
+  const { svc } = pricingSelectionFake({ days, contract: PILOT, selection: sel('PACKAGE_MIN_FULL_DAY', 'pilot-1') });
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.packageEligible, false);
+  assert.equal(r.selectionStale, true);
+  delete process.env[SEL_FLAG];
+  setPriceFlag(false);
+});
+
 // ---- diagnostic-level: explicit retained 3-day block is eligible (pure path) ----
 test('retained 3-day block is eligible diagnostically (explicit retained)', () => {
   const r = evaluatePackageEligibilityForDays(
