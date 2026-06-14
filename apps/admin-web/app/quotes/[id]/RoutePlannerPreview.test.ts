@@ -187,9 +187,10 @@ describe('Phase R.7A-1 — read-only client narrative preview (route/day text on
     assert.ok(!source.includes('tailor-made-draft'), 'preview must not call suggestion/generator endpoints');
     // The only network calls are day-PATCH apply handlers: the two pre-existing
     // (S.2D-2 applyPresetToDay, S.2D-3C applyTemplate) + R.7A-3 applyNarrativeToDay
-    // (notes-only). All PATCH /itinerary/day; no POST/DELETE, no /items, no generator.
+    // (notes-only) + P.3X-5E-5B bulkSaveNarratives (notes + notesLanguage). All PATCH
+    // /itinerary/day; no POST/DELETE, no /items, no generator.
     const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
-    assert.equal(patchCount, 3, 'three day-PATCH apply handlers (preset, template, R.7A-3 narrative)');
+    assert.equal(patchCount, 4, 'four day-PATCH apply handlers (preset, template, R.7A-3 narrative, P.3X-5E-5B bulk)');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
     // The pure helper itself performs no I/O (call-shaped checks, so its own
     // descriptive header comment — "NO PATCH", "NO proposal-v3 change" — doesn't
@@ -303,7 +304,7 @@ describe('R.7B-3B — narrative language selector + RTL preview (preview-only)',
     // Phase P.3X-5E-4B — the selected locale is now sent as notesLanguage metadata
     // (capture-only); still no new request and no pricing/services.
     const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
-    assert.equal(patchCount, 3, 'no new PATCH added');
+    assert.equal(patchCount, 4, 'no new PATCH added beyond the P.3X-5E-5B bulk handler');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
     const onClickCount = (source.match(/onClick=\{\(\) => applyNarrativeToDay\(/g) || []).length;
     assert.equal(onClickCount, 1, 'narrative save is wired once');
@@ -395,8 +396,8 @@ describe('R.7B-4 — save the selected-language narrative into day notes (notes-
     // advisory hint; assert no proposal-v3 RENDERING coupling (no module import / no
     // proposal endpoint fetch) rather than banning the word "proposal".
     assert.ok(!/proposal-v3|getProposalHtml|getProposalPdf|['"`][^'"`]*\/proposal[^'"`]*['"`]/i.test(source), 'no proposal-v3 rendering coupling');
-    // Still exactly the three day-PATCH handlers (preset, template, narrative).
-    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added');
+    // Now four day-PATCH handlers (preset, template, narrative, P.3X-5E-5B bulk).
+    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 4, 'no new PATCH added beyond the P.3X-5E-5B bulk handler');
   });
 });
 
@@ -440,7 +441,8 @@ describe('R.7B-5B — proposal-language mismatch hints (advisory, non-blocking)'
 
   it('8/9/10/11. hints are advisory — save is the { notes, notesLanguage } day PATCH, nothing more', () => {
     // No new PATCH/POST; the advisory mismatch HINTS add no request of their own.
-    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added by the hints');
+    // (Four PATCH handlers total after the P.3X-5E-5B bulk save; none from the hints.)
+    assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 4, 'no new PATCH added by the hints (bulk handler is separate)');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
     // The narrative-save PATCH body is exactly { notes, notesLanguage } (P.3X-5E-4B).
     const handlerStart = source.indexOf('async function applyNarrativeToDay');
@@ -454,5 +456,124 @@ describe('R.7B-5B — proposal-language mismatch hints (advisory, non-blocking)'
   it('12. Arabic preview direction is still rtl (selector/direction unchanged)', () => {
     expectSourceContains(source, ['dir={narrativeDir}', 'const narrativeDir = narrativeTextDirection(narrativeLocaleForDay)']);
     expectSourceContains(narrativeSource, ["return locale === 'ar' ? 'rtl' : 'ltr';"]);
+  });
+});
+
+describe('P.3X-5E-5B — bulk "Save all day narratives in one language"', () => {
+  // Isolate the bulk handler body for payload + control-flow assertions.
+  const handlerStart = source.indexOf('async function bulkSaveNarratives');
+  const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
+
+  it('1/3/4/5. renders a bulk action with a language selector + per-language button label (en/es/pt/ar)', () => {
+    expectSourceContains(source, [
+      'aria-label="Bulk save day narratives"',
+      'Save all day narratives in one language',
+      // language selector bound to the bulk locale state (reuses the 4-language list)
+      'const [bulkLocale, setBulkLocale] = useState<NarrativeLocale>(quoteProposalLocale)',
+      'value={bulkLocale}',
+      'onChange={(e) => setBulkLocale(resolveNarrativeLocale(e.target.value))}',
+      'NARRATIVE_LANGUAGE_OPTIONS.map((opt) =>',
+      // #2 — the selected language is shown clearly
+      'Selected language: {NARRATIVE_LANGUAGE_LABELS[bulkLocale]}',
+      // language-specific button label → "Save all Spanish/Portuguese/Arabic/English narratives"
+      '`Save all ${NARRATIVE_LANGUAGE_LABELS[bulkLocale]} narratives`',
+      'onClick={() => bulkSaveNarratives(bulkLocale)}',
+      // the handler reuses the deterministic R.7B generator, same input shape as per-day save
+      'buildDayNarrativePreview(',
+      '{ dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: day.appliedServices }',
+      '{ locale }',
+    ]);
+  });
+
+  it('2/11. each successful PATCH sends ONLY { notes, notesLanguage } via the existing day endpoint', () => {
+    expectSourceContains(handler, [
+      '`${apiBaseUrl}/itinerary/day/${day.id}`',
+      "method: 'PATCH'",
+      'JSON.stringify({ notes: text, notesLanguage: locale })',
+    ]);
+    const payload = handler.match(/JSON\.stringify\((\{[^}]*\})\)/)![1];
+    assert.equal(payload.replace(/\s/g, ''), '{notes:text,notesLanguage:locale}', 'bulk payload is exactly { notes, notesLanguage }');
+    // #9 — must NOT send any of these forbidden fields.
+    for (const forbidden of ['title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'poi', 'serviceId', 'service', 'price', 'markup', 'overrideCost', 'paxCount', 'proposalLanguage']) {
+      assert.ok(!payload.includes(forbidden), `bulk payload must not include ${forbidden}`);
+    }
+  });
+
+  it('6. confirmation lists affected days (number + current title) with the strong warning copy', () => {
+    expectSourceContains(handler, [
+      // strong warning copy: replaces notes / single-language / one-at-a-time / what it does NOT touch
+      'This will replace the notes for all itinerary days with ${label} client narratives.',
+      'Day notes store only one language.',
+      'Each day will be patched one at a time.',
+      'This does not change titles, services, pricing, QuoteItems, POIs, or proposal settings.',
+      // #4 — affected day list (number + title)
+      'Affected days (${affected.length}):',
+      '`  • Day ${String(p.day.dayNumber).padStart(2, \'0\')} — ${p.day.title?.trim() || `Day ${p.day.dayNumber}`}`',
+      'window.confirm(message)',
+    ]);
+  });
+
+  it('7. cancel → no PATCH (early return before the loop)', () => {
+    assert.ok(/if \(typeof window !== 'undefined' && !window\.confirm\(message\)\) \{\s*return;/.test(handler), 'cancel returns before any fetch');
+    // The confirm gate appears before the fetch in the handler body.
+    assert.ok(handler.indexOf('window.confirm(message)') < handler.indexOf('fetch('), 'confirm precedes the PATCH');
+  });
+
+  it('8/13. days already in the target language are skipped by default and reported', () => {
+    expectSourceContains(handler, [
+      'alreadyMatching: (day.notesLanguage ?? null) === locale',
+      'const affected = plan.filter((p) => !p.alreadyMatching)',
+      'const alreadyMatching = plan.filter((p) => p.alreadyMatching).map((p) => p.day.dayNumber)',
+      // skip reason recorded in the result
+      'reason: `already in ${label}`',
+    ]);
+  });
+
+  it('9/10. empty/unsafe generated narrative is skipped (not patched) and reported', () => {
+    expectSourceContains(handler, [
+      'if (!isClientSafeNarrative(text)) {',
+      "reason: 'generated narrative empty or not client-safe'",
+      'continue;',
+    ]);
+    // the safety guard precedes the fetch
+    assert.ok(handler.indexOf('isClientSafeNarrative(text)') < handler.indexOf('fetch('), 'safety guard precedes PATCH');
+  });
+
+  it('11. honest partial failure — per-day saved/skipped/failed, no rollback', () => {
+    expectSourceContains(handler, [
+      'const saved: number[] = []',
+      'const failed: { day: number; reason: string }[] = []',
+      // a failed PATCH is recorded and the loop continues (no throw, no rollback)
+      "failed.push({ day: day.dayNumber, reason: await getErrorMessage(response, 'save failed') })",
+      'setBulkResult({ saved, skipped, failed })',
+    ]);
+    // result rendering surfaces all three buckets
+    expectSourceContains(source, [
+      'Saved {NARRATIVE_LANGUAGE_LABELS[bulkLocale]} narratives to day(s):',
+      'Skipped day(s):',
+      'Failed day(s):',
+      'Earlier saved days were kept.',
+    ]);
+  });
+
+  it('14/18. no proposal/backend/schema/pricing/QuoteItem coupling; generator emits plain text (no markup)', () => {
+    // No QuoteItem creation, no generator/suggestion endpoints, no proposal-v3 rendering.
+    assert.ok(!source.includes('tailor-made-draft'), 'no generator/apply endpoints');
+    assert.ok(!/['"`][^'"`]*\/items['"`]/.test(source), 'no QuoteItem creation');
+    assert.ok(!/proposal-v3|getProposalHtml|getProposalPdf|['"`][^'"`]*\/proposal[^'"`]*['"`]/i.test(source), 'no proposal-v3 rendering coupling');
+    // #18 — the bulk save persists the generator's text verbatim (the pure helper
+    // emits plain text, incl. Arabic); the handler does not wrap it in any markup.
+    assert.ok(/notes: text\b/.test(handler), 'saves the generated text as-is (plain text)');
+    assert.ok(!/<[a-z]+>|dangerouslySetInnerHTML/i.test(handler), 'bulk handler injects no HTML/markup');
+  });
+
+  it('17. existing per-day "Use this narrative" save is unchanged (still notes + notesLanguage)', () => {
+    expectSourceContains(source, [
+      'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string, locale: NarrativeLocale)',
+      'JSON.stringify({ notes: generatedText, notesLanguage: locale })',
+      'onClick={() => applyNarrativeToDay(day, narrativePreview.text, narrativeLocaleForDay)}',
+    ]);
+    // exactly one per-day narrative-save wiring remains
+    assert.equal((source.match(/onClick=\{\(\) => applyNarrativeToDay\(/g) || []).length, 1, 'per-day save wired once');
   });
 });

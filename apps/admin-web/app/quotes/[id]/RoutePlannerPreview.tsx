@@ -100,6 +100,12 @@ export function RoutePlannerPreview({
   // English. Preview-only: never persisted, never sent to the backend, never
   // changes day notes or the stored document language.
   const [narrativeLocale, setNarrativeLocale] = useState<Record<number, NarrativeLocale>>({});
+  // P.3X-5E-5B — bulk "save all day narratives in one language" state. The selected
+  // bulk language (defaults to the quote's proposal language so the first save lines
+  // up with the proposal), an in-flight guard, and an honest per-day result summary.
+  const [bulkLocale, setBulkLocale] = useState<NarrativeLocale>(quoteProposalLocale);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ saved: number[]; skipped: { day: number; reason: string }[]; failed: { day: number; reason: string }[] } | null>(null);
 
   // S.2D-3B — the curated classic route template for the current duration (4/5/6/7
   // days), or null for 8-day (existing generator) / other durations.
@@ -241,6 +247,89 @@ export function RoutePlannerPreview({
     }
   }
 
+  // P.3X-5E-5B — BULK save: generate the deterministic R.7B narrative for EVERY
+  // itinerary day in ONE selected language and write it to that day's notes via the
+  // EXISTING PATCH /itinerary/day/:dayId, ONE day at a time. Payload is ONLY
+  // { notes, notesLanguage } — never title/services/POIs/QuoteItems/pricing. This is
+  // an explicit operator action behind a strong confirmation; there is no automatic
+  // export-time replacement and no AI/machine translation (the generator is pure).
+  //  • Days whose notesLanguage already equals the target are SKIPPED by default
+  //    (and noted in the confirmation + result).
+  //  • A day whose generated narrative is empty/unsafe is skipped and reported.
+  //  • Partial failure is reported per day; earlier successful day patches are NOT
+  //    rolled back (single-day writes, no transaction across days).
+  async function bulkSaveNarratives(locale: NarrativeLocale) {
+    // Build the per-day plan up-front (pure generator; same input shape as the
+    // per-day "Use this narrative" button — title + notes + dayNumber + services).
+    const plan = sorted.map((day) => ({
+      day,
+      text: buildDayNarrativePreview(
+        { dayNumber: day.dayNumber, title: day.title, notes: day.notes, appliedServices: day.appliedServices },
+        { locale },
+      ).text,
+      alreadyMatching: (day.notesLanguage ?? null) === locale,
+    }));
+    // #12 — default skip days already in the target language.
+    const affected = plan.filter((p) => !p.alreadyMatching);
+    const alreadyMatching = plan.filter((p) => p.alreadyMatching).map((p) => p.day.dayNumber);
+    const label = NARRATIVE_LANGUAGE_LABELS[locale];
+
+    if (affected.length === 0) {
+      setError('');
+      setBulkResult({ saved: [], skipped: alreadyMatching.map((d) => ({ day: d, reason: `already in ${label}` })), failed: [] });
+      return;
+    }
+
+    // #3/#4 — strong confirmation: what it replaces, single-language reality, one-at-
+    // a-time, what it does NOT touch, plus the affected-day list (number + title).
+    const affectedList = affected
+      .map((p) => `  • Day ${String(p.day.dayNumber).padStart(2, '0')} — ${p.day.title?.trim() || `Day ${p.day.dayNumber}`}`)
+      .join('\n');
+    const skipNote = alreadyMatching.length ? `\n\n${alreadyMatching.length} day(s) already in ${label} will be skipped.` : '';
+    const message =
+      `This will replace the notes for all itinerary days with ${label} client narratives. ` +
+      `Day notes store only one language. Each day will be patched one at a time. ` +
+      `This does not change titles, services, pricing, QuoteItems, POIs, or proposal settings.\n\n` +
+      `Affected days (${affected.length}):\n${affectedList}${skipNote}\n\nContinue?`;
+    if (typeof window !== 'undefined' && !window.confirm(message)) {
+      return; // #7 — cancel → no PATCH calls
+    }
+
+    setBulkSaving(true);
+    setError('');
+    setBulkResult(null);
+    const saved: number[] = [];
+    const skipped: { day: number; reason: string }[] = alreadyMatching.map((d) => ({ day: d, reason: `already in ${label}` }));
+    const failed: { day: number; reason: string }[] = [];
+    // #7/#11 — one day at a time; keep going on failure, never roll back earlier saves.
+    for (const { day, text } of affected) {
+      if (!isClientSafeNarrative(text)) {
+        // #10 — empty/unsafe narrative: do NOT patch, report it.
+        skipped.push({ day: day.dayNumber, reason: 'generated narrative empty or not client-safe' });
+        continue;
+      }
+      try {
+        const response = await fetch(`${apiBaseUrl}/itinerary/day/${day.id}`, {
+          method: 'PATCH',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          // NOTES + notesLanguage ONLY (#8/#9). The generated text is plain text
+          // (the R.7B helper emits no HTML/markup — #18, incl. Arabic).
+          body: JSON.stringify({ notes: text, notesLanguage: locale }),
+        });
+        if (!response.ok) {
+          failed.push({ day: day.dayNumber, reason: await getErrorMessage(response, 'save failed') });
+          continue;
+        }
+        saved.push(day.dayNumber);
+      } catch (caught) {
+        failed.push({ day: day.dayNumber, reason: caught instanceof Error ? caught.message : 'request failed' });
+      }
+    }
+    setBulkResult({ saved, skipped, failed }); // #11 — honest per-day outcome
+    setBulkSaving(false);
+    if (saved.length) router.refresh();
+  }
+
   return (
     <section className="route-planner-preview" aria-label="Route Planner">
       <p className="form-help">
@@ -297,6 +386,52 @@ export function RoutePlannerPreview({
         ) : (
           <p className="form-help">No curated classic template exists yet. Use the basic shell and edit days manually.</p>
         )}
+      </section>
+
+      {/* P.3X-5E-5B — bulk "Save all day narratives in one language". Generates the
+          deterministic R.7B narrative for every day in the selected language and
+          saves it to the day notes (one day at a time, { notes, notesLanguage }
+          only). Explicit operator action with a strong confirmation; it changes no
+          titles, services, tickets, guides, pricing, QuoteItems, POIs, or proposal
+          settings, and performs no AI/machine translation. */}
+      <section className="route-bulk-narrative" aria-label="Bulk save day narratives">
+        <h4>Save all day narratives in one language</h4>
+        <p className="form-help">
+          Generates the client narrative for every itinerary day in the selected language and saves it to the day notes (one day at a time). It does not change titles, services, tickets, guides, pricing, QuoteItems, POIs, or proposal settings. Day notes store only one language — saving replaces the current notes.
+        </p>
+        <label className="route-bulk-language">
+          Language
+          <select value={bulkLocale} onChange={(e) => setBulkLocale(resolveNarrativeLocale(e.target.value))}>
+            {NARRATIVE_LANGUAGE_OPTIONS.map((opt) => (
+              <option key={opt.code} value={opt.code}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="form-help route-bulk-selected">Selected language: {NARRATIVE_LANGUAGE_LABELS[bulkLocale]}</p>
+        <button
+          type="button"
+          className="route-bulk-apply"
+          disabled={bulkSaving}
+          onClick={() => bulkSaveNarratives(bulkLocale)}
+        >
+          {bulkSaving ? `Saving all ${NARRATIVE_LANGUAGE_LABELS[bulkLocale]} narratives…` : `Save all ${NARRATIVE_LANGUAGE_LABELS[bulkLocale]} narratives`}
+        </button>
+        {bulkResult ? (
+          <div className="route-bulk-result" role="status">
+            {bulkResult.saved.length ? (
+              <p className="form-success">Saved {NARRATIVE_LANGUAGE_LABELS[bulkLocale]} narratives to day(s): {bulkResult.saved.map((d) => String(d).padStart(2, '0')).join(', ')}.</p>
+            ) : null}
+            {bulkResult.skipped.length ? (
+              <p className="form-help">Skipped day(s): {bulkResult.skipped.map((s) => `${String(s.day).padStart(2, '0')} (${s.reason})`).join(', ')}.</p>
+            ) : null}
+            {bulkResult.failed.length ? (
+              <p className="form-error">Failed day(s): {bulkResult.failed.map((f) => `${String(f.day).padStart(2, '0')} (${f.reason})`).join(', ')}. Earlier saved days were kept.</p>
+            ) : null}
+            {!bulkResult.saved.length && !bulkResult.failed.length && bulkResult.skipped.length ? (
+              <p className="form-help">No days needed saving — all itinerary days are already in {NARRATIVE_LANGUAGE_LABELS[bulkLocale]}.</p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <div className="route-planner-rows">
