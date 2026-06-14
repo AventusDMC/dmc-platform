@@ -2297,6 +2297,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       })),
     })),
   };
+  // Phase P.3X-5E-2.1 — day notes from the SAME planner-vs-legacy source the proposal
+  // exports from (readinessQuote.itineraries), for the non-blocking export-language
+  // advisory in ProposalDocumentActions. Read-only; never sent to the backend.
+  const proposalDayNotes = readinessQuote.itineraries.map((day) => day.description ?? null);
   const tripSummary = getValidatedTripSummary({
     quoteTitle: quote.title,
     quoteDescription: quote.description,
@@ -3568,6 +3572,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       apiBaseUrl={ACTION_API_BASE_URL}
                       quoteId={quote.id}
                       initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                      dayNotes={proposalDayNotes}
                     />
                     {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                     <ShareQuoteButton
@@ -3626,6 +3631,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     apiBaseUrl={ACTION_API_BASE_URL}
                     quoteId={quote.id}
                     initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                    dayNotes={proposalDayNotes}
                   />
                   {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                 </div>
@@ -4070,6 +4076,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       apiBaseUrl={ACTION_API_BASE_URL}
                       quoteId={quote.id}
                       initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                      dayNotes={proposalDayNotes}
                     />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
