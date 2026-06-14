@@ -78,3 +78,58 @@ export function proposalLanguageEnglishName(language: ProposalLanguageInput): st
       return 'English';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Phase P.3X-5E-4C — notesLanguage-aware export warning.
+// Prefers the per-day notesLanguage metadata (P.3X-5E-4B) when present+valid:
+// an explicit language that differs from the selected proposal language is a
+// precise mismatch (fires even for English selection). Days whose notesLanguage
+// is null/unknown fall back to the existing conservative heuristic (which only
+// fires for a non-English selection). Advisory only — never blocks export.
+// ---------------------------------------------------------------------------
+export type ProposalDayNotesInput = { notes?: string | null; notesLanguage?: string | null };
+const VALID_LOCALES = ['en', 'es', 'pt', 'ar'] as const;
+
+export type NotesLanguageWarning =
+  | { warn: false }
+  // a single, known notesLanguage differs from the selected language → precise copy
+  | { warn: true; mode: 'explicit'; fromLanguage: (typeof VALID_LOCALES)[number]; selectedLanguage: (typeof VALID_LOCALES)[number] }
+  // mixed explicit languages, or a heuristic-only signal → generic copy
+  | { warn: true; mode: 'generic' };
+
+export function evaluateNotesLanguageWarning(
+  days: ProposalDayNotesInput[],
+  language: ProposalLanguageInput,
+): NotesLanguageWarning {
+  const selected = String(language ?? '').trim().toLowerCase();
+  const selectedValid = (VALID_LOCALES as readonly string[]).includes(selected);
+
+  const explicitMismatchLangs = new Set<string>();
+  const heuristicNotes: Array<string | null | undefined> = [];
+
+  for (const day of days || []) {
+    const lang = String(day?.notesLanguage ?? '').trim().toLowerCase();
+    if ((VALID_LOCALES as readonly string[]).includes(lang)) {
+      // Explicit, authoritative language — a mismatch is anything ≠ the selection.
+      if (selectedValid && lang !== selected) explicitMismatchLangs.add(lang);
+    } else {
+      // Unknown/null — defer to the conservative heuristic for this day's text.
+      heuristicNotes.push(day?.notes);
+    }
+  }
+
+  const heuristicWarn = detectNotesLanguageMismatch(heuristicNotes, language);
+  if (explicitMismatchLangs.size === 0 && !heuristicWarn) return { warn: false };
+
+  // Precise copy only when exactly one explicit mismatch language and no heuristic
+  // contribution; otherwise a generic "may not match" advisory.
+  if (selectedValid && !heuristicWarn && explicitMismatchLangs.size === 1) {
+    return {
+      warn: true,
+      mode: 'explicit',
+      fromLanguage: [...explicitMismatchLangs][0] as (typeof VALID_LOCALES)[number],
+      selectedLanguage: selected as (typeof VALID_LOCALES)[number],
+    };
+  }
+  return { warn: true, mode: 'generic' };
+}

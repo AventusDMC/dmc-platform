@@ -8,7 +8,7 @@ import {
   getQuoteExportPdfHref,
   isProposalLanguage,
 } from './proposal-paths';
-import { detectNotesLanguageMismatch, proposalLanguageEnglishName } from './proposal-notes-language';
+import { evaluateNotesLanguageWarning, proposalLanguageEnglishName, type ProposalDayNotesInput } from './proposal-notes-language';
 
 type ProposalDocumentActionsProps = {
   apiBaseUrl: string;
@@ -16,10 +16,11 @@ type ProposalDocumentActionsProps = {
   // Default selected language — seeded from Quote.proposalLanguage when available.
   // Render-time selection only (Phase 3D.1I); the choice is not persisted.
   initialLanguage?: string | null;
-  // Phase P.3X-5E-2.1 — visible day notes (same planner-vs-legacy source the proposal
-  // exports from), used ONLY for a non-blocking advisory when a non-English proposal
-  // still has English-looking day notes. Never sent to the backend.
-  dayNotes?: Array<string | null>;
+  // Phase P.3X-5E-2.1 / 5E-4C — visible exported days (same planner-vs-legacy source
+  // the proposal exports from), each with its notes + notesLanguage metadata. Used
+  // ONLY for a non-blocking advisory; never sent to the backend. notesLanguage (when
+  // present) is authoritative; null/unknown falls back to the heuristic.
+  dayNotes?: ProposalDayNotesInput[];
 };
 
 // Phase 3D.1I — operator-facing proposal language selector. Lets the operator
@@ -32,11 +33,12 @@ export function ProposalDocumentActions({ apiBaseUrl, quoteId, initialLanguage =
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState('');
 
-  // Phase P.3X-5E-2.1 — non-blocking advisory: a non-English proposal whose day
-  // notes still look English (or, for Arabic, non-Arabic). Advisory only — it never
-  // disables export, never changes hrefs/fetch, never mutates notes, never hits the
-  // backend. Reacts to the selected language.
-  const showNotesLanguageWarning = detectNotesLanguageMismatch(dayNotes, language);
+  // Phase P.3X-5E-4C — non-blocking advisory: a day whose notes don't match the
+  // selected proposal language. Uses the per-day notesLanguage metadata when present
+  // (authoritative — fires even for an English selection), else the conservative
+  // heuristic. Advisory only — never disables export, never changes hrefs/fetch,
+  // never mutates notes, never hits the backend. Reacts to the selected language.
+  const notesWarning = evaluateNotesLanguageWarning(dayNotes, language);
   const languageName = proposalLanguageEnglishName(language);
 
   async function handleDownload() {
@@ -87,11 +89,11 @@ export function ProposalDocumentActions({ apiBaseUrl, quoteId, initialLanguage =
         </select>
       </label>
 
-      {showNotesLanguageWarning ? (
+      {notesWarning.warn ? (
         <p className="form-help proposal-notes-language-warning" role="note">
-          {language === 'ar'
-            ? `This proposal is set to ${languageName}, but some day notes do not appear to be ${languageName}. Review or save ${languageName} day narratives in the Route Planner before sending to the client.`
-            : `This proposal is set to ${languageName}, but some day notes still appear to be in English. Review or save ${languageName} day narratives in the Route Planner before sending to the client.`}
+          {notesWarning.mode === 'explicit'
+            ? `Some day notes are saved as ${proposalLanguageEnglishName(notesWarning.fromLanguage)}, but this proposal is set to ${languageName}. Review or save ${languageName} day narratives in the Route Planner before sending to the client.`
+            : `Some day notes may not match the selected proposal language (${languageName}). Review the day narratives in the Route Planner before sending to the client.`}
         </p>
       ) : null}
 
