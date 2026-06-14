@@ -7,6 +7,9 @@ export type CreateQuoteItineraryDayDto = {
   dayNumber: number;
   title: string;
   notes?: string | null;
+  // Phase P.3X-5E-4B — language of `notes` (en|es|pt|ar); null/omitted = unknown.
+  // Metadata only; proposal-v3 does not read it yet (capture-only).
+  notesLanguage?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -15,6 +18,10 @@ export type UpdateQuoteItineraryDayDto = {
   dayNumber?: number;
   title?: string;
   notes?: string | null;
+  // Phase P.3X-5E-4B — see CreateQuoteItineraryDayDto. On update: unchanged when
+  // notes is not being changed; set to this locale when notes changes and a locale
+  // is declared; reset to null when notes changes without a declared locale.
+  notesLanguage?: string | null;
   country?: string | null;
   // Transport day-classification metadata (PR6 fields, PR7 planner capture). Optional;
   // omitted = unchanged. Metadata only — never touches live pricing.

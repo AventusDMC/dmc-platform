@@ -227,28 +227,27 @@ describe('R.7A-3 — "Use this narrative" saves the day narrative to notes (note
     ]);
   });
 
-  it('saves via the EXISTING day PATCH with a NOTES-ONLY payload', () => {
+  it('saves via the EXISTING day PATCH with a { notes, notesLanguage } payload', () => {
+    // Phase P.3X-5E-4B — the save now ALSO records the language (notesLanguage = the
+    // selected locale) so the proposal export can detect mismatches precisely. It is
+    // still ONLY notes + notesLanguage — no title / dayNumber / services / pricing.
     expectSourceContains(source, [
       'async function applyNarrativeToDay(day: RoutePlannerDay, generatedText: string, locale: NarrativeLocale)',
       '`${apiBaseUrl}/itinerary/day/${day.id}`',
       "method: 'PATCH'",
-      'JSON.stringify({ notes: generatedText })',
+      'JSON.stringify({ notes: generatedText, notesLanguage: locale })',
       'router.refresh()',
     ]);
-    // The narrative-save PATCH BODY must be notes-only — scope the field checks to
-    // the JSON.stringify(...) payload (the handler legitimately reads day.dayNumber
-    // for its save-state keys, which is not part of the payload).
     const handlerStart = source.indexOf('async function applyNarrativeToDay');
     const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
     const payloadMatch = handler.match(/JSON\.stringify\((\{[^}]*\})\)/);
     assert.ok(payloadMatch, 'narrative save has a JSON.stringify payload');
     const payload = payloadMatch![1];
     assert.ok(payload.includes('notes'), 'payload includes notes');
+    assert.ok(payload.includes('notesLanguage'), 'payload records the language');
     for (const forbidden of ['title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'serviceId', 'poi', 'markup', 'overrideCost', 'paxCount', 'price']) {
       assert.ok(!payload.includes(forbidden), `narrative save payload must not include ${forbidden}`);
     }
-    // (No /items / generator / proposal coupling is asserted by the pre-existing
-    // S.2D + "no write/network/proposal/pricing coupling" tests above.)
   });
 
   it('exposes the client-safe save guard from the pure narrative module', () => {
@@ -299,15 +298,16 @@ describe('R.7B-3B — narrative language selector + RTL preview (preview-only)',
     assert.ok(!source.includes('Saving translated narratives will be enabled in a later phase.'), 'later-phase placeholder removed');
   });
 
-  it('the language selector adds no new PATCH and never persists locale', () => {
-    // The narrative save reuses the existing day-PATCH; no new endpoint is added,
-    // and the selected language is never sent in any request body.
+  it('the language selector adds no new PATCH; the save records the locale as notesLanguage', () => {
+    // The narrative save reuses the existing day-PATCH; no new endpoint is added.
+    // Phase P.3X-5E-4B — the selected locale is now sent as notesLanguage metadata
+    // (capture-only); still no new request and no pricing/services.
     const patchCount = (source.match(/method:\s*['"]PATCH['"]/g) || []).length;
     assert.equal(patchCount, 3, 'no new PATCH added');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
     const onClickCount = (source.match(/onClick=\{\(\) => applyNarrativeToDay\(/g) || []).length;
     assert.equal(onClickCount, 1, 'narrative save is wired once');
-    assert.ok(!/JSON\.stringify\([^)]*locale/.test(source), 'selected language is never sent to the backend');
+    assert.ok(/JSON\.stringify\(\{ notes: generatedText, notesLanguage: locale \}\)/.test(source), 'save records notesLanguage = selected locale');
   });
 
   it('13. no proposal/backend/schema/pricing/QuoteItem/apply-flow coupling added', () => {
@@ -361,16 +361,17 @@ describe('R.7B-4 — save the selected-language narrative into day notes (notes-
     ]);
   });
 
-  it('7/8/9/10. PATCH stays notes-only — no locale/title/etc, no sibling/pricing writes', () => {
-    // The only mutation is the notes-only day PATCH; payload field-scoped check.
+  it('7/8/9/10. PATCH is notes + notesLanguage only — no title/pricing/services, no sibling writes', () => {
+    // Phase P.3X-5E-4B — the day PATCH now carries the notes AND notesLanguage (the
+    // selected locale, capture-only). It still carries nothing else: no title /
+    // dayNumber / pricing / services / POIs, and no loop over sibling days.
     const handlerStart = source.indexOf('async function applyNarrativeToDay');
     const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
     const payload = handler.match(/JSON\.stringify\((\{[^}]*\})\)/)![1];
-    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText}', 'payload is exactly { notes }');
-    for (const forbidden of ['locale', 'language', 'title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'poi', 'serviceId', 'price', 'markup']) {
+    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText,notesLanguage:locale}', 'payload is exactly { notes, notesLanguage }');
+    for (const forbidden of ['title', 'dayNumber', 'sortOrder', 'isActive', 'country', 'poi', 'serviceId', 'price', 'markup']) {
       assert.ok(!payload.includes(forbidden), `payload must not include ${forbidden}`);
     }
-    // PATCH targets only the selected day's id; no loop over sibling days here.
     assert.ok(source.includes('`${apiBaseUrl}/itinerary/day/${day.id}`'), 'targets the selected day id');
   });
 
@@ -437,16 +438,15 @@ describe('R.7B-5B — proposal-language mismatch hints (advisory, non-blocking)'
     assert.equal(re.test('Petra, la ciudad rosada'), false, 'does not match Latin Spanish');
   });
 
-  it('8/9/10/11. hints are advisory — save is unchanged (notes-only PATCH, no locale sent)', () => {
-    // No new PATCH/POST; payload still { notes }; no locale/language ever sent.
+  it('8/9/10/11. hints are advisory — save is the { notes, notesLanguage } day PATCH, nothing more', () => {
+    // No new PATCH/POST; the advisory mismatch HINTS add no request of their own.
     assert.equal((source.match(/method:\s*['"]PATCH['"]/g) || []).length, 3, 'no new PATCH added by the hints');
     assert.ok(!/method:\s*['"](POST|DELETE)['"]/.test(source), 'no POST/DELETE added');
-    assert.ok(!/JSON\.stringify\([^)]*locale/.test(source), 'no locale/language sent to backend');
-    // The narrative-save PATCH body remains exactly { notes }.
+    // The narrative-save PATCH body is exactly { notes, notesLanguage } (P.3X-5E-4B).
     const handlerStart = source.indexOf('async function applyNarrativeToDay');
     const handler = source.slice(handlerStart, source.indexOf('\n  }', handlerStart) + 4);
     const payload = handler.match(/JSON\.stringify\((\{[^}]*\})\)/)![1];
-    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText}', 'save payload is still { notes }');
+    assert.equal(payload.replace(/\s/g, ''), '{notes:generatedText,notesLanguage:locale}', 'save payload is { notes, notesLanguage }');
     // Hints never disable/guard the save button or the preview.
     assert.ok(!/disabled=\{[^}]*Mismatch/.test(source), 'mismatch never disables a control');
   });

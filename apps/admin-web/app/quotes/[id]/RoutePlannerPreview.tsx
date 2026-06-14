@@ -63,6 +63,9 @@ export type RoutePlannerDay = {
   dayNumber: number;
   title: string | null;
   notes?: string | null;
+  // Phase P.3X-5E-4B — language of `notes` (en|es|pt|ar); null = unknown. Capture-only
+  // metadata; not read by any UI yet (the R.7B save writes it via the day PATCH).
+  notesLanguage?: 'en' | 'es' | 'pt' | 'ar' | null;
   // R.7A-2 — client-safe descriptors of services already applied to this day.
   appliedServices?: AppliedNarrativeService[];
 };
@@ -222,7 +225,9 @@ export function RoutePlannerPreview({
         headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         // NOTES ONLY — title / dayNumber / sortOrder / isActive / country / POIs /
         // services / QuoteItems / pricing are all left untouched (partial update).
-        body: JSON.stringify({ notes: generatedText }),
+        // Phase P.3X-5E-4B — also record the language of the saved narrative so the
+        // proposal export can later detect mismatches precisely (capture-only today).
+        body: JSON.stringify({ notes: generatedText, notesLanguage: locale }),
       });
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not save the narrative to this day.'));

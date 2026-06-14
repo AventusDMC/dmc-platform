@@ -17,6 +17,10 @@ import {
   UpdateQuoteItineraryDayItemDto,
 } from './quote-itinerary.dto';
 
+// Phase P.3X-5E-4B — supported day-notes languages (mirrors proposal PROPOSAL_LOCALES).
+// Validated here without a DB enum (same pattern as transportDayType). null = unknown.
+const NOTES_LANGUAGES = ['en', 'es', 'pt', 'ar'] as const;
+
 @Injectable()
 export class QuoteItineraryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -124,6 +128,7 @@ export class QuoteItineraryService {
           dayNumber: normalized.dayNumber,
           title: normalized.title,
           notes: normalized.notes,
+          notesLanguage: normalized.notesLanguage,
           isActive: normalized.isActive,
           sortOrder: existingDays.length,
         },
@@ -753,6 +758,7 @@ export class QuoteItineraryService {
           dayNumber: normalized.dayNumber,
           title: normalized.title,
           notes: normalized.notes,
+          notesLanguage: normalized.notesLanguage,
           country: normalized.country,
           transportDayType: normalized.transportDayType,
           ...(normalized.retentionUpdate ?? {}),
@@ -1227,9 +1233,24 @@ export class QuoteItineraryService {
       dayNumber,
       title: requireTrimmedString(data.title, 'title'),
       notes: normalizeOptionalString(data.notes),
+      // Phase P.3X-5E-4B — optional; validated; omitted/blank/invalid-handling per helper.
+      notesLanguage: this.normalizeNotesLanguage(data.notesLanguage),
       sortOrder,
       isActive: data.isActive ?? true,
     };
+  }
+
+  // Phase P.3X-5E-4B — validate the day-notes language against the supported set.
+  // undefined/null/'' → null (unknown). Any other non-locale value is rejected
+  // explicitly (no silent coercion), matching the transportDayType style.
+  private normalizeNotesLanguage(value: string | null | undefined): string | null {
+    if (value === undefined || value === null) return null;
+    const normalized = String(value).trim().toLowerCase();
+    if (!normalized) return null;
+    if (!(NOTES_LANGUAGES as readonly string[]).includes(normalized)) {
+      throw new BadRequestException(`Invalid notesLanguage: ${value}`);
+    }
+    return normalized;
   }
 
   private normalizeDayUpdateInput(data: UpdateQuoteItineraryDayDto, existing: any) {
@@ -1279,10 +1300,25 @@ export class QuoteItineraryService {
       retentionUpdate = { vehicleRetained: r, vehicleReleased: rel, inRetainedBlock: blk };
     }
 
+    // Phase P.3X-5E-4B — notesLanguage tracks the language of `notes`:
+    //   • notes NOT being changed → leave existing language untouched.
+    //   • notes changed + a locale declared → set it (validated).
+    //   • notes changed + NO locale declared → reset to null (unknown), so a manual
+    //     edit / route-preset save is never mislabeled with the prior language.
+    let nextNotesLanguage: string | null;
+    if (data.notes === undefined) {
+      nextNotesLanguage = existing.notesLanguage ?? null;
+    } else if (data.notesLanguage !== undefined) {
+      nextNotesLanguage = this.normalizeNotesLanguage(data.notesLanguage);
+    } else {
+      nextNotesLanguage = null;
+    }
+
     return {
       dayNumber: nextDayNumber,
       title: data.title === undefined ? existing.title : requireTrimmedString(data.title, 'title'),
       notes: data.notes === undefined ? existing.notes : normalizeOptionalString(data.notes),
+      notesLanguage: nextNotesLanguage,
       country: data.country === undefined ? existing.country : normalizeOptionalString(data.country),
       transportDayType: nextTransportDayType,
       retentionUpdate,

@@ -14,6 +14,8 @@ type CreateDayBody = {
   dayNumber: number | string;
   title: string;
   notes?: string | null;
+  // Phase P.3X-5E-4B — language of `notes` (en|es|pt|ar); null/omitted = unknown.
+  notesLanguage?: string | null;
   country?: string | null;
   transportDayType?: string | null;
   vehicleRetained?: boolean | null;
@@ -240,6 +242,7 @@ export class QuoteItineraryController {
       dayNumber: Number(body.dayNumber),
       title: body.title,
       notes: body.notes,
+      notesLanguage: body.notesLanguage,
       sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       isActive: body.isActive,
     };
@@ -250,6 +253,7 @@ export class QuoteItineraryController {
       dayNumber: body.dayNumber === undefined ? undefined : Number(body.dayNumber),
       title: body.title,
       notes: body.notes,
+      notesLanguage: body.notesLanguage,
       country: body.country,
       transportDayType: body.transportDayType,
       vehicleRetained: body.vehicleRetained,

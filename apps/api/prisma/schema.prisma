@@ -1289,6 +1289,14 @@ model QuoteItineraryDay {
   dayNumber            Int
   title                String
   notes                String?
+  // Phase P.3X-5E-4B — language of the day `notes` (en|es|pt|ar), validated in TS
+  // against PROPOSAL_LOCALES (no DB enum). NULL = unknown (all existing rows, and any
+  // manual edit that doesn't declare a language). ADDITIVE, METADATA ONLY — never
+  // touches pricing. proposal-v3 does NOT read it yet (capture-only; P.3X-5E-4C will
+  // use it for a precise export warning). Written = selected locale by the R.7B
+  // "Use this narrative" save; reset to NULL when notes change without a declared
+  // language, so manual / route-preset edits are never mislabeled.
+  notesLanguage        String?
   // Manual destination-country override for the day. NULL = derive at read
   // time from the day's services (deriveDayCountry). When set, it wins over
   // the derived value in the builder + proposal grouping. Location metadata
