@@ -81,9 +81,13 @@ test('P.3X-5E-3A parity: locale + direction helpers + locale set agree', () => {
   }
 });
 
-test('P.3X-5E-3A: the API copy is NOT imported by the proposal-v3 mapper (stays dormant)', async () => {
+test('P.3X-5E-3B: the proposal-v3 mapper now imports the API narrative helper (empty-day fallback)', async () => {
+  // As of P.3X-5E-3B the helper is no longer dormant — the mapper uses it for the
+  // empty/placeholder-day fallback ONLY. The byte-identical parity above keeps the
+  // two copies locked.
   const { readFileSync } = await import('node:fs');
   const { resolve } = await import('node:path');
   const mapper = readFileSync(resolve(__dirname, 'proposal-v3.mapper.ts'), 'utf8');
-  assert.ok(!/day-narrative-preview/.test(mapper), 'proposal-v3.mapper.ts must not import the narrative helper yet');
+  assert.match(mapper, /from '\.\/day-narrative-preview'/, 'mapper imports the API narrative helper');
+  assert.match(mapper, /composeEmptyDayFallback/, 'mapper wires the empty-day fallback');
 });
