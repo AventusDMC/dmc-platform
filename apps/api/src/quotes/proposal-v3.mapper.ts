@@ -19,6 +19,7 @@ import {
   joinDestinations,
   joinProseList,
   localizePlaceName,
+  localizeStructuralDayTitle,
   localizePricingLine,
   localizeSnapshotLabel,
   prosePhrase,
@@ -1586,7 +1587,10 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     return {
       dayNumber: day.dayNumber,
       dayNumberLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
-      title: isWeakText(day.title) ? location : cleanText(day.title) || location,
+      // Phase P.3X-5E-1 — localize safe STRUCTURAL day titles (Arrival/Departure/
+      // slash route titles) for non-English proposals; free-form titles and English
+      // are returned unchanged. Place tokens reuse P.3X-5D localizePlaceName.
+      title: isWeakText(day.title) ? location : localizeStructuralDayTitle(activeProposalLocale, cleanText(day.title)) || location,
       summary: summary || null,
       overnightLocation,
       // A stored manual override (day.country) wins; otherwise derive from services.
