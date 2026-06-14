@@ -464,7 +464,7 @@ function createUpdateDayService(existing: any) {
 }
 const BASE_DAY = { id: 'day-1', quoteId: 'quote-1', dayNumber: 2, title: 'Petra', isActive: true, sortOrder: 1, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null };
 const mainUpdate = (updates: any[]) => updates.find((u) => 'title' in u);
-const ALLOWED_KEYS = new Set(['dayNumber', 'title', 'notes', 'country', 'transportDayType', 'vehicleRetained', 'vehicleReleased', 'inRetainedBlock', 'isActive']);
+const ALLOWED_KEYS = new Set(['dayNumber', 'title', 'notes', 'notesLanguage', 'country', 'transportDayType', 'vehicleRetained', 'vehicleReleased', 'inRetainedBlock', 'isActive']);
 
 test('PR7 updateDay: title-only edit leaves metadata untouched (NULL stays NULL, retention not written)', async () => {
   const { service, updates } = createUpdateDayService({ ...BASE_DAY });
