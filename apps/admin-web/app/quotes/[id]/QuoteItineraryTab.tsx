@@ -7,6 +7,7 @@ import { TableSectionShell } from '../../components/TableSectionShell';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteItineraryDayCard } from './QuoteItineraryDayCard';
 import { QuoteItineraryDayForm } from './QuoteItineraryDayForm';
+import { PackagePricingPreview } from './PackagePricingPreview';
 import { QuoteItineraryDayItemForm } from './QuoteItineraryDayItemForm';
 import { QuoteItineraryMoveButton } from './QuoteItineraryMoveButton';
 import { QuoteServiceItemRow } from './QuoteServiceItemRow';
@@ -197,6 +198,8 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
           { id: 'itinerary-active', label: 'Active days', value: String(activeDays.length), helper: 'Visible in itinerary list' },
         ]}
       />
+
+      <PackagePricingPreview quoteId={quoteId} />
 
       <TableSectionShell
         title="Quote itinerary"
