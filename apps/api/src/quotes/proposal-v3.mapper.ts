@@ -14,6 +14,14 @@ import {
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { deriveDayCountry } from './quote-day-country';
 import { AXIS_BRAND_LOGO_DATA_URI } from './proposal-brand-logo';
+// Phase P.3X-5E-3B — deterministic multilingual fallback narrative for EMPTY days
+// only (the dormant API copy from P.3X-5E-3A). Never replaces existing notes.
+import {
+  buildDayNarrativePreview,
+  isClientSafeNarrative,
+  resolveNarrativeLocale,
+  type AppliedNarrativeService,
+} from './day-narrative-preview';
 import {
   intlLocale,
   joinDestinations,
@@ -1569,6 +1577,52 @@ function composeDayNarrativeFromPois(day: ProposalV3DaySource, locale: ProposalL
   return composed;
 }
 
+// Phase P.3X-5E-3B — deterministic, multilingual (en/es/pt/ar) FALLBACK narrative
+// for a day that has NEITHER a POI-composed narrative NOR usable day.notes (empty /
+// placeholder). Uses the dormant API copy of the R.7B helper (P.3X-5E-3A). This is
+// the THIRD precedence tier — it NEVER overrides existing notes or POI narrative and
+// is only reached when both are absent. Inputs are derived from day data; the RAW
+// overnight hotel city is passed (the helper localizes place names itself — never
+// feed it a pre-localized name). Output is double-gated (the helper's own
+// isClientSafeNarrative + the proposal's script-aware isComposedCopyClientSafe);
+// anything unsafe/empty yields null (no fallback rendered). The helper never emits
+// supplier/contract/pricing/vehicle/internal text (sanitizePlace + its leak guard).
+function composeEmptyDayFallback(
+  day: ProposalV3DaySource,
+  dayItems: ProposalV3QuoteItem[],
+  locale: ProposalLocale,
+): string | null {
+  // Guide + activity are the only services the R.7B helper weaves in; hotel/
+  // transport/entrance are intentionally not surfaced (no vehicle/supplier leak).
+  const appliedServices: AppliedNarrativeService[] = [];
+  for (const item of dayItems) {
+    if (isGuideItem(item)) {
+      appliedServices.push({ kind: 'guide' });
+    } else if (isActivityItem(item)) {
+      appliedServices.push({ kind: 'activity', name: cleanText(item.activity?.name || item.service?.name || '') || null });
+    }
+  }
+  const hotelItem = dayItems.find((item) => isHotelItem(item));
+  const overnightCity = hotelItem ? cleanText(hotelItem.hotel?.city || '') || null : null;
+
+  const preview = buildDayNarrativePreview(
+    {
+      title: day.title || '',
+      notes: day.description ?? null,
+      overnightCity,
+      dayNumber: day.dayNumber,
+      appliedServices,
+    },
+    { locale: resolveNarrativeLocale(locale) },
+  );
+
+  const text = preview.text;
+  if (!text || !isClientSafeNarrative(text) || !isComposedCopyClientSafe(text)) {
+    return null;
+  }
+  return text;
+}
+
 function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const daySources = getProposalDaySources(quote);
   const usingActivePlannerDays = buildActivePlannerDaySources(quote).length > 0;
@@ -1580,15 +1634,18 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     // raw operator-authored day.title is NOT localized (see title below).
     const location = localizePlaceName(activeProposalLocale, extractDayLocation(day.title, day.dayNumber));
     const dayItems = day.items.filter((item) => !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)));
-    // Phase 3B.2 — day-summary precedence:
+    // Phase 3B.2 / P.3X-5E-3B — day-summary precedence:
     //   1) composed POI narrative (when the day has usable POI assignments)
-    //   2) existing day.notes (unchanged when there are no POI rows or the
-    //      composer produced nothing client-safe)
-    //   3) none (item-derived fallback happens downstream as today)
+    //   2) existing day.notes (unchanged — NEVER overridden — when present/meaningful)
+    //   3) deterministic R.7B fallback narrative, ONLY when 1 & 2 are both absent
+    //      (empty/placeholder notes). Localized to the active proposal locale.
+    //   4) none (item-derived fallback happens downstream as today)
     const notesSummary = cleanText(day.description || '');
     const cleanNotes = isPlaceholderText(notesSummary) ? null : notesSummary || null;
     const composedNarrative = composeDayNarrativeFromPois(day, activeProposalLocale);
-    const summary = composedNarrative ?? cleanNotes;
+    const emptyDayFallback =
+      !composedNarrative && !cleanNotes ? composeEmptyDayFallback(day, dayItems, activeProposalLocale) : null;
+    const summary = composedNarrative ?? cleanNotes ?? emptyDayFallback;
 
     // Phase 3D.1O — the overnight badge must reflect the actual overnight city
     // (the hotel's own city), not the day-title location. A "Dana" day whose
