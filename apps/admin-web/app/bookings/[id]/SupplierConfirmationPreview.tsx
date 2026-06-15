@@ -68,11 +68,17 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<SupplierConfirmationPreview | null>(null);
+  // Phase O.2B-2C — gated send. A READY supplier opens a confirm modal; only the
+  // modal's Confirm triggers the POST send. No send happens from the card click.
+  const [confirmFor, setConfirmFor] = useState<SupplierDraft | null>(null);
+  const [sending, setSending] = useState(false);
+  const [success, setSuccess] = useState('');
 
   async function handlePreview() {
     try {
       setLoading(true);
       setError('');
+      setSuccess('');
       // READ-ONLY GET — never sends an email, never mutates the booking.
       const response = await fetch(`${apiBaseUrl}/bookings/${bookingId}/supplier-confirmation/preview`, {
         credentials: 'include',
@@ -90,6 +96,33 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
     }
   }
 
+  // Only the final modal confirmation calls this. Sends scope ONLY (supplierId) —
+  // the server resolves the recipient + content; we never post an email address.
+  async function handleConfirmSend() {
+    if (!confirmFor || !confirmFor.recipient.supplierId) return;
+    try {
+      setSending(true);
+      setError('');
+      setSuccess('');
+      const response = await fetch(`${apiBaseUrl}/bookings/${bookingId}/supplier-confirmation/send`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplierId: confirmFor.recipient.supplierId }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not send the supplier confirmation.'));
+      }
+      setSuccess(`Confirmation request sent to ${confirmFor.recipient.email}. Status set to Requested.`);
+      setConfirmFor(null);
+      await handlePreview(); // refresh readiness/status
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not send the supplier confirmation.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="section-stack supplier-confirmation-preview">
       <button type="button" className="secondary-button" onClick={handlePreview} disabled={loading}>
@@ -99,6 +132,7 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
         Read-only draft of the confirmation request per supplier. No email is sent and nothing is changed.
       </p>
       {error ? <p className="form-error">{error}</p> : null}
+      {success ? <p className="form-success" role="status">{success}</p> : null}
 
       {preview ? (
         preview.suppliers.length === 0 ? (
@@ -136,10 +170,49 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
                 <p><strong>Subject:</strong> {supplier.subject}</p>
                 <pre className="supplier-confirmation-preview-body">{supplier.body}</pre>
                 <p className="form-help">{supplier.services.length} service(s) included.</p>
+                {/* O.2B-2C — Send only when READY. Otherwise the reason is shown above;
+                    no send control is rendered. Click opens the confirm modal — it does
+                    NOT send directly. */}
+                {supplier.readiness === 'READY' ? (
+                  <button
+                    type="button"
+                    className="secondary-button supplier-confirmation-send-button"
+                    onClick={() => setConfirmFor(supplier)}
+                    disabled={sending}
+                  >
+                    Send confirmation request
+                  </button>
+                ) : (
+                  <p className="form-help" role="note">Send unavailable — {READINESS_LABEL[supplier.readiness]}.</p>
+                )}
               </section>
             ))}
           </div>
         )
+      ) : null}
+
+      {/* O.2B-2C — final confirmation modal. Only its Confirm triggers the POST send. */}
+      {confirmFor ? (
+        <div className="modal-overlay supplier-confirmation-send-modal" role="dialog" aria-modal="true" aria-label="Confirm supplier confirmation send">
+          <div className="modal-card">
+            <h4>Send confirmation request?</h4>
+            <ul className="form-help">
+              <li>Supplier: <strong>{confirmFor.recipient.supplierName}</strong></li>
+              <li>Email: <strong>{confirmFor.recipient.email}</strong></li>
+              <li>Booking: <strong>{preview?.bookingRef ?? '—'}</strong></li>
+              <li>Services: <strong>{confirmFor.services.length}</strong></li>
+              <li>Status after send: <strong>Requested</strong></li>
+            </ul>
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setConfirmFor(null)} disabled={sending}>
+                Cancel
+              </button>
+              <button type="button" className="primary-button" onClick={handleConfirmSend} disabled={sending}>
+                {sending ? 'Sending…' : 'Confirm & send'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

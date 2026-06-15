@@ -9,16 +9,21 @@ const proxy = readFileSync(
   new URL('../../api/bookings/[id]/supplier-confirmation/preview/route.ts', import.meta.url),
   'utf8',
 );
+const sendProxy = readFileSync(
+  new URL('../../api/bookings/[id]/supplier-confirmation/send/route.ts', import.meta.url),
+  'utf8',
+);
 const page = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 
 describe('SupplierConfirmationPreview — read-only', () => {
-  it('fetches the read-only GET preview endpoint and never sends', () => {
+  it('preview fetch is a read-only GET; the only mutating call is the gated send', () => {
     assert.match(component, /\/bookings\/\$\{bookingId\}\/supplier-confirmation\/preview/, 'hits the preview endpoint');
-    // No mutating method anywhere in the component.
-    assert.ok(!/method:\s*['"](POST|PATCH|PUT|DELETE)['"]/.test(component), 'no mutating fetch method');
-    // No send wiring of any kind.
-    assert.ok(!/send-document-email|sendDocument|sendInvoice|sendPaymentReminder/.test(component), 'no email-send wiring');
-    assert.ok(!/>\s*Send\b/.test(component), 'no Send button label');
+    // The preview fetch carries no method (GET). The ONLY POST is the gated send.
+    const postCount = (component.match(/method: 'POST'/g) || []).length;
+    assert.equal(postCount, 1, 'exactly one POST — the O.2B-2C gated send');
+    assert.ok(!/method:\s*['"](PATCH|PUT|DELETE)['"]/.test(component), 'no PATCH/PUT/DELETE');
+    // Never routes through the legacy arbitrary-email/send-document paths.
+    assert.ok(!/send-document-email|sendDocument|sendInvoice|sendPaymentReminder/.test(component), 'no legacy send wiring');
   });
 
   it('renders recipient, subject, body, and service count', () => {
@@ -63,5 +68,55 @@ describe('SupplierConfirmationPreview — read-only', () => {
   it('is mounted on the supplier-confirmation page', () => {
     assert.match(page, /import \{ SupplierConfirmationPreview \} from '\.\.\/SupplierConfirmationPreview'/, 'imported');
     assert.match(page, /<SupplierConfirmationPreview\s+apiBaseUrl=\{ACTION_API_BASE_URL\}\s+bookingId=\{booking\.id\}/, 'mounted with /api base + booking id');
+  });
+});
+
+describe('O.2B-2C — gated send (UI + proxy)', () => {
+  it('Send appears only for READY; otherwise shows the reason, no send control', () => {
+    assert.match(component, /supplier\.readiness === 'READY' \? \(/, 'send gated on READY');
+    assert.match(component, /Send confirmation request/, 'send button label');
+    assert.match(component, /Send unavailable —/, 'non-ready shows reason instead of a send control');
+  });
+
+  it('clicking Send opens a confirm modal — it does NOT send directly', () => {
+    assert.match(component, /onClick=\{\(\) => setConfirmFor\(supplier\)\}/, 'card click only opens modal');
+    // The POST send is wired ONLY to the modal confirm handler.
+    assert.match(component, /onClick=\{handleConfirmSend\}/, 'modal confirm triggers the send');
+    const postCount = (component.match(/method: 'POST'/g) || []).length;
+    assert.equal(postCount, 1, 'exactly one POST (the gated send)');
+    // the POST lives inside handleConfirmSend, not the card button
+    const handler = component.slice(component.indexOf('async function handleConfirmSend'), component.indexOf('async function handleConfirmSend') + 900);
+    assert.match(handler, /method: 'POST'/, 'send POST is in the confirm handler');
+  });
+
+  it('confirm modal repeats supplier/email/booking/services/status', () => {
+    for (const fragment of [
+      'role="dialog"',
+      'confirmFor.recipient.supplierName',
+      'confirmFor.recipient.email',
+      'preview?.bookingRef',
+      'confirmFor.services.length',
+      'Status after send:',
+      'Requested',
+      'Confirm & send',
+    ]) {
+      assert.ok(component.includes(fragment), `modal shows: ${fragment}`);
+    }
+  });
+
+  it('send posts SCOPE ONLY (supplierId) — never an email/subject/body', () => {
+    assert.match(component, /\/bookings\/\$\{bookingId\}\/supplier-confirmation\/send/, 'hits the gated send endpoint');
+    assert.match(component, /JSON\.stringify\(\{ supplierId: confirmFor\.recipient\.supplierId \}\)/, 'body is supplierId only');
+    const handler = component.slice(component.indexOf('async function handleConfirmSend'), component.indexOf('async function handleConfirmSend') + 900);
+    for (const forbidden of ['email:', 'subject:', "to:", 'recipient:']) {
+      assert.ok(!handler.includes(forbidden), `send body must not include ${forbidden}`);
+    }
+  });
+
+  it('send proxy is POST-only and forwards to the backend send route', () => {
+    assert.match(sendProxy, /export async function POST\(/, 'POST handler');
+    assert.ok(!/export async function (GET|PATCH|PUT|DELETE)\(/.test(sendProxy), 'no other handlers');
+    assert.match(sendProxy, /\/bookings\/\$\{id\}\/supplier-confirmation\/send/, 'forwards to backend send');
+    assert.match(sendProxy, /forwardProxyJsonResponse/, 'returns JSON');
   });
 });
