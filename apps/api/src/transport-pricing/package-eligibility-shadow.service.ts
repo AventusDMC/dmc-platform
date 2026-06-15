@@ -131,8 +131,14 @@ export type PackageEligibilityShadowResult = {
 // (NOT Large VIP 31-33 49c5fd5d… nor Mercedes Grand Star 33906a47…/94c1a79b…). In-code constant:
 // small, closed, reviewed-in-PR; no schema. 11B-2A surfaces the decision in the shadow output but
 // does NOT enforce it in computeQuotePackageLiveApply (enforcement is PR 11B-2B).
+// Closed contract allowlist: the KEYS are the only package contracts live apply may use; the
+// VALUES are the only vehicles each contract may price. Class-level package contracts cannot tell
+// standard vs VIP/VVIP/Grand-Star apart within one vehicleClass, so each contract is pinned to its
+// intended STANDARD vehicle(s). Not supplier+class broad matching — a contract applies only if its
+// id is a key here. (PR11B-3C added the Medium Bus pilot.)
 export const PACKAGE_VEHICLE_ALLOWLIST: Record<string, string[]> = {
-  '66f5de06-28df-426c-90b8-ffaa01ed5c5f': ['6d575442-05fd-4cf6-bd22-5e8a0ee12303'], // pilot → Alpha Large 49
+  '66f5de06-28df-426c-90b8-ffaa01ed5c5f': ['6d575442-05fd-4cf6-bd22-5e8a0ee12303'], // Large Bus pilot → Alpha Large 49
+  'eabd43a0-2374-49d7-aaba-959df4d7c8bd': ['da68f987-ce15-469a-8a65-50c2ee2bbca3'], // Medium Bus pilot → Alpha Medium 30 (NOT Large VVIP 29)
 };
 
 const VIP_OR_GRAND_STAR_NAME = /VIP|VVIP|Grand\s*Star/i;
@@ -202,9 +208,9 @@ export type LivePackageApplyResult = {
 
 @Injectable()
 export class PackageEligibilityShadowService {
-  // PR11A pilot pin — apply live package pricing ONLY for this single contract id (Alpha Large
-  // Bus USD). Pinning by id (not supplier+class+currency) avoids the unresolved Alpha Large Bus
-  // vs VIP 31-33 ambiguity. Broader activation is PR11B.
+  // Original Large Bus pilot contract id (Alpha Large Bus USD). NOTE: as of PR11B-3C this is NO
+  // LONGER the live-apply gate — the gate is the closed PACKAGE_VEHICLE_ALLOWLIST (keys). Retained
+  // as a documented reference; it is also the first key of PACKAGE_VEHICLE_ALLOWLIST.
   static readonly PILOT_PACKAGE_CONTRACT_ID = '66f5de06-28df-426c-90b8-ffaa01ed5c5f';
 
   constructor(private readonly prisma: PrismaService) {}
@@ -677,8 +683,11 @@ export class PackageEligibilityShadowService {
     if (option === 'ROUTE_TRANSFER') return block('route-selected');
     if (option !== 'PACKAGE_MIN_FULL_DAY') return block('unknown-option');
 
-    // Strict pilot pin by contract id (D6). Anything else → existing pricing.
-    if (quote.selectedTransportContractId !== PackageEligibilityShadowService.PILOT_PACKAGE_CONTRACT_ID) return block('not-pilot-contract');
+    // PR11B-3C — closed contract allowlist (replaces the single-id pilot pin). The selected
+    // contract id must be a key of PACKAGE_VEHICLE_ALLOWLIST (currently the Large Bus + Medium Bus
+    // pilots). Any other contract → existing pricing. The per-contract vehicle gate is enforced
+    // later via computePackageAllowlistDecision (shared with the shadow).
+    if (!quote.selectedTransportContractId || !Object.prototype.hasOwnProperty.call(PACKAGE_VEHICLE_ALLOWLIST, quote.selectedTransportContractId)) return block('not-allowlisted-contract');
     // SLAB sell is slab-driven (decoupled from item costs); a weighted-markup sell delta is
     // meaningless there → not supported in PR11A.
     if (opts.pricingIsSlab) return block('slab-mode-not-supported');
