@@ -589,10 +589,10 @@ test('PR11A: valid pilot PACKAGE → apply with cost/sell deltas, discount once,
   assert.equal(writes.length, 0);            // decision/math only — NO writes
 });
 
-test('PR11A: selected contract not the pilot id → no apply', async () => {
+test('PR11A→11B-3C: selected contract not in the closed allowlist → no apply', async () => {
   const { svc } = liveFake({ selection: { option: 'PACKAGE_MIN_FULL_DAY', contractId: 'some-other-contract' }, days: threeTouringSell(), contract: LIVE_CONTRACT });
   const r = await svc.computeQuotePackageLiveApply('q1');
-  assert.equal(r.apply, false); assert.equal(r.reason, 'not-pilot-contract');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'not-allowlisted-contract');
 });
 
 test('PR11A: stale/deactivated pilot contract → no apply', async () => {
@@ -721,6 +721,68 @@ test('PR11B-2B: mixed suppliers (same vehicle id, different supplier) → blocke
   const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_LARGE49, 'Large 49'), liveDayOf(2, [otherSupItem]), lbDay(3, ENF_LARGE49, 'Large 49')], contract: LIVE_CONTRACT });
   const r: any = await svc.computeQuotePackageLiveApply('q1');
   assert.equal(r.apply, false); assert.equal(r.reason, 'mixed-suppliers');
+});
+
+// ---- PR11B-3C: closed contract allowlist — Medium Bus pilot added (live apply + shadow) ----
+const MEDIUM_CONTRACT_ID = 'eabd43a0-2374-49d7-aaba-959df4d7c8bd';
+const MEDIUM30_ID = 'da68f987-ce15-469a-8a65-50c2ee2bbca3';
+const VVIP29_ID = 'ac827384-7e66-4ca6-9907-0098ccf60de7';
+const MEDIUM_CONTRACT = { ...LIVE_CONTRACT, id: MEDIUM_CONTRACT_ID, vehicleClass: 'Medium Bus', fullDayRate: 525, halfDayRate: 307 };
+const MEDIUM_SEL = { option: 'PACKAGE_MIN_FULL_DAY', contractId: MEDIUM_CONTRACT_ID };
+const medDay = (n: number, vehicleDbId: string, vehicleName: string) => liveDayOf(n, [liveQS({ id: `md${n}`, cost: 700, sell: 840, vehicleDbId, vehicleName, vehicleClass: 'Medium Bus' })]);
+
+test('PR11B-3C: Medium 30 + Medium contract → applies (closed allowlist)', async () => {
+  const { svc } = liveFake({ selection: MEDIUM_SEL, days: [medDay(1, MEDIUM30_ID, 'Medium 30'), medDay(2, MEDIUM30_ID, 'Medium 30'), medDay(3, MEDIUM30_ID, 'Medium 30')], contract: MEDIUM_CONTRACT, discount: 25 });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, true); assert.equal(r.reason, null);
+  // packageGross 3×525=1575, net ×0.75=1181.25; countedCost 2100 → costDelta -918.75
+  assert.equal(r.costDelta, -918.75);
+});
+
+test('PR11B-3C: Medium 30 + Large contract → blocked (supplier-class-mismatch)', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [medDay(1, MEDIUM30_ID, 'Medium 30'), medDay(2, MEDIUM30_ID, 'Medium 30'), medDay(3, MEDIUM30_ID, 'Medium 30')], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'supplier-class-mismatch');
+});
+
+test('PR11B-3C: Large 49 + Medium contract → blocked (supplier-class-mismatch)', async () => {
+  const { svc } = liveFake({ selection: MEDIUM_SEL, days: threeTouringSell(), contract: MEDIUM_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'supplier-class-mismatch');
+});
+
+test('PR11B-3C: Large VVIP 29 + Medium contract → blocked (vehicle-not-allowlisted)', async () => {
+  const { svc } = liveFake({ selection: MEDIUM_SEL, days: [medDay(1, VVIP29_ID, 'Large VVIP 29'), medDay(2, VVIP29_ID, 'Large VVIP 29'), medDay(3, VVIP29_ID, 'Large VVIP 29')], contract: MEDIUM_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'vehicle-not-allowlisted');
+});
+
+test('PR11B-3C shadow: Medium 30 → allowlist allowed for Medium contract', async () => {
+  setPriceFlag(true); delete process.env[SEL_FLAG];
+  const md = (n: number, vid: string, vname: string) => {
+    const qs = { transportServiceTypeId: null, touringRouteId: 'tr1', vehicleId: vid, finalCost: 700, totalCost: 700, overrideCost: null, useOverride: false,
+      appliedVehicleRate: { supplierId: ALPHA, vehicle: { id: vid, name: vname, vehicleClass: 'Medium Bus', resolvedSupplierId: ALPHA }, serviceType: { code: 'TOURING_ROUTE', classification: null } }, touringRoutePricing: null };
+    return { dayNumber: n, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null, dayItems: [{ quoteService: qs }] };
+  };
+  const svc = new PackageEligibilityShadowService(allowlistShadowFake([md(1, MEDIUM30_ID, 'Medium 30'), md(2, MEDIUM30_ID, 'Medium 30'), md(3, MEDIUM30_ID, 'Medium 30')], MEDIUM_CONTRACT));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.allowlist.allowed, true); assert.equal(r.allowlist.contractId, MEDIUM_CONTRACT_ID);
+  assert.deepEqual(r.allowlist.allowedVehicleIds, [MEDIUM30_ID]);
+  setPriceFlag(false);
+});
+
+test('PR11B-3C shadow: Large VVIP 29 → blocked for Medium contract (conflation surfaced)', async () => {
+  setPriceFlag(true); delete process.env[SEL_FLAG];
+  const md = (n: number, vid: string, vname: string) => {
+    const qs = { transportServiceTypeId: null, touringRouteId: 'tr1', vehicleId: vid, finalCost: 700, totalCost: 700, overrideCost: null, useOverride: false,
+      appliedVehicleRate: { supplierId: ALPHA, vehicle: { id: vid, name: vname, vehicleClass: 'Medium Bus', resolvedSupplierId: ALPHA }, serviceType: { code: 'TOURING_ROUTE', classification: null } }, touringRoutePricing: null };
+    return { dayNumber: n, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null, dayItems: [{ quoteService: qs }] };
+  };
+  const svc = new PackageEligibilityShadowService(allowlistShadowFake([md(1, VVIP29_ID, 'Large VVIP 29'), md(2, VVIP29_ID, 'Large VVIP 29'), md(3, VVIP29_ID, 'Large VVIP 29')], MEDIUM_CONTRACT));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  assert.equal(r.allowlist.allowed, false);
+  assert.ok(r.allowlist.blockers.includes('vehicle-not-allowlisted'));
+  setPriceFlag(false);
 });
 
 // ---- PR11B-2A: vehicle-aware allowlist DIAGNOSTIC (read-only; does NOT enforce live apply) ----
