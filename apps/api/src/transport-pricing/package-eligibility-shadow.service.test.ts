@@ -518,13 +518,17 @@ const LIVE_CONTRACT = {
   fullDayRate: 656, halfDayRate: 370, halfDayCountsTowardMin: false, halfDayChargedAsFullDay: false,
   stationaryCountsTowardMinDays: false, airportTransferIncluded: false,
 };
-function liveQS(o: { id: string; cost: number; sell: number; touring?: boolean; code?: string | null; classification?: string | null; vehicleClass?: string; optionId?: string | null }) {
+function liveQS(o: { id: string; cost: number; sell: number; touring?: boolean; code?: string | null; classification?: string | null; vehicleClass?: string; optionId?: string | null; vehicleDbId?: string | null; vehicleName?: string | null }) {
   const touring = o.touring ?? true;
+  // Default to the allow-listed Alpha "Large 49" so PR11A apply fixtures pass the PR11B-2B vehicle
+  // gate; override vehicleDbId/vehicleName/vehicleClass for VIP/mixed/missing cases.
+  const vehDbId = o.vehicleDbId === undefined ? '6d575442-05fd-4cf6-bd22-5e8a0ee12303' : o.vehicleDbId;
+  const vehName = o.vehicleName === undefined ? 'Large 49' : o.vehicleName;
   return {
     id: o.id, optionId: o.optionId ?? null,
-    transportServiceTypeId: touring ? null : 'st1', touringRouteId: touring ? 'tr1' : null, vehicleId: 'V1',
+    transportServiceTypeId: touring ? null : 'st1', touringRouteId: touring ? 'tr1' : null, vehicleId: vehDbId,
     finalCost: o.cost, totalCost: o.cost, totalSell: o.sell, overrideCost: null, useOverride: false,
-    appliedVehicleRate: { supplierId: ALPHA, vehicle: { vehicleClass: o.vehicleClass ?? 'Large Bus', resolvedSupplierId: ALPHA }, serviceType: (o.code || o.classification) ? { code: o.code ?? null, classification: o.classification ?? null } : null },
+    appliedVehicleRate: { supplierId: ALPHA, vehicle: { id: vehDbId, name: vehName, vehicleClass: o.vehicleClass ?? 'Large Bus', resolvedSupplierId: ALPHA }, serviceType: (o.code || o.classification) ? { code: o.code ?? null, classification: o.classification ?? null } : null },
     touringRoutePricing: null,
   };
 }
@@ -673,6 +677,50 @@ test('PR11A: excluded transfer day (airport) retained — not part of the counte
   assert.equal(r.countedCost, 2100);          // airport 200 excluded from counted base
   assert.equal(r.previousTransportTotal, 2100);
   assert.equal(r.costDelta, -624);            // unchanged by the retained airport day
+});
+
+// ---- PR11B-2B: vehicle-aware allowlist ENFORCEMENT inside computeQuotePackageLiveApply ----
+const ENF_LARGE49 = '6d575442-05fd-4cf6-bd22-5e8a0ee12303';
+const ENF_VIP = '49c5fd5d-6abe-4633-a859-53cb35a04a07';
+const ENF_GRANDSTAR = '94c1a79b-7039-41d2-8ce9-d8248b5ce880';
+const lbDay = (n: number, vehicleDbId: string | null, vehicleName: string | null) => liveDayOf(n, [liveQS({ id: `e${n}`, cost: 700, sell: 840, vehicleDbId, vehicleName })]);
+
+test('PR11B-2B: allowed Large 49 still applies (parity, with allowlisted vehicle id)', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_LARGE49, 'Large 49'), lbDay(2, ENF_LARGE49, 'Large 49'), lbDay(3, ENF_LARGE49, 'Large 49')], contract: LIVE_CONTRACT, discount: 25 });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, true); assert.equal(r.costDelta, -624);
+});
+
+test('PR11B-2B: VIP 31-33 (same Large Bus class) → blocked vehicle-not-allowlisted', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_VIP, 'Large VIP 31-33'), lbDay(2, ENF_VIP, 'Large VIP 31-33'), lbDay(3, ENF_VIP, 'Large VIP 31-33')], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'vehicle-not-allowlisted'); assert.equal(r.costDelta, 0); assert.equal(r.sellDelta, 0);
+});
+
+test('PR11B-2B: Grand Star → blocked vehicle-not-allowlisted', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_GRANDSTAR, 'Mercedes Grand Star 49 Pax'), lbDay(2, ENF_GRANDSTAR, 'Mercedes Grand Star 49 Pax'), lbDay(3, ENF_GRANDSTAR, 'Mercedes Grand Star 49 Pax')], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'vehicle-not-allowlisted');
+});
+
+test('PR11B-2B: mixed vehicles (Large 49 + VIP) → blocked mixed-vehicles', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_LARGE49, 'Large 49'), lbDay(2, ENF_VIP, 'Large VIP 31-33'), lbDay(3, ENF_LARGE49, 'Large 49')], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'mixed-vehicles');
+});
+
+test('PR11B-2B: missing vehicle id → blocked missing-vehicle-id', async () => {
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, null, null), lbDay(2, null, null), lbDay(3, null, null)], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'missing-vehicle-id');
+});
+
+test('PR11B-2B: mixed suppliers (same vehicle id, different supplier) → blocked mixed-suppliers', async () => {
+  const otherSupItem = { id: 'os2', optionId: null, transportServiceTypeId: null, touringRouteId: 'tr1', vehicleId: ENF_LARGE49, finalCost: 700, totalCost: 700, totalSell: 840, overrideCost: null, useOverride: false,
+    appliedVehicleRate: { supplierId: 'other-supplier', vehicle: { id: ENF_LARGE49, name: 'Large 49', vehicleClass: 'Large Bus', resolvedSupplierId: 'other-supplier' }, serviceType: null }, touringRoutePricing: null };
+  const { svc } = liveFake({ selection: PKG_SEL, days: [lbDay(1, ENF_LARGE49, 'Large 49'), liveDayOf(2, [otherSupItem]), lbDay(3, ENF_LARGE49, 'Large 49')], contract: LIVE_CONTRACT });
+  const r: any = await svc.computeQuotePackageLiveApply('q1');
+  assert.equal(r.apply, false); assert.equal(r.reason, 'mixed-suppliers');
 });
 
 // ---- PR11B-2A: vehicle-aware allowlist DIAGNOSTIC (read-only; does NOT enforce live apply) ----

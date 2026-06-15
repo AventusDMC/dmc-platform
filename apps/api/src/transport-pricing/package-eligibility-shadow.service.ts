@@ -704,8 +704,8 @@ export class PackageEligibilityShadowService {
               select: {
                 id: true, optionId: true, transportServiceTypeId: true, touringRouteId: true, vehicleId: true,
                 finalCost: true, totalCost: true, totalSell: true, overrideCost: true, useOverride: true,
-                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
-                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
+                appliedVehicleRate: { select: { supplierId: true, vehicle: { select: { id: true, name: true, vehicleClass: true, resolvedSupplierId: true } }, serviceType: { select: { code: true, classification: true } } } },
+                touringRoutePricing: { select: { supplierId: true, vehicle: { select: { id: true, name: true, vehicleClass: true, resolvedSupplierId: true } }, transportServiceType: { select: { code: true, classification: true } } } },
               },
             },
           },
@@ -737,9 +737,11 @@ export class PackageEligibilityShadowService {
       }),
     }));
 
-    // Per-day persisted transport cost/sell + add-on detection + day-membership check.
+    // Per-day persisted transport cost/sell + add-on detection + day-membership check + the
+    // transport vehicle(s) on the day (for the PR11B-2B vehicle-aware allowlist gate).
     const dayTransport = rawDays.map((d) => {
       let cost = 0, sell = 0, hasAddOn = false, nonRecalcItem = false;
+      const vehicles: Array<{ vehicleId: string | null; vehicleName: string | null; supplierId: string | null }> = [];
       for (const di of (d.dayItems || [])) {
         const qs = di.quoteService || {};
         if (!isTransport(qs)) continue;
@@ -749,8 +751,14 @@ export class PackageEligibilityShadowService {
         // A counted transport line that the totals path does NOT sum (optionId null but absent
         // from recalc set) would make the delta inconsistent → block + warn.
         if (opts.recalcItemIds && qs.id && qs.optionId == null && !opts.recalcItemIds.has(qs.id)) nonRecalcItem = true;
+        const veh = qs.appliedVehicleRate?.vehicle || qs.touringRoutePricing?.vehicle || null;
+        vehicles.push({
+          vehicleId: (veh?.id ?? qs.vehicleId) || null,
+          vehicleName: veh?.name ?? null,
+          supplierId: qs.appliedVehicleRate?.supplierId || veh?.resolvedSupplierId || qs.touringRoutePricing?.supplierId || null,
+        });
       }
-      return { cost, sell, hasAddOn, nonRecalcItem };
+      return { cost, sell, hasAddOn, nonRecalcItem, vehicles };
     });
 
     const { inputs, invalidFlags, primary } = mapShadowDays(days);
@@ -796,6 +804,19 @@ export class PackageEligibilityShadowService {
     });
     if (membershipMismatch) return block('day-membership-mismatch');
     if (countedCost <= 0) return block('no-counted-cost');
+
+    // PR11B-2B — vehicle-aware allowlist ENFORCEMENT. Reuses the exact same decision helper as the
+    // shadow diagnostics so live apply and shadow never diverge. Blocks VIP/VVIP/Grand-Star, mixed
+    // vehicles, missing vehicle ids, mixed suppliers, cross-currency, and non-allowlisted contracts
+    // — even though they passed the coarse supplier+class gate. Allowed standard Large 49 proceeds.
+    const countedVehicles = adjustedDays.flatMap((c, i) => (c.packageDayWeight > 0 ? dayTransport[i].vehicles : []));
+    const allowlistDecision = computePackageAllowlistDecision({
+      contractId: contract.id,
+      contractCurrency: (contract.currency ?? null) as string | null,
+      quoteCurrency: (quote.quoteCurrency ?? null) as string | null,
+      countedVehicles,
+    });
+    if (!allowlistDecision.allowed) return block(allowlistDecision.reason);
 
     // Supplier discount (parity with the PR9 shadow), applied EXACTLY ONCE on the package gross.
     const sup: any = await this.prisma.supplier.findUnique({ where: { id: primary.supplierId }, select: { transportDiscountPercent: true } });
