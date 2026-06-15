@@ -582,6 +582,22 @@ export class BookingsController {
     return new StreamableFile(pdfBuffer);
   }
 
+  // Phase O.2B-1 — READ-ONLY supplier-confirmation preview (recipient/subject/body/
+  // safe service lines per supplier). No email send, no mutation, no audit.
+  @Get(':id/supplier-confirmation/preview')
+  @Roles('admin', 'operations')
+  async previewSupplierConfirmation(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Query('supplierId') supplierId?: string,
+    @Query('serviceId') serviceId?: string,
+  ) {
+    return this.bookingsService.buildSupplierConfirmationPreview(id, actor, {
+      supplierId: supplierId || null,
+      serviceId: serviceId || null,
+    });
+  }
+
   @Get(':id/guarantee-letter')
   @Roles('admin', 'operations')
   async downloadGuaranteeLetterPdf(
