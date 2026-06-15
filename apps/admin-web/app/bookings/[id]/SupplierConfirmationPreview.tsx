@@ -21,14 +21,34 @@ type PreviewServiceLine = {
   confirmationDeadline: string | null;
 };
 
+type RecipientSource = 'assignedSupplierId' | 'supplierId' | 'none';
+type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES';
+
 type SupplierDraft = {
   supplierId: string | null;
   supplierName: string;
   recipientEmail: string | null;
   missingEmail: boolean;
+  recipientSource: RecipientSource;
+  readiness: ConfirmationReadiness;
+  readinessReason: string;
+  recipient: { supplierId: string | null; supplierName: string; email: string | null; missingEmail: boolean };
   subject: string;
   body: string;
   services: PreviewServiceLine[];
+};
+
+const RECIPIENT_SOURCE_LABEL: Record<RecipientSource, string> = {
+  assignedSupplierId: 'Assigned supplier',
+  supplierId: 'Linked supplier',
+  none: 'No supplier linked',
+};
+
+const READINESS_LABEL: Record<ConfirmationReadiness, string> = {
+  READY: 'Ready',
+  NO_SUPPLIER: 'Assign supplier first',
+  MISSING_EMAIL: 'Supplier email missing',
+  NO_SERVICES: 'No services',
 };
 
 type SupplierConfirmationPreview = {
@@ -88,12 +108,29 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
             {preview.suppliers.map((supplier) => (
               <section key={supplier.supplierId || supplier.supplierName} className="detail-card supplier-confirmation-preview-card">
                 <p className="eyebrow">{supplier.supplierName}</p>
+                {/* O.2B-2B — recipient source + send-readiness (read-only signal; no send). */}
+                <p className="form-help">
+                  Recipient source: <strong>{RECIPIENT_SOURCE_LABEL[supplier.recipientSource]}</strong>
+                  {' · '}
+                  Readiness:{' '}
+                  <span
+                    className={supplier.readiness === 'READY' ? 'form-success' : 'form-error'}
+                    role="note"
+                    data-readiness={supplier.readiness}
+                  >
+                    {READINESS_LABEL[supplier.readiness]}
+                  </span>
+                </p>
                 <p className="form-help">
                   Recipient:{' '}
-                  {supplier.recipientEmail ? (
-                    <strong>{supplier.recipientEmail}</strong>
+                  {supplier.recipient.email ? (
+                    <strong>{supplier.recipient.email}</strong>
                   ) : (
-                    <span className="form-error" role="note">No supplier email on file — add one before sending.</span>
+                    <span className="form-error" role="note">
+                      {supplier.recipientSource === 'none'
+                        ? 'Assign supplier first before sending.'
+                        : 'Supplier email missing — update supplier profile before sending.'}
+                    </span>
                   )}
                 </p>
                 <p><strong>Subject:</strong> {supplier.subject}</p>

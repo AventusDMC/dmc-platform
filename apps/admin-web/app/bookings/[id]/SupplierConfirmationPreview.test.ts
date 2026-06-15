@@ -21,12 +21,10 @@ describe('SupplierConfirmationPreview — read-only', () => {
     assert.ok(!/>\s*Send\b/.test(component), 'no Send button label');
   });
 
-  it('renders recipient, missing-email warning, subject, body, and service count', () => {
+  it('renders recipient, subject, body, and service count', () => {
     for (const fragment of [
       'Preview confirmation',
-      'recipientEmail',
-      'missingEmail',
-      'No supplier email on file',
+      'supplier.recipient.email',
       'supplier.subject',
       'supplier.body',
       'service(s) included',
@@ -35,6 +33,24 @@ describe('SupplierConfirmationPreview — read-only', () => {
     }
     // Clearly labelled read-only.
     assert.match(component, /No email is sent/);
+  });
+
+  it('O.2B-2B — shows recipient source + readiness badge + the two block messages', () => {
+    for (const fragment of [
+      'Recipient source',
+      'RECIPIENT_SOURCE_LABEL',
+      'READINESS_LABEL',
+      "assignedSupplierId: 'Assigned supplier'",
+      "supplierId: 'Linked supplier'",
+      "none: 'No supplier linked'",
+      'Assign supplier first',
+      'Supplier email missing',
+      'Assign supplier first before sending.',
+      'Supplier email missing — update supplier profile before sending.',
+      'data-readiness={supplier.readiness}',
+    ]) {
+      assert.ok(component.includes(fragment), `component shows: ${fragment}`);
+    }
   });
 
   it('proxy route is GET-only and forwards the optional query', () => {
