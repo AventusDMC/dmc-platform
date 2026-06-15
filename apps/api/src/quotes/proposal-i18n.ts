@@ -361,6 +361,12 @@ const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
   focusTransfers: { en: 'smooth transfers', pt: 'traslados sem complicações', es: 'traslados sin contratiempos', ar: 'تنقلات سلسة' },
   focusStays: { en: 'well-placed stays', pt: 'estadias bem localizadas', es: 'estancias bien ubicadas', ar: 'إقامات في مواقع مميزة' },
   focusFallback: { en: 'the confirmed journey flow', pt: 'o fluxo confirmado da viagem', es: 'el flujo confirmado del viaje', ar: 'تسلسل الرحلة المؤكد' },
+  // Phase P.3X-6A — generic, client-safe cover-highlight lines derived from the
+  // service mix (never raw service names). Used to round out the highlights box.
+  riTransportIncluded: { en: 'Private transport throughout the itinerary.', pt: 'Transporte privado ao longo do itinerário.', es: 'Transporte privado según el itinerario.', ar: 'نقل خاص طوال البرنامج.' },
+  riExperiencesIncluded: { en: 'Experiences and visits included per the program.', pt: 'Experiências e visitas incluídas conforme o programa.', es: 'Experiencias y visitas incluidas según el programa.', ar: 'تجارب وزيارات مدرجة وفق البرنامج.' },
+  riGuideIncluded: { en: 'Guide services included where indicated.', pt: 'Serviços de guia incluídos onde indicado.', es: 'Servicios de guía incluidos donde se indique.', ar: 'خدمات إرشاد سياحي مدرجة حيثما يُذكر.' },
+  riStaysIncluded: { en: 'Selected stays along the route.', pt: 'Estadias selecionadas ao longo do percurso.', es: 'Estancias seleccionadas a lo largo del recorrido.', ar: 'إقامات مختارة على امتداد المسار.' },
   // Phase 3D.1K — placeholders/labels that were previously hard-coded in English.
   datesToBeConfirmed: { en: 'Dates to be confirmed', pt: 'Datas a confirmar', es: 'Fechas por confirmar', ar: 'سيتم تأكيد التواريخ' },
   stayOptionsBelow: { en: 'Hotel options are outlined below for review and selection.', pt: 'As opções de hotel estão descritas abaixo para análise e seleção.', es: 'Las opciones de hotel se detallan a continuación para su revisión y selección.', ar: 'خيارات الفنادق موضّحة أدناه للمراجعة والاختيار.' },

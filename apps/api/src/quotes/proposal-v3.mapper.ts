@@ -1861,12 +1861,15 @@ export function buildDeterministicHighlights(
   days: ProposalV3Day[],
   hotelOptionSets: ProposalV3HotelOptionSet[],
 ) {
+  const loc = activeProposalLocale;
   const highlights = new Set<string>();
-  const destinations = Array.from(new Set(days.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
-  const routeSubtitle = formatDestinationSubtitle(destinations);
 
   const pushHighlight = (value: string | null | undefined) => {
-    const copy = conciseCopy(value, 120);
+    // Phase P.3X-6A — rule #2: never emit a dangling/truncated fragment. A long
+    // value can be truncated by conciseCopy, or a templated line can carry a
+    // trailing separator before its period ("… Petra Visit /."); strip any
+    // separator run that sits at the end or immediately before a terminal period.
+    const copy = conciseCopy(value, 120).replace(/[\s/·,;]+(\.?)\s*$/u, '$1').trim();
     // Script-aware gate: isClientSafeCopy is ASCII-based and would discard valid
     // non-Latin (e.g. Arabic) highlights. isComposedCopyClientSafe only applies the
     // ASCII filter when Latin script is present, so localized AR highlights survive.
@@ -1875,45 +1878,59 @@ export function buildDeterministicHighlights(
     }
   };
 
-  if (routeSubtitle) {
-    pushHighlight(proseTemplate(activeProposalLocale, 'riRoutePlanned', { dest: routeSubtitle }));
-  } else if (destinationLine) {
-    pushHighlight(proseTemplate(activeProposalLocale, 'riRoutePlanned', { dest: destinationLine }));
+  // Phase P.3X-6A — the route highlight uses the CLEAN, localized destination line
+  // (proper city names), never the raw day-title fragments. The old day-title
+  // route subtitle produced a dangling "/." and concatenated titles
+  // ("…· Visita de Petra /."), and the per-day "time in program" lines repeated
+  // awkward day titles ("…para Llegada a Amman."); both are dropped here.
+  if (destinationLine) {
+    pushHighlight(proseTemplate(loc, 'riRoutePlanned', { dest: destinationLine }));
   }
 
-  for (const day of days) {
-    const destination = extractDayLocation(day.title, day.dayNumber);
-    if (destination && !/^Destination\s+\d+$/i.test(destination)) {
-      // Phase P.3X-5D — localize the cover-highlight destination label.
-      pushHighlight(
-        proseTemplate(activeProposalLocale, 'riTimeInProgram', {
-          dest: localizePlaceName(activeProposalLocale, destination),
-        }),
-      );
-    }
-    if (highlights.size >= 2) {
-      break;
-    }
-  }
-
+  // Specific, client-safe EXPERIENCE highlights only — a GENUINE marketing
+  // description (e.g. "Walk through the candlelit Siq…"). We use ONLY real
+  // description fields (activity.description / externalClientDescription), never
+  // the structured pricingDescription ("Bethany / Baptism Site | Entrance fee"),
+  // which getClientSafeActivityDescription would otherwise reformat into a raw
+  // "Bethany / Baptism Site, Entrance fee." highlight. With no genuine description
+  // the highlight is omitted (P.3X-6A) rather than leaking a name + English suffix.
   for (const item of quote.quoteItems) {
-    if (isActivityItem(item) || isGuideItem(item)) {
-      // Phase P.3X-5C — the fallback service/activity NAME may be an internal
-      // product name ("Petra 3 Days archived variant source"); strip the internal
-      // tokens (same rule as the day-card title) before it can become a highlight.
-      const candidate = getClientSafeActivityDescription(item) || item.activity?.name || item.service.name;
-      pushHighlight(hasInternalProductTitle(candidate) ? stripInternalProductTitle(candidate) : candidate);
-    }
-    if (highlights.size >= 4) {
-      break;
+    if (highlights.size >= 4) break;
+    if (!isActivityItem(item) && !isGuideItem(item)) continue;
+    const description = [item.activity?.description, item.externalClientDescription]
+      .map((candidate) => conciseCopy(candidate))
+      .find(
+        (candidate) =>
+          Boolean(candidate) &&
+          isClientSafeCopy(candidate) &&
+          !hasInternalServiceDescriptor(candidate) &&
+          !hasInternalOperationalDescription(candidate) &&
+          !hasInternalProductTitle(candidate),
+      );
+    if (description) {
+      pushHighlight(description);
     }
   }
 
+  // Clean hotel fact-sheet descriptions (already client-safe marketing copy).
   for (const option of hotelOptionSets.flatMap((optionSet) => optionSet.options)) {
+    if (highlights.size >= 4) break;
     pushHighlight(option.shortDescription || option.highlights[0]);
-    if (highlights.size >= 4) {
-      break;
-    }
+  }
+
+  // Generic, localized service highlights from SAFE structural data (the service
+  // mix) to round the box out toward four clean lines — never raw names.
+  if (highlights.size < 4 && quote.quoteItems.some((item) => isTransportItem(item))) {
+    pushHighlight(prosePhrase(loc, 'riTransportIncluded'));
+  }
+  if (highlights.size < 4 && quote.quoteItems.some((item) => isActivityItem(item))) {
+    pushHighlight(prosePhrase(loc, 'riExperiencesIncluded'));
+  }
+  if (highlights.size < 4 && quote.quoteItems.some((item) => isGuideItem(item))) {
+    pushHighlight(prosePhrase(loc, 'riGuideIncluded'));
+  }
+  if (highlights.size < 4 && getServiceMix(quote).hasHotels) {
+    pushHighlight(prosePhrase(loc, 'riStaysIncluded'));
   }
 
   return Array.from(highlights).slice(0, 4);
