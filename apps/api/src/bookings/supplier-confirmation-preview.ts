@@ -16,6 +16,7 @@ export type SupplierConfirmationPreviewOptions = {
 export type PreviewServiceInput = {
   id: string;
   supplierId?: string | null;
+  assignedSupplierId?: string | null;
   supplierName?: string | null;
   operationType?: string | null;
   serviceType?: string | null;
@@ -57,11 +58,29 @@ export type PreviewServiceLine = {
   confirmationDeadline: string | null;
 };
 
+// Phase O.2B-2B — recipient resolution source + send-readiness (read-only signal,
+// NO send is wired in this phase).
+export type RecipientSource = 'assignedSupplierId' | 'supplierId' | 'none';
+export type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES';
+
+export type ConfirmationRecipient = {
+  supplierId: string | null;
+  supplierName: string;
+  email: string | null;
+  missingEmail: boolean;
+};
+
 export type SupplierConfirmationDraft = {
   supplierId: string | null;
   supplierName: string;
+  // O.2B-1 fields kept for back-compat (mirror recipient.email / recipient.missingEmail).
   recipientEmail: string | null;
   missingEmail: boolean;
+  // O.2B-2B — resolution + readiness.
+  recipientSource: RecipientSource;
+  readiness: ConfirmationReadiness;
+  readinessReason: string;
+  recipient: ConfirmationRecipient;
   subject: string;
   body: string;
   services: PreviewServiceLine[];
@@ -160,6 +179,7 @@ export function buildSupplierConfirmationPreviewModel(
   const pax = Number(booking.adults || 0) + Number(booking.children || 0);
 
   const emailById = new Map(supplierLookup.map((s) => [s.id, clean(s.email) || null]));
+  const nameById = new Map(supplierLookup.map((s) => [s.id, clean(s.name) || null]));
 
   let scoped = (services || []).filter((s) => s.supplierId || s.supplierName);
   if (options.serviceId) scoped = scoped.filter((s) => s.id === options.serviceId);
@@ -178,13 +198,49 @@ export function buildSupplierConfirmationPreviewModel(
   groups.sort((a, b) => a.supplierName.localeCompare(b.supplierName));
 
   const suppliers: SupplierConfirmationDraft[] = groups.map((group) => {
-    const recipientEmail = group.supplierId ? emailById.get(group.supplierId) || null : null;
     const lines = group.services.map((service) => buildServiceLine(service, pax));
+
+    // Phase O.2B-2B recipient policy: prefer an explicitly assigned supplier, else
+    // the linked supplierId. We NEVER resolve by supplierName string match here, and
+    // never accept an arbitrary email.
+    const assignedSupplierId = group.services.map((s) => (s.assignedSupplierId ? String(s.assignedSupplierId) : null)).find(Boolean) || null;
+    const recipientSource: RecipientSource = assignedSupplierId ? 'assignedSupplierId' : group.supplierId ? 'supplierId' : 'none';
+    const recipientSupplierId = assignedSupplierId || group.supplierId || null;
+    const email = recipientSupplierId ? emailById.get(recipientSupplierId) || null : null;
+    const recipientSupplierName = (recipientSupplierId && nameById.get(recipientSupplierId)) || group.supplierName;
+
+    let readiness: ConfirmationReadiness;
+    let readinessReason: string;
+    if (lines.length === 0) {
+      readiness = 'NO_SERVICES';
+      readinessReason = 'No services found for this supplier.';
+    } else if (!recipientSupplierId) {
+      readiness = 'NO_SUPPLIER';
+      readinessReason = 'Assign a supplier first.';
+    } else if (!email) {
+      readiness = 'MISSING_EMAIL';
+      readinessReason = 'Supplier email missing.';
+    } else {
+      readiness = 'READY';
+      readinessReason = recipientSource === 'assignedSupplierId' ? 'Supplier assigned and email found.' : 'Supplier linked and email found.';
+    }
+
+    const recipient: ConfirmationRecipient = {
+      supplierId: recipientSupplierId,
+      supplierName: recipientSupplierName,
+      email,
+      missingEmail: !email,
+    };
+
     return {
       supplierId: group.supplierId,
       supplierName: group.supplierName,
-      recipientEmail,
-      missingEmail: !recipientEmail,
+      recipientEmail: email,
+      missingEmail: !email,
+      recipientSource,
+      readiness,
+      readinessReason,
+      recipient,
       subject: `Service confirmation request — ${bookingRef || 'Booking'} — ${group.supplierName}`,
       body: buildBody({ bookingRef, supplierName: group.supplierName, lines, travelStartDate, travelEndDate }),
       services: lines,

@@ -106,6 +106,67 @@ test('5. empty / no-supplier services → empty suppliers list, no crash', () =>
   assert.deepEqual(buildSupplierConfirmationPreviewModel(BOOKING, orphan, []).suppliers, []);
 });
 
+// --- O.2B-2B: recipient resolution (assignedSupplierId ?? supplierId) + readiness ---
+
+const SUPPLIERS_2 = [
+  { id: 'sup-A', name: 'Alpha Transport', email: 'ops@alpha.example' },
+  { id: 'sup-B', name: 'Petra Moon Hotel', email: null },
+];
+
+test('O.2B-2B-1. prefers assignedSupplierId over supplierId for the recipient', () => {
+  const svc: any[] = [
+    { id: 's1', supplierId: 'sup-B', assignedSupplierId: 'sup-A', supplierName: 'Petra Moon Hotel', description: 'Service', operationType: 'TRANSPORT' },
+  ];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUPPLIERS_2);
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'assignedSupplierId');
+  assert.equal(d.recipient.supplierId, 'sup-A');
+  assert.equal(d.recipient.email, 'ops@alpha.example');
+  assert.equal(d.recipientEmail, 'ops@alpha.example', 'back-compat field mirrors recipient.email');
+  assert.equal(d.readiness, 'READY');
+  assert.match(d.readinessReason, /Supplier assigned and email found/);
+});
+
+test('O.2B-2B-2. falls back to supplierId when assignedSupplierId is null', () => {
+  const svc: any[] = [{ id: 's1', supplierId: 'sup-A', assignedSupplierId: null, supplierName: 'Alpha Transport', description: 'Service' }];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUPPLIERS_2);
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'supplierId');
+  assert.equal(d.recipient.supplierId, 'sup-A');
+  assert.equal(d.readiness, 'READY');
+  assert.match(d.readinessReason, /Supplier linked and email found/);
+});
+
+test('O.2B-2B-3. NO_SUPPLIER when neither assignedSupplierId nor supplierId exists (name only)', () => {
+  const svc: any[] = [{ id: 's1', supplierId: null, assignedSupplierId: null, supplierName: 'Some Unlinked Supplier', description: 'Service' }];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, []);
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'none');
+  assert.equal(d.recipient.supplierId, null);
+  assert.equal(d.readiness, 'NO_SUPPLIER');
+  assert.match(d.readinessReason, /Assign a supplier first/);
+});
+
+test('O.2B-2B-4. MISSING_EMAIL when the resolved supplier has no email', () => {
+  const svc: any[] = [{ id: 's1', supplierId: 'sup-B', supplierName: 'Petra Moon Hotel', description: 'Service' }];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUPPLIERS_2);
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'supplierId');
+  assert.equal(d.readiness, 'MISSING_EMAIL');
+  assert.equal(d.recipient.missingEmail, true);
+  assert.match(d.readinessReason, /Supplier email missing/);
+});
+
+test('O.2B-2B-5. never resolves the recipient by supplierName string match', () => {
+  // supplierName matches a supplier row by name, but there is NO supplierId/assignedSupplierId FK.
+  const svc: any[] = [{ id: 's1', supplierId: null, assignedSupplierId: null, supplierName: 'Alpha Transport', description: 'Service' }];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUPPLIERS_2);
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'none', 'name match must NOT resolve a recipient');
+  assert.equal(d.recipient.email, null);
+  assert.equal(d.readiness, 'NO_SUPPLIER');
+});
+
 // --- Source-grep guards: the SERVICE method + CONTROLLER route are read-only ---
 const serviceSrc = readFileSync(require('path').join(__dirname, 'bookings.service.ts'), 'utf8');
 const controllerSrc = readFileSync(require('path').join(__dirname, 'bookings.controller.ts'), 'utf8');

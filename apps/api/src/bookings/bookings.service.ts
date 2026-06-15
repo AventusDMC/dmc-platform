@@ -10768,8 +10768,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const services = ((booking as any).services || []).filter((service: any) => service.supplierId || service.supplierName);
+    // O.2B-2B — resolve emails for BOTH the linked (supplierId) and assigned
+    // (assignedSupplierId) suppliers so the preview can apply the assigned ?? linked
+    // recipient policy.
     const supplierIds = Array.from(
-      new Set(services.map((service: any) => service.supplierId).filter((value: unknown): value is string => Boolean(value))),
+      new Set(
+        services
+          .flatMap((service: any) => [service.assignedSupplierId, service.supplierId])
+          .filter((value: unknown): value is string => Boolean(value)),
+      ),
     ) as string[];
     const supplierLookup = supplierIds.length
       ? await (this.prisma.supplier as any).findMany({
