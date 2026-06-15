@@ -27,6 +27,10 @@ import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
 import { buildOperationsBadge } from './booking-operations-badge';
 import { buildRoomingBadge } from './booking-rooming-badge';
+import {
+  buildSupplierConfirmationPreviewModel,
+  type SupplierConfirmationPreviewOptions,
+} from './supplier-confirmation-preview';
 
 type BookingPdfQuoteItem = {
   id?: string;
@@ -10746,6 +10750,35 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         }
       }
       });
+  }
+
+  // Phase O.2B-1 — READ-ONLY supplier-confirmation PREVIEW. Loads the booking +
+  // assigned-supplier emails and assembles a draft (recipient/subject/body/safe
+  // service lines) per supplier via the pure builder. NO email send (no mail
+  // transport touched), NO DB mutation, NO audit log, NO cost/sell/markup data.
+  async buildSupplierConfirmationPreview(
+    id: string,
+    actor?: CompanyScopedActor,
+    options?: SupplierConfirmationPreviewOptions,
+  ) {
+    const booking = await this.findOne(id, actor);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const services = ((booking as any).services || []).filter((service: any) => service.supplierId || service.supplierName);
+    const supplierIds = Array.from(
+      new Set(services.map((service: any) => service.supplierId).filter((value: unknown): value is string => Boolean(value))),
+    ) as string[];
+    const supplierLookup = supplierIds.length
+      ? await (this.prisma.supplier as any).findMany({
+          where: { id: { in: supplierIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+
+    return buildSupplierConfirmationPreviewModel(booking as any, services, supplierLookup, options || {});
   }
 
   async generateGuaranteeLetterPdf(id: string, actor?: CompanyScopedActor) {

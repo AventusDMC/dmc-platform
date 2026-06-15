@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { BookingDocumentActions } from '../BookingDocumentActions';
+import { SupplierConfirmationPreview } from '../SupplierConfirmationPreview';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../../lib/admin-server';
 
@@ -211,6 +212,10 @@ export default async function SupplierConfirmationPage({ params }: SupplierConfi
           documentLabel="Supplier Confirmation Sheet"
           documentType="supplier-confirmation"
         />
+
+        {/* Phase O.2B-1 — read-only confirmation preview (recipient/subject/body per
+            supplier). No send action here. */}
+        <SupplierConfirmationPreview apiBaseUrl={ACTION_API_BASE_URL} bookingId={booking.id} />
 
         {supplierGroups.length === 0 ? (
           <section className="detail-card">
