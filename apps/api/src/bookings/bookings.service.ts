@@ -10768,7 +10768,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking not found');
     }
 
-    const services = ((booking as any).services || []).filter((service: any) => service.supplierId || service.supplierName);
+    // O.2B-2F — include services linked by assignedSupplierId too (previously
+    // assigned-only services with null supplierId+supplierName were dropped).
+    const services = ((booking as any).services || []).filter(
+      (service: any) => service.assignedSupplierId || service.supplierId || service.supplierName,
+    );
     // O.2B-2B — resolve emails for BOTH the linked (supplierId) and assigned
     // (assignedSupplierId) suppliers so the preview can apply the assigned ?? linked
     // recipient policy.

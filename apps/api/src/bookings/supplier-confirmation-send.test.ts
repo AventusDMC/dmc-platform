@@ -100,6 +100,16 @@ test('9. pure planner has no email/subject/body INPUT (recipient/content come fr
   assert.ok(!/email\??:\s*string/.test(moduleSrc.split('SupplierConfirmationSendScope')[1]?.slice(0, 200) || ''), 'scope has no email field');
 });
 
+test('F3. assigned-only service (null supplierId+supplierName) is included in the send plan', () => {
+  const svc: any[] = [{ id: 'svc-h', supplierId: null, supplierName: null, assignedSupplierId: 'sup-A', operationType: 'HOTEL', description: 'Hotel Night' }];
+  const plan = planSupplierConfirmationSend(previewWith(svc, SUPPLIERS), { supplierId: 'sup-A' });
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.supplierId, 'sup-A');
+  assert.deepEqual(plan.serviceIds, ['svc-h'], 'assigned-only service scoped into the send');
+  assert.equal(plan.recipientEmail, 'ops@alpha.example');
+});
+
 // --- Orchestration guards: SERVICE sends-then-mutates; CONTROLLER scope-only ---
 const serviceSrc = readFileSync(require('path').join(__dirname, 'bookings.service.ts'), 'utf8');
 const controllerSrc = readFileSync(require('path').join(__dirname, 'bookings.controller.ts'), 'utf8');

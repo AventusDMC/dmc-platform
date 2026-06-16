@@ -66,7 +66,10 @@ export type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 
 export type ConfirmationRecipient = {
   supplierId: string | null;
   supplierName: string;
+  // `email` is the comma-joined recipient string (safe for a mail `to`); `emails`
+  // is the parsed list. Both derived from Supplier.email (never operator input).
   email: string | null;
+  emails: string[];
   missingEmail: boolean;
 };
 
@@ -96,6 +99,18 @@ export type SupplierConfirmationPreview = {
 
 function clean(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+// Phase O.2B-2F — parse a stored Supplier.email into a clean recipient list.
+// Accepts comma- OR semicolon-separated values, trims, drops empties/dupes. Read
+// only of master data — never mutates Supplier.email.
+export function parseRecipientEmails(raw: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const part of String(raw ?? '').split(/[;,]/)) {
+    const value = part.trim();
+    if (value && !out.includes(value)) out.push(value);
+  }
+  return out;
 }
 
 function toIso(value: Date | string | null | undefined): string | null {
@@ -178,20 +193,45 @@ export function buildSupplierConfirmationPreviewModel(
   const travelEndDate = dateOnly(booking.endDate);
   const pax = Number(booking.adults || 0) + Number(booking.children || 0);
 
-  const emailById = new Map(supplierLookup.map((s) => [s.id, clean(s.email) || null]));
+  const emailsById = new Map(supplierLookup.map((s) => [s.id, parseRecipientEmails(s.email)]));
   const nameById = new Map(supplierLookup.map((s) => [s.id, clean(s.name) || null]));
 
-  let scoped = (services || []).filter((s) => s.supplierId || s.supplierName);
+  // Phase O.2B-2F — include services linked to a supplier by ANY of assignedSupplierId
+  // (operational assignment), supplierId, or supplierName. Previously assigned-only
+  // services (null supplierId + null supplierName) were dropped entirely.
+  let scoped = (services || []).filter((s) => s.assignedSupplierId || s.supplierId || s.supplierName);
   if (options.serviceId) scoped = scoped.filter((s) => s.id === options.serviceId);
-  if (options.supplierId) scoped = scoped.filter((s) => s.supplierId === options.supplierId);
+  if (options.supplierId) {
+    scoped = scoped.filter((s) => s.assignedSupplierId === options.supplierId || s.supplierId === options.supplierId);
+  }
 
-  const groups: Array<{ key: string; supplierId: string | null; supplierName: string; services: PreviewServiceInput[] }> = [];
+  // Group key prefers the resolvable supplier FK (assignedSupplierId ?? supplierId)
+  // and falls back to supplierName only when there is NO FK at all.
+  const groups: Array<{
+    key: string;
+    assignedSupplierId: string | null;
+    supplierId: string | null;
+    supplierName: string;
+    services: PreviewServiceInput[];
+  }> = [];
   for (const service of scoped) {
-    const key = service.supplierId || service.supplierName || service.id;
+    const assigned = service.assignedSupplierId || null;
+    const linked = service.supplierId || null;
+    const key = assigned || linked || clean(service.supplierName) || service.id;
     let group = groups.find((g) => g.key === key);
     if (!group) {
-      group = { key, supplierId: service.supplierId || null, supplierName: clean(service.supplierName) || 'Unnamed supplier', services: [] };
+      group = {
+        key,
+        assignedSupplierId: assigned,
+        supplierId: linked,
+        supplierName: clean(service.supplierName) || 'Unnamed supplier',
+        services: [],
+      };
       groups.push(group);
+    } else {
+      // Backfill FK fields if a later service in the same group carries them.
+      group.assignedSupplierId = group.assignedSupplierId || assigned;
+      group.supplierId = group.supplierId || linked;
     }
     group.services.push(service);
   }
@@ -200,13 +240,13 @@ export function buildSupplierConfirmationPreviewModel(
   const suppliers: SupplierConfirmationDraft[] = groups.map((group) => {
     const lines = group.services.map((service) => buildServiceLine(service, pax));
 
-    // Phase O.2B-2B recipient policy: prefer an explicitly assigned supplier, else
-    // the linked supplierId. We NEVER resolve by supplierName string match here, and
-    // never accept an arbitrary email.
-    const assignedSupplierId = group.services.map((s) => (s.assignedSupplierId ? String(s.assignedSupplierId) : null)).find(Boolean) || null;
-    const recipientSource: RecipientSource = assignedSupplierId ? 'assignedSupplierId' : group.supplierId ? 'supplierId' : 'none';
-    const recipientSupplierId = assignedSupplierId || group.supplierId || null;
-    const email = recipientSupplierId ? emailById.get(recipientSupplierId) || null : null;
+    // Phase O.2B-2B/-2F recipient policy: prefer the assigned supplier, else the
+    // linked supplierId. NEVER resolve by supplierName string match; never accept an
+    // arbitrary email. Email is parsed into a list (comma/semicolon-separated).
+    const recipientSource: RecipientSource = group.assignedSupplierId ? 'assignedSupplierId' : group.supplierId ? 'supplierId' : 'none';
+    const recipientSupplierId = group.assignedSupplierId || group.supplierId || null;
+    const emails = recipientSupplierId ? emailsById.get(recipientSupplierId) || [] : [];
+    const email = emails.length ? emails.join(', ') : null;
     const recipientSupplierName = (recipientSupplierId && nameById.get(recipientSupplierId)) || group.supplierName;
 
     let readiness: ConfirmationReadiness;
@@ -217,7 +257,7 @@ export function buildSupplierConfirmationPreviewModel(
     } else if (!recipientSupplierId) {
       readiness = 'NO_SUPPLIER';
       readinessReason = 'Assign a supplier first.';
-    } else if (!email) {
+    } else if (emails.length === 0) {
       readiness = 'MISSING_EMAIL';
       readinessReason = 'Supplier email missing.';
     } else {
@@ -229,14 +269,15 @@ export function buildSupplierConfirmationPreviewModel(
       supplierId: recipientSupplierId,
       supplierName: recipientSupplierName,
       email,
-      missingEmail: !email,
+      emails,
+      missingEmail: emails.length === 0,
     };
 
     return {
-      supplierId: group.supplierId,
+      supplierId: recipientSupplierId,
       supplierName: group.supplierName,
       recipientEmail: email,
-      missingEmail: !email,
+      missingEmail: emails.length === 0,
       recipientSource,
       readiness,
       readinessReason,
