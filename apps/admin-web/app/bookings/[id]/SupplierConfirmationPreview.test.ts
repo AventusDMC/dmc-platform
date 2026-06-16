@@ -120,3 +120,26 @@ describe('O.2B-2C — gated send (UI + proxy)', () => {
     assert.match(sendProxy, /forwardProxyJsonResponse/, 'returns JSON');
   });
 });
+
+describe('O.2B-2G — card heading reflects the resolved recipient supplier', () => {
+  it('heading binds to the resolved supplier name (supplier.supplierName)', () => {
+    // The eyebrow heading uses supplier.supplierName, which the backend now sets to
+    // the RESOLVED Supplier.name (via FK) — see preview tests G1–G4.
+    assert.match(component, /<p className="eyebrow">\{supplier\.supplierName\}<\/p>/, 'heading = resolved supplier name');
+  });
+
+  it('shows the differing free-text service label as a display-only note only when present', () => {
+    assert.match(component, /supplier\.serviceSupplierName \? \(/, 'conditional on a differing free-text label');
+    assert.match(component, /Listed on service as:/, 'display-only source label');
+    assert.match(component, /<em>\{supplier\.serviceSupplierName\}<\/em>/, 'renders the free-text label');
+    assert.match(component, /serviceSupplierName: string \| null;/, 'type carries the display-only field');
+  });
+
+  it('the confirm modal names the RESOLVED recipient (not the free-text label)', () => {
+    // recipient.supplierName / recipient.email are the resolved values (FK-derived).
+    assert.match(component, /Supplier: <strong>\{confirmFor\.recipient\.supplierName\}<\/strong>/, 'modal uses resolved name');
+    assert.match(component, /Email: <strong>\{confirmFor\.recipient\.email\}<\/strong>/, 'modal uses resolved email');
+    // The modal must NOT fall back to the top-level free-text/service label.
+    assert.ok(!/confirmFor\.serviceSupplierName/.test(component), 'modal never shows the free-text service label as the recipient');
+  });
+});

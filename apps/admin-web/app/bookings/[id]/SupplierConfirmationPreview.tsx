@@ -26,7 +26,10 @@ type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SER
 
 type SupplierDraft = {
   supplierId: string | null;
+  // O.2B-2G — resolved recipient name (heading). `serviceSupplierName` is the
+  // differing free-text service label, display-only (null when it matches/no FK).
   supplierName: string;
+  serviceSupplierName: string | null;
   recipientEmail: string | null;
   missingEmail: boolean;
   recipientSource: RecipientSource;
@@ -141,7 +144,15 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
           <div className="supplier-confirmation-preview-list">
             {preview.suppliers.map((supplier) => (
               <section key={supplier.supplierId || supplier.supplierName} className="detail-card supplier-confirmation-preview-card">
+                {/* O.2B-2G — heading is the RESOLVED recipient supplier name. */}
                 <p className="eyebrow">{supplier.supplierName}</p>
+                {/* O.2B-2G — when the service's free-text label differs from the resolved
+                    supplier, show it as a display-only source note (never the recipient). */}
+                {supplier.serviceSupplierName ? (
+                  <p className="form-help" data-role="service-supplier-label">
+                    Listed on service as: <em>{supplier.serviceSupplierName}</em>
+                  </p>
+                ) : null}
                 {/* O.2B-2B — recipient source + send-readiness (read-only signal; no send). */}
                 <p className="form-help">
                   Recipient source: <strong>{RECIPIENT_SOURCE_LABEL[supplier.recipientSource]}</strong>

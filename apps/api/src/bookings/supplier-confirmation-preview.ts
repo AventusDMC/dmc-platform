@@ -75,7 +75,14 @@ export type ConfirmationRecipient = {
 
 export type SupplierConfirmationDraft = {
   supplierId: string | null;
+  // O.2B-2G — `supplierName` is the RESOLVED recipient name (Supplier.name via the
+  // FK) when one resolves; it is what the card heading + email greeting use. It falls
+  // back to the free-text service label only when NO supplier FK exists.
   supplierName: string;
+  // O.2B-2G — the service's free-text `supplierName`, surfaced as a DISPLAY-ONLY
+  // source label ONLY when it differs from the resolved recipient name. Never used to
+  // resolve a recipient email. null when it matches the heading or no FK resolved.
+  serviceSupplierName: string | null;
   // O.2B-1 fields kept for back-compat (mirror recipient.email / recipient.missingEmail).
   recipientEmail: string | null;
   missingEmail: boolean;
@@ -211,20 +218,27 @@ export function buildSupplierConfirmationPreviewModel(
     key: string;
     assignedSupplierId: string | null;
     supplierId: string | null;
+    // Display fallback (free-text or 'Unnamed supplier') used ONLY when no FK resolves.
     supplierName: string;
+    // O.2B-2G — the raw free-text service label (clean), or null when the service
+    // carried no supplierName. Surfaced display-only when it differs from the resolved
+    // recipient name; never used to resolve a recipient.
+    freeTextName: string | null;
     services: PreviewServiceInput[];
   }> = [];
   for (const service of scoped) {
     const assigned = service.assignedSupplierId || null;
     const linked = service.supplierId || null;
-    const key = assigned || linked || clean(service.supplierName) || service.id;
+    const freeText = clean(service.supplierName) || null;
+    const key = assigned || linked || freeText || service.id;
     let group = groups.find((g) => g.key === key);
     if (!group) {
       group = {
         key,
         assignedSupplierId: assigned,
         supplierId: linked,
-        supplierName: clean(service.supplierName) || 'Unnamed supplier',
+        supplierName: freeText || 'Unnamed supplier',
+        freeTextName: freeText,
         services: [],
       };
       groups.push(group);
@@ -232,6 +246,7 @@ export function buildSupplierConfirmationPreviewModel(
       // Backfill FK fields if a later service in the same group carries them.
       group.assignedSupplierId = group.assignedSupplierId || assigned;
       group.supplierId = group.supplierId || linked;
+      group.freeTextName = group.freeTextName || freeText;
     }
     group.services.push(service);
   }
@@ -273,17 +288,30 @@ export function buildSupplierConfirmationPreviewModel(
       missingEmail: emails.length === 0,
     };
 
+    // O.2B-2G — the heading + the recipient-facing email name must reflect WHO the
+    // email goes to (the resolved supplier), not a possibly-stale free-text service
+    // label. When a FK resolves, `recipientSupplierName` is Supplier.name; otherwise it
+    // falls back to the free-text label (display-only — readiness is NO_SUPPLIER).
+    const displayName = recipientSupplierName;
+    // Surface the free-text service label only when it meaningfully differs from the
+    // resolved recipient name (case-insensitive). Pure display-only context.
+    const serviceSupplierName =
+      group.freeTextName && group.freeTextName.toLowerCase() !== displayName.toLowerCase()
+        ? group.freeTextName
+        : null;
+
     return {
       supplierId: recipientSupplierId,
-      supplierName: group.supplierName,
+      supplierName: displayName,
+      serviceSupplierName,
       recipientEmail: email,
       missingEmail: emails.length === 0,
       recipientSource,
       readiness,
       readinessReason,
       recipient,
-      subject: `Service confirmation request — ${bookingRef || 'Booking'} — ${group.supplierName}`,
-      body: buildBody({ bookingRef, supplierName: group.supplierName, lines, travelStartDate, travelEndDate }),
+      subject: `Service confirmation request — ${bookingRef || 'Booking'} — ${displayName}`,
+      body: buildBody({ bookingRef, supplierName: displayName, lines, travelStartDate, travelEndDate }),
       services: lines,
     };
   });
