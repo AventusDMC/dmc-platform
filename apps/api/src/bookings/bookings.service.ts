@@ -31,6 +31,7 @@ import {
   buildSupplierConfirmationPreviewModel,
   type SupplierConfirmationPreviewOptions,
 } from './supplier-confirmation-preview';
+import { planSupplierConfirmationSend } from './supplier-confirmation-send';
 
 type BookingPdfQuoteItem = {
   id?: string;
@@ -10786,6 +10787,92 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       : [];
 
     return buildSupplierConfirmationPreviewModel(booking as any, services, supplierLookup, options || {});
+  }
+
+  // Phase O.2B-2C — GATED supplier-confirmation SEND. Scope is { supplierId,
+  // serviceId? } — NEVER an email/subject/body. The recipient + content are
+  // rebuilt server-side from the read-only preview (assignedSupplierId ?? supplierId
+  // → Supplier.email; cost-free body). The email is sent FIRST; only on a successful
+  // send do we mutate status (→ REQUESTED) + confirmationSentAt + lastSupplierContactAt
+  // and write an audit log. A failed send mutates nothing.
+  async sendSupplierConfirmation(
+    id: string,
+    data: { supplierId: string; serviceId?: string | null; actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ) {
+    const preview = await this.buildSupplierConfirmationPreview(id, data.companyActor, {
+      supplierId: data?.supplierId || null,
+      serviceId: data?.serviceId || null,
+    });
+    const plan = planSupplierConfirmationSend(preview, { supplierId: data?.supplierId, serviceId: data?.serviceId });
+    if (!plan.ok) {
+      throw new BadRequestException(plan.reason);
+    }
+
+    // Re-check live service state for the scoped services: skip cancelled; refuse if
+    // every remaining scoped service is already CONFIRMED (nothing to request).
+    const liveServices = await (this.prisma.bookingService as any).findMany({
+      where: { id: { in: plan.serviceIds }, bookingId: id },
+      select: { id: true, supplierConfirmationStatus: true, operationStatus: true, confirmationSentAt: true },
+    });
+    const sendable = liveServices.filter(
+      (s: any) => s.operationStatus !== 'CANCELLED' && s.supplierConfirmationStatus !== SupplierConfirmationStatus.CANCELLED,
+    );
+    if (sendable.length === 0) {
+      throw new BadRequestException('No sendable services for this supplier (all cancelled).');
+    }
+    if (sendable.every((s: any) => s.supplierConfirmationStatus === SupplierConfirmationStatus.CONFIRMED)) {
+      throw new BadRequestException('Services are already confirmed for this supplier.');
+    }
+
+    // SEND FIRST — recipient resolved server-side (never operator input). On failure
+    // this throws and NOTHING below runs (no status change, no audit).
+    const transporter = this.createMailTransport();
+    const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
+    const info = await this.sendMailWithRetry(
+      transporter,
+      {
+        from: fromAddress,
+        to: plan.recipientEmail,
+        subject: plan.subject,
+        text: plan.body,
+      },
+      { bookingId: id, action: 'send-supplier-confirmation' },
+    );
+
+    // SUCCESS ONLY — mutate status + timestamps + audit in a transaction.
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      for (const service of sendable) {
+        await (tx.bookingService as any).update({
+          where: { id: service.id },
+          data: {
+            supplierConfirmationStatus: SupplierConfirmationStatus.REQUESTED,
+            confirmationSentAt: service.confirmationSentAt || now,
+            lastSupplierContactAt: now,
+          },
+        });
+        await this.createAuditLog(tx, {
+          bookingId: id,
+          bookingServiceId: service.id,
+          entityType: BookingAuditEntityType.booking_service,
+          entityId: service.id,
+          action: 'booking_service_supplier_confirmation_sent',
+          oldValue: service.supplierConfirmationStatus,
+          newValue: SupplierConfirmationStatus.REQUESTED,
+          actor: data.actor,
+        });
+      }
+    });
+
+    this.invalidateAnalyticsCaches();
+    return {
+      ok: true,
+      supplierId: plan.supplierId,
+      recipientEmail: plan.recipientEmail,
+      serviceCount: sendable.length,
+      statusTransition: plan.statusTransition,
+      messageId: info?.messageId || null,
+    };
   }
 
   async generateGuaranteeLetterPdf(id: string, actor?: CompanyScopedActor) {

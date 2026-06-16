@@ -116,6 +116,14 @@ type SendBookingDocumentEmailBody = {
   documentType: 'voucher' | 'supplier-confirmation';
 };
 
+// Phase O.2B-2C — gated supplier-confirmation send. Scope ONLY (resolved supplier
+// master id + optional single service). Deliberately NO email / subject / body —
+// the recipient + content are rebuilt server-side from the read-only preview.
+type SupplierConfirmationSendBody = {
+  supplierId: string;
+  serviceId?: string;
+};
+
 type SendBookingInvoiceBody = {
   email?: string | null;
   mode?: 'PACKAGE' | 'ITEMIZED';
@@ -595,6 +603,24 @@ export class BookingsController {
     return this.bookingsService.buildSupplierConfirmationPreview(id, actor, {
       supplierId: supplierId || null,
       serviceId: serviceId || null,
+    });
+  }
+
+  // Phase O.2B-2C — GATED supplier-confirmation send. Body is scope only (no email/
+  // subject/body); recipient + content resolved server-side; status→REQUESTED +
+  // audit only after a successful send.
+  @Post(':id/supplier-confirmation/send')
+  @Roles('admin', 'operations')
+  async sendSupplierConfirmation(
+    @Param('id') id: string,
+    @Body() body: SupplierConfirmationSendBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.sendSupplierConfirmation(id, {
+      supplierId: body?.supplierId,
+      serviceId: body?.serviceId || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
