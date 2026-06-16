@@ -464,7 +464,7 @@ function createUpdateDayService(existing: any) {
 }
 const BASE_DAY = { id: 'day-1', quoteId: 'quote-1', dayNumber: 2, title: 'Petra', isActive: true, sortOrder: 1, transportDayType: null, vehicleRetained: null, vehicleReleased: null, inRetainedBlock: null };
 const mainUpdate = (updates: any[]) => updates.find((u) => 'title' in u);
-const ALLOWED_KEYS = new Set(['dayNumber', 'title', 'notes', 'notesLanguage', 'country', 'transportDayType', 'vehicleRetained', 'vehicleReleased', 'inRetainedBlock', 'isActive']);
+const ALLOWED_KEYS = new Set(['dayNumber', 'title', 'notes', 'notesLanguage', 'country', 'transportDayType', 'vehicleRetained', 'vehicleReleased', 'inRetainedBlock', 'overnightCity', 'vehicleReturnsToBase', 'isActive']);
 
 test('PR7 updateDay: title-only edit leaves metadata untouched (NULL stays NULL, retention not written)', async () => {
   const { service, updates } = createUpdateDayService({ ...BASE_DAY });
@@ -537,4 +537,52 @@ test('PR7 updateDay: writes ONLY day metadata keys (no pricing/total fields)', a
   for (const key of Object.keys(mainUpdate(updates))) {
     assert.ok(ALLOWED_KEYS.has(key), `unexpected write key (possible pricing leak): ${key}`);
   }
+});
+
+// PR12B-3A — driver-overnight day metadata capture (overnightCity, vehicleReturnsToBase). Metadata
+// only; updateDay never recalculates totals (the fake has no quote model → any recalc would throw).
+test('PR12B-3A updateDay: saves overnightCity', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { overnightCity: 'Petra' }, ACTOR);
+  assert.equal(mainUpdate(updates).overnightCity, 'Petra');
+});
+
+test('PR12B-3A updateDay: clears overnightCity to null', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY, overnightCity: 'Petra' });
+  await service.updateDay('day-1', { overnightCity: null }, ACTOR);
+  assert.equal(mainUpdate(updates).overnightCity, null);
+});
+
+test('PR12B-3A updateDay: blank overnightCity saves null; long value capped at 120', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY });
+  await service.updateDay('day-1', { overnightCity: '   ' }, ACTOR);
+  assert.equal(mainUpdate(updates).overnightCity, null);
+  const long = createUpdateDayService({ ...BASE_DAY });
+  await long.service.updateDay('day-1', { overnightCity: 'x'.repeat(200) }, ACTOR);
+  assert.equal(mainUpdate(long.updates).overnightCity.length, 120);
+});
+
+test('PR12B-3A updateDay: vehicleReturnsToBase true / false / null', async () => {
+  const t = createUpdateDayService({ ...BASE_DAY });
+  await t.service.updateDay('day-1', { vehicleReturnsToBase: true }, ACTOR);
+  assert.equal(mainUpdate(t.updates).vehicleReturnsToBase, true);
+  const f = createUpdateDayService({ ...BASE_DAY });
+  await f.service.updateDay('day-1', { vehicleReturnsToBase: false }, ACTOR);
+  assert.equal(mainUpdate(f.updates).vehicleReturnsToBase, false);
+  const n = createUpdateDayService({ ...BASE_DAY, vehicleReturnsToBase: true });
+  await n.service.updateDay('day-1', { vehicleReturnsToBase: null }, ACTOR);
+  assert.equal(mainUpdate(n.updates).vehicleReturnsToBase, null);
+});
+
+test('PR12B-3A updateDay: rejects invalid vehicleReturnsToBase (400)', async () => {
+  const { service } = createUpdateDayService({ ...BASE_DAY });
+  await assert.rejects(() => service.updateDay('day-1', { vehicleReturnsToBase: 'yes' as any }, ACTOR), /vehicleReturnsToBase must be a boolean or null/);
+});
+
+test('PR12B-3A updateDay: omitted overnight fields preserved', async () => {
+  const { service, updates } = createUpdateDayService({ ...BASE_DAY, overnightCity: 'Aqaba', vehicleReturnsToBase: true });
+  await service.updateDay('day-1', { title: 'x' }, ACTOR);
+  const m = mainUpdate(updates);
+  assert.equal(m.overnightCity, 'Aqaba');
+  assert.equal(m.vehicleReturnsToBase, true);
 });

@@ -9,6 +9,7 @@ type CreateSupplierInput = {
   phone?: string;
   notes?: string;
   transportDiscountPercent?: number;
+  baseCity?: string | null;
 };
 
 type UpdateSupplierInput = {
@@ -18,10 +19,19 @@ type UpdateSupplierInput = {
   phone?: string | null;
   notes?: string | null;
   transportDiscountPercent?: number;
+  baseCity?: string | null;
 };
 
 function clampDiscountPercent(value: number | undefined): number {
   return Math.min(100, Math.max(0, Number(value) || 0));
+}
+
+// PR12B-3A — base city is metadata only (driver-overnight eval is PR 12C). Trim, blank → null,
+// cap length. undefined → undefined (omitted = unchanged on update). No pricing effect.
+function normalizeCity(value?: string | null): string | null | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.slice(0, 120) : null;
 }
 
 @Injectable()
@@ -45,6 +55,7 @@ export class SuppliersService {
         phone: normalizeOptionalString(data.phone),
         notes: normalizeOptionalString(data.notes),
         transportDiscountPercent: clampDiscountPercent(data.transportDiscountPercent),
+        baseCity: normalizeCity(data.baseCity) ?? null,
       },
     });
   }
@@ -66,6 +77,7 @@ export class SuppliersService {
         notes: data.notes === undefined ? undefined : normalizeOptionalString(data.notes ?? undefined),
         transportDiscountPercent:
           data.transportDiscountPercent === undefined ? undefined : clampDiscountPercent(data.transportDiscountPercent),
+        baseCity: normalizeCity(data.baseCity),
       },
     });
   }
