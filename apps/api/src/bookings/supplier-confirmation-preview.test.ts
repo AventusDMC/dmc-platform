@@ -106,6 +106,68 @@ test('5. empty / no-supplier services → empty suppliers list, no crash', () =>
   assert.deepEqual(buildSupplierConfirmationPreviewModel(BOOKING, orphan, []).suppliers, []);
 });
 
+// --- O.2B-2F: assigned-only grouping + multi-email parsing ---
+import { parseRecipientEmails } from './supplier-confirmation-preview';
+
+const SUP_F = [
+  { id: 'sup-A', name: 'Alpha', email: 'reservation@alpha-jo.com;  n.aldimyati@alpha-jo.com' }, // semicolon + double space
+  { id: 'sup-B', name: 'Corp Amman', email: 'corp@amman.example, sales@amman.example' }, // comma
+  { id: 'sup-C', name: 'No Email Co', email: null },
+];
+
+test('F1/F2. assigned-only service (null supplierId+supplierName) appears and is READY', () => {
+  const svc: any[] = [{ id: 's1', supplierId: null, supplierName: null, assignedSupplierId: 'sup-B', description: 'Jordan Contracted Hotel Night' }];
+  const out = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F);
+  assert.equal(out.suppliers.length, 1, 'assigned-only service surfaces as a draft');
+  const d = out.suppliers[0];
+  assert.equal(d.recipientSource, 'assignedSupplierId');
+  assert.equal(d.recipient.supplierId, 'sup-B');
+  assert.equal(d.readiness, 'READY');
+});
+
+test('F4. assignedSupplierId preferred over supplierId; F5. supplierId works alone', () => {
+  const both: any[] = [{ id: 's', supplierId: 'sup-C', assignedSupplierId: 'sup-A', supplierName: 'x', description: 'y' }];
+  const dBoth = buildSupplierConfirmationPreviewModel(BOOKING, both, SUP_F).suppliers[0];
+  assert.equal(dBoth.recipientSource, 'assignedSupplierId');
+  assert.equal(dBoth.recipient.supplierId, 'sup-A');
+  const linked: any[] = [{ id: 's', supplierId: 'sup-A', assignedSupplierId: null, supplierName: 'x', description: 'y' }];
+  const dLinked = buildSupplierConfirmationPreviewModel(BOOKING, linked, SUP_F).suppliers[0];
+  assert.equal(dLinked.recipientSource, 'supplierId');
+});
+
+test('F6/F7. no FK → NO_SUPPLIER even when supplierName matches a supplier by name', () => {
+  const svc: any[] = [{ id: 's', supplierId: null, assignedSupplierId: null, supplierName: 'Alpha', description: 'y' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.recipientSource, 'none');
+  assert.equal(d.readiness, 'NO_SUPPLIER');
+  assert.equal(d.recipient.email, null, 'name match never resolves an email');
+});
+
+test('F9. semicolon-separated Supplier.email parses into a clean recipient list', () => {
+  const svc: any[] = [{ id: 's', assignedSupplierId: 'sup-A', supplierName: 'Alpha', description: 'y' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.deepEqual(d.recipient.emails, ['reservation@alpha-jo.com', 'n.aldimyati@alpha-jo.com']);
+  assert.equal(d.recipient.email, 'reservation@alpha-jo.com, n.aldimyati@alpha-jo.com', 'joined comma-safe for mail to');
+  assert.equal(d.readiness, 'READY');
+});
+
+test('F10. comma-separated Supplier.email still works; F11. missing email → MISSING_EMAIL', () => {
+  const commaSvc: any[] = [{ id: 's', supplierId: 'sup-B', supplierName: 'Corp Amman', description: 'y' }];
+  const dComma = buildSupplierConfirmationPreviewModel(BOOKING, commaSvc, SUP_F).suppliers[0];
+  assert.deepEqual(dComma.recipient.emails, ['corp@amman.example', 'sales@amman.example']);
+  const noneSvc: any[] = [{ id: 's', supplierId: 'sup-C', supplierName: 'No Email Co', description: 'y' }];
+  const dNone = buildSupplierConfirmationPreviewModel(BOOKING, noneSvc, SUP_F).suppliers[0];
+  assert.equal(dNone.readiness, 'MISSING_EMAIL');
+  assert.equal(dNone.recipient.email, null);
+});
+
+test('F (helper). parseRecipientEmails handles comma/semicolon/whitespace/dupes/empties', () => {
+  assert.deepEqual(parseRecipientEmails('a@x;  b@x , a@x ,,'), ['a@x', 'b@x']);
+  assert.deepEqual(parseRecipientEmails(''), []);
+  assert.deepEqual(parseRecipientEmails(null), []);
+  assert.deepEqual(parseRecipientEmails('  solo@x  '), ['solo@x']);
+});
+
 // --- O.2B-2B: recipient resolution (assignedSupplierId ?? supplierId) + readiness ---
 
 const SUPPLIERS_2 = [
