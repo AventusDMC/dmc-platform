@@ -229,6 +229,52 @@ test('O.2B-2B-5. never resolves the recipient by supplierName string match', () 
   assert.equal(d.readiness, 'NO_SUPPLIER');
 });
 
+// --- O.2B-2G: card heading reflects the RESOLVED recipient; free-text is display-only ---
+
+test('G1. heading + subject + greeting use the ASSIGNED supplier name, not the free-text label', () => {
+  // Real-world case: service labelled "Almushtari Logistics Services" but assigned to Corp Amman.
+  const svc: any[] = [{ id: 's', assignedSupplierId: 'sup-B', supplierId: null, supplierName: 'Almushtari Logistics Services', description: 'Hotel Night' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.supplierName, 'Corp Amman', 'heading = resolved Supplier.name');
+  assert.equal(d.recipient.supplierName, 'Corp Amman');
+  assert.equal(d.serviceSupplierName, 'Almushtari Logistics Services', 'differing free-text surfaced as display-only label');
+  assert.match(d.subject, /— Corp Amman$/, 'subject uses resolved name');
+  assert.match(d.body, /Dear Corp Amman,/, 'greeting uses resolved name');
+  assert.ok(!d.subject.includes('Almushtari'), 'free-text label not in subject');
+  assert.ok(!d.body.includes('Almushtari'), 'free-text label not in greeting');
+});
+
+test('G2. heading uses the LINKED supplier name when assignedSupplierId is null', () => {
+  const svc: any[] = [{ id: 's', supplierId: 'sup-A', assignedSupplierId: null, supplierName: 'Stale Label Co', description: 'y' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.supplierName, 'Alpha', 'heading = linked Supplier.name');
+  assert.equal(d.serviceSupplierName, 'Stale Label Co');
+});
+
+test('G3. heading falls back to free-text supplierName ONLY when no FK resolves', () => {
+  const svc: any[] = [{ id: 's', supplierId: null, assignedSupplierId: null, supplierName: 'Local Guide Co', description: 'y' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.recipientSource, 'none');
+  assert.equal(d.supplierName, 'Local Guide Co', 'free-text used as display-only heading');
+  assert.equal(d.serviceSupplierName, null, 'no redundant source label when heading already is the free-text');
+});
+
+test('G4. a free-text label matching the resolved name (case-insensitive) is not duplicated', () => {
+  const svc: any[] = [{ id: 's', supplierId: 'sup-A', supplierName: 'alpha', description: 'y' }]; // matches 'Alpha'
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.supplierName, 'Alpha');
+  assert.equal(d.serviceSupplierName, null, 'case-insensitive match → no redundant label');
+});
+
+test('G6. the heading/free-text is NEVER used to resolve a recipient (FK only)', () => {
+  // free-text equals supplier sup-B's name but there is NO FK → must NOT resolve sup-B.
+  const svc: any[] = [{ id: 's', supplierId: null, assignedSupplierId: null, supplierName: 'Corp Amman', description: 'y' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.recipient.supplierId, null);
+  assert.equal(d.recipient.email, null, 'name match never resolves an email');
+  assert.equal(d.readiness, 'NO_SUPPLIER');
+});
+
 // --- Source-grep guards: the SERVICE method + CONTROLLER route are read-only ---
 const serviceSrc = readFileSync(require('path').join(__dirname, 'bookings.service.ts'), 'utf8');
 const controllerSrc = readFileSync(require('path').join(__dirname, 'bookings.controller.ts'), 'utf8');
