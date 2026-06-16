@@ -19,6 +19,7 @@ type SuppliersFormProps = {
     phone: string;
     notes: string;
     transportDiscountPercent?: number;
+    baseCity?: string | null;
   };
 };
 
@@ -32,6 +33,7 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
   const [transportDiscountPercent, setTransportDiscountPercent] = useState(
     initialValues?.transportDiscountPercent != null ? String(initialValues.transportDiscountPercent) : '',
   );
+  const [baseCity, setBaseCity] = useState(initialValues?.baseCity || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(supplierId);
@@ -55,6 +57,8 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
           notes: notes || undefined,
           transportDiscountPercent:
             type === 'transport' ? (transportDiscountPercent === '' ? 0 : Number(transportDiscountPercent)) : undefined,
+          // Base-city metadata (PR 12B-3B) — transport suppliers only; blank → NULL. No pricing effect.
+          baseCity: type === 'transport' ? (baseCity.trim() === '' ? null : baseCity.trim()) : undefined,
         }),
       });
 
@@ -69,6 +73,7 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
         setPhone('');
         setNotes('');
         setTransportDiscountPercent('');
+        setBaseCity('');
       }
 
       router.refresh();
@@ -123,6 +128,16 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
           />
           <span className="form-helper">
             Negotiated discount off this supplier&apos;s published vehicle rates. Applied automatically to all transport pricing — set once here.
+          </span>
+        </label>
+      ) : null}
+
+      {type === 'transport' ? (
+        <label>
+          Base city
+          <input value={baseCity} onChange={(event) => setBaseCity(event.target.value)} placeholder="e.g. Amman" />
+          <span className="form-helper">
+            Used later for driver overnight evaluation. Leave blank if unknown. This does not change pricing yet.
           </span>
         </label>
       ) : null}

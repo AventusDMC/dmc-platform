@@ -20,6 +20,8 @@ type QuoteItineraryDayFormProps = {
     vehicleRetained?: boolean | null;
     vehicleReleased?: boolean | null;
     inRetainedBlock?: boolean | null;
+    overnightCity?: string | null;
+    vehicleReturnsToBase?: boolean | null;
   };
 };
 
@@ -36,6 +38,14 @@ const TRANSPORT_DAY_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'STANDBY_WAITING', label: 'Standby / waiting' },
   { value: 'FREE_DAY_NO_VEHICLE', label: 'Free day / no vehicle' },
 ];
+
+// Tri-state "vehicle returns to base overnight?" — '' = Auto/Unknown → NULL, 'yes' → true, 'no' → false.
+type ReturnsToBaseChoice = '' | 'yes' | 'no';
+function deriveReturnsToBase(v?: boolean | null): ReturnsToBaseChoice {
+  if (v === true) return 'yes';
+  if (v === false) return 'no';
+  return '';
+}
 
 // Single retention select — makes retained+released contradiction impossible to create.
 type RetentionChoice = 'auto' | 'retained' | 'released' | 'block' | 'conflict';
@@ -63,6 +73,8 @@ export function QuoteItineraryDayForm({
   const [isActive, setIsActive] = useState(initialValues?.isActive ?? true);
   const [transportDayType, setTransportDayType] = useState(initialValues?.transportDayType || '');
   const [retention, setRetention] = useState<RetentionChoice>(deriveRetention(initialValues));
+  const [overnightCity, setOvernightCity] = useState(initialValues?.overnightCity || '');
+  const [returnsToBase, setReturnsToBase] = useState<ReturnsToBaseChoice>(deriveReturnsToBase(initialValues?.vehicleReturnsToBase));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(dayId);
@@ -76,7 +88,9 @@ export function QuoteItineraryDayForm({
     setIsActive(initialValues?.isActive ?? true);
     setTransportDayType(initialValues?.transportDayType || '');
     setRetention(deriveRetention(initialValues));
-  }, [initialValues?.dayNumber, initialValues?.title, initialValues?.notes, initialValues?.sortOrder, initialValues?.isActive, initialValues?.transportDayType, initialValues?.vehicleRetained, initialValues?.vehicleReleased, initialValues?.inRetainedBlock]);
+    setOvernightCity(initialValues?.overnightCity || '');
+    setReturnsToBase(deriveReturnsToBase(initialValues?.vehicleReturnsToBase));
+  }, [initialValues?.dayNumber, initialValues?.title, initialValues?.notes, initialValues?.sortOrder, initialValues?.isActive, initialValues?.transportDayType, initialValues?.vehicleRetained, initialValues?.vehicleReleased, initialValues?.inRetainedBlock, initialValues?.overnightCity, initialValues?.vehicleReturnsToBase]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,6 +116,9 @@ export function QuoteItineraryDayForm({
           payload.vehicleReleased = retention === 'released' ? true : null;
           payload.inRetainedBlock = retention === 'block' ? true : null;
         }
+        // Overnight metadata (PR 12B-3B) — blank city → NULL, tri-state returns-to-base → boolean|null.
+        payload.overnightCity = overnightCity.trim() === '' ? null : overnightCity.trim();
+        payload.vehicleReturnsToBase = returnsToBase === '' ? null : returnsToBase === 'yes';
       }
       const response = await fetch(`${apiBaseUrl}${dayId ? `/itinerary/day/${dayId}` : `/quotes/${quoteId}/itinerary/day`}`, {
         method: dayId ? 'PATCH' : 'POST',
@@ -210,6 +227,22 @@ export function QuoteItineraryDayForm({
           {retention === 'conflict' ? (
             <p className="form-error">This day has conflicting retained + released metadata. Choose a value to resolve it.</p>
           ) : null}
+          <div className="form-row form-row-2">
+            <label>
+              Overnight city / area
+              <input value={overnightCity} onChange={(event) => setOvernightCity(event.target.value)} placeholder="e.g. Petra" />
+            </label>
+
+            <label>
+              Vehicle returns to base overnight?
+              <select value={returnsToBase} onChange={(event) => setReturnsToBase(event.target.value as ReturnsToBaseChoice)}>
+                <option value="">Auto / Unknown</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          </div>
+          <p className="form-hint">Used later for overnight pricing. This does not change pricing yet.</p>
         </details>
       ) : null}
 
