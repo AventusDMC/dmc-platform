@@ -762,6 +762,8 @@ export class QuoteItineraryService {
           country: normalized.country,
           transportDayType: normalized.transportDayType,
           ...(normalized.retentionUpdate ?? {}),
+          overnightCity: normalized.overnightCity,
+          vehicleReturnsToBase: normalized.vehicleReturnsToBase,
           isActive: normalized.isActive,
         },
       });
@@ -1322,6 +1324,11 @@ export class QuoteItineraryService {
       country: data.country === undefined ? existing.country : normalizeOptionalString(data.country),
       transportDayType: nextTransportDayType,
       retentionUpdate,
+      // PR12B-3A — driver-overnight day metadata (metadata only; PR 12C reads it). Omitted =
+      // unchanged; blank → null; city trimmed + capped; vehicleReturnsToBase boolean|null (validated).
+      overnightCity:
+        data.overnightCity === undefined ? (existing.overnightCity ?? null) : (normalizeOptionalString(data.overnightCity)?.slice(0, 120) ?? null),
+      vehicleReturnsToBase: nextNullableBool('vehicleReturnsToBase', data.vehicleReturnsToBase, existing.vehicleReturnsToBase),
       sortOrder: nextSortOrder,
       isActive: data.isActive ?? existing.isActive,
     };

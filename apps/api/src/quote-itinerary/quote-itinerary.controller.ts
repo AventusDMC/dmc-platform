@@ -21,6 +21,9 @@ type CreateDayBody = {
   vehicleRetained?: boolean | null;
   vehicleReleased?: boolean | null;
   inRetainedBlock?: boolean | null;
+  // PR12B-3A — driver-overnight day metadata (metadata only; PR 12C reads it later).
+  overnightCity?: string | null;
+  vehicleReturnsToBase?: boolean | null;
   sortOrder?: number | string;
   isActive?: boolean;
 };
@@ -259,6 +262,8 @@ export class QuoteItineraryController {
       vehicleRetained: body.vehicleRetained,
       vehicleReleased: body.vehicleReleased,
       inRetainedBlock: body.inRetainedBlock,
+      overnightCity: body.overnightCity,
+      vehicleReturnsToBase: body.vehicleReturnsToBase,
       sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       isActive: body.isActive,
     };

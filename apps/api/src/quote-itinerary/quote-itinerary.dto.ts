@@ -29,6 +29,10 @@ export type UpdateQuoteItineraryDayDto = {
   vehicleRetained?: boolean | null;
   vehicleReleased?: boolean | null;
   inRetainedBlock?: boolean | null;
+  // PR12B-3A — driver-overnight day metadata (PR 12C will read these). Optional; omitted = unchanged.
+  // Metadata only — never touches live pricing. NULL = unknown/unset/manual-required.
+  overnightCity?: string | null;
+  vehicleReturnsToBase?: boolean | null;
   sortOrder?: number;
   isActive?: boolean;
 };

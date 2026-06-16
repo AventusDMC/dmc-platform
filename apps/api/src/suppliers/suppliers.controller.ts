@@ -9,6 +9,7 @@ type CreateSupplierBody = {
   phone?: string;
   notes?: string;
   transportDiscountPercent?: number;
+  baseCity?: string | null;
 };
 
 type UpdateSupplierBody = {
@@ -18,6 +19,7 @@ type UpdateSupplierBody = {
   phone?: string | null;
   notes?: string | null;
   transportDiscountPercent?: number;
+  baseCity?: string | null;
 };
 
 @Controller('suppliers')
