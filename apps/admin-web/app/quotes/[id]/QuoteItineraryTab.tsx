@@ -106,6 +106,8 @@ type QuoteItineraryDay = {
   vehicleRetained: boolean | null;
   vehicleReleased: boolean | null;
   inRetainedBlock: boolean | null;
+  overnightCity: string | null;
+  vehicleReturnsToBase: boolean | null;
   dayItems: QuoteItineraryDayItem[];
 };
 
@@ -280,6 +282,8 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
                         vehicleRetained: day.vehicleRetained,
                         vehicleReleased: day.vehicleReleased,
                         inRetainedBlock: day.inRetainedBlock,
+                        overnightCity: day.overnightCity,
+                        vehicleReturnsToBase: day.vehicleReturnsToBase,
                       }}
                     />
                   </InlineEntityActions>

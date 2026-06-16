@@ -62,3 +62,32 @@ describe('Phase R.1d — editable day title & narrative controls', () => {
     ]);
   });
 });
+
+// PR 12B-3B — overnight metadata capture (UI only): "Overnight city / area" + tri-state
+// "Vehicle returns to base overnight?" inside the existing Transport day (advanced) section.
+// Reuses the same PATCH /itinerary/day/:id path; no new endpoint, no pricing.
+describe('PR 12B-3B — overnight metadata capture controls', () => {
+  it('1. the advanced section renders overnight city + tri-state returns-to-base controls', () => {
+    expectSourceContains(formSource, [
+      'Overnight city / area',
+      'value={overnightCity}',
+      'Vehicle returns to base overnight?',
+      'value={returnsToBase}',
+      'Used later for overnight pricing. This does not change pricing yet.',
+    ]);
+  });
+
+  it('2. the controls only persist metadata via the existing PATCH payload (blank → null)', () => {
+    expectSourceContains(formSource, ['payload.overnightCity', 'payload.vehicleReturnsToBase']);
+    // still no pricing/total/relation writes introduced by these controls
+    assert.ok(!/markup|totalSell|totalCost|overrideCost|sellPrice/i.test(formSource), 'no pricing fields');
+    assert.ok(!/dayItems|poiAssignments/.test(formSource), 'editor does not touch services/POIs');
+  });
+
+  it('3. the tab seeds the new fields into the day form initial values', () => {
+    expectSourceContains(tabSource, [
+      'overnightCity: day.overnightCity',
+      'vehicleReturnsToBase: day.vehicleReturnsToBase',
+    ]);
+  });
+});
