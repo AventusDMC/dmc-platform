@@ -1313,6 +1313,10 @@ model QuoteItineraryDay {
   vehicleRetained      Boolean?
   vehicleReleased      Boolean?
   inRetainedBlock      Boolean?
+  // PR12B-2 — driver-overnight day metadata. Additive, nullable, METADATA ONLY — no pricing reads
+  // these yet (PR 12C). NULL = unknown/unset → manual-required later. Text-first (no Place FK).
+  overnightCity        String?
+  vehicleReturnsToBase Boolean?
   sortOrder            Int                      @default(0)
   isActive             Boolean                  @default(true)
   createdAt            DateTime                 @default(now())
@@ -2256,6 +2260,10 @@ model Supplier {
   // applied at pricing time to transport lines only (cost = rate * (1 - pct/100)).
   // One place to edit per supplier; default 0 = no discount (backward-compatible).
   transportDiscountPercent Float               @default(0)
+  // PR12B-2 — supplier default base city for driver-overnight out-of-base evaluation. Additive,
+  // nullable, METADATA ONLY — no pricing reads it yet (PR 12C). NULL = unknown → fail-closed later.
+  // Per-contract override lives on TransportContract.baseCityOverride. Text-first (no Place FK).
+  baseCity              String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   bookingServices       BookingService[]
