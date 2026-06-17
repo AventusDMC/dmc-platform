@@ -11,6 +11,10 @@ export type ProposalV3QuoteItem = {
   participantCount?: number | null;
   occupancyType?: string | null;
   mealPlan?: string | null;
+  /** P2-1 — nights this hotel item covers (a grouped multi-night stay carries >1); used to
+   *  derive accommodation stay spans + per-day overnight badges. Already populated at runtime
+   *  (read by resolveProposalNightCount); declared here so the mapper reads it without a cast. */
+  nightCount?: number | null;
   pricingDescription?: string | null;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
   ratePolicies?: unknown;
@@ -292,6 +296,8 @@ export type ProposalV3AccommodationRow = {
   room: string | null;
   meals: string | null;
   note: string | null;
+  /** P2-1 — number of nights this grouped stay covers (folded into dayLabel; exposed for tests). */
+  nights?: number | null;
 };
 
 export type ProposalV3HotelOption = {
