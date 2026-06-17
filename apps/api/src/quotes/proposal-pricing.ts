@@ -308,9 +308,13 @@ export function buildProposalPricingViewModel(
       snapshotLabel: quote.currentPricing?.label || 'Package sell price per person',
       snapshotValue: formatMoney(simpleAmount!, currency),
       snapshotHelper: `Based on ${totalGuests} guest${totalGuests === 1 ? '' : 's'} sharing.`,
+      // P1 (proposal QA, Issue 10) — the occupancy basis is already stated once in
+      // snapshotHelper ("Based on N guests sharing"). The previous extra "Quotation
+      // prepared for N guests." basisLine restated the same guest count, which rendered
+      // as a duplicated "Según N huéspedes…"-style note in Spanish. Drop the redundant
+      // line; any operator contextLines are preserved.
       basisLines: uniqueLines([
         ...(quote.priceComputation?.display.contextLines || []),
-        `Quotation prepared for ${totalGuests} guest${totalGuests === 1 ? '' : 's'}.`,
       ]),
       noteLines: uniqueLines([
         quote.priceComputation?.display.singleSupplementText,
