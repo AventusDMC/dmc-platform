@@ -25,6 +25,48 @@ function isSelectionEnabled(): boolean {
 }
 
 type ExcludedDay = { dayNumber: number; operationalType: string; routeCost: number; reason: string };
+// PR12D — read-only shape of the PR12C-2 overnight/stationary SHADOW diagnostic. Display only:
+// its totals live solely inside this object and are NEVER added to any existing preview total.
+type OvernightCharge = {
+  dayNumber: number;
+  overnightCity?: string | null;
+  baseCity?: string | null;
+  vehicleReturnsToBase?: boolean | null;
+  policy?: string | null;
+  outcome: string;
+  rateSource?: string | null;
+  amount: number;
+  currency?: string | null;
+  reason: string;
+  blocker?: string | null;
+};
+type StationaryCharge = {
+  dayNumber: number;
+  type: string;
+  outcome: string;
+  countsTowardMin?: boolean;
+  packageDayWeightImpact?: number;
+  rateSource?: string | null;
+  amount: number;
+  currency?: string | null;
+  reason: string;
+  blocker?: string | null;
+};
+type OvernightStationaryShadow = {
+  notApplied?: boolean;
+  baseCityResolution?: {
+    supplierBaseCity?: string | null;
+    contractOverride?: string | null;
+    effectiveBaseCity?: string | null;
+  };
+  overnightCharges?: OvernightCharge[];
+  stationaryCharges?: StationaryCharge[];
+  totalOvernightShadow?: number;
+  totalStationaryShadow?: number;
+  currency?: string | null;
+  blockers?: string[];
+  warnings?: string[];
+};
 type SavedSelection = {
   option: string;
   contractId?: string | null;
@@ -50,6 +92,7 @@ type PreviewData = {
   warnings?: string[];
   savedSelection?: SavedSelection | null;
   selectionStale?: boolean;
+  overnightStationaryShadow?: OvernightStationaryShadow | null;
   notApplied?: boolean;
 };
 
@@ -152,6 +195,12 @@ export function PackagePricingPreview({ quoteId }: { quoteId: string }) {
       : !data?.packageEligible
         ? data?.reason || 'Below the package minimum.'
         : '';
+
+  // PR12D — read-only overnight/stationary diagnostic (PR12C-2). Rendered in its own section only
+  // when present; its totals are NEVER folded into the existing preview totals above.
+  const osShadow = data?.overnightStationaryShadow ?? null;
+  const osMoney = (amount: number | null | undefined, currency: string | null | undefined) =>
+    `${money(amount)}${currency ? ` ${currency}` : ''}`;
 
   const saved = data?.savedSelection ?? null;
   const savedLabel = !saved
@@ -270,6 +319,93 @@ export function PackagePricingPreview({ quoteId }: { quoteId: string }) {
           ) : (
             <p className="package-pricing-preview-not-applied"><strong>NOT APPLIED TO TOTALS.</strong></p>
           )}
+
+          {/* PR12D — overnight/stationary SHADOW diagnostic (PR12C-2). Display only; its totals are
+              NEVER added to the preview totals above. Rendered solely when the shadow is present. */}
+          {osShadow ? (
+            <div className="overnight-stationary-shadow">
+              <h4 className="overnight-stationary-shadow-title">Overnight / stationary diagnostic</h4>
+              <p className="overnight-stationary-shadow-not-applied">
+                <strong>Not applied to quote totals.</strong>
+              </p>
+
+              <ul className="overnight-stationary-shadow-base">
+                <li>
+                  Base city resolution: supplier{' '}
+                  <strong>{osShadow.baseCityResolution?.supplierBaseCity ?? '—'}</strong>, contract override{' '}
+                  <strong>{osShadow.baseCityResolution?.contractOverride ?? '—'}</strong> → effective{' '}
+                  <strong>{osShadow.baseCityResolution?.effectiveBaseCity ?? '—'}</strong>
+                </li>
+              </ul>
+
+              <div className="overnight-stationary-shadow-overnight">
+                <p>Overnight charges:</p>
+                {(osShadow.overnightCharges ?? []).length === 0 ? (
+                  <p className="form-hint">none</p>
+                ) : (
+                  <ul>
+                    {(osShadow.overnightCharges ?? []).map((c) => (
+                      <li key={`os-overnight-${c.dayNumber}`}>
+                        Day {c.dayNumber}: <strong>{c.outcome}</strong>
+                        {c.overnightCity ? <> — {c.overnightCity}</> : null}
+                        {c.outcome === 'separate' ? <> — <strong>{osMoney(c.amount, c.currency)}</strong></> : null}
+                        {c.blocker ? <> — ⚠ {c.blocker}</> : <> ({c.reason})</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="overnight-stationary-shadow-stationary">
+                <p>Stationary charges:</p>
+                {(osShadow.stationaryCharges ?? []).length === 0 ? (
+                  <p className="form-hint">none</p>
+                ) : (
+                  <ul>
+                    {(osShadow.stationaryCharges ?? []).map((c) => (
+                      <li key={`os-stationary-${c.dayNumber}`}>
+                        Day {c.dayNumber} ({c.type}): <strong>{c.outcome}</strong>
+                        {c.outcome === 'separate' ? <> — <strong>{osMoney(c.amount, c.currency)}</strong></> : null}
+                        {c.countsTowardMin ? <> — counts toward min</> : null}
+                        {c.blocker ? <> — ⚠ {c.blocker}</> : <> ({c.reason})</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <ul className="overnight-stationary-shadow-totals">
+                <li>
+                  Total overnight (shadow):{' '}
+                  <strong>{osMoney(osShadow.totalOvernightShadow, osShadow.currency)}</strong>
+                </li>
+                <li>
+                  Total stationary (shadow):{' '}
+                  <strong>{osMoney(osShadow.totalStationaryShadow, osShadow.currency)}</strong>
+                </li>
+              </ul>
+
+              {(osShadow.blockers ?? []).length > 0 ? (
+                <ul className="overnight-stationary-shadow-blockers">
+                  {(osShadow.blockers ?? []).map((b) => (
+                    <li key={`os-blocker-${b}`}>⛔ {b}</li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {(osShadow.warnings ?? []).length > 0 ? (
+                <ul className="overnight-stationary-shadow-warnings">
+                  {(osShadow.warnings ?? []).map((w) => (
+                    <li key={`os-warning-${w}`}>⚠ {w}</li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <p className="overnight-stationary-shadow-not-applied">
+                <strong>Not applied to quote totals.</strong>
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </details>

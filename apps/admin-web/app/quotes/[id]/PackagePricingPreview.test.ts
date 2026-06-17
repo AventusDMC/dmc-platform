@@ -161,3 +161,83 @@ describe('PR10B-2 — route-vs-package selection (metadata only)', () => {
     assert.ok(!/export async function (GET|POST|PUT|DELETE)/.test(selectionProxySource), 'selection proxy exposes only PATCH');
   });
 });
+
+describe('PR12D — overnight/stationary shadow diagnostic (display only)', () => {
+  // Source-grep over the component (matching the PR10A/PR10B-2 style above). The diagnostic
+  // section is read-only display of the PR12C-2 overnightStationaryShadow object; nothing here
+  // applies it to quote totals.
+
+  // Slice of the component source covering only the new diagnostic section, so "inside this
+  // section only" assertions can be scoped to it.
+  const sectionStart = componentSource.indexOf('overnight-stationary-shadow"');
+  const diagnosticSection = sectionStart >= 0 ? componentSource.slice(sectionStart) : '';
+
+  it('1. renders the diagnostic section, gated on the overnightStationaryShadow object', () => {
+    expectContains(componentSource, [
+      'overnightStationaryShadow',
+      'const osShadow = data?.overnightStationaryShadow ?? null',
+      '{osShadow ? (',
+      'Overnight / stationary diagnostic',
+    ]);
+    assert.ok(sectionStart >= 0, 'diagnostic section markup present');
+  });
+
+  it('2. hides the section when the shadow is absent (truthiness-gated, no separate fetch)', () => {
+    // The whole section is rendered only inside `{osShadow ? ( … ) : null}`; absent → null.
+    assert.ok(/\{osShadow \? \([\s\S]*\) : null\}/.test(componentSource), 'section is osShadow-gated');
+    // No new network call is introduced for the diagnostic (it rides the existing GET).
+    const fetches = componentSource.match(/fetch\(/g) ?? [];
+    assert.equal(fetches.length, 2, 'still exactly two fetches: the GET preview + the PATCH selection');
+  });
+
+  it('3. shows "Not applied to quote totals" inside the diagnostic section', () => {
+    assert.ok(diagnosticSection.includes('Not applied to quote totals.'), 'not-applied banner shown in section');
+  });
+
+  it('4. renders overnight charges', () => {
+    expectContains(diagnosticSection, ['Overnight charges:', 'osShadow.overnightCharges', 'Total overnight (shadow):']);
+  });
+
+  it('5. renders stationary charges', () => {
+    expectContains(diagnosticSection, ['Stationary charges:', 'osShadow.stationaryCharges', 'Total stationary (shadow):']);
+  });
+
+  it('6. renders base-city resolution and both shadow totals', () => {
+    expectContains(diagnosticSection, [
+      'Base city resolution',
+      'baseCityResolution?.supplierBaseCity',
+      'baseCityResolution?.contractOverride',
+      'baseCityResolution?.effectiveBaseCity',
+      'osShadow.totalOvernightShadow',
+      'osShadow.totalStationaryShadow',
+    ]);
+  });
+
+  it('7. renders blockers and warnings INSIDE the diagnostic section only (from osShadow)', () => {
+    expectContains(diagnosticSection, [
+      'overnight-stationary-shadow-blockers',
+      'osShadow.blockers',
+      'overnight-stationary-shadow-warnings',
+      'osShadow.warnings',
+    ]);
+    // The section never reads the existing top-level data.warnings/data.excludedDays — it is scoped
+    // to the shadow object, so it cannot affect (or be affected by) the existing preview lists.
+    assert.ok(!/data\.warnings|data\.excludedDays|packageEligible|selectionStale/.test(diagnosticSection), 'section is scoped to osShadow only');
+  });
+
+  it('8. does not change the existing preview totals (they remain rendered verbatim)', () => {
+    expectContains(componentSource, [
+      'Current route/transfer total:',
+      'Package gross total:',
+      'Package net total:',
+      'Difference (net − current):',
+    ]);
+    // The shadow totals are labelled distinctly and are never summed into the existing totals.
+    assert.ok(!/currentTransportTotal[\s\S]{0,80}totalOvernightShadow/.test(componentSource), 'shadow totals not folded into the current transport total');
+  });
+
+  it('9. adds no apply / send / action button (the section is display-only)', () => {
+    assert.ok(!/<button/.test(diagnosticSection), 'no button element inside the diagnostic section');
+    assert.ok(!/>\s*(Apply|Send|Save|Confirm)\b/.test(diagnosticSection), 'no apply/send/save/confirm control in the section');
+  });
+});
