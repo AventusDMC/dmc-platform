@@ -856,38 +856,113 @@ function buildGuideClientDescription(item: ProposalV3QuoteItem, location: string
   return null;
 }
 
-function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3AccommodationRow[] {
-  const sortedDays = getProposalDaySources(quote);
-  const rows: ProposalV3AccommodationRow[] = [];
+// P2-1 (proposal QA, #4/#5/#6) — Option B: a single pure helper that computes the canonical
+// accommodation STAY SPANS from the day sources. Both buildAccommodationRows (grouped table
+// rows) and buildDays (per-day overnight badges) consume this, so the two can never disagree.
+//
+// A hotel QuoteItem is attached to its CHECK-IN day and carries nightCount (a grouped stay
+// reports >1; default 1 when absent). Each item therefore covers the overnight days
+// [checkInDay … checkInDay + nights − 1] — the checkout/departure day is intentionally NOT
+// covered. Adjacent items that share hotel + city + room + meals AND whose covered ranges are
+// contiguous/overlapping merge into one stay (handles both the one-item-nightCount model and
+// the one-item-per-night model). A room/meal change splits the stay (approved decision #3).
+type AccommodationStay = {
+  hotelName: string;
+  location: string | null;
+  room: string | null;
+  meals: string | null;
+  note: string | null;
+  checkInDay: number;
+  lastDay: number;
+  nights: number;
+  coveredDays: number[];
+};
 
-  for (const day of sortedDays) {
-    const hotelItems = day.items.filter((item) => isHotelItem(item));
+function buildAccommodationStays(daySources: ProposalV3DaySource[]): AccommodationStay[] {
+  type Segment = Omit<AccommodationStay, 'nights' | 'coveredDays'> & { coverUntil: number };
+  const segments: Segment[] = [];
+
+  for (const day of daySources) {
     const dayLocation = extractDayLocation(day.title, day.dayNumber);
-
-    for (const item of hotelItems) {
-      // Phase 3D.1L — prefer the hotel's own city; fall back to the day's derived
-      // location only when the hotel has no city (so e.g. a Petra hotel on a "Dana"
-      // day shows Location: Petra, not Dana).
+    for (const item of day.items.filter((entry) => isHotelItem(entry))) {
+      // Phase 3D.1L — prefer the hotel's own city; fall back to the day's derived location.
       // Phase P.3X-5D — localize the accommodation city for non-English proposals.
       const location = localizePlaceName(activeProposalLocale, cleanText(item.hotel?.city || '') || dayLocation);
-      rows.push({
-        dayLabel: proseTemplate(activeProposalLocale, 'dayNumberLabel', { n: String(day.dayNumber).padStart(2, '0') }),
+      const nights = Math.max(1, Math.floor(Number(item.nightCount) || 0) || 1);
+      segments.push({
         hotelName: cleanText(item.hotel?.name || item.service.name) || 'Accommodation details to be confirmed',
         location,
         room: cleanText(item.roomCategory?.name || '') || null,
         meals: item.mealPlan ? String(item.mealPlan).toUpperCase() : null,
-        // Phase M — the rate-contract/agreement name is an internal label
-        // ("TRAVEL AGENT AGREEMENT 2026", "Travel Agent Contracted Rates 2026/27",
-        // "2026 contract", etc.); the pattern-based filter let several through, so
-        // the client accommodation row now never surfaces it. Client-safe fields
-        // are hotel name, room category, meal plan, and city; the contract stays
-        // on the QuoteItem for admin/debug.
+        // Phase M — internal rate-contract/agreement names are never surfaced client-side.
         note: null,
+        checkInDay: day.dayNumber,
+        lastDay: day.dayNumber + nights - 1,
+        coverUntil: day.dayNumber + nights - 1,
       });
     }
   }
 
-  return rows;
+  segments.sort((a, b) => a.checkInDay - b.checkInDay);
+
+  const key = (s: { hotelName: string; location: string | null; room: string | null; meals: string | null }) =>
+    [normalizeComparisonText(s.hotelName), normalizeComparisonText(s.location || ''), normalizeComparisonText(s.room || ''), normalizeComparisonText(s.meals || '')].join('|');
+
+  const stays: AccommodationStay[] = [];
+  let current: Segment | null = null;
+  for (const seg of segments) {
+    if (current && key(current) === key(seg) && seg.checkInDay <= current.coverUntil + 1) {
+      // Same hotel/room/meals and contiguous/overlapping → extend the stay.
+      current.coverUntil = Math.max(current.coverUntil, seg.coverUntil);
+      current.lastDay = current.coverUntil;
+      continue;
+    }
+    if (current) stays.push(finalizeStay(current));
+    current = { ...seg };
+  }
+  if (current) stays.push(finalizeStay(current));
+  return stays;
+
+  function finalizeStay(seg: Segment): AccommodationStay {
+    const coveredDays: number[] = [];
+    for (let d = seg.checkInDay; d <= seg.coverUntil; d += 1) coveredDays.push(d);
+    return {
+      hotelName: seg.hotelName,
+      location: seg.location,
+      room: seg.room,
+      meals: seg.meals,
+      note: seg.note,
+      checkInDay: seg.checkInDay,
+      lastDay: seg.coverUntil,
+      nights: coveredDays.length,
+      coveredDays,
+    };
+  }
+}
+
+// P2-1 — localized "Day NN · K nights" / "Day NN–MM · K nights" cell (approved decision #1/#2:
+// fold the range + night count into the Day cell; no separate Nights column).
+function buildStayDayLabel(stay: AccommodationStay): string {
+  const loc = activeProposalLocale;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dayPart =
+    stay.checkInDay === stay.lastDay
+      ? proseTemplate(loc, 'dayNumberLabel', { n: pad(stay.checkInDay) })
+      : proseTemplate(loc, 'dayRangeLabel', { start: pad(stay.checkInDay), end: pad(stay.lastDay) });
+  return `${dayPart} · ${stay.nights} ${unitLabel(loc, 'night', stay.nights)}`;
+}
+
+function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3AccommodationRow[] {
+  const stays = buildAccommodationStays(getProposalDaySources(quote));
+  return stays.map((stay) => ({
+    dayLabel: buildStayDayLabel(stay),
+    hotelName: stay.hotelName,
+    location: stay.location,
+    room: stay.room,
+    meals: stay.meals,
+    note: stay.note,
+    nights: stay.nights,
+  }));
 }
 
 function listFactSheetValues(value: unknown) {
@@ -1649,6 +1724,17 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const usingActivePlannerDays = buildActivePlannerDaySources(quote).length > 0;
   const assignedDayIds = new Set(daySources.map((day) => day.id));
   const activePlannerItemIds = new Set(daySources.flatMap((day) => day.items.map((item) => item.id)));
+  // P2-1 (proposal QA, #6) — overnight city per day, derived from the SAME accommodation stay
+  // spans as the stay-overview table. A free day INSIDE a stay span (no hotel item of its own)
+  // inherits the stay's overnight city; the checkout/departure day is outside the span (so it
+  // shows no overnight); a day in no span keeps the existing null. Stay locations are already
+  // localized by buildAccommodationStays.
+  const overnightCityByDay = new Map<number, string>();
+  for (const stay of buildAccommodationStays(daySources)) {
+    for (const dayNumber of stay.coveredDays) {
+      if (stay.location && !overnightCityByDay.has(dayNumber)) overnightCityByDay.set(dayNumber, stay.location);
+    }
+  }
   const days = daySources.map((day) => {
     // Phase P.3X-5D — the generated day-location label is a controlled display
     // point; localize selected place names (Dead Sea/Mount Nebo/Bethany). The
@@ -1673,9 +1759,11 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     // hotel is in Petra / Wadi Musa must read "Overnight: Petra / Wadi Musa".
     const overnightHotelItem = dayItems.find((item) => isHotelItem(item));
     // Phase P.3X-5D — localize the overnight badge city (controlled display point).
+    // P2-1 (#6) — a day with its own hotel item keeps the hotel's city; a free day inside a
+    // stay span inherits the span city; a day in no span stays null (no invented overnight).
     const overnightLocation = overnightHotelItem
       ? localizePlaceName(activeProposalLocale, cleanText(overnightHotelItem.hotel?.city || '')) || location
-      : null;
+      : overnightCityByDay.get(day.dayNumber) ?? null;
 
     return {
       dayNumber: day.dayNumber,

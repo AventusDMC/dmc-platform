@@ -717,6 +717,9 @@ const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   moveOvernightIn: { en: 'Overnight in {city}', pt: 'Pernoite em {city}', es: 'Noche en {city}', ar: 'المبيت في {city}' },
   // Phase 3D.1K — day label + deterministic cover highlights (were hard-coded English).
   dayNumberLabel: { en: 'Day {n}', pt: 'Dia {n}', es: 'Día {n}', ar: 'اليوم {n}' },
+  // P2-1 (proposal QA, #4/#5) — grouped accommodation day-range label (e.g. "Day 05–07").
+  // Uses an en-dash; the night count is appended separately via unitLabel('night').
+  dayRangeLabel: { en: 'Day {start}–{end}', pt: 'Dia {start}–{end}', es: 'Día {start}–{end}', ar: 'اليوم {start}–{end}' },
   riRoutePlanned: { en: 'Route planned through {dest}.', pt: 'Percurso planeado por {dest}.', es: 'Ruta planificada por {dest}.', ar: 'مسار مُخطّط عبر {dest}.' },
   riTimeInProgram: { en: 'Time built into the program for {dest}.', pt: 'Tempo reservado no programa para {dest}.', es: 'Tiempo reservado en el programa para {dest}.', ar: 'وقت مخصّص في البرنامج لزيارة {dest}.' },
   svcExperienceDetails: { en: 'Experience details', pt: 'Detalhes da experiência', es: 'Detalles de la experiencia', ar: 'تفاصيل التجربة' },
