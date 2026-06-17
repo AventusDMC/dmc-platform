@@ -143,3 +143,25 @@ describe('O.2B-2G — card heading reflects the resolved recipient supplier', ()
     assert.ok(!/confirmFor\.serviceSupplierName/.test(component), 'modal never shows the free-text service label as the recipient');
   });
 });
+
+describe('O.2C-1 — NOT_APPLICABLE neutral, non-error rendering', () => {
+  it('readiness union + label include NOT_APPLICABLE', () => {
+    assert.match(component, /'READY' \| 'NO_SUPPLIER' \| 'MISSING_EMAIL' \| 'NO_SERVICES' \| 'NOT_APPLICABLE'/, 'type includes NOT_APPLICABLE');
+    assert.match(component, /NOT_APPLICABLE: 'Not applicable'/, 'neutral label');
+  });
+
+  it('badge is neutral (not form-error) for NOT_APPLICABLE', () => {
+    // The readiness span must NOT be styled as an error when NOT_APPLICABLE.
+    assert.match(component, /readiness === 'NOT_APPLICABLE'\s*\?\s*'form-help'/, 'neutral grey badge class');
+  });
+
+  it('shows the neutral NA reason instead of a fix-email / assign-supplier prompt', () => {
+    assert.match(component, /supplier\.readiness === 'NOT_APPLICABLE' \? \(/, 'NA branch in recipient area');
+    assert.match(component, /data-role="not-applicable-reason"/, 'renders NA reason row');
+    assert.match(component, /Not applicable — no supplier confirmation needed for this line\./, 'neutral send-area message');
+  });
+
+  it('Send button still only renders for READY (NA never sendable in UI)', () => {
+    assert.match(component, /supplier\.readiness === 'READY' \? \(/, 'send gated on READY only');
+  });
+});

@@ -275,6 +275,71 @@ test('G6. the heading/free-text is NEVER used to resolve a recipient (FK only)',
   assert.equal(d.readiness, 'NO_SUPPLIER');
 });
 
+// --- O.2C-1: NOT_APPLICABLE exclusion policy (entrance/ticket + internal/system) ---
+import { classifyNonConfirmable } from './supplier-confirmation-preview';
+
+test('NA-classify. TICKET op + ticketing serviceType + system marker → reason; real → null; no fuzzy name', () => {
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'TICKET', serviceType: 'ticketing' } as any), 'TICKET');
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'ACTIVITY', serviceType: 'ticketing' } as any), 'TICKET', 'serviceType ticketing alone is the entrance-fee signal');
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'ACTIVITY', serviceType: 'Activity', supplierName: 'import-itinerary-system' } as any), 'SYSTEM');
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'TRANSPORT', serviceType: 'transfer', supplierName: 'Alpha' } as any), null);
+  // NO fuzzy name matching: the free-text "Jordan Entrance Fees" alone (no ticketing signal) is NOT classified.
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'HOTEL', serviceType: 'accommodation', supplierName: 'Jordan Entrance Fees' } as any), null);
+  // NO fuzzy name matching: a supplier merely named like a ticket vendor is not excluded.
+  assert.equal(classifyNonConfirmable({ id: 'x', operationType: 'TRANSPORT', serviceType: 'transfer', supplierName: 'Ticket Master Transport' } as any), null);
+});
+
+test('NA-1. operationType TICKET (isolated signal) → NOT_APPLICABLE', () => {
+  // serviceType is NOT 'ticketing' here, so operationType TICKET is the sole signal.
+  // supplierName present so the line surfaces (a fully-anonymous line is filtered out).
+  const svc: any[] = [{ id: 't1', operationType: 'TICKET', serviceType: 'entrance', supplierId: null, assignedSupplierId: null, supplierName: 'Jerash Site Tickets', description: 'Jerash Site' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.readiness, 'NOT_APPLICABLE');
+  assert.match(d.readinessReason, /Entrance fee \/ ticket/);
+});
+
+test('NA-2. serviceType ticketing (Jordan Entrance Fees) → NOT_APPLICABLE', () => {
+  const svc: any[] = [{ id: 't2', operationType: 'ACTIVITY', serviceType: 'ticketing', supplierId: null, assignedSupplierId: null, supplierName: 'Jordan Entrance Fees', description: 'Mount Nebo Entrance' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.readiness, 'NOT_APPLICABLE');
+  assert.match(d.readinessReason, /Entrance fee \/ ticket/);
+});
+
+test('NA-3. import-itinerary-system (exact marker) → NOT_APPLICABLE', () => {
+  const svc: any[] = [{ id: 's1', operationType: 'ACTIVITY', serviceType: 'Activity', supplierId: null, assignedSupplierId: null, supplierName: 'import-itinerary-system', description: 'Imported Activity' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.readiness, 'NOT_APPLICABLE');
+  assert.match(d.readinessReason, /Internal\/system/);
+});
+
+test('NA-6. real supplier with missing email stays MISSING_EMAIL (not NA)', () => {
+  const svc: any[] = [{ id: 'm', supplierId: 'sup-C', serviceType: 'transfer', supplierName: 'No Email Co', description: 'Transfer' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.readiness, 'MISSING_EMAIL');
+});
+
+test('NA-7. real no-FK service stays NO_SUPPLIER (not NA) when no excluded signal', () => {
+  const svc: any[] = [{ id: 'n', supplierId: null, assignedSupplierId: null, serviceType: 'transfer', supplierName: 'Some Real Transport', description: 'Transfer' }];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.readiness, 'NO_SUPPLIER');
+});
+
+test('NA-8. READY supplier stays READY; a ticket-vendor-NAMED but FK+email service is still classified by signal only', () => {
+  const ready: any[] = [{ id: 'r', assignedSupplierId: 'sup-A', serviceType: 'transfer', supplierName: 'Alpha', description: 'Transfer' }];
+  assert.equal(buildSupplierConfirmationPreviewModel(BOOKING, ready, SUP_F).suppliers[0].readiness, 'READY');
+});
+
+test('NA-mixed. a group with one ticketing + one real service is NOT NA (real line never hidden)', () => {
+  // Same free-text name groups them; one ticketing + one transfer → not ALL non-confirmable.
+  const svc: any[] = [
+    { id: 'a', supplierId: null, assignedSupplierId: null, supplierName: 'Mixed Co', serviceType: 'ticketing', description: 'Entrance' },
+    { id: 'b', supplierId: null, assignedSupplierId: null, supplierName: 'Mixed Co', serviceType: 'transfer', description: 'Transfer' },
+  ];
+  const d = buildSupplierConfirmationPreviewModel(BOOKING, svc, SUP_F).suppliers[0];
+  assert.equal(d.services.length, 2);
+  assert.equal(d.readiness, 'NO_SUPPLIER', 'mixed group falls through to normal readiness, not suppressed as NA');
+});
+
 // --- Source-grep guards: the SERVICE method + CONTROLLER route are read-only ---
 const serviceSrc = readFileSync(require('path').join(__dirname, 'bookings.service.ts'), 'utf8');
 const controllerSrc = readFileSync(require('path').join(__dirname, 'bookings.controller.ts'), 'utf8');
