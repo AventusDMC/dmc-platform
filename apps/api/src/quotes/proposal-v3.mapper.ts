@@ -71,7 +71,11 @@ const INVALID_TEXT_PATTERNS = [
   /\bservice to be confirmed\b/i,
   /\bqa\b/i,
   /\bdemo\b/i,
-  /\btest\b/i,
+  // P1 (proposal QA, Issue 2) — also catch numeric-suffixed test titles like "test101"
+  // / "test1" (a bare \btest\b misses them — there is no word boundary between the
+  // letters and digits). "contest"/"latest" are unaffected (no boundary before "test").
+  // A flagged title falls back to the destination-derived "<Destinations> Travel Proposal".
+  /\btest\d*\b/i,
   /\bmulti[-\s]?currency\b/i,
 ];
 
@@ -516,7 +520,10 @@ function getFooterLine(quote: ProposalV3Quote, brandName: string) {
     }
   }
 
-  return [brandName, ...getBrandContactParts(quote)].join(' | ');
+  // P1 (proposal QA, Issue 11) — footerLine is the brand IDENTITY only. The website /
+  // email / phone live exclusively in contactLine, so the two footer spans never repeat
+  // each other (and the per-page running footer no longer echoes the contact details).
+  return brandName;
 }
 
 type NullableProposalV3QuoteItem = ProposalV3QuoteItem | null | undefined;
@@ -1021,6 +1028,15 @@ function isAirportTransferRoute(item: ProposalV3QuoteItem, routePathCities: stri
   return /\b(?:qaia|aqj)\b|\bairport\b/i.test(hay);
 }
 
+// P1 (proposal QA, Issue 3) — is this place-name an airport / transfer node (e.g.
+// "QAIA", "AQJ", "... Airport")? Airports are directional transfer ENDPOINTS, never
+// trip DESTINATIONS, so they must be kept OUT of the destination summary + cover
+// subtitle. Directional transfer ROWS are built separately (resolveTransportClientTitle)
+// and still read "QAIA → Amman".
+function isAirportPlaceName(value: string | null | undefined): boolean {
+  return /\b(?:qaia|aqj)\b|\bairport\b/i.test(String(value || ''));
+}
+
 // Phase P.3X-2 — resolve a CLIENT-SAFE transport line title. A client-safe route
 // label (touring path, or a client-friendly routeName) wins; otherwise a safe
 // generic title by transfer type. The raw SupplierService name ("Airport Transfer")
@@ -1333,16 +1349,21 @@ export function buildRouteIntelligence(
     }
   }
 
-  const destinationLine = summarizeDestinations(routeAnchors);
+  // P1 (proposal QA, Issue 3) — strip airport / transfer nodes (QAIA, AQJ, "… Airport")
+  // from the trip DESTINATIONS regardless of which source surfaced them. Transfer rows
+  // are built elsewhere and are unaffected.
+  const destinationAnchors = routeAnchors.filter((anchor) => !isAirportPlaceName(anchor));
+
+  const destinationLine = summarizeDestinations(destinationAnchors);
   const coverSubtitle =
-    routeAnchors.some((value) => value.toLowerCase() === 'amman') &&
-    routeAnchors.some((value) => value.toLowerCase() === 'petra') &&
-    routeAnchors.some((value) => value.toLowerCase() === 'wadi rum')
+    destinationAnchors.some((value) => value.toLowerCase() === 'amman') &&
+    destinationAnchors.some((value) => value.toLowerCase() === 'petra') &&
+    destinationAnchors.some((value) => value.toLowerCase() === 'wadi rum')
       ? 'Amman · Petra · Wadi Rum'
-      : formatDestinationSubtitle(routeAnchors) || destinationLine || 'Travel';
+      : formatDestinationSubtitle(destinationAnchors) || destinationLine || 'Travel';
 
   return {
-    routeAnchors,
+    routeAnchors: destinationAnchors,
     overnightAnchors,
     transportSegments,
     externalCountries,
@@ -2326,7 +2347,9 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote, language?: string |
   const dayByDayIntro = buildDayByDayIntro(days, destinationLine);
   const brandName = getBrandName(quote);
   const footerLine = getFooterLine(quote, brandName);
-  const contactLine = getBrandContactParts(quote).join(' | ') || footerLine;
+  // P1 (proposal QA, Issue 11) — contacts only; no footerLine fallback (which previously
+  // made contactLine duplicate footerLine when no contact details exist).
+  const contactLine = getBrandContactParts(quote).join(' | ');
   const totalValue =
     typeof quote.totalSell === 'number' && Number.isFinite(quote.totalSell) && quote.totalSell > 0
       ? formatProposalMoney(quote.totalSell, currency)
