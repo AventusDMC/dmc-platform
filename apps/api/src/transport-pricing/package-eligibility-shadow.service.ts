@@ -12,6 +12,12 @@ import {
   type PackageContractCandidate,
 } from './package-eligibility';
 import {
+  computeOvernightStationaryShadow,
+  type OvernightStationaryDayInput,
+  type OvernightStationaryRateCandidate,
+  type OvernightStationaryShadowResult,
+} from './overnight-stationary-shadow';
+import {
   isPackageEligibilityShadowEnabled,
   PACKAGE_ELIGIBILITY_SHADOW_FLAG,
   isPackagePricingShadowCompareEnabled,
@@ -339,6 +345,8 @@ export class PackageEligibilityShadowService {
       orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }],
       select: {
         dayNumber: true, transportDayType: true, vehicleRetained: true, vehicleReleased: true, inRetainedBlock: true,
+        // PR12C-2 — overnight metadata for the additive overnight/stationary diagnostic (read-only).
+        overnightCity: true, vehicleReturnsToBase: true,
         dayItems: {
           where: { isActive: true },
           select: {
@@ -512,6 +520,21 @@ export class PackageEligibilityShadowService {
       countedVehicles,
     });
 
+    // PR12C-2 — additive overnight/stationary SHADOW diagnostic. Computed AFTER every existing
+    // field above (none are read or mutated by this). Read-only: reuses already-loaded rawDays /
+    // adjustedDays / dayVehicles / contractRow plus a small read-only ADD_ON lookup. Its totals
+    // live ONLY inside `overnightStationaryShadow` and are NEVER added to any existing total.
+    const overnightStationaryShadow = await this.computeOvernightStationaryDiagnostic({
+      quoteId,
+      rawDays: rawDays as any[],
+      days,
+      adjustedDays,
+      dayVehicles,
+      eligibility,
+      contractRow,
+      primarySupplierId: primary.supplierId,
+    });
+
     return {
       quoteId,
       flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
@@ -537,8 +560,144 @@ export class PackageEligibilityShadowService {
       savedSelection,
       selectionStale,
       allowlist,
+      overnightStationaryShadow,
       notApplied: true,
     };
+  }
+
+  // PR12C-2 — build the read-only overnight/stationary diagnostic for the pricing-shadow response.
+  // STRICTLY read-only and additive: it does NOT influence any total or eligibility field. The
+  // ADD_ON rate lookup is an inline read-only vehicleRate.findMany (optional-chained so the
+  // read-only fake-prisma harnesses without a `vehicleRate` model simply yield no candidates →
+  // helper fails closed). Capacity-unit overnight/stationary is intentionally NOT evaluated here
+  // (PR12C-2 deferral): isCapacityUnitDay stays false → such days surface a fail-closed blocker.
+  private async computeOvernightStationaryDiagnostic(ctx: {
+    quoteId: string;
+    rawDays: any[];
+    days: ShadowDay[];
+    adjustedDays: DayClassification[];
+    dayVehicles: Array<Array<{ vehicleId: string | null; vehicleName: string | null; supplierId: string | null }>>;
+    eligibility: ReturnType<typeof evaluatePackageEligibility>;
+    contractRow: any;
+    primarySupplierId: string | null;
+  }): Promise<OvernightStationaryShadowResult> {
+    const { rawDays, days, adjustedDays, dayVehicles, eligibility, contractRow } = ctx;
+
+    // Supplier baseCity (read-only). Existing fakes return only transportDiscountPercent → undefined.
+    let supplierBaseCity: string | null = null;
+    if (ctx.primarySupplierId) {
+      const sup = await (this.prisma as any).supplier?.findUnique?.({ where: { id: ctx.primarySupplierId }, select: { baseCity: true } });
+      supplierBaseCity = (sup?.baseCity ?? null) as string | null;
+    }
+
+    // Quote pax / overlap / travel date (read-only, optional-chained).
+    const q = await (this.prisma as any).quote?.findUnique?.({
+      where: { id: ctx.quoteId },
+      select: { adults: true, children: true, excursionPackageRate: true, travelStartDate: true, quoteCurrency: true },
+    });
+    const pax = (Number(q?.adults) || 0) + (Number(q?.children) || 0);
+    const quoteCurrency = (q?.quoteCurrency ?? contractRow?.currency ?? null) as string | null;
+    const pricingDate: Date = q?.travelStartDate ? new Date(q.travelStartDate) : new Date();
+
+    const isRelevant = (i: number) => {
+      const c = adjustedDays[i];
+      const meta = days[i]?.metadata ?? {};
+      if (!c) return false;
+      const stationary = c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY' || c.operationalType === 'STANDBY_WAITING';
+      return stationary || meta.vehicleRetained === true || meta.inRetainedBlock === true;
+    };
+
+    // Distinct (supplierId, vehicleId) on relevant days → one read-only ADD_ON lookup.
+    const pairs = new Map<string, { supplierId: string | null; vehicleId: string | null }>();
+    rawDays.forEach((_d, i) => {
+      if (!isRelevant(i)) return;
+      const v = (dayVehicles[i] || [])[0];
+      if (v?.vehicleId) pairs.set(`${v.supplierId ?? ''}|${v.vehicleId}`, { supplierId: v.supplierId ?? null, vehicleId: v.vehicleId });
+    });
+
+    // Read-only ADD_ON VehicleRate rows for those pairs (mirrors findTransportAddOns' filter).
+    const byVehicle = new Map<string, OvernightStationaryRateCandidate[]>();
+    const stationaryByVehicle = new Map<string, OvernightStationaryRateCandidate[]>();
+    if (pairs.size > 0) {
+      const rows: any[] = (await (this.prisma as any).vehicleRate?.findMany?.({
+        where: {
+          active: true,
+          validFrom: { lte: pricingDate },
+          validTo: { gte: pricingDate },
+          serviceType: { classification: 'ADD_ON' as any },
+          OR: Array.from(pairs.values()).map((p) => ({ ...(p.supplierId ? { supplierId: p.supplierId } : {}), vehicleId: p.vehicleId })),
+        },
+        select: { price: true, currency: true, maxPax: true, vehicleId: true, routeName: true, serviceType: { select: { name: true } } },
+        orderBy: [{ price: 'asc' }],
+      })) ?? [];
+      const CITY_TOKENS = ['petra', 'deadsea', 'wadirum', 'aqaba', 'amman', 'madaba', 'jerash', 'wadimusa'];
+      const norm = (s: string | null | undefined) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      for (const r of rows) {
+        const name: string | null = r.serviceType?.name || r.routeName || null;
+        const n = norm(name);
+        const candBase = { amount: Number(r.price) || 0, currency: String(r.currency || ''), name, unitCapacity: r.maxPax ?? null };
+        const key = r.vehicleId as string;
+        if (/overnight/.test(n)) {
+          const citySpecific = CITY_TOKENS.some((t) => n.includes(t));
+          const cand: OvernightStationaryRateCandidate = { source: citySpecific ? 'city-addon-rate' : 'supplier-class-addon', ...candBase };
+          (byVehicle.get(key) ?? byVehicle.set(key, []).get(key)!).push(cand);
+        } else if (/stationary|waiting/.test(n)) {
+          const cand: OvernightStationaryRateCandidate = { source: 'supplier-class-addon', halfDay: /half/.test(n), ...candBase };
+          (stationaryByVehicle.get(key) ?? stationaryByVehicle.set(key, []).get(key)!).push(cand);
+        }
+      }
+    }
+
+    const dayInputs: OvernightStationaryDayInput[] = rawDays.map((d, i) => {
+      const c = adjustedDays[i];
+      const meta = days[i]?.metadata ?? {};
+      const v = (dayVehicles[i] || [])[0];
+      const vehKey = v?.vehicleId ?? '';
+      const hasExistingAddOn = (days[i]?.items ?? []).some((it) => String(it.serviceTypeClassification || '').toUpperCase() === 'ADD_ON');
+      return {
+        dayNumber: d.dayNumber,
+        operationalType: c?.operationalType ?? 'FREE_DAY_NO_VEHICLE',
+        packageDayWeight: c?.packageDayWeight ?? 0,
+        countedAsPackageFullDay: eligibility.eligible && c?.countsAsFullPackageDay === true,
+        vehicleRetained: meta.vehicleRetained ?? null,
+        vehicleReleased: meta.vehicleReleased ?? null,
+        inRetainedBlock: meta.inRetainedBlock ?? null,
+        overnightCity: d.overnightCity ?? null,
+        vehicleReturnsToBase: d.vehicleReturnsToBase ?? null,
+        hasVehicle: (dayVehicles[i] || []).length > 0,
+        hasExistingAddOn,
+        currency: quoteCurrency,
+        pax,
+        isCapacityUnitDay: false, // PR12C-2 deferral — never evaluate capacity-unit here (fail closed)
+        overnightRateCandidates: byVehicle.get(vehKey) ?? [],
+        stationaryRateCandidates: stationaryByVehicle.get(vehKey) ?? [],
+      };
+    });
+
+    const result = computeOvernightStationaryShadow({
+      supplierBaseCity,
+      contract: contractRow
+        ? {
+            baseCityOverride: contractRow.baseCityOverride ?? null,
+            driverOvernightPolicy: contractRow.driverOvernightPolicy ?? null,
+            driverOvernightAmount: contractRow.driverOvernightAmount ?? null,
+            driverOvernightOnStationary: contractRow.driverOvernightOnStationary ?? null,
+            stationaryChargedSeparately: contractRow.stationaryChargedSeparately ?? null,
+            stationaryIncludedInPackage: contractRow.stationaryIncludedInPackage ?? null,
+            stationaryCountsTowardMinDays: contractRow.stationaryCountsTowardMinDays ?? null,
+            currency: contractRow.currency ?? null,
+          }
+        : null,
+      quoteCurrency,
+      excursionPackageRate: q?.excursionPackageRate === true,
+      days: dayInputs,
+    });
+
+    // Make the capacity-unit deferral visible rather than silent.
+    if (!result.warnings.includes('capacity-unit-overnight-not-evaluated-in-12c2')) {
+      result.warnings.push('capacity-unit-overnight-not-evaluated-in-12c2');
+    }
+    return result;
   }
 
   // PR10B-1 — compute current package eligibility for a quote (flag-independent; used by the
