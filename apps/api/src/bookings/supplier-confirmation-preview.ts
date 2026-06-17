@@ -61,7 +61,10 @@ export type PreviewServiceLine = {
 // Phase O.2B-2B — recipient resolution source + send-readiness (read-only signal,
 // NO send is wired in this phase).
 export type RecipientSource = 'assignedSupplierId' | 'supplierId' | 'none';
-export type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES';
+// Phase O.2C-1 — NOT_APPLICABLE marks lines that are not supplier-confirmable at all
+// (entrance/ticket lines paid on site; internal/system placeholder rows). It is a
+// NON-ERROR state, classified BEFORE recipient resolution, and is never send-eligible.
+export type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES' | 'NOT_APPLICABLE';
 
 export type ConfirmationRecipient = {
   supplierId: string | null;
@@ -130,6 +133,25 @@ function toIso(value: Date | string | null | undefined): string | null {
 function dateOnly(value: Date | string | null | undefined): string | null {
   const iso = toIso(value);
   return iso ? iso.slice(0, 10) : null;
+}
+
+// Phase O.2C-1 — strict, CONSERVATIVE classifier for lines that are not supplier-
+// confirmable. Uses only structured signals already on the service — NO fuzzy
+// supplierName matching:
+//   • 'TICKET'  — operationType TICKET or serviceType 'ticketing' (entrance/ticket
+//     lines are paid on site; there is no supplier to email/confirm).
+//   • 'SYSTEM'  — supplierName is EXACTLY the import-itinerary-system marker (a
+//     system-generated placeholder from itinerary ingestion, never a real supplier).
+// Returns null for everything else, so real suppliers are never suppressed.
+const SYSTEM_SUPPLIER_MARKER = 'import-itinerary-system';
+export type NonConfirmableReason = 'TICKET' | 'SYSTEM';
+
+export function classifyNonConfirmable(service: PreviewServiceInput): NonConfirmableReason | null {
+  const operationType = clean(service.operationType).toUpperCase();
+  const serviceType = clean(service.serviceType).toLowerCase();
+  if (operationType === 'TICKET' || serviceType === 'ticketing') return 'TICKET';
+  if (clean(service.supplierName).toLowerCase() === SYSTEM_SUPPLIER_MARKER) return 'SYSTEM';
+  return null;
 }
 
 function buildServiceLine(service: PreviewServiceInput, fallbackPax: number): PreviewServiceLine {
@@ -264,11 +286,24 @@ export function buildSupplierConfirmationPreviewModel(
     const email = emails.length ? emails.join(', ') : null;
     const recipientSupplierName = (recipientSupplierId && nameById.get(recipientSupplierId)) || group.supplierName;
 
+    // O.2C-1 — classify non-confirmable lines BEFORE recipient resolution. A draft is
+    // NOT_APPLICABLE only when EVERY service in the group is non-confirmable, so a real
+    // sendable service is never suppressed by a sibling ticket/system line.
+    const nonConfirmable = group.services.map((s) => classifyNonConfirmable(s));
+    const allNonConfirmable = nonConfirmable.length > 0 && nonConfirmable.every(Boolean);
+
     let readiness: ConfirmationReadiness;
     let readinessReason: string;
     if (lines.length === 0) {
       readiness = 'NO_SERVICES';
       readinessReason = 'No services found for this supplier.';
+    } else if (allNonConfirmable) {
+      readiness = 'NOT_APPLICABLE';
+      readinessReason = nonConfirmable.every((r) => r === 'SYSTEM')
+        ? 'Internal/system line — not supplier-confirmable.'
+        : nonConfirmable.some((r) => r === 'SYSTEM')
+          ? 'Not a supplier-confirmable line (internal/system + entrance/ticket).'
+          : 'Entrance fee / ticket line — paid on site; no supplier to confirm.';
     } else if (!recipientSupplierId) {
       readiness = 'NO_SUPPLIER';
       readinessReason = 'Assign a supplier first.';

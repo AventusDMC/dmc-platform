@@ -15,7 +15,7 @@ export type SupplierConfirmationSendScope = {
 };
 
 export type SupplierConfirmationSendPlan =
-  | { ok: false; code: 'NOT_FOUND' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES'; reason: string }
+  | { ok: false; code: 'NOT_FOUND' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES' | 'NOT_APPLICABLE'; reason: string }
   | {
       ok: true;
       supplierId: string;
@@ -51,6 +51,10 @@ export function planSupplierConfirmationSend(
     return { ok: false, code: 'NOT_FOUND', reason: 'No matching supplier draft for this booking.' };
   }
 
+  // O.2C-1 — never send non-confirmable lines (entrance/ticket, internal/system).
+  if (draft.readiness === 'NOT_APPLICABLE') {
+    return { ok: false, code: 'NOT_APPLICABLE', reason: draft.readinessReason || 'This line is not supplier-confirmable.' };
+  }
   if (draft.readiness === 'NO_SUPPLIER') {
     return { ok: false, code: 'NO_SUPPLIER', reason: draft.readinessReason || 'Assign a supplier first.' };
   }

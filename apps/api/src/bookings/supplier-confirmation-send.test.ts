@@ -100,6 +100,15 @@ test('9. pure planner has no email/subject/body INPUT (recipient/content come fr
   assert.ok(!/email\??:\s*string/.test(moduleSrc.split('SupplierConfirmationSendScope')[1]?.slice(0, 200) || ''), 'scope has no email field');
 });
 
+test('O.2C-1. planner refuses NOT_APPLICABLE (and NA precedes READY even with FK+email)', () => {
+  const svc: any[] = [{ id: 'tix', assignedSupplierId: 'sup-A', serviceType: 'ticketing', supplierName: 'Jordan Entrance Fees', description: 'Petra Entrance' }];
+  const preview = previewWith(svc, SUPPLIERS);
+  assert.equal(preview.suppliers[0].readiness, 'NOT_APPLICABLE', 'ticketing line is NA even though sup-A resolves with an email');
+  const plan = planSupplierConfirmationSend(preview, { supplierId: 'sup-A' });
+  assert.equal(plan.ok, false);
+  assert.equal((plan as any).code, 'NOT_APPLICABLE');
+});
+
 test('F3. assigned-only service (null supplierId+supplierName) is included in the send plan', () => {
   const svc: any[] = [{ id: 'svc-h', supplierId: null, supplierName: null, assignedSupplierId: 'sup-A', operationType: 'HOTEL', description: 'Hotel Night' }];
   const plan = planSupplierConfirmationSend(previewWith(svc, SUPPLIERS), { supplierId: 'sup-A' });

@@ -22,7 +22,7 @@ type PreviewServiceLine = {
 };
 
 type RecipientSource = 'assignedSupplierId' | 'supplierId' | 'none';
-type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES';
+type ConfirmationReadiness = 'READY' | 'NO_SUPPLIER' | 'MISSING_EMAIL' | 'NO_SERVICES' | 'NOT_APPLICABLE';
 
 type SupplierDraft = {
   supplierId: string | null;
@@ -52,6 +52,8 @@ const READINESS_LABEL: Record<ConfirmationReadiness, string> = {
   NO_SUPPLIER: 'Assign supplier first',
   MISSING_EMAIL: 'Supplier email missing',
   NO_SERVICES: 'No services',
+  // O.2C-1 — neutral, non-error state for entrance/ticket + internal/system lines.
+  NOT_APPLICABLE: 'Not applicable',
 };
 
 type SupplierConfirmationPreview = {
@@ -159,25 +161,39 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
                   {' · '}
                   Readiness:{' '}
                   <span
-                    className={supplier.readiness === 'READY' ? 'form-success' : 'form-error'}
+                    className={
+                      supplier.readiness === 'READY'
+                        ? 'form-success'
+                        : supplier.readiness === 'NOT_APPLICABLE'
+                          ? 'form-help' /* O.2C-1 — neutral grey, NOT an error */
+                          : 'form-error'
+                    }
                     role="note"
                     data-readiness={supplier.readiness}
                   >
                     {READINESS_LABEL[supplier.readiness]}
                   </span>
                 </p>
-                <p className="form-help">
-                  Recipient:{' '}
-                  {supplier.recipient.email ? (
-                    <strong>{supplier.recipient.email}</strong>
-                  ) : (
-                    <span className="form-error" role="note">
-                      {supplier.recipientSource === 'none'
-                        ? 'Assign supplier first before sending.'
-                        : 'Supplier email missing — update supplier profile before sending.'}
-                    </span>
-                  )}
-                </p>
+                {/* O.2C-1 — for non-confirmable lines show the neutral reason instead of
+                    any "fix supplier email / assign supplier" recipient prompt. */}
+                {supplier.readiness === 'NOT_APPLICABLE' ? (
+                  <p className="form-help" role="note" data-role="not-applicable-reason">
+                    {supplier.readinessReason}
+                  </p>
+                ) : (
+                  <p className="form-help">
+                    Recipient:{' '}
+                    {supplier.recipient.email ? (
+                      <strong>{supplier.recipient.email}</strong>
+                    ) : (
+                      <span className="form-error" role="note">
+                        {supplier.recipientSource === 'none'
+                          ? 'Assign supplier first before sending.'
+                          : 'Supplier email missing — update supplier profile before sending.'}
+                      </span>
+                    )}
+                  </p>
+                )}
                 <p><strong>Subject:</strong> {supplier.subject}</p>
                 <pre className="supplier-confirmation-preview-body">{supplier.body}</pre>
                 <p className="form-help">{supplier.services.length} service(s) included.</p>
@@ -193,6 +209,9 @@ export function SupplierConfirmationPreview({ apiBaseUrl, bookingId }: Props) {
                   >
                     Send confirmation request
                   </button>
+                ) : supplier.readiness === 'NOT_APPLICABLE' ? (
+                  // O.2C-1 — neutral, no error framing; this line simply isn't sendable.
+                  <p className="form-help" role="note">Not applicable — no supplier confirmation needed for this line.</p>
                 ) : (
                   <p className="form-help" role="note">Send unavailable — {READINESS_LABEL[supplier.readiness]}.</p>
                 )}
