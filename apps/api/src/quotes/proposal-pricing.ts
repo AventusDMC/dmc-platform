@@ -305,7 +305,14 @@ export function buildProposalPricingViewModel(
     return {
       mode: 'simple',
       title: 'Investment',
-      snapshotLabel: quote.currentPricing?.label || 'Package sell price per person',
+      // P2-2 (proposal QA, Issue 2) — the simple/fixed snapshot displays a PER-PERSON amount,
+      // so the engine's generic "Fixed price" label reads as the ambiguous "Precio fijo" in
+      // Spanish. Surface the clearer per-person label instead. Operator-authored labels are
+      // preserved and the no-label default is unchanged. Pricing logic + amounts are untouched
+      // (this only relabels a display string; the localization map carries the translations).
+      snapshotLabel: /^fixed price$/i.test(quote.currentPricing?.label || '')
+        ? 'Price per person'
+        : quote.currentPricing?.label || 'Package sell price per person',
       snapshotValue: formatMoney(simpleAmount!, currency),
       snapshotHelper: `Based on ${totalGuests} guest${totalGuests === 1 ? '' : 's'} sharing.`,
       // P1 (proposal QA, Issue 10) — the occupancy basis is already stated once in
