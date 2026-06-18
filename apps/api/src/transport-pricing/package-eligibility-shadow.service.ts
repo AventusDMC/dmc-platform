@@ -540,6 +540,31 @@ export class PackageEligibilityShadowService {
       primarySupplierId: primary.supplierId,
     });
 
+    // PR 12F-3A — additive, READ-ONLY internal live-apply breakdown for the admin-web diagnostic.
+    // Derived from the already-computed shadow via the PURE decider (no DB, no totals change). The
+    // per-day lines are enriched with the day's resolved supplier / vehicle class / vehicle label
+    // for internal audit. `overnightStationaryLiveApplyEnabled` reports the flag; this GET NEVER
+    // applies anything — the actual totalCost fold (PR12F-2) is a separate, recalc-time, flag-gated
+    // path. Flag OFF → the breakdown is a "would-apply" preview only.
+    const vehicleByDay = new Map<number, { supplierId: string | null; vehicleClass: string | null; vehicleName: string | null }>();
+    days.forEach((d, i) => {
+      const v = (dayVehicles[i] || [])[0];
+      const item = (d.items || [])[0];
+      vehicleByDay.set(d.dayNumber, {
+        supplierId: (v?.supplierId ?? item?.supplierId) || null,
+        vehicleClass: item?.vehicleClass || null,
+        vehicleName: v?.vehicleName || null,
+      });
+    });
+    const liveApplyDecision = decideOvernightStationaryLiveApply(overnightStationaryShadow);
+    const overnightStationaryLiveApply = {
+      ...liveApplyDecision,
+      lines: liveApplyDecision.lines.map((line) => ({
+        ...line,
+        ...(vehicleByDay.get(line.dayNumber) ?? { supplierId: null, vehicleClass: null, vehicleName: null }),
+      })),
+    };
+
     return {
       quoteId,
       flag: PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
@@ -566,6 +591,8 @@ export class PackageEligibilityShadowService {
       selectionStale,
       allowlist,
       overnightStationaryShadow,
+      overnightStationaryLiveApply,
+      overnightStationaryLiveApplyEnabled: isOvernightStationaryLiveApplyEnabled(),
       notApplied: true,
     };
   }

@@ -67,6 +67,31 @@ type OvernightStationaryShadow = {
   blockers?: string[];
   warnings?: string[];
 };
+// PR12F-3A — read-only INTERNAL live-apply breakdown (recompute-on-demand). Display only; this
+// is an internal supplier-cost view and is NEVER client-facing. The amount folds into the quote
+// cost total (cost only) ONLY when the live-apply flag is ON during pricing assembly — this GET never applies.
+type LiveApplyLine = {
+  dayNumber: number;
+  kind: 'overnight' | 'stationary' | string;
+  outcome: string;
+  amount: number;
+  currency?: string | null;
+  city?: string | null;
+  blocker?: string | null;
+  supplierId?: string | null;
+  vehicleClass?: string | null;
+  vehicleName?: string | null;
+};
+type OvernightStationaryLiveApply = {
+  apply?: boolean;
+  reason?: string;
+  costDelta?: number;
+  sellDelta?: number;
+  wouldApplyCost?: number;
+  blockers?: string[];
+  warnings?: string[];
+  lines?: LiveApplyLine[];
+};
 type SavedSelection = {
   option: string;
   contractId?: string | null;
@@ -93,6 +118,8 @@ type PreviewData = {
   savedSelection?: SavedSelection | null;
   selectionStale?: boolean;
   overnightStationaryShadow?: OvernightStationaryShadow | null;
+  overnightStationaryLiveApply?: OvernightStationaryLiveApply | null;
+  overnightStationaryLiveApplyEnabled?: boolean;
   notApplied?: boolean;
 };
 
@@ -210,6 +237,27 @@ export function PackagePricingPreview({ quoteId }: { quoteId: string }) {
       : saved.option === PACKAGE_OPTION
         ? 'Package (min full-day)'
         : saved.option;
+
+  // PR12F-3A — internal (recompute-on-demand) live-apply breakdown. Display only; supplier-cost.
+  // It is actually folded into the quote cost total (cost only) during pricing assembly ONLY when the
+  // live-apply flag is ON and a package selection is applying; otherwise it is a "would apply" preview.
+  const osLiveApply = data?.overnightStationaryLiveApply ?? null;
+  const liveApplyEnabled = data?.overnightStationaryLiveApplyEnabled === true;
+  const appliedToInternalCost =
+    liveApplyEnabled &&
+    osLiveApply?.apply === true &&
+    Boolean(data?.packageEligible) &&
+    saved?.option === PACKAGE_OPTION &&
+    !data?.selectionStale;
+  const liveApplyStatusLabel = !osLiveApply
+    ? ''
+    : appliedToInternalCost
+      ? 'Applied to internal cost'
+      : osLiveApply.apply
+        ? 'Would apply if live apply is enabled'
+        : osLiveApply.reason === 'blocked'
+          ? 'Blocked — not applicable'
+          : 'No applicable charge';
 
   return (
     <details className="package-pricing-preview">
@@ -399,6 +447,44 @@ export function PackagePricingPreview({ quoteId }: { quoteId: string }) {
                     <li key={`os-warning-${w}`}>⚠ {w}</li>
                   ))}
                 </ul>
+              ) : null}
+
+              {/* PR12F-3A — INTERNAL cost adjustment (recompute-on-demand). Supplier-cost only;
+                  never client-facing, no totals change here, no action buttons. */}
+              {osLiveApply ? (
+                <div className="overnight-stationary-internal-cost">
+                  <h4 className="overnight-stationary-internal-cost-title">Internal cost adjustment</h4>
+                  <p className="overnight-stationary-internal-cost-status">
+                    Status: <strong>{liveApplyStatusLabel}</strong>
+                    {liveApplyEnabled ? null : <> (live apply flag is OFF)</>}
+                  </p>
+                  <p className="overnight-stationary-internal-cost-note">
+                    <strong>Internal cost only — not added to client sell total.</strong>
+                  </p>
+                  <ul className="overnight-stationary-internal-cost-totals">
+                    <li>
+                      Cost delta:{' '}
+                      <strong>{osMoney(osLiveApply.costDelta ?? osLiveApply.wouldApplyCost, osShadow.currency)}</strong>
+                    </li>
+                    <li>Sell delta: <strong>{osLiveApply.sellDelta ?? 0}</strong> (cost-only)</li>
+                  </ul>
+
+                  {(osLiveApply.lines ?? []).length > 0 ? (
+                    <ul className="overnight-stationary-internal-cost-lines">
+                      {(osLiveApply.lines ?? []).map((l) => (
+                        <li key={`os-la-${l.kind}-${l.dayNumber}`}>
+                          Day {l.dayNumber} ({l.kind}): <strong>{l.outcome}</strong>
+                          {l.city ? <> — {l.city}</> : null}
+                          {l.supplierId ? <> — supplier {l.supplierId}</> : null}
+                          {l.vehicleClass ? <> — {l.vehicleClass}</> : null}
+                          {l.vehicleName ? <> ({l.vehicleName})</> : null}
+                          {l.outcome === 'separate' ? <> — <strong>{osMoney(l.amount, l.currency)}</strong></> : null}
+                          {l.blocker ? <> — ⚠ {l.blocker}</> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ) : null}
 
               <p className="overnight-stationary-shadow-not-applied">
