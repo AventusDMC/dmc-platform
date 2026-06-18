@@ -39,7 +39,11 @@ export class ProposalV3Service {
   private async resolveLogoForRender(logoUrl: string): Promise<string> {
     const url = String(logoUrl || '').trim();
     if (!url || url.startsWith('data:')) return url;
-    if (!/^https?:\/\//i.test(url)) return url;
+    // P4 (proposal QA) — a NON-http(s) logo (e.g. a relative "/uploads/branding/…" path stored on
+    // CompanyBranding.logoUrl) cannot be loaded by the network-less PDF renderer and would render as
+    // a broken-image icon. We cannot safely resolve a relative app path to bytes here, so fall back
+    // to the embedded AXIS data URI rather than emit an unreachable src. data: URIs are handled above.
+    if (!/^https?:\/\//i.test(url)) return AXIS_BRAND_LOGO_DATA_URI;
     if (LOGO_DATA_URI_CACHE.has(url)) return LOGO_DATA_URI_CACHE.get(url) as string;
     try {
       if (typeof fetch === 'function') {
