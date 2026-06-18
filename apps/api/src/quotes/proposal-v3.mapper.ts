@@ -2156,10 +2156,26 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
   // P3 (proposal QA, Issue 7) — the occupancy basis is already stated once in snapshotHelper
   // ("Según N huéspedes en habitación compartida"). Drop any basis/note line that repeats it (or
   // each other), so the note never renders twice on the pricing page.
-  const seen = new Set<string>([snapshotHelper.trim()]);
+  //
+  // AR2B — the dedup key is punctuation-normalized. The price card's snapshotHelper ends in a
+  // sentence period ("Based on 2 guests sharing.") while the equivalent pricing-engine context
+  // line is dotless ("Based on 2 guests sharing"), so an exact-string match left the bullet in
+  // place and the basis rendered twice on the pricing page in EVERY locale (the original P3 test
+  // happened to use a dotted fixture, hiding it). Normalizing trailing sentence punctuation +
+  // whitespace lets the dotted card line and the dotless bullet collapse to one. Displayed text is
+  // untouched — only the comparison key is normalized — so the price card keeps its period and the
+  // duplicate bullet is the line that gets dropped. Distinct lines (money totals, the
+  // double/twin-room note, percentages) normalize to different keys and are preserved.
+  const dedupeKey = (line: string) =>
+    line
+      .trim()
+      .replace(/[.،؛؟!?]+$/u, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const seen = new Set<string>([dedupeKey(snapshotHelper)]);
   const dedupe = (lines: string[]) =>
     lines.filter((line) => {
-      const key = line.trim();
+      const key = dedupeKey(line);
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
