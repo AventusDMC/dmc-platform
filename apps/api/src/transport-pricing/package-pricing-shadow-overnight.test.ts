@@ -221,3 +221,64 @@ test('PR12C-2: helper is not imported/called by live apply or quotes.service.ts'
   assert.ok(!quotesSrc.includes('overnight-stationary-shadow'), 'quotes.service.ts must not import the helper');
   assert.ok(!quotesSrc.includes('computeOvernightStationaryShadow'), 'quotes.service.ts must not call the helper');
 });
+
+// PR 12F-3A — read-only internal live-apply breakdown on the shadow response (admin-web display).
+const LIVE_FLAG = 'TRANSPORT_OVERNIGHT_STATIONARY_LIVE_APPLY';
+const setLive = (on: boolean) => { if (on) process.env[LIVE_FLAG] = 'true'; else delete process.env[LIVE_FLAG]; };
+
+test('PR12F-3A: response includes overnightStationaryLiveApply (derived from the shadow) + enabled flag', async () => {
+  setFlag(true); setLive(false);
+  const svc = new PackageEligibilityShadowService(fp({ days: retainedOvernightDays({ overnightCity: 'Petra' }), addOnRows: [PETRA_OVERNIGHT] }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  setFlag(false);
+  assert.ok(r.overnightStationaryLiveApply, 'live-apply breakdown present');
+  assert.equal(typeof r.overnightStationaryLiveApplyEnabled, 'boolean');
+  assert.equal(r.overnightStationaryLiveApply.apply, true, 'recognizes the out-of-base overnight as applicable');
+  assert.equal(r.overnightStationaryLiveApply.costDelta, 45);
+  assert.equal(r.overnightStationaryLiveApply.sellDelta, 0, 'cost-only — sell never changes');
+});
+
+test('PR12F-3A: flag OFF → enabled:false but breakdown still shows a would-apply preview; totals unchanged', async () => {
+  setFlag(true); setLive(false);
+  const svc = new PackageEligibilityShadowService(fp({ days: retainedOvernightDays({ overnightCity: 'Petra' }), addOnRows: [PETRA_OVERNIGHT] }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  setFlag(false);
+  assert.equal(r.overnightStationaryLiveApplyEnabled, false, 'flag OFF');
+  assert.equal(r.overnightStationaryLiveApply.apply, true, 'preview still shows would-apply');
+  assert.equal(r.overnightStationaryLiveApply.costDelta, 45);
+  // The would-apply preview never folds into the existing comparison totals.
+  assert.equal(r.notApplied, true);
+  assert.ok(!('overnightStationaryLiveApplyCost' in r), 'no applied total leaked onto the response');
+});
+
+test('PR12F-3A: enabled flag reflects the live-apply flag when ON', async () => {
+  setFlag(true); setLive(true);
+  const svc = new PackageEligibilityShadowService(fp({ days: retainedOvernightDays({ overnightCity: 'Petra' }), addOnRows: [PETRA_OVERNIGHT] }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  setFlag(false); setLive(false);
+  assert.equal(r.overnightStationaryLiveApplyEnabled, true);
+});
+
+test('PR12F-3A: per-day lines are enriched with supplier / vehicle class / vehicle (additive)', async () => {
+  setFlag(true); setLive(false);
+  const svc = new PackageEligibilityShadowService(fp({ days: retainedOvernightDays({ overnightCity: 'Petra' }), addOnRows: [PETRA_OVERNIGHT] }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  setFlag(false);
+  const line = r.overnightStationaryLiveApply.lines.find((l: any) => l.dayNumber === 1 && l.kind === 'overnight');
+  assert.ok(line, 'day-1 overnight line present');
+  // existing fields intact
+  assert.equal(line.outcome, 'separate');
+  assert.equal(line.amount, 45);
+  // additive enrichment
+  assert.equal(line.supplierId, 'S1');
+  assert.equal(line.vehicleClass, 'Sedan');
+});
+
+test('PR12F-3A: the live-apply breakdown adds NO DB writes (read-only fake throws on any write)', async () => {
+  setFlag(true); setLive(true);
+  // fp() throws on create/update/delete; a successful run with the new field proves no writes.
+  const svc = new PackageEligibilityShadowService(fp({ days: retainedOvernightDays({ overnightCity: 'Petra' }), addOnRows: [PETRA_OVERNIGHT] }));
+  const r: any = await svc.evaluateQuotePackagePricingShadow('q1');
+  setFlag(false); setLive(false);
+  assert.ok(r.overnightStationaryLiveApply);
+});

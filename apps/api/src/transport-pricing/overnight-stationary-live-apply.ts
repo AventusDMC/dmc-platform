@@ -32,6 +32,12 @@ export type OvernightStationaryApplyLine = {
   currency: string | null;
   city: string | null;
   blocker: string | null;
+  // PR 12F-3A — optional internal enrichment for the admin-web breakdown / supplier readiness.
+  // Filled by the read-only shadow-response assembly from the day's resolved vehicle; the pure
+  // decider leaves them undefined.
+  supplierId?: string | null;
+  vehicleClass?: string | null;
+  vehicleName?: string | null;
 };
 
 export type OvernightStationaryLiveApplyResult = {

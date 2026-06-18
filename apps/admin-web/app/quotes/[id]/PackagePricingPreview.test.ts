@@ -241,3 +241,68 @@ describe('PR12D — overnight/stationary shadow diagnostic (display only)', () =
     assert.ok(!/>\s*(Apply|Send|Save|Confirm)\b/.test(diagnosticSection), 'no apply/send/save/confirm control in the section');
   });
 });
+
+describe('PR12F-3A — internal cost adjustment sub-section (display only)', () => {
+  // Slice covering the new internal-cost sub-section so "scoped to it" assertions are bounded.
+  const sectionStart = componentSource.indexOf('overnight-stationary-internal-cost"');
+  const internalSection = sectionStart >= 0 ? componentSource.slice(sectionStart) : '';
+
+  it('1. renders the "Internal cost adjustment" sub-section, gated on the live-apply object', () => {
+    expectContains(componentSource, [
+      'overnightStationaryLiveApply',
+      'const osLiveApply = data?.overnightStationaryLiveApply ?? null',
+      '{osLiveApply ? (',
+      'Internal cost adjustment',
+    ]);
+    assert.ok(sectionStart >= 0, 'internal-cost markup present');
+  });
+
+  it('2. hides the sub-section when the live-apply breakdown is absent (truthiness-gated)', () => {
+    assert.ok(/\{osLiveApply \? \([\s\S]*?\) : null\}/.test(componentSource), 'sub-section is osLiveApply-gated');
+  });
+
+  it('3. shows "Internal cost only — not added to client sell total."', () => {
+    assert.ok(internalSection.includes('Internal cost only — not added to client sell total.'), 'cost-only note shown');
+  });
+
+  it('4. labels the preview "Would apply if live apply is enabled" and "Applied to internal cost"', () => {
+    expectContains(componentSource, [
+      'Would apply if live apply is enabled',
+      'Applied to internal cost',
+      'overnightStationaryLiveApplyEnabled',
+      'liveApplyEnabled',
+    ]);
+  });
+
+  it('5. shows the cost delta and an explicit cost-only sell delta', () => {
+    expectContains(internalSection, ['Cost delta:', 'Sell delta:', 'osLiveApply.costDelta', 'osLiveApply.sellDelta']);
+  });
+
+  it('6. renders per-day overnight/stationary lines', () => {
+    expectContains(internalSection, ['osLiveApply.lines', 'l.dayNumber', 'l.kind', 'l.outcome']);
+  });
+
+  it('7. renders supplier and vehicle-class enrichment when available', () => {
+    expectContains(internalSection, ['l.supplierId', 'l.vehicleClass']);
+  });
+
+  it('8. adds no apply / send / action button (display-only)', () => {
+    assert.ok(!/<button/.test(internalSection), 'no button element in the internal-cost sub-section');
+    assert.ok(!/>\s*(Apply|Send|Save|Confirm)\b/.test(internalSection), 'no apply/send/save/confirm control');
+  });
+
+  it('9. "applied" label requires the flag ON + an applying package selection (never over-claims)', () => {
+    expectContains(componentSource, [
+      'appliedToInternalCost',
+      'liveApplyEnabled &&',
+      "saved?.option === PACKAGE_OPTION",
+    ]);
+  });
+
+  it('10. does not introduce client-facing billing language in the sub-section', () => {
+    // The required cost-only note ("not added to client sell total") is allowed; what must NOT
+    // appear is language implying the client is billed for these charges.
+    assert.ok(!/invoice|bill (the )?client|charge (the )?client|client[- ]facing (price|charge)/i.test(internalSection), 'no client-facing billing language');
+    assert.ok(internalSection.includes('Internal cost only — not added to client sell total.'), 'internal-only note present');
+  });
+});
