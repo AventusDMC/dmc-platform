@@ -42,3 +42,15 @@ export const PACKAGE_PRICING_LIVE_APPLY_FLAG = 'transport.packagePricingLiveAppl
 export function isPackagePricingLiveApplyEnabled(): boolean {
   return readBooleanEnv('TRANSPORT_PACKAGE_PRICING_LIVE_APPLY');
 }
+
+// `transport.overnightStationaryLiveApply` (PR12F) gates the future live apply of driver
+// overnight / stationary charges on top of an applied package. OFF (default). In PR12F-1 the
+// gated method is a NO-OP for totals: it consumes the validated overnight/stationary SHADOW and
+// surfaces the decision matrix (recognized charges + abort-on-blocker) but ALWAYS returns
+// apply:false with zero cost/sell deltas, and is NOT wired into recalculateQuoteTotals. The
+// number-changing implementation is PR12F-2.
+export const OVERNIGHT_STATIONARY_LIVE_APPLY_FLAG = 'transport.overnightStationaryLiveApply';
+
+export function isOvernightStationaryLiveApplyEnabled(): boolean {
+  return readBooleanEnv('TRANSPORT_OVERNIGHT_STATIONARY_LIVE_APPLY');
+}
