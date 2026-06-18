@@ -1716,23 +1716,49 @@ function composeEmptyDayFallback(
   dayItems: ProposalV3QuoteItem[],
   locale: ProposalLocale,
 ): string | null {
-  // Guide + activity are the only services the R.7B helper weaves in; hotel/
-  // transport/entrance are intentionally not surfaced (no vehicle/supplier leak).
+  // Guide + GENUINE activities are the only services the R.7B helper weaves in;
+  // hotel/transport/entrance are intentionally not surfaced. MT3 — `isActivityItem`
+  // also matches entrance/ticket items, so they leaked into the narrative as
+  // "including a <Entrance Ticket name>" (e.g. "a Amman Citadel…", PT "um Petra
+  // Entrance Ticket"). Narrow the narrative push to tours/experiences and drop
+  // anything classified or NAMED as an entrance/admission/ticket (some are mis-
+  // typed as ACTIVITY but named as an entrance fee). Catalog names stay English.
+  const isNarrativeActivity = (item: ProposalV3QuoteItem) => {
+    const cls = getItemServiceClassification(item);
+    if (!(cls.includes('activity') || cls.includes('tour') || cls.includes('excursion') || cls.includes('experience'))) return false;
+    if (cls.includes('entrance') || cls.includes('ticket')) return false;
+    const name = `${item.activity?.name || item.service?.name || ''}`.toLowerCase();
+    return !/\b(entrance|admission|ticket)\b/.test(name);
+  };
   const appliedServices: AppliedNarrativeService[] = [];
   for (const item of dayItems) {
     if (isGuideItem(item)) {
       appliedServices.push({ kind: 'guide' });
-    } else if (isActivityItem(item)) {
+    } else if (isNarrativeActivity(item)) {
       appliedServices.push({ kind: 'activity', name: cleanText(item.activity?.name || item.service?.name || '') || null });
     }
   }
   const hotelItem = dayItems.find((item) => isHotelItem(item));
   const overnightCity = hotelItem ? cleanText(hotelItem.hotel?.city || '') || null : null;
 
+  // MT3 — feed the engine alias-CANONICALIZED place tokens. The MT2 localizer maps
+  // a source-language day title ("Mar Muerto / Betania / Mar Muerto") to the
+  // English canonical ("Dead Sea / Bethany / Dead Sea"); the engine's English-keyed
+  // place dictionary then localizes per locale (en Dead Sea/Bethany · es Mar
+  // Muerto/Betania · pt Mar Morto/Betânia · ar البحر الميت/المغطس). Reuses MT2 — no
+  // duplicate localization logic. English-canonical titles are returned unchanged.
+  const canonicalTitle = localizeStructuralDayTitle('en', day.title || '');
+  // MT3 — when the stored notes are in a different language than the render locale
+  // (AR2 already suppresses them from the day summary), don't feed them to the
+  // narrative engine either, or their source-language place tokens leak into the
+  // generated sentence. Right-language / untagged notes are passed unchanged.
+  const storedNotesLanguage = (day.notesLanguage || '').trim().toLowerCase();
+  const narrativeNotes = storedNotesLanguage !== '' && storedNotesLanguage !== locale ? null : day.description ?? null;
+
   const preview = buildDayNarrativePreview(
     {
-      title: day.title || '',
-      notes: day.description ?? null,
+      title: canonicalTitle,
+      notes: narrativeNotes,
       overnightCity,
       dayNumber: day.dayNumber,
       appliedServices,
