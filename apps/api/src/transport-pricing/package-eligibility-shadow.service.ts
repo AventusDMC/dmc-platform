@@ -23,7 +23,12 @@ import {
   isPackagePricingShadowCompareEnabled,
   PACKAGE_PRICING_SHADOW_COMPARE_FLAG,
   isPackageOptionSelectionEnabled,
+  isOvernightStationaryLiveApplyEnabled,
 } from './transport-feature-flags';
+import {
+  decideOvernightStationaryLiveApply,
+  type OvernightStationaryLiveApplyResult,
+} from './overnight-stationary-live-apply';
 
 // PR5 + PR6 — Package-eligibility SHADOW service (read-only / diagnostic).
 //
@@ -1021,5 +1026,20 @@ export class PackageEligibilityShadowService {
       appliedTransportTotal: packageNet,
       warnings: ['standard-large-bus-49-rate-only-not-vip-31-33', 'excludes-driver-overnight'],
     };
+  }
+
+  // PR 12F-1 — driver-overnight + stationary live-apply SKELETON. STRICTLY a no-op for totals:
+  // it never changes quote totals, writes nothing, and is NOT wired into recalculateQuoteTotals.
+  // Gated by `transport.overnightStationaryLiveApply` (default OFF). When OFF → flag-disabled
+  // no-op. When ON → it consumes the validated read-only overnightStationaryShadow and runs the
+  // pure decision matrix (recognized would-be charges + approved abort-on-blocker rule), but the
+  // decider ALWAYS returns apply:false with zero cost/sell deltas. The number-changing wiring is
+  // PR 12F-2. Read-only: evaluateQuotePackagePricingShadow performs no writes.
+  async computeQuoteOvernightStationaryLiveApply(quoteId: string): Promise<OvernightStationaryLiveApplyResult> {
+    if (!isOvernightStationaryLiveApplyEnabled()) {
+      return { apply: false, reason: 'flag-disabled', costDelta: 0, sellDelta: 0, wouldApplyCost: 0, wouldApplySell: 0, blockers: [], warnings: [], lines: [] };
+    }
+    const shadowResponse: any = await this.evaluateQuotePackagePricingShadow(quoteId);
+    return decideOvernightStationaryLiveApply(shadowResponse?.overnightStationaryShadow ?? null);
   }
 }

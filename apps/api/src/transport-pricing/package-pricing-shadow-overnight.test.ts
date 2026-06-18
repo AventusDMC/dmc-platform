@@ -210,7 +210,12 @@ test('PR12C-2: helper is not imported/called by live apply or quotes.service.ts'
   const liveApplyIdx = shadowSrc.indexOf('async computeQuotePackageLiveApply');
   assert.ok(liveApplyIdx > 0, 'computeQuotePackageLiveApply present');
   const liveApplyOnwards = shadowSrc.slice(liveApplyIdx);
-  assert.ok(!/OvernightStationary/i.test(liveApplyOnwards), 'live apply must not reference the overnight helper');
+  // PR12F-1 — the guard is specifically that the live-apply region must not call the PURE
+  // overnight DIAGNOSTIC helper `computeOvernightStationaryShadow` (kept decoupled from apply).
+  // The PR12F-1 skeleton (`computeQuoteOvernightStationaryLiveApply`) legitimately consumes the
+  // read-only shadow ENDPOINT, so match the diagnostic helper name precisely rather than the
+  // broad "OvernightStationary" substring (which also matched the new sibling method's name).
+  assert.ok(!/computeOvernightStationaryShadow/.test(liveApplyOnwards), 'live apply must not reference the overnight diagnostic helper');
   // quotes.service.ts must not import or call the helper.
   const quotesSrc = readFileSync(path.join(__dirname, '..', 'quotes', 'quotes.service.ts'), 'utf8');
   assert.ok(!quotesSrc.includes('overnight-stationary-shadow'), 'quotes.service.ts must not import the helper');
