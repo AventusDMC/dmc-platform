@@ -82,10 +82,11 @@ test('P.3X-5E-1: Arabic structural titles localize and stay RTL-safe', () => {
   const vm: any = mapQuoteToProposalV3(baseQuote(ITINS) as any, 'ar');
   const t = titles(vm);
   assert.equal(vm.textDirection, 'rtl');
-  assert.equal(t[1], 'الوصول إلى Amman');
-  assert.equal(t[2], 'زيارة Petra / Wadi Rum');
+  // AR2 — Amman/Petra/Wadi Rum/Madaba now carry Arabic display names.
+  assert.equal(t[1], 'الوصول إلى عمّان');
+  assert.equal(t[2], 'زيارة البتراء / وادي رم');
   assert.equal(t[3], 'البحر الميت / المغطس / البحر الميت');
-  assert.equal(t[4], 'Madaba / جبل نيبو / Petra');
+  assert.equal(t[4], 'مادبا / جبل نيبو / البتراء');
   assert.equal(t[5], 'Farewell dinner & shopping downtown');
   assert.equal(t[6], 'المغادرة');
 });

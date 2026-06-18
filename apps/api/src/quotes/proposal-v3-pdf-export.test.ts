@@ -2316,8 +2316,9 @@ test('Phase 3D.1N: journey destination connector is localized; cover keeps the m
   assert.equal(mapQuoteToProposalV3(q(), 'es').destinationLine, 'Dana y Petra');
   // AR connector (waw attaches to the next word) + cover dot preserved + RTL
   const ar = mapQuoteToProposalV3(q(), 'ar');
-  assert.equal(ar.destinationLine, 'Dana وPetra');
-  assert.equal(ar.coverSubtitle, 'Dana · Petra', 'cover dot is language-neutral in AR too');
+  // AR2 — Petra now carries an Arabic display name (Dana is unlisted → pass-through).
+  assert.equal(ar.destinationLine, 'Dana والبتراء');
+  assert.equal(ar.coverSubtitle, 'Dana · البتراء', 'cover dot is language-neutral in AR too (Petra localized)');
   assert.equal(ar.textDirection, 'rtl');
   // Cover subtitle never uses a word connector in any locale
   for (const L of ['en', 'pt', 'es', 'ar'] as const) {
@@ -2541,7 +2542,8 @@ test('Phase 3D.1P: Arabic final pricing/inclusion notes carry NO English system 
 test('Phase 3D.1P: Arabic overnight badge uses the hotel city (not the day title), or hides', () => {
   const ar = mapQuoteToProposalV3(danaPetraTwoDayQuote({ hotelCity: 'Petra / Wadi Musa' }), 'ar');
   const day1 = ar.days.find((d: any) => d.dayNumber === 1);
-  assert.equal(day1.overnightLocation, 'Petra / Wadi Musa', 'AR overnight = hotel city, not "Dana"');
+  // AR2 — the overnight badge city is localized in Arabic (Petra / Wadi Musa → البتراء / وادي موسى).
+  assert.equal(day1.overnightLocation, 'البتراء / وادي موسى', 'AR overnight = localized hotel city, not "Dana"');
   // No-hotel day hides the badge.
   const noHotel = mapQuoteToProposalV3(createMovementQuote(jerashAjlounPois(), [touringTransportDayItem('Amman -> Jerash -> Ajloun -> Amman', 1)]), 'ar')
     .days.find((d: any) => d.dayNumber === 1);

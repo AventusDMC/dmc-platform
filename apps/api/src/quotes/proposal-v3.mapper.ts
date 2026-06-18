@@ -37,6 +37,7 @@ import {
   proseTemplate,
   resolveProposalLanguage,
   unitLabel,
+  formatGuestCount,
   type ProposalLocale,
 } from './proposal-i18n';
 
@@ -136,6 +137,21 @@ function formatProposalMoney(amount: number, currency = 'USD') {
   }
 
   const locale = intlLocale(activeProposalLocale);
+
+  // AR2 — Arabic money: "2,761.01 دولار أمريكي" (currency name after the amount,
+  // western digits). Intl's ar currency style yields "US$"/Arabic-indic digits,
+  // which the client rejected; we keep en-US digit grouping and append the
+  // Arabic currency name. es/en/pt are untouched (handled by the branches below).
+  if (activeProposalLocale === 'ar') {
+    const arCurrencyName =
+      currency === 'USD' ? 'دولار أمريكي' : currency === 'EUR' ? 'يورو' : currency === 'JOD' ? 'دينار أردني' : currency;
+    const digits = currency === 'JOD' ? 3 : 2;
+    const amountText = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(amount);
+    return `${amountText} ${arCurrencyName}`;
+  }
 
   if (currency === 'USD') {
     return new Intl.NumberFormat(locale, {
@@ -411,7 +427,9 @@ function formatNightCountLabel(value: number) {
 }
 
 function formatGuestCountLabel(value: number) {
-  return `${value} ${unitLabel(activeProposalLocale, 'guest', value)}`;
+  // AR2 — Arabic uses the natural dual/singular ("ضيفان"/"ضيف واحد") instead of
+  // "2 ضيوف"; other locales keep the "N <unit>" shape.
+  return formatGuestCount(activeProposalLocale, value, 'nominative');
 }
 
 function getServiceMix(quote: ProposalV3Quote) {
@@ -534,6 +552,14 @@ type ProposalV3DaySource = {
   dayNumber: number;
   title: string;
   description?: string | null;
+  /**
+   * AR2 — stored language tag of `description` (the day's notes), when known.
+   * Drives the language-aware notes fallback: when this is set and does NOT
+   * match the active render locale, the stored notes are suppressed in favour of
+   * the generated narrative for the requested locale. null/undefined = unknown →
+   * existing behaviour preserved (notes kept).
+   */
+  notesLanguage?: string | null;
   /** Stored manual country override for the day (planner days only); null = derive. */
   country?: string | null;
   items: ProposalV3QuoteItem[];
@@ -1305,6 +1331,7 @@ function buildActivePlannerDaySources(quote: ProposalV3Quote): ProposalV3DaySour
       dayNumber: day.dayNumber,
       title: day.title,
       description: day.notes || null,
+      notesLanguage: (day as any).notesLanguage ?? null,
       country: (day as any).country ?? null,
       poiAssignments: Array.isArray(day.poiAssignments) ? day.poiAssignments : [],
       items: (day.dayItems || [])
@@ -1747,8 +1774,19 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     //   3) deterministic R.7B fallback narrative, ONLY when 1 & 2 are both absent
     //      (empty/placeholder notes). Localized to the active proposal locale.
     //   4) none (item-derived fallback happens downstream as today)
+    //
+    // AR2 — language-aware notes fallback: when the day's notes carry a stored
+    // notesLanguage that does NOT match the active render locale, the notes are
+    // in the wrong language for this export (e.g. Spanish notes on an Arabic
+    // PDF). Suppress them so precedence falls through to the generated narrative
+    // for the requested locale. Untagged notes (notesLanguage null/empty) are
+    // left untouched — we never guess the language. No quote data is mutated.
     const notesSummary = cleanText(day.description || '');
-    const cleanNotes = isPlaceholderText(notesSummary) ? null : notesSummary || null;
+    const storedNotesLanguage = (day.notesLanguage || '').trim().toLowerCase();
+    const notesLanguageMismatch =
+      storedNotesLanguage !== '' && storedNotesLanguage !== activeProposalLocale;
+    const cleanNotes =
+      notesLanguageMismatch || isPlaceholderText(notesSummary) ? null : notesSummary || null;
     const composedNarrative = composeDayNarrativeFromPois(day, activeProposalLocale);
     const emptyDayFallback =
       !composedNarrative && !cleanNotes ? composeEmptyDayFallback(day, dayItems, activeProposalLocale) : null;

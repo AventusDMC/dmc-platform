@@ -43,6 +43,22 @@ export function unitLabel(locale: ProposalLocale, unit: keyof typeof UNITS, coun
   return count === 1 ? entry.one : entry.other;
 }
 
+// AR2 — Arabic guest count, grammatically natural for 1 and the dual (2) without
+// over-engineering full plural rules. `form` selects the dual case: 'nominative'
+// (standalone subject → ضيفان) vs 'oblique' (after a preposition like بناءً على →
+// ضيفين). Counts other than 1/2 fall back to the plural "N ضيوف". Non-Arabic
+// locales keep the existing "N <unit>" shape and are unaffected by this helper.
+export function formatGuestCount(
+  locale: ProposalLocale,
+  count: number,
+  form: 'nominative' | 'oblique' = 'nominative',
+): string {
+  if (locale !== 'ar') return `${count} ${unitLabel(locale, 'guest', count)}`;
+  if (count === 1) return 'ضيف واحد';
+  if (count === 2) return form === 'oblique' ? 'ضيفين' : 'ضيفان';
+  return `${count} ضيوف`;
+}
+
 // Static labels rendered in the proposal chrome + fixed list content. English
 // values are exact copies of the prior hardcoded strings.
 const LABELS: Record<string, Record<ProposalLocale, string>> = {
@@ -249,7 +265,7 @@ function localizePricingPhrase(locale: ProposalLocale, line: string | null | und
   if ((m = raw.match(/^Based on (\d+) guests? sharing(\.?)$/))) {
     const n = m[1];
     const dot = m[2];
-    const base = { pt: `Com base em ${n} hóspedes em quarto partilhado`, es: `Según ${n} huéspedes en habitación compartida`, ar: `بناءً على ${n} ضيوف في غرفة مشتركة` }[locale as 'pt' | 'es' | 'ar'];
+    const base = { pt: `Com base em ${n} hóspedes em quarto partilhado`, es: `Según ${n} huéspedes en habitación compartida`, ar: `بناءً على ${formatGuestCount('ar', Number(n), 'oblique')} في غرفة مشتركة` }[locale as 'pt' | 'es' | 'ar'];
     return base + dot;
   }
   if (raw === PRICING_PHRASES.doubleTwin.en) return pricingPhrase(locale, 'doubleTwin');
@@ -487,14 +503,24 @@ export function prosePhrase(locale: ProposalLocale, key: keyof typeof PROSE_PHRA
 // English is returned byte-identical (short-circuit). Only EXACT, whole-string
 // matches (trimmed, case-insensitive) are localized — this is deliberately NOT
 // a blanket substring replacement, so raw day notes and arbitrary free text are
-// never rewritten. Names NOT listed here (Amman, Jerash, Madaba, Petra,
-// Wadi Rum, Wadi Musa, QAIA, …) pass through unchanged for now.
-// Translations are human-authored, not machine-translated.
+// never rewritten. The Jordan destinations carry an Arabic display name (AR2);
+// their es/pt/en values are the proper noun itself, so EN/ES/PT output is
+// byte-identical to the prior pass-through. QAIA and any name NOT listed here
+// still pass through unchanged. Translations are human-authored, not
+// machine-translated.
 // ---------------------------------------------------------------------------
 const PLACE_DISPLAY_NAMES: Record<string, Record<ProposalLocale, string>> = {
   'dead sea': { en: 'Dead Sea', pt: 'Mar Morto', es: 'Mar Muerto', ar: 'البحر الميت' },
   'mount nebo': { en: 'Mount Nebo', pt: 'Monte Nebo', es: 'Monte Nebo', ar: 'جبل نيبو' },
   bethany: { en: 'Bethany', pt: 'Betânia', es: 'Betania', ar: 'المغطس' },
+  // AR2 — Arabic names for the Jordan destinations; EN/ES/PT keep the proper noun.
+  amman: { en: 'Amman', pt: 'Amman', es: 'Amman', ar: 'عمّان' },
+  petra: { en: 'Petra', pt: 'Petra', es: 'Petra', ar: 'البتراء' },
+  'wadi musa': { en: 'Wadi Musa', pt: 'Wadi Musa', es: 'Wadi Musa', ar: 'وادي موسى' },
+  'petra / wadi musa': { en: 'Petra / Wadi Musa', pt: 'Petra / Wadi Musa', es: 'Petra / Wadi Musa', ar: 'البتراء / وادي موسى' },
+  'wadi rum': { en: 'Wadi Rum', pt: 'Wadi Rum', es: 'Wadi Rum', ar: 'وادي رم' },
+  madaba: { en: 'Madaba', pt: 'Madaba', es: 'Madaba', ar: 'مادبا' },
+  jerash: { en: 'Jerash', pt: 'Jerash', es: 'Jerash', ar: 'جرش' },
 };
 
 export function localizePlaceName(locale: ProposalLocale, value: string | null | undefined): string {
