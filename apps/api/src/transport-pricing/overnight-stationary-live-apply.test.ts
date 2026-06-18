@@ -5,9 +5,9 @@ import * as path from 'node:path';
 import { decideOvernightStationaryLiveApply } from './overnight-stationary-live-apply';
 import { PackageEligibilityShadowService } from './package-eligibility-shadow.service';
 
-// PR 12F-1 — live-apply decision skeleton. Locks the future decision matrix WITHOUT enabling any
-// number change: `apply` is always false and cost/sell deltas are always 0. Pure-decider tests
-// feed synthetic shadow objects; the service tests prove the flag gate + no-DB-write behavior.
+// PR 12F-2 — overnight/stationary live apply (number-changing, behind transport.overnightStationaryLiveApply).
+// The decider folds a pass-through COST delta (sellDelta always 0) when the shadow is valid,
+// blocker-free, and has recognized 'separate' charges; any blocker aborts the whole apply.
 
 const LIVE_FLAG = 'TRANSPORT_OVERNIGHT_STATIONARY_LIVE_APPLY';
 const SHADOW_FLAG = 'TRANSPORT_PACKAGE_PRICING_SHADOW_COMPARE';
@@ -34,98 +34,94 @@ function shadow(overnightCharges: any[], stationaryCharges: any[], extra: any = 
 }
 
 // ---- pure decider — decision matrix ----------------------------------------------------------
-test('12F-1: null/absent shadow → no-op (no-shadow)', () => {
+test('12F-2: null/absent shadow → no apply, zero delta', () => {
   const r = decideOvernightStationaryLiveApply(null);
   assert.equal(r.apply, false);
   assert.equal(r.reason, 'no-shadow');
   assert.equal(r.costDelta, 0);
   assert.equal(r.sellDelta, 0);
-  assert.equal(r.wouldApplyCost, 0);
 });
 
-test('12F-1: existing ADD_ON overnight blocks apply (abort, nothing recognized)', () => {
+test('12F-2: existing ADD_ON overnight blocks apply (abort, zero delta)', () => {
   const r = decideOvernightStationaryLiveApply(shadow([ovBlocked(1, 'existing-addon-on-day')], []));
+  assert.equal(r.apply, false);
   assert.equal(r.reason, 'blocked');
   assert.ok(r.blockers.includes('existing-addon-on-day'));
-  assert.equal(r.apply, false);
-  assert.equal(r.wouldApplyCost, 0);
+  assert.equal(r.costDelta, 0);
 });
 
-test('12F-1: missing overnight rule blocks apply', () => {
+test('12F-2: missing overnight rule blocks apply', () => {
   const r = decideOvernightStationaryLiveApply(shadow([ovBlocked(1, 'overnight-rate-missing')], []));
+  assert.equal(r.apply, false);
   assert.equal(r.reason, 'blocked');
-  assert.ok(r.blockers.includes('overnight-rate-missing'));
+  assert.equal(r.costDelta, 0);
 });
 
-test('12F-1: missing stationary rule blocks apply', () => {
+test('12F-2: missing stationary rule blocks apply', () => {
   const r = decideOvernightStationaryLiveApply(shadow([], [stBlocked(2, 'stationary-rate-missing')]));
+  assert.equal(r.apply, false);
   assert.equal(r.reason, 'blocked');
-  assert.ok(r.blockers.includes('stationary-rate-missing'));
+  assert.equal(r.costDelta, 0);
 });
 
-test('12F-1: included stationary produces no charge (internal note only)', () => {
+test('12F-2: included stationary → no cost delta, surfaced as a note line only', () => {
   const r = decideOvernightStationaryLiveApply(shadow([], [stIncluded(2)]));
+  assert.equal(r.apply, false);
   assert.equal(r.reason, 'no-charges');
-  assert.equal(r.wouldApplyCost, 0);
+  assert.equal(r.costDelta, 0);
   const line = r.lines.find((l) => l.kind === 'stationary' && l.dayNumber === 2);
-  assert.equal(line?.outcome, 'included', 'included stationary surfaced as a note line, not a charge');
+  assert.equal(line?.outcome, 'included', 'included stationary is a note line, not a charge');
 });
 
-test('12F-1: out-of-base overnight is RECOGNIZED as future-applicable but NOT applied', () => {
+test('12F-2: out-of-base overnight APPLIES cost delta only (sellDelta 0)', () => {
   const r = decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], []));
-  assert.equal(r.reason, 'recognized-not-applied-12f1');
-  assert.equal(r.wouldApplyCost, 45, 'would-be cost surfaced');
-  assert.equal(r.wouldApplySell, 45, 'pass-through, no markup');
-  assert.equal(r.apply, false, 'NOT applied in 12F-1');
-  assert.equal(r.costDelta, 0);
-  assert.equal(r.sellDelta, 0);
+  assert.equal(r.apply, true);
+  assert.equal(r.reason, 'applied');
+  assert.equal(r.costDelta, 45);
+  assert.equal(r.sellDelta, 0, 'supplier-cost only — no client sell change');
 });
 
-test('12F-1: stationary full day is RECOGNIZED as future-applicable but NOT applied', () => {
+test('12F-2: stationary full day APPLIES cost delta only', () => {
   const r = decideOvernightStationaryLiveApply(shadow([], [stSeparate(2, 60)]));
-  assert.equal(r.reason, 'recognized-not-applied-12f1');
-  assert.equal(r.wouldApplyCost, 60);
-  assert.equal(r.apply, false);
-  assert.equal(r.costDelta, 0);
-});
-
-test('12F-1: combined overnight + stationary → wouldApplyCost sums, still NOT applied', () => {
-  const r = decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], [stSeparate(2, 60)]));
-  assert.equal(r.reason, 'recognized-not-applied-12f1');
-  assert.equal(r.wouldApplyCost, 105);
-  assert.equal(r.apply, false);
-  assert.equal(r.costDelta, 0);
+  assert.equal(r.apply, true);
+  assert.equal(r.costDelta, 60);
   assert.equal(r.sellDelta, 0);
 });
 
-test('12F-1: capacity-unit overnight remains deferred (warning carried, never a charge)', () => {
+test('12F-2: combined overnight + stationary → exact summed cost delta, sellDelta 0', () => {
+  const r = decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], [stSeparate(2, 60)]));
+  assert.equal(r.apply, true);
+  assert.equal(r.costDelta, 105);
+  assert.equal(r.sellDelta, 0);
+  assert.equal(r.lines.length, 2, 'per-day breakdown preserved');
+});
+
+test('12F-2: capacity-unit overnight remains deferred (warning carried, never a charge line)', () => {
   const r = decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], []));
-  assert.ok(r.warnings.includes('capacity-unit-overnight-not-evaluated-in-12c2'), 'deferral warning carried through');
+  assert.ok(r.warnings.includes('capacity-unit-overnight-not-evaluated-in-12c2'), 'deferral warning carried');
   assert.ok(!r.lines.some((l) => /capacity/i.test(l.outcome)), 'no capacity-unit charge line');
 });
 
-test('12F-1: ANY blocker aborts the WHOLE apply (valid charges not recognized either)', () => {
-  // A valid 45 overnight + 60 stationary alongside ONE blocked overnight → whole apply aborts.
+test('12F-2: ANY blocker aborts the WHOLE apply (valid charges not applied either)', () => {
   const r = decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45), ovBlocked(3, 'base-city-missing')], [stSeparate(2, 60)]));
+  assert.equal(r.apply, false);
   assert.equal(r.reason, 'blocked');
   assert.ok(r.blockers.includes('base-city-missing'));
-  assert.equal(r.wouldApplyCost, 0, 'no partial application — the valid 105 is NOT recognized when any blocker exists');
-  assert.equal(r.apply, false);
-  assert.equal(r.costDelta, 0);
+  assert.equal(r.costDelta, 0, 'no partial application — the valid 105 is NOT applied when any blocker exists');
 });
 
-test('12F-1: invariant — apply is ALWAYS false and deltas ALWAYS 0 across every outcome', () => {
-  const cases = [
-    decideOvernightStationaryLiveApply(null),
-    decideOvernightStationaryLiveApply(shadow([], [])),
-    decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], [stSeparate(2, 60)])),
-    decideOvernightStationaryLiveApply(shadow([ovBlocked(1, 'overnight-rate-missing')], [])),
-    decideOvernightStationaryLiveApply(shadow([], [stIncluded(2)])),
+test('12F-2: invariant — sellDelta is ALWAYS 0; apply true ONLY when valid + no blocker + charges', () => {
+  const cases: Array<[any, boolean]> = [
+    [decideOvernightStationaryLiveApply(null), false],
+    [decideOvernightStationaryLiveApply(shadow([], [])), false],
+    [decideOvernightStationaryLiveApply(shadow([ovSeparate(1, 45)], [stSeparate(2, 60)])), true],
+    [decideOvernightStationaryLiveApply(shadow([ovBlocked(1, 'overnight-rate-missing')], [])), false],
+    [decideOvernightStationaryLiveApply(shadow([], [stIncluded(2)])), false],
   ];
-  for (const r of cases) {
-    assert.equal(r.apply, false, 'never applies in 12F-1');
-    assert.equal(r.costDelta, 0, 'zero cost delta');
-    assert.equal(r.sellDelta, 0, 'zero sell delta');
+  for (const [r, expectApply] of cases) {
+    assert.equal(r.sellDelta, 0, 'sellDelta always 0 in 12F-2');
+    assert.equal(r.apply, expectApply);
+    if (!expectApply) assert.equal(r.costDelta, 0, 'no cost delta when not applied');
   }
 });
 
@@ -142,7 +138,7 @@ const CONTRACT = { id: 'C1', supplierId: 'S1', vehicleClass: 'Sedan', currency: 
 
 let writeAttempts = 0;
 function fp(days: any[], addOnRows: any[] = []) {
-  const throwWrite = () => { writeAttempts++; throw new Error('write attempted in 12F-1 (must be read-only)'); };
+  const throwWrite = () => { writeAttempts++; throw new Error('write attempted in 12F-2 apply path (must be read-only)'); };
   return {
     quoteItineraryDay: { findMany: async () => days, create: throwWrite, update: throwWrite, updateMany: throwWrite, delete: throwWrite },
     transportContract: { findFirst: async () => CONTRACT },
@@ -153,7 +149,7 @@ function fp(days: any[], addOnRows: any[] = []) {
   } as any;
 }
 
-test('12F-1 service: flag OFF → flag-disabled no-op (no shadow fetch, zero deltas)', async () => {
+test('12F-2 service: flag OFF → flag-disabled no-op (no shadow fetch, zero delta)', async () => {
   setEnv(LIVE_FLAG, false);
   const svc = new PackageEligibilityShadowService(fp([fakeDay(1)]));
   const r = await svc.computeQuoteOvernightStationaryLiveApply('throwaway-q');
@@ -163,7 +159,7 @@ test('12F-1 service: flag OFF → flag-disabled no-op (no shadow fetch, zero del
   assert.equal(r.sellDelta, 0);
 });
 
-test('12F-1 service: flag ON → consumes shadow, recognizes charges, still apply:false + no DB writes', async () => {
+test('12F-2 service: flag ON → applies summed cost delta, sellDelta 0, no DB writes', async () => {
   writeAttempts = 0;
   setEnv(LIVE_FLAG, true);
   setEnv(SHADOW_FLAG, true);
@@ -181,15 +177,9 @@ test('12F-1 service: flag ON → consumes shadow, recognizes charges, still appl
   const r = await svc.computeQuoteOvernightStationaryLiveApply('throwaway-q');
   setEnv(LIVE_FLAG, false);
   setEnv(SHADOW_FLAG, false);
-  assert.equal(r.apply, false, 'never applies in 12F-1');
-  assert.equal(r.costDelta, 0);
+  assert.equal(r.apply, true);
+  assert.equal(r.reason, 'applied');
+  assert.equal(r.costDelta, 105, '45 overnight + 60 stationary');
   assert.equal(r.sellDelta, 0);
-  assert.equal(r.reason, 'recognized-not-applied-12f1');
-  assert.equal(r.wouldApplyCost, 105, 'recognizes 45 overnight + 60 stationary as future-applicable');
   assert.equal(writeAttempts, 0, 'no DB writes');
-});
-
-test('12F-1: the skeleton is NOT wired into recalculateQuoteTotals (no total change path)', () => {
-  const quotesSrc = readFileSync(path.join(__dirname, '..', 'quotes', 'quotes.service.ts'), 'utf8');
-  assert.ok(!quotesSrc.includes('computeQuoteOvernightStationaryLiveApply'), 'recalc must not call the 12F-1 skeleton');
 });
