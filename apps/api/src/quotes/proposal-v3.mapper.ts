@@ -38,6 +38,7 @@ import {
   resolveProposalLanguage,
   unitLabel,
   formatGuestCount,
+  localizeProgramTitle,
   type ProposalLocale,
 } from './proposal-i18n';
 
@@ -1883,7 +1884,9 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 export function buildProposalDocumentTitle(quote: ProposalV3Quote, destinationLine: string) {
   const cleanedTitle = stripInternalTitleDecorations(cleanText(quote.title));
   if (cleanedTitle && !isWeakText(cleanedTitle) && !isPlaceholderText(cleanedTitle)) {
-    return cleanedTitle;
+    // MT2 — a strong title is kept, but a known program title is shown in the
+    // active locale (curated map); unknown titles return verbatim (unchanged).
+    return localizeProgramTitle(activeProposalLocale, cleanedTitle);
   }
 
   // P3 (proposal QA, Issue 2) — localized fallback so non-English covers never read the English

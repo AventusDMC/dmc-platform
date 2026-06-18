@@ -523,11 +523,52 @@ const PLACE_DISPLAY_NAMES: Record<string, Record<ProposalLocale, string>> = {
   jerash: { en: 'Jerash', pt: 'Jerash', es: 'Jerash', ar: 'جرش' },
 };
 
+// MT2 — non-English place ALIASES → canonical English dictionary key. Stored day
+// titles are sometimes authored in the quote's source language (e.g. a Spanish
+// "Mar Muerto / Betania / Mar Muerto"), so the tokens don't match the
+// English-keyed PLACE_DISPLAY_NAMES and used to leak across locales. These
+// aliases let such tokens resolve to the same canonical localized set. Keys are
+// trimmed + lower-cased; values are an existing PLACE_DISPLAY_NAMES key.
+const PLACE_NAME_ALIASES: Record<string, string> = {
+  'mar muerto': 'dead sea', // es
+  'mar morto': 'dead sea', // pt
+  betania: 'bethany', // es
+  'betânia': 'bethany', // pt
+  'monte nebo': 'mount nebo', // es + pt
+};
+
 export function localizePlaceName(locale: ProposalLocale, value: string | null | undefined): string {
   const raw = String(value ?? '');
-  // English is unchanged; empty/whitespace passes through untouched.
-  if (locale === 'en' || !raw.trim()) return raw;
-  const entry = PLACE_DISPLAY_NAMES[raw.trim().toLowerCase()];
+  if (!raw.trim()) return raw;
+  const key = raw.trim().toLowerCase();
+  const canonicalKey = PLACE_NAME_ALIASES[key] ?? key;
+  const entry = PLACE_DISPLAY_NAMES[canonicalKey];
+  // English stays byte-identical for canonical/unknown tokens, but a non-English
+  // ALIAS token (a stored Spanish/Portuguese place name) still resolves to its
+  // English canonical so an English export never leaks the source-language name.
+  if (locale === 'en') {
+    return PLACE_NAME_ALIASES[key] && entry ? entry.en : raw;
+  }
+  return entry ? entry[locale] || entry.en : raw;
+}
+
+// ---------------------------------------------------------------------------
+// MT2 — curated PROGRAM-TITLE localization. A quote's title is a single shared
+// field stored in the source language (e.g. Spanish "Jordania Clásica"), so a
+// strong title renders verbatim in every locale and leaks the source language on
+// the cover. This small, human-authored map (mirrors PLACE_DISPLAY_NAMES) gives
+// known program titles a per-locale display name. Keys are trimmed + lower-cased.
+// Any title NOT listed here is returned UNCHANGED, so unknown/operator titles keep
+// today's behavior. Translations are human-authored, not machine-translated.
+// ---------------------------------------------------------------------------
+const PROGRAM_TITLE_DISPLAY_NAMES: Record<string, Record<ProposalLocale, string>> = {
+  'jordania clásica': { es: 'Jordania Clásica', en: 'Classic Jordan', pt: 'Jordânia Clássica', ar: 'الأردن الكلاسيكي' },
+};
+
+export function localizeProgramTitle(locale: ProposalLocale, title: string | null | undefined): string {
+  const raw = String(title ?? '');
+  if (!raw.trim()) return raw;
+  const entry = PROGRAM_TITLE_DISPLAY_NAMES[raw.trim().toLowerCase()];
   return entry ? entry[locale] || entry.en : raw;
 }
 
@@ -573,9 +614,28 @@ const STRUCTURAL_FILLER = /^(?:day|transfer|transfers|flight|flights|arrival|dep
 
 export function localizeStructuralDayTitle(locale: ProposalLocale, title: string | null | undefined): string {
   const raw = String(title ?? '');
-  // English is byte-identical; empty passes through unchanged.
-  if (locale === 'en' || !raw.trim()) return raw;
+  if (!raw.trim()) return raw;
   const trimmed = raw.trim();
+
+  // MT2 — English stays byte-identical EXCEPT non-English place aliases. A
+  // Spanish/Portuguese-authored title ("Mar Muerto / Betania / Mar Muerto") has
+  // its alias tokens mapped to the English canonical ("Dead Sea / Bethany / Dead
+  // Sea"); structural templating (Arrival/Departure/Visit) and non-alias text are
+  // NOT touched, and the title is rejoined only when an alias actually changed, so
+  // ordinary English titles ("Arrival in Aqaba", "Amman / Jerash / Amman") are
+  // returned verbatim.
+  if (locale === 'en') {
+    const wholeAlias = localizePlaceName('en', trimmed);
+    if (wholeAlias !== trimmed) return wholeAlias;
+    if (trimmed.includes('/')) {
+      const segments = trimmed.split('/').map((s) => s.trim()).filter(Boolean);
+      if (segments.length >= 2 && segments.some((s) => /[\p{L}]/u.test(s))) {
+        const mapped = segments.map((seg) => localizePlaceName('en', seg));
+        if (mapped.some((m, i) => m !== segments[i])) return mapped.join(' / ');
+      }
+    }
+    return raw;
+  }
 
   // Phase P.3X-5E-1.1 — a BARE single controlled place-name title (exact whole-title
   // match) localizes via localizePlaceName, so a "Dead Sea" day heading reads
