@@ -58,8 +58,8 @@ for (const [locale, [deadSea, nebo, bethany]] of Object.entries(CASES)) {
     assert.equal(t[1], deadSea);
     assert.equal(t[2], nebo);
     assert.equal(t[3], bethany);
-    // Kept-unchanged controlled-list name.
-    assert.equal(t[4], 'Petra');
+    // Controlled-list name: AR2 localizes Petra in Arabic; es/pt keep the proper noun.
+    assert.equal(t[4], locale === 'ar' ? 'البتراء' : 'Petra');
     // Free-form titles containing a controlled word are NOT changed.
     assert.equal(t[5], 'Dead Sea leisure day');
     assert.equal(t[6], 'Farewell dinner & shopping downtown');

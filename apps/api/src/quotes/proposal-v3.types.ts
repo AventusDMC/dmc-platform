@@ -100,6 +100,8 @@ export type ProposalV3QuotePlannerDay = {
   dayNumber: number;
   title: string;
   notes?: string | null;
+  /** AR2 — stored language tag of `notes` ('en'|'es'|'pt'|'ar'); null = unknown. */
+  notesLanguage?: string | null;
   sortOrder?: number | null;
   isActive?: boolean | null;
   dayItems?: Array<{

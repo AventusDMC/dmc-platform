@@ -125,12 +125,21 @@ test('P.3X-5D: localizePlaceName maps only the listed names; others pass through
   // English is byte-identical (short-circuit).
   for (const name of ENGLISH) assert.equal(localizePlaceName('en', name), name);
 
-  // Kept-unchanged names pass through in every locale.
-  for (const loc of ['es', 'pt', 'ar'] as const) {
+  // es/pt keep the Jordan destinations as the proper noun (byte-identical
+  // pass-through); QAIA is unlisted and passes through in every locale.
+  for (const loc of ['es', 'pt'] as const) {
     for (const keep of ['Amman', 'Jerash', 'Madaba', 'Petra', 'Wadi Rum', 'Wadi Musa', 'QAIA']) {
       assert.equal(localizePlaceName(loc, keep), keep);
     }
   }
+  // AR2 — the Jordan destinations now carry an Arabic display name; QAIA stays.
+  assert.equal(localizePlaceName('ar', 'Amman'), 'عمّان');
+  assert.equal(localizePlaceName('ar', 'Jerash'), 'جرش');
+  assert.equal(localizePlaceName('ar', 'Madaba'), 'مادبا');
+  assert.equal(localizePlaceName('ar', 'Petra'), 'البتراء');
+  assert.equal(localizePlaceName('ar', 'Wadi Rum'), 'وادي رم');
+  assert.equal(localizePlaceName('ar', 'Wadi Musa'), 'وادي موسى');
+  assert.equal(localizePlaceName('ar', 'QAIA'), 'QAIA');
 
   // Case-insensitive + trimmed exact match; NOT a blanket substring replacement.
   assert.equal(localizePlaceName('es', '  dead sea '), 'Mar Muerto');

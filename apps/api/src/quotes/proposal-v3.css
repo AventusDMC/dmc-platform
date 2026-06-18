@@ -1058,3 +1058,16 @@ html[dir="rtl"] .proposal-table td,
 html[dir="rtl"] .proposal-table th {
   unicode-bidi: isolate;
 }
+/* AR2 — footer hardening. The footer carries purely-Latin runs: the company
+   line and the contact line (website then email, joined by " | "). Under RTL
+   the flex row reverses (visually fine, mirrors the page), but each span's Latin
+   content — especially the website/email pair around the separator — must keep
+   its own left-to-right order so the address isn't reordered. Isolate both spans
+   and force LTR on the contact line. Strictly RTL-scoped; EN/ES/PT (dir="ltr")
+   footers are unchanged. */
+html[dir="rtl"] .proposal-footer > span {
+  unicode-bidi: isolate;
+}
+html[dir="rtl"] .proposal-footer > span:last-child {
+  direction: ltr;
+}
