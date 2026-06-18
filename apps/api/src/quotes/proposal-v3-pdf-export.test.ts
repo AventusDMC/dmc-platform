@@ -2575,11 +2575,13 @@ test('Phase 3D.1Q: rendered HTML embeds the logo as a data URI (renders offline 
   assert.doesNotMatch(html, /src="https:\/\/axisdmc\.com/, 'no broken remote logo src');
 });
 
-test('Phase 3D.1Q: resolveLogoForRender passes data URIs / relative / empty through unchanged (no fetch)', async () => {
+test('Phase 3D.1Q / P4: resolveLogoForRender passes data URIs / empty through unchanged; a relative path falls back to the embedded logo (no fetch)', async () => {
   const service = new ProposalV3Service({} as any) as any;
   assert.equal(await service.resolveLogoForRender('data:image/png;base64,QUJD'), 'data:image/png;base64,QUJD');
   assert.equal(await service.resolveLogoForRender(''), '');
-  assert.equal(await service.resolveLogoForRender('/brand/logo.png'), '/brand/logo.png');
+  // P4 — a relative "/uploads/…"-style path cannot be loaded in the network-less PDF, so it now
+  // falls back to the embedded AXIS data URI instead of an unreachable (broken) relative src.
+  assert.match(await service.resolveLogoForRender('/brand/logo.png'), /^data:image\/png;base64,/);
 });
 
 test('Phase 3D.1Q: all four locales embed the logo as a data URI (language-independent)', async () => {

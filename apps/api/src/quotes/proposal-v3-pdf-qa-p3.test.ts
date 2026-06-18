@@ -72,9 +72,11 @@ test('Issue 1: an unreachable remote logo falls back to the embedded AXIS data U
   assert.match(resolved, /^data:image\/png;base64,/, 'remote-fetch failure → embedded data URI');
 });
 
-test('Issue 1: data URIs, empty and relative inputs pass through unchanged (no fetch)', async () => {
+test('Issue 1: data URIs + empty pass through unchanged; relative paths now fall back to embedded (P4)', async () => {
   const service: any = new ProposalV3Service({} as any);
   assert.equal(await service.resolveLogoForRender('data:image/png;base64,QUJD'), 'data:image/png;base64,QUJD');
   assert.equal(await service.resolveLogoForRender(''), '');
-  assert.equal(await service.resolveLogoForRender('/brand/logo.png'), '/brand/logo.png');
+  // P4 — a relative "/uploads/…"-style path is unreachable in the network-less PDF, so it now
+  // falls back to the embedded AXIS data URI instead of passing through as a broken src.
+  assert.match(await service.resolveLogoForRender('/brand/logo.png'), /^data:image\/png;base64,/);
 });
