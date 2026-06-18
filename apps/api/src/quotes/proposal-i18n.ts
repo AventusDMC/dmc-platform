@@ -145,6 +145,9 @@ export type ProposalLabelKey = keyof typeof LABELS;
 // operator-authored labels pass through unchanged (we cannot translate them).
 const SNAPSHOT_LABEL_MAP: Record<string, ProposalLabelKey> = {
   'fixed price': 'priceFixed',
+  // P2-2 (proposal QA, Issue 2) — the simple/fixed per-person snapshot now emits this clearer
+  // label (see proposal-pricing.ts); localize it to "Precio por persona" etc.
+  'price per person': 'pricePerPerson',
   'pricing status': 'priceStatus',
   'selected group size': 'priceSelectedGroup',
   'group pricing': 'priceGroup',
