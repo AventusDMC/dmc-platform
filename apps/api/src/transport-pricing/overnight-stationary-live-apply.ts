@@ -35,14 +35,14 @@ export type OvernightStationaryApplyLine = {
 };
 
 export type OvernightStationaryLiveApplyResult = {
-  /** PR 12F-1: ALWAYS false (number-changing apply is deferred to 12F-2). */
+  /** PR 12F-2: true only when the shadow is valid, blocker-free, and has recognized charges. */
   apply: boolean;
-  reason: 'flag-disabled' | 'no-shadow' | 'blocked' | 'no-charges' | 'recognized-not-applied-12f1';
-  /** PR 12F-1: ALWAYS 0. */
+  reason: 'flag-disabled' | 'no-shadow' | 'blocked' | 'no-charges' | 'applied';
+  /** PR 12F-2: the pass-through overnight/stationary cost folded into totalCost when apply=true; 0 otherwise. */
   costDelta: number;
-  /** PR 12F-1: ALWAYS 0. */
+  /** PR 12F-2: ALWAYS 0 — supplier-cost / internal only, client sell totals never change. */
   sellDelta: number;
-  /** Diagnostic — the pass-through cost a FUTURE phase WOULD apply (0 when blocked/none). */
+  /** Diagnostic — the pass-through cost the apply WOULD/DOES use (mirrors costDelta when applied). */
   wouldApplyCost: number;
   /** Diagnostic — equals wouldApplyCost (supplier-cost only, no markup in the first rollout). */
   wouldApplySell: number;
@@ -68,9 +68,10 @@ const ZERO = {
 };
 
 /**
- * Pure decision over the validated overnight/stationary shadow. NEVER applies (12F-1) — always
- * returns apply:false + zero deltas. Surfaces the recognized would-be charges and enforces the
- * approved abort-on-blocker rule so 12F-2 can flip a single switch later.
+ * Pure decision over the validated overnight/stationary shadow (PR 12F-2 — number-changing).
+ * Applies a pass-through COST delta (supplier-cost only; sellDelta always 0) when the shadow is
+ * valid, has no blockers, and surfaces recognized 'separate' charges. Any blocker aborts the
+ * whole apply (no partial); included/no-charge/waived rows contribute 0 and remain note lines.
  */
 export function decideOvernightStationaryLiveApply(
   shadow: OvernightStationaryShadowResult | null | undefined,
@@ -100,8 +101,8 @@ export function decideOvernightStationaryLiveApply(
     return { ...ZERO, reason: 'blocked', blockers, warnings, lines };
   }
 
-  // Pass-through (no markup), supplier-cost only: the sum a FUTURE phase would apply. Only
-  // 'separate' charges count — 'included' / 'no-charge' / 'waived' contribute nothing.
+  // Pass-through (no markup), supplier-cost only: only 'separate' charges count — 'included' /
+  // 'no-charge' / 'waived' contribute nothing (they remain note lines in `lines`).
   const wouldApplyCost = round2(
     overnight.filter((c) => c.outcome === 'separate').reduce((s, c) => s + (Number(c.amount) || 0), 0) +
       stationary.filter((c) => c.outcome === 'separate').reduce((s, c) => s + (Number(c.amount) || 0), 0),
@@ -110,12 +111,16 @@ export function decideOvernightStationaryLiveApply(
     return { ...ZERO, reason: 'no-charges', warnings, lines };
   }
 
-  // Recognized future-applicable charges — surfaced but NOT applied in 12F-1.
+  // PR 12F-2 — APPLY: fold the pass-through cost delta. sellDelta stays 0 (internal supplier-cost
+  // only; the client sell total is unchanged). The per-day breakdown is recompute-on-demand here.
   return {
     ...ZERO,
-    reason: 'recognized-not-applied-12f1',
+    apply: true,
+    reason: 'applied',
+    costDelta: wouldApplyCost,
+    sellDelta: 0,
     wouldApplyCost,
-    wouldApplySell: wouldApplyCost, // no markup (supplier-cost only) in the first rollout
+    wouldApplySell: wouldApplyCost,
     warnings,
     lines,
   };

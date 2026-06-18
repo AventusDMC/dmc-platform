@@ -963,9 +963,14 @@ export class PackageEligibilityShadowService {
     if (eligibility.manualRequiredDays > 0) return block('manual-required-days');
     if (!eligibility.eligible) return block(eligibility.reason || 'ineligible');
 
-    // Not priced in PR11A: stationary / standby operational days, and driver-overnight /
-    // stationary-waiting ADD_ON items → block + fall back to existing pricing.
-    if (adjustedDays.some((c) => c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY' || c.operationalType === 'STANDBY_WAITING')) return block('stationary-standby-present');
+    // PR 12F-2 — stationary / standby days were blocked in PR11A (not priced). They are now
+    // handled by the overnight/stationary live apply (a separate cost delta), so this block is
+    // RELAXED *only* behind transport.overnightStationaryLiveApply. Flag OFF → identical PR11A
+    // behavior (still blocks). Stationary days carry weight 0, so they stay out of the package
+    // countedCost; the overnight/stationary delta adds their charge on top (no double-count).
+    if (!isOvernightStationaryLiveApplyEnabled() && adjustedDays.some((c) => c.operationalType === 'STATIONARY_FULL_DAY' || c.operationalType === 'STATIONARY_HALF_DAY' || c.operationalType === 'STANDBY_WAITING')) return block('stationary-standby-present');
+    // addon-overnight-present stays BLOCKED for now (approved decision #10): a quote with an
+    // existing ADD_ON overnight line is kept out of package apply entirely (zero double-charge risk).
     if (dayTransport.some((d) => d.hasAddOn)) return block('addon-overnight-present');
 
     // Counted days (weight > 0) are the ones the package replaces; their persisted cost/sell give

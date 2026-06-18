@@ -35,7 +35,7 @@ import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
 import { PackageEligibilityShadowService } from '../transport-pricing/package-eligibility-shadow.service';
-import { isPackagePricingLiveApplyEnabled } from '../transport-pricing/transport-feature-flags';
+import { isPackagePricingLiveApplyEnabled, isOvernightStationaryLiveApplyEnabled } from '../transport-pricing/transport-feature-flags';
 import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
@@ -9220,6 +9220,7 @@ export class QuotesService {
     // cross-currency/slab/excursionPackageRate-overlap) falls back to existing pricing.
     let packageCostDelta = 0;
     let packageSellDelta = 0;
+    let packageApplied = false;
     if (this.packageEligibilityShadowService && isPackagePricingLiveApplyEnabled()) {
       try {
         const recalcItemIds = new Set<string>((items as any[]).map((it: any) => it.id).filter(Boolean));
@@ -9230,15 +9231,34 @@ export class QuotesService {
         if (applyResult?.apply) {
           packageCostDelta = applyResult.costDelta;
           packageSellDelta = applyResult.sellDelta;
+          packageApplied = true;
         }
       } catch {
         // Fail safe: live apply must never break a recalculation → fall back to existing pricing.
         packageCostDelta = 0;
         packageSellDelta = 0;
+        packageApplied = false;
       }
     }
 
-    const totalCost = Number((itemTotals.totalCost + passTotals.totalCost + packageCostDelta).toFixed(2));
+    // PR 12F-2 — overnight/stationary live apply: a COST-ONLY total-level delta on top of an
+    // APPLIED package. Gated on (a) package live apply applied, (b) transport.overnightStationaryLiveApply
+    // ON, and (c) the overnight/stationary apply result being true. sellDelta is intentionally NOT
+    // folded (supplier-cost / internal only → totalSell is unchanged). Fail-safe like PR11A: any
+    // error → delta 0. NEVER mutates quote items. Flag OFF → delta 0 → totals identical to today.
+    let overnightStationaryCostDelta = 0;
+    if (this.packageEligibilityShadowService && packageApplied && isOvernightStationaryLiveApplyEnabled()) {
+      try {
+        const osResult = await this.packageEligibilityShadowService.computeQuoteOvernightStationaryLiveApply(quoteId);
+        if (osResult?.apply) {
+          overnightStationaryCostDelta = osResult.costDelta;
+        }
+      } catch {
+        overnightStationaryCostDelta = 0;
+      }
+    }
+
+    const totalCost = Number((itemTotals.totalCost + passTotals.totalCost + packageCostDelta + overnightStationaryCostDelta).toFixed(2));
     // For FIXED-mode quotes the client price is the sum of per-item sells
     // (markup-derived). For SLAB quotes the client price is determined by
     // the matched pricing slab × paying-pax — NOT the sum of items. Before
