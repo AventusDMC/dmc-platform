@@ -1848,7 +1848,11 @@ export function buildProposalDocumentTitle(quote: ProposalV3Quote, destinationLi
     return cleanedTitle;
   }
 
-  return destinationLine ? `${destinationLine} Travel Proposal` : 'Private Travel Proposal';
+  // P3 (proposal QA, Issue 2) — localized fallback so non-English covers never read the English
+  // "Travel Proposal". EN output is unchanged ("<dest> Travel Proposal" / "Private Travel Proposal").
+  return destinationLine
+    ? proseTemplate(activeProposalLocale, 'documentTitleProposal', { dest: destinationLine })
+    : prosePhrase(activeProposalLocale, 'documentTitlePrivate');
 }
 
 export function buildAccommodationStory(hotelOptionSets: ProposalV3HotelOptionSet[], destinationLine: string) {
@@ -2100,22 +2104,38 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
     };
   }
 
+  const snapshotHelper = localizePricingLine(activeProposalLocale, pricing.snapshotHelper);
+  // Phase 3D.1O — localize the system-generated pricing/inclusion lines at render time (EN
+  // unchanged); operator/contract text passes through.
+  const localizedBasisLines = pricing.basisLines
+    .filter((line) => !isPlaceholderText(line))
+    .map((line) => localizePricingLine(activeProposalLocale, line));
+  const localizedNoteLines = [
+    ...pricing.noteLines.filter((line) => isSafeInvestmentNote(line) && !isPlaceholderText(line)),
+    ...pdfConsistencyLines.filter((line) => !isPlaceholderText(line)),
+  ].map((line) => localizePricingLine(activeProposalLocale, line));
+
+  // P3 (proposal QA, Issue 7) — the occupancy basis is already stated once in snapshotHelper
+  // ("Según N huéspedes en habitación compartida"). Drop any basis/note line that repeats it (or
+  // each other), so the note never renders twice on the pricing page.
+  const seen = new Set<string>([snapshotHelper.trim()]);
+  const dedupe = (lines: string[]) =>
+    lines.filter((line) => {
+      const key = line.trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
   return {
     title: pricing.title,
     snapshotLabel: localizeSnapshotLabel(activeProposalLocale, pricing.snapshotLabel),
     snapshotValue: pricing.snapshotValue,
-    snapshotHelper: localizePricingLine(activeProposalLocale, pricing.snapshotHelper),
+    snapshotHelper,
     summaryNote: prosePhrase(activeProposalLocale, 'pricingSummaryNote'),
     mode: pricing.mode,
-    // Phase 3D.1O — localize the system-generated pricing/inclusion lines at
-    // render time (EN unchanged); operator/contract text passes through.
-    basisLines: pricing.basisLines
-      .filter((line) => !isPlaceholderText(line))
-      .map((line) => localizePricingLine(activeProposalLocale, line)),
-    noteLines: [
-      ...pricing.noteLines.filter((line) => isSafeInvestmentNote(line) && !isPlaceholderText(line)),
-      ...pdfConsistencyLines.filter((line) => !isPlaceholderText(line)),
-    ].map((line) => localizePricingLine(activeProposalLocale, line)),
+    basisLines: dedupe(localizedBasisLines),
+    noteLines: dedupe(localizedNoteLines),
     slabRows,
     isPending: false,
   };

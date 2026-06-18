@@ -1258,7 +1258,12 @@ test('proposal PDF uses dynamic brand company metadata when available', async ()
   assert.equal(proposal.footerLine, 'Levant Signature DMC | Bespoke travel design');
   assert.equal(proposal.contactLine, 'https://levant.example | sales@levant.example | +962 6 000 0000');
   assert.match(html, /Levant Signature DMC/);
-  assert.match(html, /https:\/\/cdn\.example\/brand-logo\.png/);
+  // P3 (proposal QA, Issue 1) — the mapper view model still carries the remote brand logo URL
+  // (asserted above on proposal.logoUrl), but the network-less PDF renderer cannot fetch it, so
+  // the rendered <img> falls back to the embedded AXIS data URI rather than an unreachable src
+  // (which would show a broken-image icon). The remote URL must NOT be the rendered src.
+  assert.doesNotMatch(html, /src="https:\/\/cdn\.example\/brand-logo\.png"/);
+  assert.match(html, /class="proposal-brand-logo" src="data:image\/png;base64,/);
   assert.match(html, /Levant Signature DMC \| Bespoke travel design/);
   assert.match(html, /sales@levant\.example/);
 });

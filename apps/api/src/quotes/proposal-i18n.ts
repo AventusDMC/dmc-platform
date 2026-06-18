@@ -224,7 +224,24 @@ function pricingPhrase(locale: ProposalLocale, key: keyof typeof PRICING_PHRASES
   return (entry && (entry[locale] || entry.en)) || '';
 }
 
+// P3 (proposal QA, Issue 8) — Spanish/Portuguese use a COMMA decimal separator. Some pricing
+// lines carry a money amount that an upstream layer pre-formatted with a PERIOD decimal (e.g.
+// "2794.85 US$"). Swap the decimal point to a comma, but ONLY for a number that sits adjacent to
+// a currency token AND has no comma in it — so an already-localized amount like "2.794,85 US$"
+// (period = thousands sep) is left untouched. EN/AR are unchanged.
+function localizeMoneyDecimals(locale: ProposalLocale, text: string): string {
+  if (locale !== 'es' && locale !== 'pt') return text;
+  const CUR = 'US\\$|USD|JOD|JD|EUR|€|\\$';
+  return text
+    .replace(new RegExp(`\\b(\\d+)\\.(\\d{2,3})\\b(?=\\s*(?:${CUR}))`, 'g'), (_f, i, d) => `${i},${d}`)
+    .replace(new RegExp(`((?:${CUR})\\s*)(\\d+)\\.(\\d{2,3})\\b`, 'g'), (_f, c, i, d) => `${c}${i},${d}`);
+}
+
 export function localizePricingLine(locale: ProposalLocale, line: string | null | undefined): string {
+  return localizeMoneyDecimals(locale, localizePricingPhrase(locale, line));
+}
+
+function localizePricingPhrase(locale: ProposalLocale, line: string | null | undefined): string {
   const raw = String(line || '');
   if (locale === 'en' || !raw) return raw;
   let m: RegExpMatchArray | null;
@@ -347,6 +364,9 @@ export function joinDestinations(locale: ProposalLocale, items: Array<string | n
 
 // Short reusable phrase fragments composed into the sentences above.
 const PROSE_PHRASES: Record<string, Record<ProposalLocale, string>> = {
+  // P3 (proposal QA, Issue 2) — localized cover title when there is neither a usable quote title
+  // nor a destination line. EN stays byte-identical ("Private Travel Proposal").
+  documentTitlePrivate: { en: 'Private Travel Proposal', pt: 'Proposta de viagem privada', es: 'Propuesta de viaje privada', ar: 'مقترح رحلة خاص' },
   // Cover-intro program parts
   programStays: { en: 'stays', pt: 'estadias', es: 'estancias', ar: 'الإقامات' },
   programTransfers: { en: 'transfers', pt: 'traslados', es: 'traslados', ar: 'التنقلات' },
@@ -723,6 +743,10 @@ const PROSE_TEMPLATES: Record<string, Record<ProposalLocale, string>> = {
   // P2-1 (proposal QA, #4/#5) — grouped accommodation day-range label (e.g. "Day 05–07").
   // Uses an en-dash; the night count is appended separately via unitLabel('night').
   dayRangeLabel: { en: 'Day {start}–{end}', pt: 'Dia {start}–{end}', es: 'Día {start}–{end}', ar: 'اليوم {start}–{end}' },
+  // P3 (proposal QA, Issue 2) — localized cover-title fallback (when the quote has no usable
+  // client-facing title). EN stays byte-identical ("<dest> Travel Proposal"); es/pt/ar lead with
+  // the localized "Travel Proposal" word so no English leaks into a non-English cover.
+  documentTitleProposal: { en: '{dest} Travel Proposal', pt: 'Proposta de viagem: {dest}', es: 'Propuesta de viaje: {dest}', ar: 'مقترح رحلة: {dest}' },
   riRoutePlanned: { en: 'Route planned through {dest}.', pt: 'Percurso planeado por {dest}.', es: 'Ruta planificada por {dest}.', ar: 'مسار مُخطّط عبر {dest}.' },
   riTimeInProgram: { en: 'Time built into the program for {dest}.', pt: 'Tempo reservado no programa para {dest}.', es: 'Tiempo reservado en el programa para {dest}.', ar: 'وقت مخصّص في البرنامج لزيارة {dest}.' },
   svcExperienceDetails: { en: 'Experience details', pt: 'Detalhes da experiência', es: 'Detalles de la experiencia', ar: 'تفاصيل التجربة' },

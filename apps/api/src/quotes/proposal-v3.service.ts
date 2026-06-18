@@ -6,6 +6,7 @@ import { QuotesService } from './quotes.service';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3ViewModel } from './proposal-v3.types';
 import { proposalLabel, prosePhrase, resolveProposalLanguage } from './proposal-i18n';
+import { AXIS_BRAND_LOGO_DATA_URI } from './proposal-brand-logo';
 import { AuthenticatedActor } from '../auth/auth.types';
 
 type TemplateTokens = Record<string, string>;
@@ -41,27 +42,31 @@ export class ProposalV3Service {
     if (!/^https?:\/\//i.test(url)) return url;
     if (LOGO_DATA_URI_CACHE.has(url)) return LOGO_DATA_URI_CACHE.get(url) as string;
     try {
-      if (typeof fetch !== 'function') return url;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      let resolved = url;
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        const contentType = (res.headers.get('content-type') || '').split(';')[0].trim() || 'image/png';
-        if (res.ok && /^image\//i.test(contentType)) {
-          const buffer = Buffer.from(await res.arrayBuffer());
-          if (buffer.byteLength > 0 && buffer.byteLength <= 3_000_000) {
-            resolved = `data:${contentType};base64,${buffer.toString('base64')}`;
+      if (typeof fetch === 'function') {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          const contentType = (res.headers.get('content-type') || '').split(';')[0].trim() || 'image/png';
+          if (res.ok && /^image\//i.test(contentType)) {
+            const buffer = Buffer.from(await res.arrayBuffer());
+            if (buffer.byteLength > 0 && buffer.byteLength <= 3_000_000) {
+              const dataUri = `data:${contentType};base64,${buffer.toString('base64')}`;
+              LOGO_DATA_URI_CACHE.set(url, dataUri); // cache only on success
+              return dataUri;
+            }
           }
+        } finally {
+          clearTimeout(timer);
         }
-      } finally {
-        clearTimeout(timer);
       }
-      LOGO_DATA_URI_CACHE.set(url, resolved);
-      return resolved;
     } catch {
-      return url;
+      // fall through to the embedded fallback
     }
+    // P3 (proposal QA, Issue 1) — a remote company logo we could not inline must NOT be emitted as
+    // an unreachable <img src> in the network-less PDF (it renders as a broken-image icon). Fall
+    // back to the embedded AXIS data URI. NOT cached, so a transient outage never sticks.
+    return AXIS_BRAND_LOGO_DATA_URI;
   }
 
   async getProposalHtml(quoteId: string, actor?: AuthenticatedActor, language?: string) {
