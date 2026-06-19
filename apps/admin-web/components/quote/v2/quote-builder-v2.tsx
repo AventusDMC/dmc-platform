@@ -44,6 +44,8 @@ export interface QuoteBuilderV2Props {
   onSend?: (quote: Quote) => void | Promise<void>
   /** Generate the client-facing PDF. */
   onGeneratePdf?: (quote: Quote) => void | Promise<void>
+  /** Open the client-facing proposal preview (HTML). */
+  onPreview?: (quote: Quote) => void | Promise<void>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -56,6 +58,7 @@ export function QuoteBuilderV2({
   onSave,
   onSend,
   onGeneratePdf,
+  onPreview,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -169,7 +172,7 @@ export function QuoteBuilderV2({
       canSend={insights.canSend}
       sendDisabledReason={sendDisabledReason}
       onSave={handleSave}
-      onPreview={onGeneratePdf ? () => onGeneratePdf(quote) : undefined}
+      onPreview={onPreview ? () => onPreview(quote) : undefined}
       onSend={handleSend}
     >
       <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">
