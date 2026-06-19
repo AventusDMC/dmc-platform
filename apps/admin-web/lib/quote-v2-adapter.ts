@@ -40,6 +40,7 @@ import type {
   ProposalReadinessItem,
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
+import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
 /* Raw ERP payload contract                                            */
@@ -479,26 +480,430 @@ function demoFallbackAllowed(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_QUOTE_DEMO === "1"
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase B — real ERP data source (READ-ONLY)                          */
+/* ------------------------------------------------------------------ */
+//
+// fetchErpQuote loads the existing quote via the SAME server helper the classic
+// quote-detail page uses (adminPageFetchJson → /api/quotes/:id and
+// /api/quotes/:id/itinerary). It maps the response into RawErpQuote; the
+// existing adaptErpQuote then does final type coercion. No writes, no new
+// endpoints, no pricing math — totals are passed through 1:1.
+//
+// These interfaces capture ONLY the fields read from the existing API
+// responses (mirroring app/quotes/[id]/page.tsx `Quote` and
+// QuoteItineraryTab.tsx `QuoteItineraryResponse`). Everything is optional/loose
+// so a partial payload degrades gracefully instead of throwing.
+
+interface ApiRef {
+  id?: string | null
+  name?: string | null
+}
+interface ApiServiceType {
+  id?: string | null
+  name?: string | null
+  code?: string | null
+}
+interface ApiService {
+  id?: string | null
+  name?: string | null
+  category?: string | null
+  serviceType?: ApiServiceType | null
+}
+interface ApiVehicleRate {
+  routeName?: string | null
+  route?: {
+    name?: string | null
+    fromPlace?: { city?: string | null; name?: string | null } | null
+    toPlace?: { city?: string | null; name?: string | null } | null
+  } | null
+  vehicle?: { name?: string | null; vehicleType?: string | null } | null
+  serviceType?: ApiServiceType | null
+  supplier?: ApiRef | null
+}
+interface ApiQuoteItem {
+  id?: string | null
+  hotelId?: string | null
+  activityId?: string | null
+  ticketRateVariantId?: string | null
+  routeId?: string | null
+  touringRouteId?: string | null
+  transportServiceTypeId?: string | null
+  serviceDate?: string | null
+  totalSell?: number | null
+  sellPrice?: number | null
+  pricingDescription?: string | null
+  excursionTemplateComponentOptional?: boolean | null
+  activity?: { name?: string | null } | null
+  service?: ApiService | null
+  appliedVehicleRate?: ApiVehicleRate | null
+  touringRoute?: { name?: string | null; startCity?: string | null } | null
+  touringRoutePricing?: { vehicle?: { name?: string | null } | null; supplier?: ApiRef | null } | null
+  hotel?: { name?: string | null } | null
+}
+interface ApiHotelOption {
+  id?: string | null
+  city?: string | null
+  hotelNameSnapshot?: string | null
+  roomType?: string | null
+  mealPlan?: string | null
+  nights?: number | null
+  isPrimary?: boolean | null
+}
+interface ApiQuoteOption {
+  hotelCategory?: { name?: string | null } | null
+  hotelOptions?: ApiHotelOption[] | null
+}
+interface ApiQuote {
+  id?: string | null
+  quoteNumber?: string | null
+  quoteType?: string | null
+  title?: string | null
+  quoteCurrency?: string | null
+  proposalLanguage?: string | null
+  inclusionsText?: string | null
+  exclusionsText?: string | null
+  status?: string | null
+  travelStartDate?: string | null
+  nightCount?: number | null
+  adults?: number | null
+  children?: number | null
+  roomCount?: number | null
+  totalCost?: number | null
+  totalSell?: number | null
+  pricePerPax?: number | null
+  sentAt?: string | null
+  agent?: { firstName?: string | null; lastName?: string | null } | null
+  company?: { id?: string | null; name?: string | null } | null
+  contact?: { id?: string | null; firstName?: string | null; lastName?: string | null } | null
+  quoteItems?: ApiQuoteItem[] | null
+  quoteOptions?: ApiQuoteOption[] | null
+}
+interface ApiItineraryLinked {
+  serviceDate?: string | null
+  activityName?: string | null
+  service?: ApiService | null
+  hotel?: { name?: string | null; city?: string | null } | null
+  appliedVehicleRate?: { routeName?: string | null; vehicle?: { name?: string | null } | null } | null
+}
+interface ApiItineraryDay {
+  id?: string | null
+  dayNumber?: number | null
+  title?: string | null
+  overnightCity?: string | null
+  dayItems?: Array<{ quoteService?: ApiItineraryLinked | null }> | null
+}
+interface ApiItinerary {
+  days?: ApiItineraryDay[] | null
+}
+
+function splitTextLines(text: string | null | undefined): string[] {
+  if (!text) return []
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\s•\-*]+/, "").trim())
+    .filter((l) => l.length > 0)
+}
+
+function addDaysIso(startIso: string | null | undefined, days: number): string {
+  if (!startIso) return ""
+  const d = new Date(startIso)
+  if (Number.isNaN(d.getTime())) return ""
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function formatDayDate(startIso: string | null | undefined, dayNumber: number): string {
+  if (!startIso) return ""
+  const d = new Date(startIso)
+  if (Number.isNaN(d.getTime())) return ""
+  d.setDate(d.getDate() + Math.max(0, dayNumber - 1))
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+}
+
+// V2's HotelCategory is 3|4|5|"Camp" with no "unknown" member. Use the real
+// option category name when it yields a star digit (or clearly a camp); when it
+// does not, fall back to a conservative 3 rather than inventing a higher rating
+// or implying a desert camp.
+function mapHotelCategory(name: string | null | undefined): number | string {
+  const n = (name ?? "").toLowerCase()
+  if (/camp|tent|bedouin/.test(n)) return "Camp"
+  const digit = n.match(/[345]/)
+  if (digit) return Number(digit[0])
+  return 3
+}
+
+function isTransportItem(it: ApiQuoteItem): boolean {
+  return Boolean(it.appliedVehicleRate || it.routeId || it.touringRouteId || it.transportServiceTypeId)
+}
+
+function isHotelItem(it: ApiQuoteItem): boolean {
+  return it.hotelId != null
+}
+
+/** Map an existing ERP quote (+ optional itinerary) into the loose RawErpQuote. */
+function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: string): RawErpQuote {
+  const id = q.id ?? fallbackId
+  const pax = (q.adults ?? 0) + (q.children ?? 0)
+  const nights = q.nightCount ?? 0
+  const currency = q.quoteCurrency ?? "USD"
+  const totalCost = q.totalCost ?? 0
+  const totalSell = q.totalSell ?? 0
+  const ownerName = q.agent ? [q.agent.firstName, q.agent.lastName].filter(Boolean).join(" ").trim() : ""
+  const contactName = q.contact ? [q.contact.firstName, q.contact.lastName].filter(Boolean).join(" ").trim() : ""
+
+  // ---- itinerary (rich, from the itinerary endpoint) ----
+  const days = itin?.days ?? []
+  const itinerary = days.map((d) => {
+    const items = d.dayItems ?? []
+    const hotelItem = items.find((di) => di.quoteService?.hotel)
+    const transportRate = items.find((di) => di.quoteService?.appliedVehicleRate)?.quoteService?.appliedVehicleRate
+    const visits: string[] = []
+    for (const di of items) {
+      const s = di.quoteService
+      if (!s || s.hotel || s.appliedVehicleRate) continue
+      const label = s.activityName ?? s.service?.name ?? ""
+      if (label) visits.push(label)
+    }
+    return {
+      id: d.id ?? `day-${d.dayNumber ?? 0}`,
+      day: d.dayNumber ?? 0,
+      date: formatDayDate(q.travelStartDate, d.dayNumber ?? 0),
+      overnightCity: d.overnightCity ?? "",
+      title: d.title ?? "",
+      visits,
+      meals: [], // per-meal B/L/D not represented in source; rendered as missing
+      hotelAssigned: hotelItem?.quoteService?.hotel?.name ?? null,
+      transportAssigned: transportRate ? transportRate.routeName ?? transportRate.vehicle?.name ?? null : null,
+      warnings: [],
+    }
+  })
+
+  // ---- hotels (from quoteOptions.hotelOptions, grouped by city) ----
+  const cityMap = new Map<string, { city: string; nights: number; options: unknown[] }>()
+  for (const opt of q.quoteOptions ?? []) {
+    const category = mapHotelCategory(opt.hotelCategory?.name)
+    for (const ho of opt.hotelOptions ?? []) {
+      const city = ho.city ?? "—"
+      if (!cityMap.has(city)) cityMap.set(city, { city, nights: ho.nights ?? 0, options: [] })
+      const block = cityMap.get(city)!
+      block.nights = Math.max(block.nights, ho.nights ?? 0)
+      block.options.push({
+        id: ho.id ?? `${city}-opt-${block.options.length + 1}`,
+        name: ho.hotelNameSnapshot ?? "—",
+        city,
+        category,
+        // The source carries no contract-status enum: a selected hotel maps to
+        // "on-request" (never assume "contracted"); an unselected one to
+        // "no-contract". We only ever claim "contracted" with proof — which we
+        // do not have here.
+        contractStatus: ho.isPrimary ? "on-request" : "no-contract",
+        mealPlan: ho.mealPlan ?? "—",
+        roomingSummary: ho.roomType ?? "—",
+        ratePerNight: 0,
+        nights: ho.nights ?? 0,
+        selected: Boolean(ho.isPrimary),
+        cityTax: 0,
+      })
+    }
+  }
+  const hotelCities = Array.from(cityMap.values())
+
+  // ---- experiences + transport + pricing lines (from quoteItems) ----
+  const experiences: unknown[] = []
+  const transport: unknown[] = []
+  const pricingLines: unknown[] = []
+  for (const it of q.quoteItems ?? []) {
+    const sell = it.totalSell ?? it.sellPrice ?? 0
+    const lineLabel =
+      it.hotel?.name ??
+      it.activity?.name ??
+      it.appliedVehicleRate?.routeName ??
+      it.touringRoute?.name ??
+      it.service?.name ??
+      "Service"
+    pricingLines.push({
+      id: it.id ?? `line-${pricingLines.length + 1}`,
+      label: lineLabel,
+      amount: sell,
+      status: sell > 0 ? "complete" : "partial",
+      note: it.pricingDescription ?? "",
+    })
+
+    if (isHotelItem(it)) continue // hotels are sourced from quoteOptions above
+
+    if (isTransportItem(it)) {
+      const vr = it.appliedVehicleRate
+      const fromCity = vr?.route?.fromPlace?.city
+      const toCity = vr?.route?.toPlace?.city
+      const route =
+        vr?.routeName ??
+        (fromCity && toCity ? `${fromCity} → ${toCity}` : null) ??
+        it.touringRoute?.name ??
+        it.service?.name ??
+        "—"
+      const supplierName = vr?.supplier?.name ?? it.touringRoutePricing?.supplier?.name ?? null
+      transport.push({
+        id: it.id ?? `transport-${transport.length + 1}`,
+        route,
+        type: it.touringRouteId || it.touringRoute ? "Touring" : "Transfer",
+        day: it.serviceDate ?? "—",
+        vehicleClass: vr?.vehicle?.name ?? it.touringRoutePricing?.vehicle?.name ?? "—",
+        supplier: supplierName ?? "Unassigned",
+        // No supplier-contract enum in source: assigned → on-request, else no-contract.
+        supplierContract: supplierName ? "on-request" : "no-contract",
+        priceStatus: sell > 0 ? "complete" : "missing",
+        amount: sell > 0 ? sell : null,
+        warning: sell > 0 ? null : "No rate available",
+      })
+      continue
+    }
+
+    // everything else = experience / entrance / service
+    experiences.push({
+      id: it.id ?? `exp-${experiences.length + 1}`,
+      name: it.activity?.name ?? it.service?.name ?? "—",
+      city: "—",
+      type: it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
+      day: it.serviceDate ?? "—",
+      status: sell > 0 ? "complete" : "partial",
+      amount: sell,
+      included: !it.excursionTemplateComponentOptional,
+    })
+  }
+
+  // ---- destination (best-effort; never invented) ----
+  const destination = days.find((d) => d.overnightCity)?.overnightCity ?? hotelCities[0]?.city ?? "—"
+
+  // ---- pricing (1:1 from the engine; margin/markup are display arithmetic) ----
+  const pricing = {
+    lines: pricingLines,
+    netCost: totalCost,
+    markupPercent: totalCost > 0 ? Math.round(((totalSell - totalCost) / totalCost) * 100) : 0,
+    margin: totalSell - totalCost,
+    sellingPrice: totalSell,
+    pax,
+    perPerson: q.pricePerPax ?? (pax > 0 ? totalSell / pax : 0),
+    currency,
+  }
+
+  // ---- readiness (derived from data presence; no server-side checklist yet) ----
+  const hotelsSelected = hotelCities.some((c) =>
+    (c.options as Array<{ selected?: boolean }>).some((o) => o.selected),
+  )
+  const transportPriced =
+    transport.length > 0 && (transport as Array<{ amount: number | null }>).every((t) => t.amount != null)
+  const readiness = [
+    { id: "r-setup", label: "Client, dates and pax confirmed", done: Boolean(q.company && q.travelStartDate && pax > 0), step: "setup" },
+    { id: "r-itinerary", label: "Itinerary has days", done: itinerary.length > 0, step: "itinerary" },
+    { id: "r-hotels", label: "Hotels selected for each stop", done: hotelsSelected, step: "hotels" },
+    { id: "r-experiences", label: "Experiences confirmed", done: experiences.length > 0, step: "experiences" },
+    { id: "r-transport", label: "Transport priced for every service", done: transportPriced, step: "transport" },
+    { id: "r-pricing", label: "Pricing available", done: totalSell > 0, step: "pricing" },
+  ]
+
+  // ---- workflow step statuses (drive the stepper badges) ----
+  const stepStatus = (done: boolean, partial = false) => (done ? "complete" : partial ? "partial" : "missing")
+  const steps = [
+    { id: "setup", status: stepStatus(Boolean(q.company && q.travelStartDate)) },
+    { id: "itinerary", status: stepStatus(itinerary.length > 0) },
+    { id: "hotels", status: stepStatus(hotelsSelected, hotelCities.length > 0) },
+    { id: "experiences", status: stepStatus(experiences.length > 0) },
+    { id: "transport", status: stepStatus(transportPriced, transport.length > 0) },
+    { id: "pricing", status: stepStatus(totalSell > 0) },
+    { id: "proposal", status: stepStatus(splitTextLines(q.inclusionsText).length > 0) },
+  ]
+
+  // ---- setup fields (read-only display) ----
+  const setupFields = [
+    { group: "client", label: "Agency / Client", value: q.company?.name ?? "—" },
+    { group: "client", label: "Booking contact", value: contactName || "—" },
+    { group: "trip", label: "Destination", value: destination },
+    { group: "trip", label: "Travel start", value: q.travelStartDate ?? "—" },
+    { group: "trip", label: "Duration", value: nights > 0 ? `${nights} night${nights === 1 ? "" : "s"}` : "—" },
+    { group: "config", label: "Pax", value: pax > 0 ? `${pax}` : "—" },
+    { group: "config", label: "Rooms", value: q.roomCount ? `${q.roomCount}` : "—" },
+    { group: "config", label: "Currency", value: currency },
+    { group: "config", label: "Operations owner", value: ownerName || "—" },
+  ]
+
+  return {
+    id,
+    title: q.title ?? "Untitled quote",
+    reference: q.quoteNumber ?? id,
+    quoteType: q.quoteType ?? "FIT",
+    destination,
+    marketLanguage: q.proposalLanguage ?? "—",
+    startDate: q.travelStartDate ?? "",
+    endDate: addDaysIso(q.travelStartDate, nights),
+    nights,
+    pax,
+    tourLeaders: 0,
+    rooming: q.roomCount ? `${q.roomCount} room${q.roomCount === 1 ? "" : "s"}` : "—",
+    currency,
+    status: q.status ?? "draft",
+    owner: ownerName || "—",
+    lastSaved: q.sentAt ?? "—",
+    client: {
+      id: q.contact?.id ?? "client",
+      contactName: contactName || "—",
+      agency: {
+        id: q.company?.id ?? "agency",
+        name: q.company?.name ?? "—",
+        country: "—",
+        marketLanguage: "—",
+      },
+    },
+    steps,
+    setupFields,
+    itinerary,
+    hotelCities,
+    experiences,
+    transport,
+    pricing,
+    proposal: {
+      included: splitTextLines(q.inclusionsText),
+      excluded: splitTextLines(q.exclusionsText),
+    },
+    readiness,
+  }
+}
+
 /**
- * PHASE B INTEGRATION POINT — replace the body of this function.
- *
- * Fetch the raw ERP quote by id. This is the ONLY place that should know how
- * data is retrieved (REST/GraphQL/Prisma/server action). Return the raw
- * payload, or `null` when not found. Do NOT map here — return raw and let
- * `adaptErpQuote` normalise it.
- *
- * Example (Phase B):
- *   const res = await fetch(`${process.env.ERP_API_URL}/quotes/${id}`, {
- *     headers: { Authorization: `Bearer ${process.env.ERP_API_TOKEN}` },
- *     cache: "no-store",
- *   })
- *   if (!res.ok) return null
- *   return (await res.json()) as RawErpQuote
+ * Load the raw ERP quote by id (READ-ONLY) from the existing API, via the same
+ * server helper / endpoints the classic quote-detail page uses. Returns `null`
+ * when the quote is not found (→ empty state in prod, demo fallback in dev).
+ * Auth redirects from adminPageFetchJson propagate (re-thrown by loadQuoteV2).
  */
-async function fetchErpQuote(_id: string): Promise<RawErpQuote | null> {
-  // No ERP endpoint is wired yet (Phase A). Returning null triggers the
-  // documented dev fallback / empty-state path below.
-  return null
+// The hydrated /quotes/:id endpoint loads many relations and is heavy (commonly
+// ~8s against a remote DB), so the 8s default timeout is too tight for this
+// single critical-path read. Give it (and the itinerary) more headroom.
+const BUILDER_V2_QUOTE_TIMEOUT_MS = 20_000
+const BUILDER_V2_ITINERARY_TIMEOUT_MS = 15_000
+
+async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
+  const main = await adminPageFetchJson<ApiQuote | null>(`/api/quotes/${id}`, "Builder V2 quote", {
+    cache: "no-store",
+    allow404: true,
+    timeoutMs: BUILDER_V2_QUOTE_TIMEOUT_MS,
+  })
+
+  if (!main) return null
+
+  // Rich day-by-day itinerary is best-effort: its absence must not break render.
+  let itinerary: ApiItinerary | null = null
+  try {
+    itinerary = await adminPageFetchJson<ApiItinerary | null>(`/api/quotes/${id}/itinerary`, "Builder V2 itinerary", {
+      cache: "no-store",
+      allow404: true,
+      timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
+    })
+  } catch (err) {
+    if (isNextRedirectError(err)) throw err
+    itinerary = null
+  }
+
+  return mapErpQuoteToRaw(main, itinerary, id)
 }
 
 /**
@@ -526,6 +931,9 @@ export async function loadQuoteV2(id: string): Promise<LoadQuoteResult> {
     // Production with no record found → empty state, never demo data.
     return { quote: null, usedFallback: false, error: null }
   } catch (err) {
+    // Auth/redirect signals (e.g. missing/expired session → /login) must NOT be
+    // swallowed into an error state — let Next.js handle the redirect.
+    if (isNextRedirectError(err)) throw err
     const message = err instanceof Error ? err.message : "Failed to load quote."
     return { quote: null, usedFallback: false, error: message }
   }
