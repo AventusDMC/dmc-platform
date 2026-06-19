@@ -43,14 +43,21 @@ export function QuoteHeaderSummary({
   meta: QuoteMeta
   client: Client
 }) {
-  const dateRange = `${new Date(meta.startDate).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-  })} – ${new Date(meta.endDate).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}`
+  // Format in UTC and guard missing/invalid dates so the header never shows
+  // "Invalid Date" (e.g. when a quote has no travel start date).
+  const formatDate = (value: string, withYear: boolean) => {
+    const d = new Date(value)
+    if (!value || Number.isNaN(d.getTime())) return null
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      ...(withYear ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    })
+  }
+  const startLabel = formatDate(meta.startDate, false)
+  const endLabel = formatDate(meta.endDate, true)
+  const dateRange = startLabel && endLabel ? `${startLabel} – ${endLabel}` : "—"
 
   return (
     <Card className="p-5">

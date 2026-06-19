@@ -28,7 +28,7 @@ export type ContractStatus = "contracted" | "on-request" | "no-contract"
 
 export type Meal = "B" | "L" | "D"
 
-export type HotelCategory = 5 | 4 | 3 | "Camp"
+export type HotelCategory = 5 | 4 | 3 | "Camp" | "Unknown"
 
 export type TransportType = "Transfer" | "Touring" | "Package"
 

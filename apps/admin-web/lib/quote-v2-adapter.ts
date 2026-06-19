@@ -197,10 +197,14 @@ function normContract(v: unknown): ContractStatus {
 }
 
 function normCategory(v: unknown): HotelCategory {
-  if (typeof v === "string" && v.trim().toLowerCase().startsWith("camp")) return "Camp"
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase()
+    if (s.startsWith("camp")) return "Camp"
+    if (s === "unknown") return "Unknown"
+  }
   const n = asNumber(v, 0)
   if (n === 5 || n === 4 || n === 3) return n as HotelCategory
-  return "Camp"
+  return "Unknown"
 }
 
 function normMeals(v: unknown): Meal[] {
@@ -605,32 +609,73 @@ function splitTextLines(text: string | null | undefined): string[] {
     .filter((l) => l.length > 0)
 }
 
+// Midnight-UTC epoch ms for a date, or null when absent/invalid. Working in UTC
+// keeps dates stored as end-of-day UTC (e.g. ...T23:59:59.999Z) from rolling to
+// the next day under local-time formatting.
+function utcDateOnly(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
+
 function addDaysIso(startIso: string | null | undefined, days: number): string {
-  if (!startIso) return ""
-  const d = new Date(startIso)
-  if (Number.isNaN(d.getTime())) return ""
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  const base = utcDateOnly(startIso)
+  if (base === null) return ""
+  return new Date(base + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+// Clean UTC date like "4 Jun 2026", or "" when absent/invalid.
+function formatUtcDate(iso: string | null | undefined): string {
+  const base = utcDateOnly(iso)
+  if (base === null) return ""
+  return new Date(base).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
 }
 
 function formatDayDate(startIso: string | null | undefined, dayNumber: number): string {
-  if (!startIso) return ""
-  const d = new Date(startIso)
-  if (Number.isNaN(d.getTime())) return ""
-  d.setDate(d.getDate() + Math.max(0, dayNumber - 1))
-  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+  const base = utcDateOnly(startIso)
+  if (base === null) return ""
+  const d = new Date(base + Math.max(0, dayNumber - 1) * 86_400_000)
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
 }
 
-// V2's HotelCategory is 3|4|5|"Camp" with no "unknown" member. Use the real
-// option category name when it yields a star digit (or clearly a camp); when it
-// does not, fall back to a conservative 3 rather than inventing a higher rating
-// or implying a desert camp.
-function mapHotelCategory(name: string | null | undefined): number | string {
+// Display value for a service's date: prefer "Day N" relative to the trip start
+// (computed in UTC to avoid off-by-one), else a clean UTC date, else "—".
+function mapServiceDay(serviceDate: string | null | undefined, startIso: string | null | undefined): string {
+  const sv = utcDateOnly(serviceDate)
+  if (sv === null) return "—"
+  const st = utcDateOnly(startIso)
+  if (st !== null) {
+    const n = Math.round((sv - st) / 86_400_000) + 1
+    if (n >= 1 && n <= 366) return `Day ${n}`
+  }
+  return formatUtcDate(serviceDate)
+}
+
+// Clean display date for the "last saved" timestamp, or "—" when absent.
+function formatSavedDate(iso: string | null | undefined): string {
+  return formatUtcDate(iso) || "—"
+}
+
+// V2's HotelCategory is 3|4|5|"Camp"|"Unknown". Use the real option category name
+// when it yields a star digit (or clearly a camp); when it does not, return
+// "Unknown" so the UI shows a neutral label instead of implying a star rating.
+function mapHotelCategory(name: string | null | undefined): HotelCategory {
   const n = (name ?? "").toLowerCase()
   if (/camp|tent|bedouin/.test(n)) return "Camp"
   const digit = n.match(/[345]/)
-  if (digit) return Number(digit[0])
-  return 3
+  if (digit) return Number(digit[0]) as HotelCategory
+  return "Unknown"
 }
 
 function isTransportItem(it: ApiQuoteItem): boolean {
@@ -747,7 +792,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
         id: it.id ?? `transport-${transport.length + 1}`,
         route,
         type: it.touringRouteId || it.touringRoute ? "Touring" : "Transfer",
-        day: it.serviceDate ?? "—",
+        day: mapServiceDay(it.serviceDate, q.travelStartDate),
         vehicleClass: vr?.vehicle?.name ?? it.touringRoutePricing?.vehicle?.name ?? "—",
         supplier: supplierName ?? "Unassigned",
         // No supplier-contract enum in source: assigned → on-request, else no-contract.
@@ -765,7 +810,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       name: it.activity?.name ?? it.service?.name ?? "—",
       city: "—",
       type: it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
-      day: it.serviceDate ?? "—",
+      day: mapServiceDay(it.serviceDate, q.travelStartDate),
       status: sell > 0 ? "complete" : "partial",
       amount: sell,
       included: !it.excursionTemplateComponentOptional,
@@ -805,7 +850,9 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
   // ---- workflow step statuses (drive the stepper badges) ----
   const stepStatus = (done: boolean, partial = false) => (done ? "complete" : partial ? "partial" : "missing")
   const steps = [
-    { id: "setup", status: stepStatus(Boolean(q.company && q.travelStartDate)) },
+    // Setup is complete with client + dates; partial when basic client data
+    // exists but the travel start date is still missing (not "missing").
+    { id: "setup", status: stepStatus(Boolean(q.company && q.travelStartDate), Boolean(q.company)) },
     { id: "itinerary", status: stepStatus(itinerary.length > 0) },
     { id: "hotels", status: stepStatus(hotelsSelected, hotelCities.length > 0) },
     { id: "experiences", status: stepStatus(experiences.length > 0) },
@@ -843,7 +890,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     currency,
     status: q.status ?? "draft",
     owner: ownerName || "—",
-    lastSaved: q.sentAt ?? "—",
+    lastSaved: formatSavedDate(q.sentAt),
     client: {
       id: q.contact?.id ?? "client",
       contactName: contactName || "—",
