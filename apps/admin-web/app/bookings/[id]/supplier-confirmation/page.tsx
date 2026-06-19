@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { BookingDocumentActions } from '../BookingDocumentActions';
 import { SupplierConfirmationPreview } from '../SupplierConfirmationPreview';
+import { OvernightStationaryInternalPanel } from '../OvernightStationaryInternalPanel';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../../lib/admin-server';
 
@@ -12,6 +13,10 @@ type Booking = {
   bookingRef: string;
   adults: number;
   children: number;
+  // 12F-3B1 — source quote of the booking; feeds the internal-only overnight/
+  // stationary breakdown panel (read-only, reuses the 12F-3A shadow endpoint).
+  quoteId?: string | null;
+  sourceQuoteId?: string | null;
   snapshotJson?: {
     itineraries?: Array<{
       id: string;
@@ -216,6 +221,14 @@ export default async function SupplierConfirmationPage({ params }: SupplierConfi
         {/* Phase O.2B-1 — read-only confirmation preview (recipient/subject/body per
             supplier). No send action here. */}
         <SupplierConfirmationPreview apiBaseUrl={ACTION_API_BASE_URL} bookingId={booking.id} />
+
+        {/* Phase 12F-3B1 — INTERNAL-ONLY overnight/stationary cost breakdown (read-only,
+            reuses the 12F-3A package-pricing shadow via the booking's source quoteId).
+            Rendered as a separate page section — it is NEVER part of the supplier email
+            body and does not affect the send action above. */}
+        {booking.quoteId || booking.sourceQuoteId ? (
+          <OvernightStationaryInternalPanel quoteId={(booking.quoteId || booking.sourceQuoteId) as string} />
+        ) : null}
 
         {supplierGroups.length === 0 ? (
           <section className="detail-card">
