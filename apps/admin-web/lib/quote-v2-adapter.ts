@@ -40,6 +40,7 @@ import type {
   ProposalReadinessItem,
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
+import { formatQuoteDate } from "./quote-helpers"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -609,62 +610,26 @@ function splitTextLines(text: string | null | undefined): string[] {
     .filter((l) => l.length > 0)
 }
 
-// Midnight-UTC epoch ms for a date, or null when absent/invalid. Working in UTC
-// keeps dates stored as end-of-day UTC (e.g. ...T23:59:59.999Z) from rolling to
-// the next day under local-time formatting.
-function utcDateOnly(iso: string | null | undefined): number | null {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+// Add `days` calendar days to a date and return a full ISO string ("" when
+// missing/invalid). Local-time arithmetic keeps the result consistent with how
+// the classic quote page interprets dates (see formatQuoteDate). The resulting
+// ISO is rendered via formatQuoteDate, never shown raw.
+function addDays(startIso: string | null | undefined, days: number): string {
+  if (!startIso) return ""
+  const d = new Date(startIso)
+  if (Number.isNaN(d.getTime())) return ""
+  d.setDate(d.getDate() + days)
+  return d.toISOString()
 }
 
-function addDaysIso(startIso: string | null | undefined, days: number): string {
-  const base = utcDateOnly(startIso)
-  if (base === null) return ""
-  return new Date(base + days * 86_400_000).toISOString().slice(0, 10)
-}
-
-// Clean UTC date like "4 Jun 2026", or "" when absent/invalid.
-function formatUtcDate(iso: string | null | undefined): string {
-  const base = utcDateOnly(iso)
-  if (base === null) return ""
-  return new Date(base).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
-
+// Short weekday date for an itinerary day chip (e.g. "Fri 31 Jul"), derived from
+// the trip start + day offset, in the runtime timezone (matches the old page).
 function formatDayDate(startIso: string | null | undefined, dayNumber: number): string {
-  const base = utcDateOnly(startIso)
-  if (base === null) return ""
-  const d = new Date(base + Math.max(0, dayNumber - 1) * 86_400_000)
-  return d.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  })
-}
-
-// Display value for a service's date: prefer "Day N" relative to the trip start
-// (computed in UTC to avoid off-by-one), else a clean UTC date, else "—".
-function mapServiceDay(serviceDate: string | null | undefined, startIso: string | null | undefined): string {
-  const sv = utcDateOnly(serviceDate)
-  if (sv === null) return "—"
-  const st = utcDateOnly(startIso)
-  if (st !== null) {
-    const n = Math.round((sv - st) / 86_400_000) + 1
-    if (n >= 1 && n <= 366) return `Day ${n}`
-  }
-  return formatUtcDate(serviceDate)
-}
-
-// Clean display date for the "last saved" timestamp, or "—" when absent.
-function formatSavedDate(iso: string | null | undefined): string {
-  return formatUtcDate(iso) || "—"
+  if (!startIso) return ""
+  const d = new Date(startIso)
+  if (Number.isNaN(d.getTime())) return ""
+  d.setDate(d.getDate() + Math.max(0, dayNumber - 1))
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
 }
 
 // V2's HotelCategory is 3|4|5|"Camp"|"Unknown". Use the real option category name
@@ -792,7 +757,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
         id: it.id ?? `transport-${transport.length + 1}`,
         route,
         type: it.touringRouteId || it.touringRoute ? "Touring" : "Transfer",
-        day: mapServiceDay(it.serviceDate, q.travelStartDate),
+        day: formatQuoteDate(it.serviceDate),
         vehicleClass: vr?.vehicle?.name ?? it.touringRoutePricing?.vehicle?.name ?? "—",
         supplier: supplierName ?? "Unassigned",
         // No supplier-contract enum in source: assigned → on-request, else no-contract.
@@ -810,7 +775,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       name: it.activity?.name ?? it.service?.name ?? "—",
       city: "—",
       type: it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
-      day: mapServiceDay(it.serviceDate, q.travelStartDate),
+      day: formatQuoteDate(it.serviceDate),
       status: sell > 0 ? "complete" : "partial",
       amount: sell,
       included: !it.excursionTemplateComponentOptional,
@@ -882,7 +847,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     destination,
     marketLanguage: q.proposalLanguage ?? "—",
     startDate: q.travelStartDate ?? "",
-    endDate: addDaysIso(q.travelStartDate, nights),
+    endDate: addDays(q.travelStartDate, nights),
     nights,
     pax,
     tourLeaders: 0,
@@ -890,7 +855,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     currency,
     status: q.status ?? "draft",
     owner: ownerName || "—",
-    lastSaved: formatSavedDate(q.sentAt),
+    lastSaved: formatQuoteDate(q.sentAt),
     client: {
       id: q.contact?.id ?? "client",
       contactName: contactName || "—",

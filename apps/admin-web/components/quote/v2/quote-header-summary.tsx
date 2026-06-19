@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { Card } from "../../ui/card"
 import { cn } from "../../../lib/utils"
+import { formatQuoteDate } from "../../../lib/quote-helpers"
 import type { QuoteMeta, Client } from "../../../lib/quote-types"
 
 function Field({
@@ -43,21 +44,12 @@ export function QuoteHeaderSummary({
   meta: QuoteMeta
   client: Client
 }) {
-  // Format in UTC and guard missing/invalid dates so the header never shows
-  // "Invalid Date" (e.g. when a quote has no travel start date).
-  const formatDate = (value: string, withYear: boolean) => {
-    const d = new Date(value)
-    if (!value || Number.isNaN(d.getTime())) return null
-    return d.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      ...(withYear ? { year: "numeric" } : {}),
-      timeZone: "UTC",
-    })
-  }
-  const startLabel = formatDate(meta.startDate, false)
-  const endLabel = formatDate(meta.endDate, true)
-  const dateRange = startLabel && endLabel ? `${startLabel} – ${endLabel}` : "—"
+  // Use the same formatter as the classic /quotes/[id] page (runtime timezone,
+  // not forced UTC) so travel dates match the old page, and guard missing dates
+  // so the header never shows "Invalid Date".
+  const startLabel = formatQuoteDate(meta.startDate)
+  const endLabel = formatQuoteDate(meta.endDate)
+  const dateRange = startLabel === "—" ? "—" : `${startLabel} – ${endLabel}`
 
   return (
     <Card className="p-5">

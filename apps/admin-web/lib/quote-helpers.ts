@@ -20,6 +20,19 @@ export function formatCurrency(amount: number, currency = "USD") {
   }).format(amount)
 }
 
+/**
+ * Format a date for display, matching the classic /quotes/[id] page exactly
+ * (Intl 'en-US', medium date style, runtime timezone — NOT forced UTC) so the
+ * builder shows the same business travel/service dates as the old page in any
+ * environment. Returns "—" for missing/invalid input (never raw ISO).
+ */
+export function formatQuoteDate(value: string | null | undefined): string {
+  if (!value) return "—"
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(d)
+}
+
 /** Readiness percentage (0–100) from the proposal checklist. */
 export function getReadiness(quote: Quote): number {
   if (quote.readiness.length === 0) return 0
