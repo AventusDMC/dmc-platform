@@ -40,6 +40,7 @@ import type {
   ProposalReadinessItem,
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
+import { formatQuoteDate } from "./quote-helpers"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -197,10 +198,14 @@ function normContract(v: unknown): ContractStatus {
 }
 
 function normCategory(v: unknown): HotelCategory {
-  if (typeof v === "string" && v.trim().toLowerCase().startsWith("camp")) return "Camp"
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase()
+    if (s.startsWith("camp")) return "Camp"
+    if (s === "unknown") return "Unknown"
+  }
   const n = asNumber(v, 0)
   if (n === 5 || n === 4 || n === 3) return n as HotelCategory
-  return "Camp"
+  return "Unknown"
 }
 
 function normMeals(v: unknown): Meal[] {
@@ -605,14 +610,20 @@ function splitTextLines(text: string | null | undefined): string[] {
     .filter((l) => l.length > 0)
 }
 
-function addDaysIso(startIso: string | null | undefined, days: number): string {
+// Add `days` calendar days to a date and return a full ISO string ("" when
+// missing/invalid). Local-time arithmetic keeps the result consistent with how
+// the classic quote page interprets dates (see formatQuoteDate). The resulting
+// ISO is rendered via formatQuoteDate, never shown raw.
+function addDays(startIso: string | null | undefined, days: number): string {
   if (!startIso) return ""
   const d = new Date(startIso)
   if (Number.isNaN(d.getTime())) return ""
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return d.toISOString()
 }
 
+// Short weekday date for an itinerary day chip (e.g. "Fri 31 Jul"), derived from
+// the trip start + day offset, in the runtime timezone (matches the old page).
 function formatDayDate(startIso: string | null | undefined, dayNumber: number): string {
   if (!startIso) return ""
   const d = new Date(startIso)
@@ -621,16 +632,15 @@ function formatDayDate(startIso: string | null | undefined, dayNumber: number): 
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
 }
 
-// V2's HotelCategory is 3|4|5|"Camp" with no "unknown" member. Use the real
-// option category name when it yields a star digit (or clearly a camp); when it
-// does not, fall back to a conservative 3 rather than inventing a higher rating
-// or implying a desert camp.
-function mapHotelCategory(name: string | null | undefined): number | string {
+// V2's HotelCategory is 3|4|5|"Camp"|"Unknown". Use the real option category name
+// when it yields a star digit (or clearly a camp); when it does not, return
+// "Unknown" so the UI shows a neutral label instead of implying a star rating.
+function mapHotelCategory(name: string | null | undefined): HotelCategory {
   const n = (name ?? "").toLowerCase()
   if (/camp|tent|bedouin/.test(n)) return "Camp"
   const digit = n.match(/[345]/)
-  if (digit) return Number(digit[0])
-  return 3
+  if (digit) return Number(digit[0]) as HotelCategory
+  return "Unknown"
 }
 
 function isTransportItem(it: ApiQuoteItem): boolean {
@@ -747,7 +757,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
         id: it.id ?? `transport-${transport.length + 1}`,
         route,
         type: it.touringRouteId || it.touringRoute ? "Touring" : "Transfer",
-        day: it.serviceDate ?? "—",
+        day: formatQuoteDate(it.serviceDate),
         vehicleClass: vr?.vehicle?.name ?? it.touringRoutePricing?.vehicle?.name ?? "—",
         supplier: supplierName ?? "Unassigned",
         // No supplier-contract enum in source: assigned → on-request, else no-contract.
@@ -765,7 +775,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       name: it.activity?.name ?? it.service?.name ?? "—",
       city: "—",
       type: it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
-      day: it.serviceDate ?? "—",
+      day: formatQuoteDate(it.serviceDate),
       status: sell > 0 ? "complete" : "partial",
       amount: sell,
       included: !it.excursionTemplateComponentOptional,
@@ -805,7 +815,9 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
   // ---- workflow step statuses (drive the stepper badges) ----
   const stepStatus = (done: boolean, partial = false) => (done ? "complete" : partial ? "partial" : "missing")
   const steps = [
-    { id: "setup", status: stepStatus(Boolean(q.company && q.travelStartDate)) },
+    // Setup is complete with client + dates; partial when basic client data
+    // exists but the travel start date is still missing (not "missing").
+    { id: "setup", status: stepStatus(Boolean(q.company && q.travelStartDate), Boolean(q.company)) },
     { id: "itinerary", status: stepStatus(itinerary.length > 0) },
     { id: "hotels", status: stepStatus(hotelsSelected, hotelCities.length > 0) },
     { id: "experiences", status: stepStatus(experiences.length > 0) },
@@ -835,7 +847,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     destination,
     marketLanguage: q.proposalLanguage ?? "—",
     startDate: q.travelStartDate ?? "",
-    endDate: addDaysIso(q.travelStartDate, nights),
+    endDate: addDays(q.travelStartDate, nights),
     nights,
     pax,
     tourLeaders: 0,
@@ -843,7 +855,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     currency,
     status: q.status ?? "draft",
     owner: ownerName || "—",
-    lastSaved: q.sentAt ?? "—",
+    lastSaved: formatQuoteDate(q.sentAt),
     client: {
       id: q.contact?.id ?? "client",
       contactName: contactName || "—",

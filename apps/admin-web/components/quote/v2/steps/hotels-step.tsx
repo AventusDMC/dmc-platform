@@ -20,6 +20,10 @@ function CategoryMark({ category }: { category: HotelSelection["category"] }) {
       </span>
     )
   }
+  // Unknown rating: show a neutral label rather than imply a star count.
+  if (category === "Unknown") {
+    return <span className="text-xs text-muted-foreground">Category n/a</span>
+  }
   return (
     <span className="inline-flex items-center gap-0.5" aria-label={`${category} star`}>
       {Array.from({ length: category }).map((_, i) => (
@@ -58,14 +62,16 @@ function HotelOption({
           <span>·</span>
           <span>{hotel.roomingSummary}</span>
           <span>·</span>
-          <span>City tax {formatCurrency(hotel.cityTax, currency)}/pax/night</span>
+          <span>
+            City tax {hotel.cityTax > 0 ? `${formatCurrency(hotel.cityTax, currency)}/pax/night` : "—"}
+          </span>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-4 sm:justify-end">
         <div className="text-right">
           <div className="text-sm font-semibold text-foreground">
-            {formatCurrency(hotel.ratePerNight, currency)}
+            {hotel.ratePerNight > 0 ? formatCurrency(hotel.ratePerNight, currency) : "—"}
           </div>
           <div className="text-[11px] text-muted-foreground">per room / night</div>
         </div>
