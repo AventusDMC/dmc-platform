@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
 import { Button } from "../../../ui/button"
@@ -7,7 +9,19 @@ import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { cn } from "../../../../lib/utils"
 import type { ItineraryDay, Meal } from "../../../../lib/quote-types"
-import { MapPin, Hotel, Bus, AlertTriangle, Plus, GripVertical, CalendarRange } from "lucide-react"
+import {
+  MapPin,
+  Hotel,
+  Bus,
+  AlertTriangle,
+  Plus,
+  GripVertical,
+  CalendarRange,
+  Pencil,
+  Save,
+  X,
+  Loader2,
+} from "lucide-react"
 
 const MEAL_LABEL: Record<Meal, string> = { B: "Breakfast", L: "Lunch", D: "Dinner" }
 
@@ -35,7 +49,53 @@ function MealChips({ meals }: { meals: Meal[] }) {
 }
 
 function DayCard({ day }: { day: ItineraryDay }) {
+  const router = useRouter()
   const hasWarnings = day.warnings.length > 0
+
+  const [editing, setEditing] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(day.title)
+  const [notesDraft, setNotesDraft] = useState(day.notes ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const startEdit = () => {
+    // Re-seed drafts from the current (possibly refreshed) day values.
+    setTitleDraft(day.title)
+    setNotesDraft(day.notes ?? "")
+    setError(null)
+    setEditing(true)
+  }
+
+  const cancelEdit = () => {
+    setEditing(false)
+    setError(null)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      // Existing read-only-safe save path: PATCH /api/itinerary/day/:dayId
+      // (proxy → backend updateDay). Descriptive text only — no pricing/services.
+      const res = await fetch(`/api/itinerary/day/${day.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleDraft.trim(), notes: notesDraft }),
+      })
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(body?.slice(0, 200) || `Save failed (${res.status})`)
+      }
+      setEditing(false)
+      // Refresh server data so read mode shows the persisted title/notes.
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save itinerary text.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex">
@@ -56,15 +116,90 @@ function DayCard({ day }: { day: ItineraryDay }) {
                 <span>·</span>
                 <span>{day.date}</span>
               </div>
-              <h3 className="mt-1 text-pretty text-sm font-semibold text-foreground">
-                {day.title}
-              </h3>
+              {!editing && (
+                <h3 className="mt-1 text-pretty text-sm font-semibold text-foreground">
+                  {day.title}
+                </h3>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <MealChips meals={day.meals} />
-              <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground/40" />
+              {!editing ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2"
+                  onClick={startEdit}
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  Edit
+                </Button>
+              ) : (
+                <GripVertical className="h-4 w-4 text-muted-foreground/40" aria-hidden="true" />
+              )}
             </div>
           </div>
+
+          {editing ? (
+            // ---- Edit mode: descriptive text only (title + narrative) ----
+            <div className="mt-3 space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">Day title</span>
+                <input
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  disabled={saving}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Day title"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Descriptive narrative
+                </span>
+                <textarea
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  disabled={saving}
+                  rows={5}
+                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Client-facing description of the day…"
+                />
+              </label>
+              {error ? (
+                <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {error}
+                </p>
+              ) : null}
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="gap-1.5" onClick={save} disabled={saving || titleDraft.trim() === ""}>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Save className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {saving ? "Saving…" : "Save"}
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={cancelEdit} disabled={saving}>
+                  <X className="h-4 w-4" aria-hidden="true" />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            // ---- Read mode: narrative (preserve line breaks) or empty state ----
+            <div className="mt-2">
+              {day.notes && day.notes.trim() ? (
+                <p className="whitespace-pre-line text-pretty text-sm text-foreground/90">
+                  {day.notes}
+                </p>
+              ) : (
+                <p className="text-sm italic text-muted-foreground">No descriptive text yet.</p>
+              )}
+            </div>
+          )}
 
           <ul className="mt-3 flex flex-wrap gap-1.5">
             {day.visits.map((v) => (
@@ -127,7 +262,7 @@ export function ItineraryStep({ days, onAddDay }: ItineraryStepProps) {
     <div>
       <StepHeader
         title="Itinerary"
-        description="Build the day-by-day program. Assign hotels and transport per day; flagged days still need attention."
+        description="Edit the client-facing day title and descriptive narrative. Hotels, transport and services are managed elsewhere."
         action={
           <Button size="sm" variant="outline" onClick={onAddDay}>
             <Plus className="h-4 w-4" />
