@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
 import type { Quote } from "../../../../lib/quote-types"
+import { getDefaultProposalPreviewHref, isProposalLanguage } from "../proposal-paths"
 
 /**
  * Thin client wrapper that owns the side-effecting handlers (save / send /
@@ -34,9 +35,18 @@ export function BuilderV2Client({
     await new Promise((r) => setTimeout(r, 800))
   }
 
-  // PHASE C: replace with your PDF generation endpoint.
+  // PHASE C: replace with your PDF generation endpoint. Still a stub.
   const handleGeneratePdf = async (q: Quote) => {
     console.log("[v0] generate pdf (stub)", q.id)
+  }
+
+  // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab.
+  // Reuses the canonical helper + same-origin authenticated proxy
+  // (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
+  const handlePreview = (q: Quote) => {
+    const language = isProposalLanguage(q.meta.marketLanguage) ? q.meta.marketLanguage : "en"
+    const href = getDefaultProposalPreviewHref(q.id, language)
+    window.open(href, "_blank", "noopener,noreferrer")
   }
 
   return (
@@ -47,6 +57,7 @@ export function BuilderV2Client({
       onSave={handleSave}
       onSend={handleSend}
       onGeneratePdf={handleGeneratePdf}
+      onPreview={handlePreview}
       initialStep="hotels"
     />
   )

@@ -98,7 +98,7 @@ export function QuoteBuilderShell({
           </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={onPreview}>
             <Eye className="size-4" aria-hidden="true" />
-            Preview PDF
+            Preview Proposal
           </Button>
           <Button
             size="sm"
