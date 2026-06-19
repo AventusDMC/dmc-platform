@@ -330,6 +330,7 @@ function mapItinerary(raw: RawErpQuote): ItineraryDay[] {
       hotelAssigned: r.hotelAssigned == null ? null : asString(r.hotelAssigned),
       transportAssigned: r.transportAssigned == null ? null : asString(r.transportAssigned),
       warnings: asStringArray(r.warnings),
+      notes: r.notes == null ? null : asString(r.notes),
     }
   })
 }
@@ -595,6 +596,7 @@ interface ApiItineraryDay {
   id?: string | null
   dayNumber?: number | null
   title?: string | null
+  notes?: string | null
   overnightCity?: string | null
   dayItems?: Array<{ quoteService?: ApiItineraryLinked | null }> | null
 }
@@ -686,6 +688,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       hotelAssigned: hotelItem?.quoteService?.hotel?.name ?? null,
       transportAssigned: transportRate ? transportRate.routeName ?? transportRate.vehicle?.name ?? null : null,
       warnings: [],
+      notes: d.notes ?? null,
     }
   })
 

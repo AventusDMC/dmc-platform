@@ -75,6 +75,8 @@ export interface ItineraryDay {
   hotelAssigned: string | null
   transportAssigned: string | null
   warnings: string[]
+  /** Client-facing descriptive narrative (QuoteItineraryDay.notes). */
+  notes?: string | null
 }
 
 /** A selectable hotel option for a given overnight stop. */
