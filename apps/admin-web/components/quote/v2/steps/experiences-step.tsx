@@ -57,6 +57,9 @@ export function ExperiencesStep({ experiences, currency, onAdd }: ExperiencesSte
       <StepHeader
         title="Experiences & Entrances"
         description="Sightseeing visits, entrance fees and optional activities tied to the itinerary days."
+        statusLabel="View only"
+        statusTone="view"
+        helper="Experiences and entrances are shown for review. Editing will come later."
         action={
           <Button size="sm" variant="outline" onClick={onAdd}>
             <Plus className="h-4 w-4" />

@@ -263,6 +263,9 @@ export function ItineraryStep({ days }: ItineraryStepProps) {
       <StepHeader
         title="Itinerary"
         description="Edit the client-facing day title and descriptive narrative. Hotels, transport and services are managed elsewhere."
+        statusLabel="Editable text"
+        statusTone="editable"
+        helper="You can edit the client-facing day title and narrative text here."
       />
       {days.length === 0 ? (
         <StepEmptyState

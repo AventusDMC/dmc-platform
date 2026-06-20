@@ -20,6 +20,9 @@ export function PricingStep({ pricing }: PricingStepProps) {
       <StepHeader
         title="Pricing & Margin"
         description="Net costs roll up from each component. Markup and selling price are calculated by the pricing engine."
+        statusLabel="View only"
+        statusTone="view"
+        helper="Pricing is displayed from the existing pricing engine and is not editable in V2 yet."
       />
 
       {lines.length === 0 ? (

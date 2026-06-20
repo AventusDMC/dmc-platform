@@ -66,6 +66,9 @@ export function TransportStep({ services, currency, onAdd }: TransportStepProps)
       <StepHeader
         title="Transport & Transfers"
         description="Vehicles, transfers and touring days with assigned ground suppliers and rates."
+        statusLabel="View only"
+        statusTone="view"
+        helper="Transport services are shown for review. Editing will come later."
         action={
           <Button size="sm" variant="outline" onClick={onAdd}>
             <Bus className="h-4 w-4" />

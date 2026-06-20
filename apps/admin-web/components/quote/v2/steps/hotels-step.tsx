@@ -102,6 +102,9 @@ export function HotelsStep({ cities, currency, onSelectHotel }: HotelsStepProps)
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
+        statusLabel="View only"
+        statusTone="view"
+        helper="Hotel selections are shown for review. Editing hotel options will come later."
       />
       {cities.length === 0 ? (
         <StepEmptyState
