@@ -729,6 +729,40 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       })
     }
   }
+  // Fallback: when the quote has no hotel option-sets, derive the Hotels step
+  // from hotels assigned in the itinerary day-items (read-only display). Pure
+  // mapping of existing data — no rates invented, no contract status assumed.
+  if (cityMap.size === 0) {
+    for (const d of days) {
+      for (const di of d.dayItems ?? []) {
+        const h = di.quoteService?.hotel
+        if (!h?.name) continue
+        const city = h.city ?? d.overnightCity ?? "—"
+        if (!cityMap.has(city)) cityMap.set(city, { city, nights: 0, options: [] })
+        const block = cityMap.get(city)!
+        block.nights += 1
+        const existing = block.options as Array<{ name: string }>
+        if (!existing.some((o) => o.name === h.name)) {
+          block.options.push({
+            id: `${city}-${h.name}`,
+            name: h.name,
+            city,
+            category: "Unknown", // no category on the itinerary item → neutral
+            contractStatus: "on-request", // assigned hotel; never assume "contracted"
+            mealPlan: "—",
+            roomingSummary: "—",
+            ratePerNight: 0, // no rate on the itinerary item → rendered as "—"
+            nights: 0, // filled from the city total below
+            selected: true, // the assigned hotel for the stop (read-only)
+            cityTax: 0,
+          })
+        }
+      }
+    }
+    for (const block of cityMap.values()) {
+      for (const o of block.options as Array<{ nights: number }>) o.nights = block.nights
+    }
+  }
   const hotelCities = Array.from(cityMap.values())
 
   // ---- experiences + transport + pricing lines (from quoteItems) ----
