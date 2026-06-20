@@ -1,10 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import { Card } from "../../../ui/card"
 import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
+import { PROPOSAL_LANGUAGES } from "../../../../app/quotes/[id]/proposal-paths"
 import type {
   QuoteMeta,
   PricingBreakdown,
@@ -21,7 +23,12 @@ export interface ProposalStepProps {
   readiness: ProposalReadinessItem[]
   canSend: boolean
   saving?: boolean
-  onGeneratePdf?: () => void
+  /** Selected proposal language CODE (en|pt|es|ar). */
+  language: string
+  /** Change the selected proposal language (render-time only; not persisted). */
+  onLanguageChange: (language: string) => void
+  /** Download the proposal-v3 PDF in the selected language. May be async. */
+  onDownloadPdf?: (language: string) => void | Promise<void>
   onSend?: () => void
   onNavigate: (step: StepId) => void
 }
@@ -33,22 +40,59 @@ export function ProposalStep({
   readiness,
   canSend,
   saving = false,
-  onGeneratePdf,
+  language,
+  onLanguageChange,
+  onDownloadPdf,
   onSend,
   onNavigate,
 }: ProposalStepProps) {
   const outstanding = readiness.filter((c) => !c.done)
 
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  const handleDownload = async () => {
+    if (!onDownloadPdf) return
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await onDownloadPdf(language)
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Could not download the PDF.")
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div>
       <StepHeader
         title="Proposal & Review"
-        description="Final pre-flight check before generating the client-facing PDF or sending the quote."
+        description="Choose the proposal language, then preview or download the client-facing proposal."
         action={
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={onGeneratePdf}>
-              <Download className="h-4 w-4" />
-              Generate PDF
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="sr-only sm:not-sr-only">Language</span>
+              <select
+                value={language}
+                onChange={(e) => onLanguageChange(e.target.value)}
+                aria-label="Proposal language"
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {PROPOSAL_LANGUAGES.map((entry) => (
+                  <option key={entry.code} value={entry.code}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button size="sm" variant="outline" onClick={handleDownload} disabled={downloading || !onDownloadPdf}>
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {downloading ? "Preparing…" : "Download PDF"}
             </Button>
             <Button
               size="sm"
@@ -62,6 +106,13 @@ export function ProposalStep({
           </div>
         }
       />
+
+      {downloadError ? (
+        <p className="mb-3 flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {downloadError}
+        </p>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-3">

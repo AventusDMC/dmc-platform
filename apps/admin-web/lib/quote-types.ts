@@ -171,7 +171,10 @@ export interface QuoteMeta {
   reference: string
   quoteType: QuoteType
   destination: string
+  /** Display label for the market/language (may be free text, e.g. "English (UK)"). */
   marketLanguage: string
+  /** Normalized proposal language CODE (en | pt | es | ar), defaulting to "en". */
+  proposalLanguage?: string
   startDate: string
   endDate: string
   nights: number
