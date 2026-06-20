@@ -2,7 +2,6 @@
 
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
-import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { ContractBadge } from "../status-badges"
@@ -36,11 +35,9 @@ function CategoryMark({ category }: { category: HotelSelection["category"] }) {
 function HotelOption({
   hotel,
   currency,
-  onSelect,
 }: {
   hotel: HotelSelection
   currency: string
-  onSelect?: (hotelId: string) => void
 }) {
   return (
     <div
@@ -75,16 +72,14 @@ function HotelOption({
           </div>
           <div className="text-[11px] text-muted-foreground">per room / night</div>
         </div>
+        {/* View-only: "Selected" is a read-only status label, not an action.
+            Non-selected options show no Select button (editing comes later). */}
         {hotel.selected ? (
-          <Button size="sm" className="gap-1.5" onClick={() => onSelect?.(hotel.id)}>
-            <Check className="h-4 w-4" />
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
             Selected
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => onSelect?.(hotel.id)}>
-            Select
-          </Button>
-        )}
+          </span>
+        ) : null}
       </div>
     </div>
   )
@@ -93,15 +88,17 @@ function HotelOption({
 export interface HotelsStepProps {
   cities: HotelCityBlock[]
   currency: string
-  onSelectHotel?: (hotelId: string) => void
 }
 
-export function HotelsStep({ cities, currency, onSelectHotel }: HotelsStepProps) {
+export function HotelsStep({ cities, currency }: HotelsStepProps) {
   return (
     <div>
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
+        statusLabel="View only"
+        statusTone="view"
+        helper="Hotel selections are shown for review. Editing hotel options will come later."
       />
       {cities.length === 0 ? (
         <StepEmptyState
@@ -131,12 +128,7 @@ export function HotelsStep({ cities, currency, onSelectHotel }: HotelsStepProps)
                 </div>
                 <div className="space-y-2">
                   {block.options.map((hotel) => (
-                    <HotelOption
-                      key={hotel.id}
-                      hotel={hotel}
-                      currency={currency}
-                      onSelect={onSelectHotel}
-                    />
+                    <HotelOption key={hotel.id} hotel={hotel} currency={currency} />
                   ))}
                 </div>
               </Card>

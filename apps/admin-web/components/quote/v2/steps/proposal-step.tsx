@@ -69,6 +69,9 @@ export function ProposalStep({
       <StepHeader
         title="Proposal & Review"
         description="Choose the proposal language, then preview or download the client-facing proposal."
+        statusLabel="Preview / download"
+        statusTone="preview"
+        helper="You can preview the proposal and download the PDF. Sending is not available in V2 yet."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
