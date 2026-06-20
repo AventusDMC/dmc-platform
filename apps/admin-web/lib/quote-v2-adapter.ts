@@ -248,6 +248,14 @@ const STEP_DEFS: Record<StepId, { label: string; description: string }> = {
 /* Section mappers                                                     */
 /* ------------------------------------------------------------------ */
 
+// Normalize a proposal language to a supported CODE (en|pt|es|ar), else "en".
+// Mirrors PROPOSAL_LOCALES; keeps the V2 selector off the free-text display label.
+const PROPOSAL_LANGUAGE_CODES = ["en", "pt", "es", "ar"]
+function normalizeProposalLanguage(v: unknown): string {
+  const s = asString(v).trim().toLowerCase()
+  return PROPOSAL_LANGUAGE_CODES.includes(s) ? s : "en"
+}
+
 function mapMeta(raw: RawErpQuote, id: string): QuoteMeta {
   return {
     title: asString(raw.title, "Untitled quote"),
@@ -255,6 +263,7 @@ function mapMeta(raw: RawErpQuote, id: string): QuoteMeta {
     quoteType: normQuoteType(raw.quoteType),
     destination: asString(raw.destination, "—"),
     marketLanguage: asString(raw.marketLanguage, "—"),
+    proposalLanguage: normalizeProposalLanguage(raw.proposalLanguage),
     startDate: asString(raw.startDate),
     endDate: asString(raw.endDate),
     nights: asNumber(raw.nights),
@@ -849,6 +858,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     quoteType: q.quoteType ?? "FIT",
     destination,
     marketLanguage: q.proposalLanguage ?? "—",
+    proposalLanguage: q.proposalLanguage ?? "en",
     startDate: q.travelStartDate ?? "",
     endDate: addDays(q.travelStartDate, nights),
     nights,

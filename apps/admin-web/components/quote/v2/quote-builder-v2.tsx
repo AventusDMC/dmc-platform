@@ -42,10 +42,10 @@ export interface QuoteBuilderV2Props {
   onSave?: (quote: Quote) => void | Promise<void>
   /** Send the quote to the client. Only callable when all readiness items pass. */
   onSend?: (quote: Quote) => void | Promise<void>
-  /** Generate the client-facing PDF. */
-  onGeneratePdf?: (quote: Quote) => void | Promise<void>
-  /** Open the client-facing proposal preview (HTML). */
-  onPreview?: (quote: Quote) => void | Promise<void>
+  /** Download the client-facing proposal PDF in the given language. */
+  onDownloadPdf?: (quote: Quote, language: string) => void | Promise<void>
+  /** Open the client-facing proposal preview (HTML) in the given language. */
+  onPreview?: (quote: Quote, language: string) => void | Promise<void>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -57,13 +57,15 @@ export function QuoteBuilderV2({
   onRetry,
   onSave,
   onSend,
-  onGeneratePdf,
+  onDownloadPdf,
   onPreview,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  // Proposal language (render-time only; seeded from the quote's normalized code).
+  const [language, setLanguage] = useState<string>(quote?.meta.proposalLanguage ?? "en")
 
   // Derive everything from the quote (display-only; no pricing math here).
   const insights = useMemo(() => {
@@ -155,7 +157,9 @@ export function QuoteBuilderV2({
             readiness={quote.readiness}
             canSend={insights.canSend}
             saving={sending}
-            onGeneratePdf={onGeneratePdf ? () => onGeneratePdf(quote) : undefined}
+            language={language}
+            onLanguageChange={setLanguage}
+            onDownloadPdf={onDownloadPdf ? (l) => onDownloadPdf(quote, l) : undefined}
             onSend={handleSend}
             onNavigate={setCurrent}
           />
@@ -172,7 +176,7 @@ export function QuoteBuilderV2({
       canSend={insights.canSend}
       sendDisabledReason={sendDisabledReason}
       onSave={handleSave}
-      onPreview={onPreview ? () => onPreview(quote) : undefined}
+      onPreview={onPreview ? () => onPreview(quote, language) : undefined}
       onSend={handleSend}
     >
       <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-6">

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
 import type { Quote } from "../../../../lib/quote-types"
-import { getDefaultProposalPreviewHref, isProposalLanguage } from "../proposal-paths"
+import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
  * Thin client wrapper that owns the side-effecting handlers (save / send /
@@ -35,18 +35,34 @@ export function BuilderV2Client({
     await new Promise((r) => setTimeout(r, 800))
   }
 
-  // PHASE C: replace with your PDF generation endpoint. Still a stub.
-  const handleGeneratePdf = async (q: Quote) => {
-    console.log("[v0] generate pdf (stub)", q.id)
-  }
-
-  // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab.
-  // Reuses the canonical helper + same-origin authenticated proxy
-  // (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
-  const handlePreview = (q: Quote) => {
-    const language = isProposalLanguage(q.meta.marketLanguage) ? q.meta.marketLanguage : "en"
+  // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
+  // selected language. Reuses the canonical helper + same-origin authenticated
+  // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
+  const handlePreview = (q: Quote, language: string) => {
     const href = getDefaultProposalPreviewHref(q.id, language)
     window.open(href, "_blank", "noopener,noreferrer")
+  }
+
+  // Download the existing proposal-v3 PDF in the selected language via the
+  // same-origin /api proxy (cookie auth). Read-only render — nothing persisted,
+  // no email. Throws on failure so the Proposal step can show an error.
+  const handleDownloadPdf = async (q: Quote, language: string) => {
+    const res = await fetch(getDefaultProposalPdfHref("/api", q.id, language))
+    const contentType = res.headers.get("content-type") || ""
+    if (!res.ok || !contentType.toLowerCase().includes("application/pdf")) {
+      const body = await res.text().catch(() => "")
+      throw new Error(body.slice(0, 200) || `Could not download PDF (${res.status}).`)
+    }
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const suffix = language && language !== "en" ? `-${language}` : ""
+    link.href = url
+    link.download = `quote-${q.id}${suffix}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
   }
 
   return (
@@ -56,7 +72,7 @@ export function BuilderV2Client({
       onRetry={() => router.refresh()}
       onSave={handleSave}
       onSend={handleSend}
-      onGeneratePdf={handleGeneratePdf}
+      onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       initialStep="hotels"
     />
