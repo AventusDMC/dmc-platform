@@ -2,7 +2,6 @@
 
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
-import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge, ContractBadge } from "../status-badges"
@@ -53,10 +52,9 @@ function ServiceRow({ svc, currency }: { svc: TransportService; currency: string
 export interface TransportStepProps {
   services: TransportService[]
   currency: string
-  onAdd?: () => void
 }
 
-export function TransportStep({ services, currency, onAdd }: TransportStepProps) {
+export function TransportStep({ services, currency }: TransportStepProps) {
   const priced = services
     .filter((s) => s.amount != null)
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
@@ -69,24 +67,12 @@ export function TransportStep({ services, currency, onAdd }: TransportStepProps)
         statusLabel="View only"
         statusTone="view"
         helper="Transport services are shown for review. Editing will come later."
-        action={
-          <Button size="sm" variant="outline" onClick={onAdd}>
-            <Bus className="h-4 w-4" />
-            Add service
-          </Button>
-        }
       />
       {services.length === 0 ? (
         <StepEmptyState
           icon={Bus}
           title="No transport services"
-          description="Add transfers and touring services with their suppliers and rates."
-          action={
-            <Button size="sm" onClick={onAdd}>
-              <Bus className="h-4 w-4" />
-              Add service
-            </Button>
-          }
+          description="Transfers and touring services with their suppliers and rates will appear here once added."
         />
       ) : (
         <Card className="overflow-hidden p-0">

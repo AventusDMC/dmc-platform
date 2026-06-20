@@ -2,13 +2,12 @@
 
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
-import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge } from "../status-badges"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { Experience } from "../../../../lib/quote-types"
-import { Ticket, Plus } from "lucide-react"
+import { Ticket } from "lucide-react"
 
 function ExperienceRow({ exp, currency }: { exp: Experience; currency: string }) {
   return (
@@ -48,10 +47,9 @@ function ExperienceRow({ exp, currency }: { exp: Experience; currency: string })
 export interface ExperiencesStepProps {
   experiences: Experience[]
   currency: string
-  onAdd?: () => void
 }
 
-export function ExperiencesStep({ experiences, currency, onAdd }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency }: ExperiencesStepProps) {
   return (
     <div>
       <StepHeader
@@ -60,24 +58,12 @@ export function ExperiencesStep({ experiences, currency, onAdd }: ExperiencesSte
         statusLabel="View only"
         statusTone="view"
         helper="Experiences and entrances are shown for review. Editing will come later."
-        action={
-          <Button size="sm" variant="outline" onClick={onAdd}>
-            <Plus className="h-4 w-4" />
-            Add experience
-          </Button>
-        }
       />
       {experiences.length === 0 ? (
         <StepEmptyState
           icon={Ticket}
           title="No experiences added"
-          description="Add entrance fees, guided visits and optional activities for this program."
-          action={
-            <Button size="sm" onClick={onAdd}>
-              <Plus className="h-4 w-4" />
-              Add experience
-            </Button>
-          }
+          description="Entrance fees, guided visits and optional activities will appear here once added to the program."
         />
       ) : (
         <Card className="overflow-hidden p-0">
