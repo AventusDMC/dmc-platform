@@ -46,6 +46,11 @@ export interface QuoteBuilderV2Props {
   onDownloadPdf?: (quote: Quote, language: string) => void | Promise<void>
   /** Open the client-facing proposal preview (HTML) in the given language. */
   onPreview?: (quote: Quote, language: string) => void | Promise<void>
+  /**
+   * Set the primary hotel for an option-set (PATCH isPrimary). Proposal-display
+   * only — does not change pricing. When omitted, Hotels stays read-only.
+   */
+  onSetPrimaryHotel?: (optionId: string, hotelOptionId: string) => void | Promise<void>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -59,6 +64,7 @@ export function QuoteBuilderV2({
   onSend,
   onDownloadPdf,
   onPreview,
+  onSetPrimaryHotel,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -139,7 +145,13 @@ export function QuoteBuilderV2({
       case "itinerary":
         return <ItineraryStep days={quote.itinerary} />
       case "hotels":
-        return <HotelsStep cities={quote.hotelCities} currency={quote.meta.currency} />
+        return (
+          <HotelsStep
+            cities={quote.hotelCities}
+            currency={quote.meta.currency}
+            onSetPrimary={onSetPrimaryHotel}
+          />
+        )
       case "experiences":
         return (
           <ExperiencesStep experiences={quote.experiences} currency={quote.meta.currency} />

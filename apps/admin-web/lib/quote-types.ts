@@ -92,6 +92,17 @@ export interface HotelSelection {
   nights: number
   selected: boolean
   cityTax: number
+  /**
+   * The owning QuoteOption (option-set) id. Present only for real
+   * `QuoteHotelOption` rows — needed to PATCH the option. Absent for
+   * itinerary-fallback synthetic hotels.
+   */
+  optionId?: string
+  /**
+   * True only for real `QuoteHotelOption` rows whose primary marker can be
+   * changed. Itinerary-fallback hotels are always read-only (false).
+   */
+  editable: boolean
 }
 
 /** Hotel options grouped by overnight city. */

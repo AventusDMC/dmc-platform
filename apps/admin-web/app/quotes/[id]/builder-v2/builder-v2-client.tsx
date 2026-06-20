@@ -35,6 +35,29 @@ export function BuilderV2Client({
     await new Promise((r) => setTimeout(r, 800))
   }
 
+  // Set the primary hotel for an option-set via the EXISTING endpoint:
+  // PATCH /api/quotes/:id/options/:optionId/hotel-options/:hotelOptionId { isPrimary: true }
+  // (backend transactionally demotes the other same-city options). This is a
+  // proposal-display choice — the backend does NOT recalculate pricing here.
+  // No new endpoint, no schema/pricing change. Throws on failure so the Hotels
+  // step can surface an error; refreshes the route on success.
+  const handleSetPrimaryHotel = async (optionId: string, hotelOptionId: string) => {
+    if (!quote) return
+    const res = await fetch(
+      `/api/quotes/${quote.id}/options/${optionId}/hotel-options/${hotelOptionId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPrimary: true }),
+      },
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      throw new Error(body?.slice(0, 200) || `Could not set primary hotel (${res.status}).`)
+    }
+    router.refresh()
+  }
+
   // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
   // selected language. Reuses the canonical helper + same-origin authenticated
   // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
@@ -74,6 +97,7 @@ export function BuilderV2Client({
       onSend={handleSend}
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
+      onSetPrimaryHotel={handleSetPrimaryHotel}
       initialStep="hotels"
     />
   )
