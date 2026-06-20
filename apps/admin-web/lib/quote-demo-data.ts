@@ -165,32 +165,32 @@ export const demoQuote: Quote = {
       city: "Amman",
       nights: 2,
       options: [
-        { id: "amm-1", name: "Kempinski Hotel Amman", city: "Amman", category: 5, contractStatus: "contracted", mealPlan: "Bed & Breakfast", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 215, nights: 2, selected: true, cityTax: 6 },
-        { id: "amm-2", name: "Fairmont Amman", city: "Amman", category: 5, contractStatus: "on-request", mealPlan: "Bed & Breakfast", roomingSummary: "—", ratePerNight: 198, nights: 2, selected: false, cityTax: 6 },
+        { id: "amm-1", name: "Kempinski Hotel Amman", city: "Amman", category: 5, contractStatus: "contracted", mealPlan: "Bed & Breakfast", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 215, nights: 2, selected: true, editable: true, optionId: "demo-set-1", cityTax: 6 },
+        { id: "amm-2", name: "Fairmont Amman", city: "Amman", category: 5, contractStatus: "on-request", mealPlan: "Bed & Breakfast", roomingSummary: "—", ratePerNight: 198, nights: 2, selected: false, editable: true, optionId: "demo-set-1", cityTax: 6 },
       ],
     },
     {
       city: "Petra",
       nights: 2,
       options: [
-        { id: "ptr-1", name: "Mövenpick Resort Petra", city: "Petra", category: 5, contractStatus: "contracted", mealPlan: "Half Board", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 240, nights: 2, selected: true, cityTax: 4 },
-        { id: "ptr-2", name: "Petra Marriott Hotel", city: "Petra", category: 5, contractStatus: "contracted", mealPlan: "Half Board", roomingSummary: "—", ratePerNight: 205, nights: 2, selected: false, cityTax: 4 },
+        { id: "ptr-1", name: "Mövenpick Resort Petra", city: "Petra", category: 5, contractStatus: "contracted", mealPlan: "Half Board", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 240, nights: 2, selected: true, editable: true, optionId: "demo-set-1", cityTax: 4 },
+        { id: "ptr-2", name: "Petra Marriott Hotel", city: "Petra", category: 5, contractStatus: "contracted", mealPlan: "Half Board", roomingSummary: "—", ratePerNight: 205, nights: 2, selected: false, editable: true, optionId: "demo-set-1", cityTax: 4 },
       ],
     },
     {
       city: "Wadi Rum",
       nights: 1,
       options: [
-        { id: "wr-1", name: "Memories Aicha Luxury Camp", city: "Wadi Rum", category: "Camp", contractStatus: "on-request", mealPlan: "Half Board", roomingSummary: "Pending availability", ratePerNight: 180, nights: 1, selected: false, cityTax: 0 },
-        { id: "wr-2", name: "Sun City Camp (Martian Dome)", city: "Wadi Rum", category: "Camp", contractStatus: "no-contract", mealPlan: "Half Board", roomingSummary: "—", ratePerNight: 165, nights: 1, selected: false, cityTax: 0 },
+        { id: "wr-1", name: "Memories Aicha Luxury Camp", city: "Wadi Rum", category: "Camp", contractStatus: "on-request", mealPlan: "Half Board", roomingSummary: "Pending availability", ratePerNight: 180, nights: 1, selected: false, editable: true, optionId: "demo-set-1", cityTax: 0 },
+        { id: "wr-2", name: "Sun City Camp (Martian Dome)", city: "Wadi Rum", category: "Camp", contractStatus: "no-contract", mealPlan: "Half Board", roomingSummary: "—", ratePerNight: 165, nights: 1, selected: false, editable: true, optionId: "demo-set-1", cityTax: 0 },
       ],
     },
     {
       city: "Dead Sea",
       nights: 2,
       options: [
-        { id: "ds-1", name: "Kempinski Hotel Ishtar Dead Sea", city: "Dead Sea", category: 5, contractStatus: "on-request", mealPlan: "Bed & Breakfast", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 260, nights: 2, selected: true, cityTax: 5 },
-        { id: "ds-2", name: "Mövenpick Resort & Spa Dead Sea", city: "Dead Sea", category: 5, contractStatus: "contracted", mealPlan: "Bed & Breakfast", roomingSummary: "—", ratePerNight: 235, nights: 2, selected: false, cityTax: 5 },
+        { id: "ds-1", name: "Kempinski Hotel Ishtar Dead Sea", city: "Dead Sea", category: 5, contractStatus: "on-request", mealPlan: "Bed & Breakfast", roomingSummary: "12 DBL · 2 TWN · 2 SGL", ratePerNight: 260, nights: 2, selected: true, editable: true, optionId: "demo-set-1", cityTax: 5 },
+        { id: "ds-2", name: "Mövenpick Resort & Spa Dead Sea", city: "Dead Sea", category: 5, contractStatus: "contracted", mealPlan: "Bed & Breakfast", roomingSummary: "—", ratePerNight: 235, nights: 2, selected: false, editable: true, optionId: "demo-set-1", cityTax: 5 },
       ],
     },
   ],

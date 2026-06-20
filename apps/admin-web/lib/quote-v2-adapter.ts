@@ -362,6 +362,10 @@ function mapHotelCities(raw: RawErpQuote): HotelCityBlock[] {
         nights: asNumber(ro.nights),
         selected: asBool(ro.selected),
         cityTax: asNumber(ro.cityTax),
+        // optionId present only for real QuoteHotelOption rows; editable gates
+        // the "Set as primary" action (fallback hotels are always read-only).
+        optionId: typeof ro.optionId === "string" ? ro.optionId : undefined,
+        editable: asBool(ro.editable),
       }
     })
     return { city, nights: asNumber(r.nights), options }
@@ -566,6 +570,7 @@ interface ApiHotelOption {
   isPrimary?: boolean | null
 }
 interface ApiQuoteOption {
+  id?: string | null
   hotelCategory?: { name?: string | null } | null
   hotelOptions?: ApiHotelOption[] | null
 }
@@ -726,6 +731,10 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
         nights: ho.nights ?? 0,
         selected: Boolean(ho.isPrimary),
         cityTax: 0,
+        // Real QuoteHotelOption row → carry its option-set id and mark editable
+        // so the V2 step can offer "Set as primary" (PATCH isPrimary).
+        optionId: opt.id,
+        editable: true,
       })
     }
   }
@@ -755,6 +764,8 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
             nights: 0, // filled from the city total below
             selected: true, // the assigned hotel for the stop (read-only)
             cityTax: 0,
+            // Synthetic fallback row (no QuoteHotelOption) → always read-only.
+            editable: false,
           })
         }
       }

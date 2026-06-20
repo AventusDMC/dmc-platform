@@ -1,14 +1,16 @@
 "use client"
 
+import { useState } from "react"
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
+import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { ContractBadge } from "../status-badges"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { HotelSelection, HotelCityBlock } from "../../../../lib/quote-types"
-import { Star, Check, Tent, Moon, Building2 } from "lucide-react"
+import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle } from "lucide-react"
 
 function CategoryMark({ category }: { category: HotelSelection["category"] }) {
   if (category === "Camp") {
@@ -35,9 +37,20 @@ function CategoryMark({ category }: { category: HotelSelection["category"] }) {
 function HotelOption({
   hotel,
   currency,
+  eligible,
+  pending,
+  disabled,
+  onSetPrimary,
 }: {
   hotel: HotelSelection
   currency: string
+  /** True when this option may be set as primary (real alternative in its set). */
+  eligible: boolean
+  /** True while this option's PATCH is in flight. */
+  pending: boolean
+  /** True while any option in the step is saving (locks the other buttons). */
+  disabled: boolean
+  onSetPrimary: () => void
 }) {
   return (
     <div
@@ -72,13 +85,29 @@ function HotelOption({
           </div>
           <div className="text-[11px] text-muted-foreground">per room / night</div>
         </div>
-        {/* View-only: "Selected" is a read-only status label, not an action.
-            Non-selected options show no Select button (editing comes later). */}
+        {/* "Selected" is a read-only status label (the current proposal primary).
+            "Set as primary" only appears for real alternatives in the same set;
+            it changes the proposal's primary hotel and does NOT change pricing. */}
         {hotel.selected ? (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
             Selected
           </span>
+        ) : eligible ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={onSetPrimary}
+            disabled={disabled}
+          >
+            {pending ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Star className="h-4 w-4" aria-hidden="true" />
+            )}
+            {pending ? "Saving…" : "Set as primary"}
+          </Button>
         ) : null}
       </div>
     </div>
@@ -88,17 +117,59 @@ function HotelOption({
 export interface HotelsStepProps {
   cities: HotelCityBlock[]
   currency: string
+  /**
+   * Persist the primary hotel for an option-set (PATCH isPrimary:true), then
+   * refresh. Only wired for real QuoteHotelOption rows. When omitted, the step
+   * stays fully read-only.
+   */
+  onSetPrimary?: (optionId: string, hotelOptionId: string) => void | Promise<void>
 }
 
-export function HotelsStep({ cities, currency }: HotelsStepProps) {
+/**
+ * Which option-set ids in a city have 2+ editable options — only those expose
+ * a "Set as primary" action (a single option is already the primary; nothing
+ * to choose between). Itinerary-fallback rows (editable=false) never qualify.
+ */
+function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
+  const counts = new Map<string, number>()
+  for (const o of block.options) {
+    if (o.editable && o.optionId) counts.set(o.optionId, (counts.get(o.optionId) ?? 0) + 1)
+  }
+  const eligible = new Set<string>()
+  for (const [id, n] of counts) if (n >= 2) eligible.add(id)
+  return eligible
+}
+
+export function HotelsStep({ cities, currency, onSetPrimary }: HotelsStepProps) {
+  const canEdit = Boolean(onSetPrimary)
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [error, setError] = useState<{ id: string; message: string } | null>(null)
+
+  const handleSetPrimary = async (hotel: HotelSelection) => {
+    if (!onSetPrimary || !hotel.optionId) return
+    setPendingId(hotel.id)
+    setError(null)
+    try {
+      await onSetPrimary(hotel.optionId, hotel.id)
+      // Parent refreshes the route on success; selected state re-derives from data.
+    } catch (err) {
+      setError({
+        id: hotel.id,
+        message: err instanceof Error ? err.message : "Could not update the primary hotel.",
+      })
+    } finally {
+      setPendingId(null)
+    }
+  }
+
   return (
     <div>
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
-        statusLabel="View only"
-        statusTone="view"
-        helper="Hotel selections are shown for review. Editing hotel options will come later."
+        statusLabel="Set primary only"
+        statusTone="editable"
+        helper="Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
       />
       {cities.length === 0 ? (
         <StepEmptyState
@@ -110,6 +181,7 @@ export function HotelsStep({ cities, currency }: HotelsStepProps) {
         <div className="space-y-5">
           {cities.map((block) => {
             const selected = block.options.find((o) => o.selected)
+            const eligibleSets = eligibleOptionSetIds(block)
             return (
               <Card key={block.city} className="p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -127,9 +199,34 @@ export function HotelsStep({ cities, currency }: HotelsStepProps) {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {block.options.map((hotel) => (
-                    <HotelOption key={hotel.id} hotel={hotel} currency={currency} />
-                  ))}
+                  {block.options.map((hotel) => {
+                    const eligible =
+                      canEdit &&
+                      hotel.editable &&
+                      !!hotel.optionId &&
+                      eligibleSets.has(hotel.optionId)
+                    return (
+                      <div key={hotel.id}>
+                        <HotelOption
+                          hotel={hotel}
+                          currency={currency}
+                          eligible={eligible}
+                          pending={pendingId === hotel.id}
+                          disabled={pendingId !== null}
+                          onSetPrimary={() => handleSetPrimary(hotel)}
+                        />
+                        {error && error.id === hotel.id ? (
+                          <p
+                            className="mt-1 flex items-center gap-1.5 text-xs text-destructive"
+                            role="alert"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            {error.message}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
               </Card>
             )
