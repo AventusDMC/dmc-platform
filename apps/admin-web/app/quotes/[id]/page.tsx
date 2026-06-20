@@ -2992,6 +2992,29 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : null}
             </div>
             <AdminHeaderActions className="quote-dashboard-actions">
+              {/* Opt-in entry point to Quote Builder V2 (Beta). Same-tab nav; the
+                  classic builder on this page remains the default and unchanged. */}
+              <Link
+                href={`/quotes/${quote.id}/builder-v2`}
+                className="secondary-button"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                Open Quote Builder V2
+                <span
+                  style={{
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    padding: '0.05rem 0.35rem',
+                    borderRadius: '999px',
+                    background: 'var(--ds-color-accent, #1F9ACF)',
+                    color: '#fff',
+                  }}
+                >
+                  Beta
+                </span>
+              </Link>
               {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
               <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
               {!quoteReadOnly ? (
