@@ -94,14 +94,15 @@ export function ProposalStep({
               )}
               {downloading ? "Preparing…" : "Download PDF"}
             </Button>
+            {/* Sending is not wired in V2 yet — always disabled with a clear tooltip. */}
             <Button
               size="sm"
-              disabled={!canSend || saving}
-              onClick={onSend}
-              title={!canSend ? "Resolve all readiness items before sending" : undefined}
+              disabled
+              aria-disabled="true"
+              title="Send Quote is not available in V2 yet."
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {saving ? "Sending…" : "Send to client"}
+              <Send className="h-4 w-4" />
+              Send to client
             </Button>
           </div>
         }
