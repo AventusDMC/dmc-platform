@@ -14,7 +14,6 @@ import {
   Hotel,
   Bus,
   AlertTriangle,
-  Plus,
   GripVertical,
   CalendarRange,
   Pencil,
@@ -254,33 +253,22 @@ function DayCard({ day }: { day: ItineraryDay }) {
 
 export interface ItineraryStepProps {
   days: ItineraryDay[]
-  onAddDay?: () => void
 }
 
-export function ItineraryStep({ days, onAddDay }: ItineraryStepProps) {
+export function ItineraryStep({ days }: ItineraryStepProps) {
   return (
     <div>
+      {/* No "Add day" action: V2 only edits descriptive title/notes, not
+          operational day creation (that lives in the classic builder). */}
       <StepHeader
         title="Itinerary"
         description="Edit the client-facing day title and descriptive narrative. Hotels, transport and services are managed elsewhere."
-        action={
-          <Button size="sm" variant="outline" onClick={onAddDay}>
-            <Plus className="h-4 w-4" />
-            Add day
-          </Button>
-        }
       />
       {days.length === 0 ? (
         <StepEmptyState
           icon={CalendarRange}
           title="No itinerary days yet"
-          description="Start building the program by adding the first day of the trip."
-          action={
-            <Button size="sm" onClick={onAddDay}>
-              <Plus className="h-4 w-4" />
-              Add first day
-            </Button>
-          }
+          description="Day-by-day program will appear here once the quote has itinerary days."
         />
       ) : (
         <div className="space-y-3">
