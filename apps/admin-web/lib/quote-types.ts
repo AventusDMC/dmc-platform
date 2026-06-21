@@ -77,6 +77,11 @@ export interface ItineraryDay {
   warnings: string[]
   /** Client-facing descriptive narrative (QuoteItineraryDay.notes). */
   notes?: string | null
+  /**
+   * Language tag of `notes` (QuoteItineraryDay.notesLanguage), e.g. en|es|pt|ar.
+   * Display-only — used for the proposal notes-language advisory.
+   */
+  notesLanguage?: string | null
 }
 
 /** A selectable hotel option for a given overnight stop. */

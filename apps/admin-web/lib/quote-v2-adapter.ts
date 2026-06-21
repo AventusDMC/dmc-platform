@@ -340,6 +340,7 @@ function mapItinerary(raw: RawErpQuote): ItineraryDay[] {
       transportAssigned: r.transportAssigned == null ? null : asString(r.transportAssigned),
       warnings: asStringArray(r.warnings),
       notes: r.notes == null ? null : asString(r.notes),
+      notesLanguage: r.notesLanguage == null ? null : asString(r.notesLanguage),
     }
   })
 }
@@ -598,6 +599,14 @@ interface ApiQuote {
   contact?: { id?: string | null; firstName?: string | null; lastName?: string | null } | null
   quoteItems?: ApiQuoteItem[] | null
   quoteOptions?: ApiQuoteOption[] | null
+  // The main quote payload carries the itinerary days WITH their notesLanguage
+  // tag (the /itinerary endpoint omits notesLanguage). Used only to source the
+  // per-day notesLanguage for the proposal advisory.
+  quoteItineraryDays?: Array<{
+    id?: string | null
+    dayNumber?: number | null
+    notesLanguage?: string | null
+  }> | null
 }
 interface ApiItineraryLinked {
   serviceDate?: string | null
@@ -680,6 +689,16 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
 
   // ---- itinerary (rich, from the itinerary endpoint) ----
   const days = itin?.days ?? []
+  // notesLanguage lives on the main quote's quoteItineraryDays (the /itinerary
+  // endpoint omits it). Build id/dayNumber → notesLanguage lookups to join.
+  const notesLangById = new Map<string, string>()
+  const notesLangByDay = new Map<number, string>()
+  for (const qd of q.quoteItineraryDays ?? []) {
+    const nl = qd.notesLanguage ?? null
+    if (!nl) continue
+    if (qd.id) notesLangById.set(qd.id, nl)
+    if (qd.dayNumber != null) notesLangByDay.set(qd.dayNumber, nl)
+  }
   const itinerary = days.map((d) => {
     const items = d.dayItems ?? []
     const hotelItem = items.find((di) => di.quoteService?.hotel)
@@ -703,6 +722,10 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       transportAssigned: transportRate ? transportRate.routeName ?? transportRate.vehicle?.name ?? null : null,
       warnings: [],
       notes: d.notes ?? null,
+      notesLanguage:
+        (d.id ? notesLangById.get(d.id) : undefined) ??
+        (d.dayNumber != null ? notesLangByDay.get(d.dayNumber) : undefined) ??
+        null,
     }
   })
 
