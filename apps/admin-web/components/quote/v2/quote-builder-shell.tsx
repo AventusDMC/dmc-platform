@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { ChevronRight, Eye, Send } from "lucide-react"
+import { ChevronRight, Eye, Send, Loader2 } from "lucide-react"
 import { Button } from "../../ui/button"
 import { cn } from "../../../lib/utils"
 import type { QuoteMeta, QuoteStatus } from "../../../lib/quote-types"
@@ -44,23 +44,33 @@ function StatusPill({ status }: { status: QuoteStatus }) {
 export interface QuoteBuilderShellProps {
   meta: QuoteMeta
   children: ReactNode
+  /** True while the Mark-as-Sent status change is in flight. */
   saving?: boolean
+  /** Whether "Mark as Sent" is allowed (readiness passes + not lifecycle-locked). */
   canSend?: boolean
+  /** Why Mark-as-Sent is disabled (readiness or lifecycle reason) — shown as tooltip. */
   sendDisabledReason?: string
-  onSave?: () => void
+  /** Backend error from the last Mark-as-Sent attempt (e.g. completeness 400). */
+  sendError?: string | null
   onPreview?: () => void
+  /** Mark the quote as Sent (status → SENT). Confirms before mutating. */
   onSend?: () => void
 }
 
 export function QuoteBuilderShell({
   meta,
   children,
+  saving = false,
+  canSend = false,
+  sendDisabledReason,
+  sendError,
   onPreview,
+  onSend,
 }: QuoteBuilderShellProps) {
-  // NOTE: Save Draft and Send Quote are intentionally not wired in V2 yet, so
-  // the global Save Draft button is omitted and Send Quote is always disabled
-  // with a clear tooltip. The Itinerary step keeps its own working Save for
-  // descriptive title/notes; Preview Proposal / Download PDF are functional.
+  // "Mark as Sent" performs a status-only change (status → SENT). It does NOT
+  // email the client or create a public link. The Itinerary step keeps its own
+  // working Save for title/notes; Preview Proposal / Download PDF are functional.
+  const sendDisabled = !canSend || saving
   return (
     <div className="bg-background">
       <header className="flex flex-col gap-4 border-b border-border bg-card px-4 py-4 md:px-6 lg:flex-row lg:items-center lg:justify-between">
@@ -87,25 +97,38 @@ export function QuoteBuilderShell({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={onPreview}>
-            <Eye className="size-4" aria-hidden="true" />
-            Preview Proposal
-          </Button>
-          {/* Not wired in V2 yet — always disabled with a clear tooltip. */}
-          <Button
-            size="sm"
-            className="gap-2"
-            disabled
-            aria-disabled="true"
-            title="Send Quote is not available in V2 yet."
-          >
-            <Send className="size-4" aria-hidden="true" />
-            Send Quote
-          </Button>
-          <span className="sr-only" role="note">
-            Send Quote is not available in V2 yet.
-          </span>
+        <div className="flex flex-col items-stretch gap-1 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={onPreview}>
+              <Eye className="size-4" aria-hidden="true" />
+              Preview Proposal
+            </Button>
+            {/* Mark as Sent — status-only change (no email, no public link). */}
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={onSend}
+              disabled={sendDisabled}
+              aria-disabled={sendDisabled}
+              title={sendDisabled ? sendDisabledReason : undefined}
+            >
+              {saving ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="size-4" aria-hidden="true" />
+              )}
+              {saving ? "Marking…" : "Mark as Sent"}
+            </Button>
+          </div>
+          {sendError ? (
+            <p className="max-w-xs text-pretty text-right text-xs text-destructive" role="alert">
+              {sendError}
+            </p>
+          ) : sendDisabled && sendDisabledReason ? (
+            <span className="text-right text-[11px] text-muted-foreground" role="note">
+              {sendDisabledReason}
+            </span>
+          ) : null}
         </div>
       </header>
       {children}

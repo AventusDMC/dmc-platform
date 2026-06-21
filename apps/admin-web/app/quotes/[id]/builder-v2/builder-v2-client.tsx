@@ -29,10 +29,32 @@ export function BuilderV2Client({
     await new Promise((r) => setTimeout(r, 600))
   }
 
-  // PHASE C: replace with your "send quote" server action / API call.
+  // "Mark as Sent" — reuse the EXISTING status endpoint to move the quote to
+  // SENT. This is a status-only change: it does NOT email the client, attach a
+  // PDF, or create a public proposal link. The backend sets sentAt + writes an
+  // audit log and independently enforces completeness (rejects with 400 if the
+  // quote isn't ready). Throws with the backend message so the UI can show it;
+  // refreshes V2 data on success. No new endpoint / no backend change.
   const handleSend = async (q: Quote) => {
-    console.log("[v0] send quote (stub)", q.id)
-    await new Promise((r) => setTimeout(r, 800))
+    const res = await fetch(`/api/quotes/${q.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "SENT" }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message)
+          ? parsed.message.join("; ")
+          : parsed?.message || body
+      } catch {
+        // non-JSON body — use raw text
+      }
+      throw new Error(message?.slice(0, 300) || `Could not mark the quote as sent (${res.status}).`)
+    }
+    router.refresh()
   }
 
   // Set the primary hotel for an option-set via the EXISTING endpoint:

@@ -272,6 +272,9 @@ function mapMeta(raw: RawErpQuote, id: string): QuoteMeta {
     rooming: asString(raw.rooming, "—"),
     currency: asString(raw.currency, "USD"),
     status: normQuoteStatus(raw.status),
+    // Raw backend status (uppercased) for precise lifecycle gating; the display
+    // `status` above collapses many backend states into 4 buckets.
+    statusCode: asString(raw.status).trim().toUpperCase() || undefined,
     owner: asString(raw.owner, "—"),
     // Display string only. If your ERP returns a timestamp, format it in
     // Phase B (e.g. relative time) before passing it through.
