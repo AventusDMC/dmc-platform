@@ -205,6 +205,10 @@ export interface QuoteMeta {
    * (the display `status` above is a lossy 4-value mapping).
    */
   statusCode?: string
+  /** Public proposal share token (QuoteQuote.publicToken). Null/absent = none. */
+  publicToken?: string | null
+  /** Whether the public proposal link is currently active (publicEnabled). */
+  publicEnabled?: boolean
   owner: string
   lastSaved: string
 }

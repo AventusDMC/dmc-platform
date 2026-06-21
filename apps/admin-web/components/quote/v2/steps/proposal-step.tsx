@@ -19,7 +19,7 @@ import type {
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
-import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2 } from "lucide-react"
+import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy } from "lucide-react"
 
 export interface ProposalStepProps {
   meta: QuoteMeta
@@ -42,6 +42,13 @@ export interface ProposalStepProps {
   onDownloadPdf?: (language: string) => void | Promise<void>
   /** Mark the quote as Sent (status → SENT). Confirms before mutating. */
   onSend?: () => void
+  /** Current public-link state (display-only seed for the Share section). */
+  publicToken?: string | null
+  publicEnabled?: boolean
+  /** Enable the public proposal link; resolves to the new public state. */
+  onEnablePublicLink?: () => Promise<{ publicEnabled: boolean; publicToken: string | null }>
+  /** Disable the public proposal link; resolves to the new public state. */
+  onDisablePublicLink?: () => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   onNavigate: (step: StepId) => void
   /**
    * Itinerary days (for the non-blocking notes-language advisory). Display-only;
@@ -63,6 +70,10 @@ export function ProposalStep({
   onLanguageChange,
   onDownloadPdf,
   onSend,
+  publicToken,
+  publicEnabled = false,
+  onEnablePublicLink,
+  onDisablePublicLink,
   onNavigate,
   itineraryDays = [],
 }: ProposalStepProps) {
@@ -80,6 +91,74 @@ export function ProposalStep({
 
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  // ---- Share / public proposal link (separate from Mark as Sent) ----
+  // Local state seeded from the quote; updated from the enable/disable response
+  // so Copy works immediately without a full reload.
+  const [share, setShare] = useState<{ publicEnabled: boolean; publicToken: string | null }>({
+    publicEnabled: Boolean(publicEnabled),
+    publicToken: publicToken ?? null,
+  })
+  const [sharePending, setSharePending] = useState<null | "enable" | "disable">(null)
+  const [shareError, setShareError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const linkActive = share.publicEnabled && !!share.publicToken
+  const shareUrl =
+    linkActive && typeof window !== "undefined"
+      ? `${window.location.origin}/proposal/${share.publicToken}`
+      : null
+
+  const handleEnablePublicLink = async () => {
+    if (!onEnablePublicLink) return
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Enable public proposal link? Anyone with the link will be able to view this proposal.",
+      )
+    ) {
+      return
+    }
+    setSharePending("enable")
+    setShareError(null)
+    try {
+      setShare(await onEnablePublicLink())
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Could not enable the public link.")
+    } finally {
+      setSharePending(null)
+    }
+  }
+
+  const handleDisablePublicLink = async () => {
+    if (!onDisablePublicLink) return
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Disable this public proposal link? The current link will stop working.")
+    ) {
+      return
+    }
+    setSharePending("disable")
+    setShareError(null)
+    try {
+      setShare(await onDisablePublicLink())
+      setCopied(false)
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Could not disable the public link.")
+    } finally {
+      setSharePending(null)
+    }
+  }
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setShareError("Could not copy the link to the clipboard.")
+    }
+  }
 
   const handleDownload = async () => {
     if (!onDownloadPdf) return
@@ -172,6 +251,88 @@ export function ProposalStep({
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {downloadError}
         </p>
+      ) : null}
+
+      {/* Share — public proposal link. Separate from Mark as Sent; reuses the
+          existing enable/disable-public-link endpoints. No email, no status change. */}
+      {onEnablePublicLink || onDisablePublicLink ? (
+        <Card className="mb-4 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <h3 className="text-sm font-semibold text-foreground">Share · public proposal link</h3>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    linkActive
+                      ? "bg-success/15 text-success"
+                      : "border border-border bg-muted text-muted-foreground",
+                  )}
+                >
+                  {linkActive ? "Link active" : "No public link"}
+                </span>
+              </div>
+              <p className="mt-1 text-pretty text-xs text-muted-foreground">
+                Creates a client-accessible link to view this proposal online. Separate from “Mark as
+                Sent” — enabling a link does not change the quote status or email anyone.
+              </p>
+              <p className="mt-1 text-pretty text-[11px] text-muted-foreground">
+                Public proposal links currently render in English. Use Preview Proposal or Download PDF
+                for language-specific versions.
+              </p>
+              {linkActive && shareUrl ? (
+                <p className="mt-2 break-all rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px] text-foreground">
+                  {shareUrl}
+                </p>
+              ) : null}
+              {shareError ? (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-destructive" role="alert">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{shareError}</span>
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {linkActive ? (
+                <>
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={handleCopyLink}>
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {copied ? "Copied" : "Copy link"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={handleDisablePublicLink}
+                    disabled={sharePending !== null || !onDisablePublicLink}
+                  >
+                    {sharePending === "disable" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <X className="h-4 w-4" />
+                    )}
+                    {sharePending === "disable" ? "Disabling…" : "Disable link"}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleEnablePublicLink}
+                  disabled={sharePending !== null || !onEnablePublicLink}
+                >
+                  {sharePending === "enable" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="h-4 w-4" />
+                  )}
+                  {sharePending === "enable" ? "Enabling…" : "Enable public link"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-5">
