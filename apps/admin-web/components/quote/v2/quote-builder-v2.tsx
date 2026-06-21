@@ -224,6 +224,7 @@ export function QuoteBuilderV2({
       canSend={canMarkSent}
       sendDisabledReason={sendDisabledReason}
       sendError={sendError}
+      classicHref={`/quotes/${quote.id}/classic`}
       onPreview={onPreview ? () => onPreview(quote, language) : undefined}
       onSend={handleSend}
     >

@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const panelSource = readFileSync(new URL('./AgentManagementPanel.tsx', import.meta.url), 'utf8');
 const newQuotePageSource = readFileSync(new URL('../quotes/new/page.tsx', import.meta.url), 'utf8');
-const quoteDetailPageSource = readFileSync(new URL('../quotes/[id]/page.tsx', import.meta.url), 'utf8');
+const quoteDetailPageSource = readFileSync(new URL('../quotes/[id]/ClassicQuoteWorkspace.tsx', import.meta.url), 'utf8');
 const quotesFormSource = readFileSync(new URL('../quotes/QuotesForm.tsx', import.meta.url), 'utf8');
 const proxyRouteSource = readFileSync(new URL('../api/users/agents/route.ts', import.meta.url), 'utf8');
 const navSource = readFileSync(new URL('../admin-nav.ts', import.meta.url), 'utf8');

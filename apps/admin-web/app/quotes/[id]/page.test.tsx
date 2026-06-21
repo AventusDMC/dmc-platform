@@ -6,7 +6,7 @@ import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { buildQuoteReadinessModel } from './quote-readiness';
 
-const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+const pageSource = readFileSync(new URL('./ClassicQuoteWorkspace.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
 const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx', import.meta.url), 'utf8');
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
