@@ -7,11 +7,16 @@ import { StepHeader } from "../step-header"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import { PROPOSAL_LANGUAGES } from "../../../../app/quotes/[id]/proposal-paths"
+import {
+  evaluateNotesLanguageWarning,
+  proposalLanguageEnglishName,
+} from "../../../../app/quotes/[id]/proposal-notes-language"
 import type {
   QuoteMeta,
   PricingBreakdown,
   ProposalContent,
   ProposalReadinessItem,
+  ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
 import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2 } from "lucide-react"
@@ -31,6 +36,11 @@ export interface ProposalStepProps {
   onDownloadPdf?: (language: string) => void | Promise<void>
   onSend?: () => void
   onNavigate: (step: StepId) => void
+  /**
+   * Itinerary days (for the non-blocking notes-language advisory). Display-only;
+   * never mutated. Optional so the step still renders without itinerary data.
+   */
+  itineraryDays?: ItineraryDay[]
 }
 
 export function ProposalStep({
@@ -45,8 +55,18 @@ export function ProposalStep({
   onDownloadPdf,
   onSend,
   onNavigate,
+  itineraryDays = [],
 }: ProposalStepProps) {
   const outstanding = readiness.filter((c) => !c.done)
+
+  // Non-blocking advisory: stored day notes may not appear in the selected
+  // proposal language (proposal-v3 suppresses notes whose notesLanguage differs
+  // from the render locale). Reuses the classic, pure helper. Display-only.
+  const notesWarning = evaluateNotesLanguageWarning(
+    itineraryDays.map((d) => ({ notes: d.notes, notesLanguage: d.notesLanguage })),
+    language,
+  )
+  const languageName = proposalLanguageEnglishName(language)
 
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -110,6 +130,20 @@ export function ProposalStep({
           </div>
         }
       />
+
+      {notesWarning.warn ? (
+        <p
+          className="mb-3 flex items-start gap-1.5 text-xs text-warning-foreground"
+          role="note"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+          <span>
+            {notesWarning.mode === "explicit"
+              ? `Some day notes are saved as ${proposalLanguageEnglishName(notesWarning.fromLanguage)}, but this proposal is set to ${languageName}. Review or save ${languageName} day narratives in the Itinerary step before sending to the client.`
+              : `Some day notes may not match the selected proposal language (${languageName}). Review the day narratives in the Itinerary step before sending to the client.`}
+          </span>
+        </p>
+      ) : null}
 
       {downloadError ? (
         <p className="mb-3 flex items-center gap-1.5 text-xs text-destructive" role="alert">

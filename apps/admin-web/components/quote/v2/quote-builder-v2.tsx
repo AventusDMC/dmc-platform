@@ -174,6 +174,7 @@ export function QuoteBuilderV2({
             onDownloadPdf={onDownloadPdf ? (l) => onDownloadPdf(quote, l) : undefined}
             onSend={handleSend}
             onNavigate={setCurrent}
+            itineraryDays={quote.itinerary}
           />
         )
       default:
