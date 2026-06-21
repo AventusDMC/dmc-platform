@@ -26,14 +26,21 @@ export interface ProposalStepProps {
   pricing: PricingBreakdown
   proposal: ProposalContent
   readiness: ProposalReadinessItem[]
+  /** Whether "Mark as Sent" is allowed (readiness passes + not lifecycle-locked). */
   canSend: boolean
+  /** True while the Mark-as-Sent status change is in flight. */
   saving?: boolean
+  /** Why Mark-as-Sent is disabled (readiness or lifecycle reason). */
+  sendDisabledReason?: string
+  /** Backend error from the last Mark-as-Sent attempt. */
+  sendError?: string | null
   /** Selected proposal language CODE (en|pt|es|ar). */
   language: string
   /** Change the selected proposal language (render-time only; not persisted). */
   onLanguageChange: (language: string) => void
   /** Download the proposal-v3 PDF in the selected language. May be async. */
   onDownloadPdf?: (language: string) => void | Promise<void>
+  /** Mark the quote as Sent (status → SENT). Confirms before mutating. */
   onSend?: () => void
   onNavigate: (step: StepId) => void
   /**
@@ -50,6 +57,8 @@ export function ProposalStep({
   readiness,
   canSend,
   saving = false,
+  sendDisabledReason,
+  sendError,
   language,
   onLanguageChange,
   onDownloadPdf,
@@ -57,6 +66,7 @@ export function ProposalStep({
   onNavigate,
   itineraryDays = [],
 }: ProposalStepProps) {
+  const sendDisabled = !canSend || saving
   const outstanding = readiness.filter((c) => !c.done)
 
   // Non-blocking advisory: stored day notes may not appear in the selected
@@ -117,15 +127,16 @@ export function ProposalStep({
               )}
               {downloading ? "Preparing…" : "Download PDF"}
             </Button>
-            {/* Sending is not wired in V2 yet — always disabled with a clear tooltip. */}
+            {/* Mark as Sent — status-only change (no email, no public link). */}
             <Button
               size="sm"
-              disabled
-              aria-disabled="true"
-              title="Send Quote is not available in V2 yet."
+              onClick={onSend}
+              disabled={sendDisabled}
+              aria-disabled={sendDisabled}
+              title={sendDisabled ? sendDisabledReason : undefined}
             >
-              <Send className="h-4 w-4" />
-              Send to client
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {saving ? "Marking…" : "Mark as Sent"}
             </Button>
           </div>
         }
@@ -142,6 +153,17 @@ export function ProposalStep({
               ? `Some day notes are saved as ${proposalLanguageEnglishName(notesWarning.fromLanguage)}, but this proposal is set to ${languageName}. Review or save ${languageName} day narratives in the Itinerary step before sending to the client.`
               : `Some day notes may not match the selected proposal language (${languageName}). Review the day narratives in the Itinerary step before sending to the client.`}
           </span>
+        </p>
+      ) : null}
+
+      {sendError ? (
+        <p className="mb-3 flex items-start gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{sendError}</span>
+        </p>
+      ) : sendDisabled && sendDisabledReason ? (
+        <p className="mb-3 text-xs text-muted-foreground" role="note">
+          {sendDisabledReason}
         </p>
       ) : null}
 

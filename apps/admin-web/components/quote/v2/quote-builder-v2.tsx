@@ -70,6 +70,8 @@ export function QuoteBuilderV2({
   const [current, setCurrent] = useState<StepId>(initialStep)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  // Backend error from the last "Mark as Sent" attempt (e.g. completeness 400).
+  const [sendError, setSendError] = useState<string | null>(null)
   // Proposal language (render-time only; seeded from the quote's normalized code).
   const [language, setLanguage] = useState<string>(quote?.meta.proposalLanguage ?? "en")
 
@@ -124,19 +126,40 @@ export function QuoteBuilderV2({
     }
   }
 
+  // "Mark as Sent" = status → SENT only (no email, no public link). Allowed when
+  // readiness passes AND the quote is not already past the draft stage. The
+  // backend independently enforces completeness and rejects invalid transitions.
+  const LIFECYCLE_LOCKED = new Set(["SENT", "ACCEPTED", "CONFIRMED", "CANCELLED"])
+  const statusCode = (quote.meta.statusCode ?? "").toUpperCase()
+  const lifecycleLocked = LIFECYCLE_LOCKED.has(statusCode)
+  const canMarkSent = insights.canSend && !lifecycleLocked
+
+  const sendDisabledReason = lifecycleLocked
+    ? `Quote is already ${statusCode.toLowerCase()} — it can no longer be marked as sent here.`
+    : !insights.canSend
+      ? `${insights.outstanding.length} item${insights.outstanding.length === 1 ? "" : "s"} still need attention before this quote can be marked as sent.`
+      : undefined
+
   const handleSend = async () => {
-    if (!onSend || !insights.canSend) return
+    if (!onSend || !canMarkSent) return
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Mark this quote as sent? This will update the quote status only. No email will be sent.",
+      )
+    ) {
+      return
+    }
+    setSending(true)
+    setSendError(null)
     try {
-      setSending(true)
       await onSend(quote)
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Could not mark the quote as sent.")
     } finally {
       setSending(false)
     }
   }
-
-  const sendDisabledReason = !insights.canSend
-    ? `${insights.outstanding.length} item${insights.outstanding.length === 1 ? "" : "s"} still need attention before sending`
-    : undefined
 
   const renderStep = () => {
     switch (current) {
@@ -167,8 +190,10 @@ export function QuoteBuilderV2({
             pricing={quote.pricing}
             proposal={quote.proposal}
             readiness={quote.readiness}
-            canSend={insights.canSend}
+            canSend={canMarkSent}
             saving={sending}
+            sendDisabledReason={sendDisabledReason}
+            sendError={sendError}
             language={language}
             onLanguageChange={setLanguage}
             onDownloadPdf={onDownloadPdf ? (l) => onDownloadPdf(quote, l) : undefined}
@@ -185,10 +210,10 @@ export function QuoteBuilderV2({
   return (
     <QuoteBuilderShell
       meta={quote.meta}
-      saving={saving || sending}
-      canSend={insights.canSend}
+      saving={sending}
+      canSend={canMarkSent}
       sendDisabledReason={sendDisabledReason}
-      onSave={handleSave}
+      sendError={sendError}
       onPreview={onPreview ? () => onPreview(quote, language) : undefined}
       onSend={handleSend}
     >

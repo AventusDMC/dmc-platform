@@ -199,6 +199,12 @@ export interface QuoteMeta {
   rooming: string
   currency: string
   status: QuoteStatus
+  /**
+   * Raw backend lifecycle status (e.g. "DRAFT" | "SENT" | "ACCEPTED" |
+   * "CONFIRMED" | "CANCELLED" …), uppercased. Used to gate "Mark as Sent"
+   * (the display `status` above is a lossy 4-value mapping).
+   */
+  statusCode?: string
   owner: string
   lastSaved: string
 }
