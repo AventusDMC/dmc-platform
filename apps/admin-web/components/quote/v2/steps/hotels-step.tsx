@@ -142,6 +142,12 @@ function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
 
 export function HotelsStep({ cities, currency, onSetPrimary }: HotelsStepProps) {
   const canEdit = Boolean(onSetPrimary)
+  // Only claim "Set primary only" when at least one city actually exposes a
+  // "Set as primary" action (2+ editable real options in the same set). Fallback
+  // hotels, single-option cities, and no-handler all read as "View only" so the
+  // badge never over-promises editability.
+  const hasEditableAlternatives =
+    canEdit && cities.some((b) => eligibleOptionSetIds(b).size > 0)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState<{ id: string; message: string } | null>(null)
 
@@ -167,9 +173,13 @@ export function HotelsStep({ cities, currency, onSetPrimary }: HotelsStepProps) 
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
-        statusLabel="Set primary only"
-        statusTone="editable"
-        helper="Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
+        statusLabel={hasEditableAlternatives ? "Set primary only" : "View only"}
+        statusTone={hasEditableAlternatives ? "editable" : "view"}
+        helper={
+          hasEditableAlternatives
+            ? "Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
+            : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
+        }
       />
       {cities.length === 0 ? (
         <StepEmptyState
