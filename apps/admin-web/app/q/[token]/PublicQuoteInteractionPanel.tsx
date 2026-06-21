@@ -60,7 +60,20 @@ export function PublicQuoteInteractionPanel({
   const [lastAction, setLastAction] = useState<'accept' | 'request-changes' | 'payment' | null>(null);
 
   const isLocked = status === 'ACCEPTED' || status === 'CONFIRMED' || status === 'REVISION_REQUESTED';
+  // Client actions (Accept / Request Changes) are only available once the quote
+  // has been officially marked as SENT. Draft = view-only preview.
+  const canRespond = status === 'SENT';
+  const isDraft = status === 'DRAFT';
   const trimmedMessage = message.trim();
+
+  // Status-aware helper copy under the status line.
+  const statusCopy = isLocked
+    ? 'This quote response is already recorded. If you need anything else, please contact your consultant.'
+    : canRespond
+      ? 'Review the itinerary and pricing, then accept the quote or request revisions.'
+      : isDraft
+        ? 'This is a draft preview. Client actions are not available yet.'
+        : 'This proposal is not currently open for a client response. Please contact your consultant.';
 
   async function postAction(path: string, body?: Record<string, unknown>) {
     setIsSubmitting(true);
@@ -122,11 +135,23 @@ export function PublicQuoteInteractionPanel({
   return (
     <div className="quote-send-actions quote-client-actions">
       <p className="detail-copy">Status: {getStatusLabel(status)}</p>
-      <p className="detail-copy">
-        {isLocked
-          ? 'This quote response is already recorded. If you need anything else, please contact your consultant.'
-          : 'Review the itinerary and pricing, then accept the quote or request revisions.'}
-      </p>
+      {isDraft ? (
+        <p
+          className="detail-copy"
+          role="note"
+          style={{
+            border: '1px solid #d9b310',
+            background: '#fdf6e3',
+            color: '#6b5800',
+            borderRadius: 8,
+            padding: '10px 12px',
+          }}
+        >
+          Draft preview — this proposal has not been officially sent yet. Accept Quote and Request
+          Changes will be available after the quote is marked as sent.
+        </p>
+      ) : null}
+      <p className="detail-copy">{statusCopy}</p>
       {confirmation ? <p className="quote-client-confirmation">{confirmation}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {status === 'ACCEPTED' || status === 'CONFIRMED' ? (
@@ -167,21 +192,27 @@ export function PublicQuoteInteractionPanel({
           </button>
         </div>
       ) : null}
-      <button type="button" className="secondary-button quote-client-cta quote-client-cta-primary" onClick={handleAccept} disabled={isSubmitting || isLocked}>
-        {isSubmitting && lastAction === 'accept' ? 'Recording acceptance...' : 'Accept Quote'}
-      </button>
-      <button
-        type="button"
-        className="secondary-button quote-client-cta"
-        onClick={() => {
-          setShowRequestModal(true);
-          setError('');
-          setConfirmation('');
-        }}
-        disabled={isSubmitting || isLocked}
-      >
-        Request Changes
-      </button>
+      {/* Accept / Request Changes are only shown once the quote is SENT.
+          Draft and terminal states are view-only (the backend also enforces this). */}
+      {canRespond ? (
+        <>
+          <button type="button" className="secondary-button quote-client-cta quote-client-cta-primary" onClick={handleAccept} disabled={isSubmitting}>
+            {isSubmitting && lastAction === 'accept' ? 'Recording acceptance...' : 'Accept Quote'}
+          </button>
+          <button
+            type="button"
+            className="secondary-button quote-client-cta"
+            onClick={() => {
+              setShowRequestModal(true);
+              setError('');
+              setConfirmation('');
+            }}
+            disabled={isSubmitting}
+          >
+            Request Changes
+          </button>
+        </>
+      ) : null}
 
       {showRequestModal ? (
         <div className="quote-client-modal-backdrop">

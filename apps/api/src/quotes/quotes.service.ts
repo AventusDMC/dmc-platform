@@ -971,6 +971,14 @@ export class QuotesService {
         throw new BadRequestException('Quote interaction already completed');
       }
 
+      // Client actions are only valid once the quote has been officially sent.
+      // Blocks accepting a draft (or any non-SENT state) even via a direct POST.
+      if (quote.status !== QuoteStatus.SENT) {
+        throw new BadRequestException(
+          'This proposal is not available for client response yet.',
+        );
+      }
+
       const acceptedVersion = await this.resolveAcceptedQuoteVersion({
         quoteId: quote.id,
         acceptedVersionId: quote.acceptedVersionId ?? null,
@@ -1035,6 +1043,13 @@ export class QuotesService {
       quote.status === QuotesService.PUBLIC_REVISION_REQUESTED
     ) {
       throw new BadRequestException('Quote interaction already completed');
+    }
+
+    // Client actions are only valid once the quote has been officially sent.
+    if (quote.status !== QuoteStatus.SENT) {
+      throw new BadRequestException(
+        'This proposal is not available for client response yet.',
+      );
     }
 
     return quoteModel.update({
