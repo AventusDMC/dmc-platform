@@ -275,6 +275,9 @@ function mapMeta(raw: RawErpQuote, id: string): QuoteMeta {
     // Raw backend status (uppercased) for precise lifecycle gating; the display
     // `status` above collapses many backend states into 4 buckets.
     statusCode: asString(raw.status).trim().toUpperCase() || undefined,
+    // Public proposal share state (display-only; passed through from the API).
+    publicToken: typeof raw.publicToken === "string" ? raw.publicToken : null,
+    publicEnabled: asBool(raw.publicEnabled),
     owner: asString(raw.owner, "—"),
     // Display string only. If your ERP returns a timestamp, format it in
     // Phase B (e.g. relative time) before passing it through.
@@ -597,6 +600,8 @@ interface ApiQuote {
   totalSell?: number | null
   pricePerPax?: number | null
   sentAt?: string | null
+  publicToken?: string | null
+  publicEnabled?: boolean | null
   agent?: { firstName?: string | null; lastName?: string | null } | null
   company?: { id?: string | null; name?: string | null } | null
   contact?: { id?: string | null; firstName?: string | null; lastName?: string | null } | null
@@ -938,6 +943,8 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     rooming: q.roomCount ? `${q.roomCount} room${q.roomCount === 1 ? "" : "s"}` : "—",
     currency,
     status: q.status ?? "draft",
+    publicToken: q.publicToken ?? null,
+    publicEnabled: q.publicEnabled ?? false,
     owner: ownerName || "—",
     lastSaved: formatQuoteDate(q.sentAt),
     client: {

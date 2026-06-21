@@ -51,6 +51,10 @@ export interface QuoteBuilderV2Props {
    * only — does not change pricing. When omitted, Hotels stays read-only.
    */
   onSetPrimaryHotel?: (optionId: string, hotelOptionId: string) => void | Promise<void>
+  /** Enable the public proposal link; resolves to the new public state. */
+  onEnablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
+  /** Disable the public proposal link; resolves to the new public state. */
+  onDisablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -65,6 +69,8 @@ export function QuoteBuilderV2({
   onDownloadPdf,
   onPreview,
   onSetPrimaryHotel,
+  onEnablePublicLink,
+  onDisablePublicLink,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -200,6 +206,10 @@ export function QuoteBuilderV2({
             onSend={handleSend}
             onNavigate={setCurrent}
             itineraryDays={quote.itinerary}
+            publicToken={quote.meta.publicToken}
+            publicEnabled={quote.meta.publicEnabled}
+            onEnablePublicLink={onEnablePublicLink ? () => onEnablePublicLink(quote) : undefined}
+            onDisablePublicLink={onDisablePublicLink ? () => onDisablePublicLink(quote) : undefined}
           />
         )
       default:

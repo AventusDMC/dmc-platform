@@ -80,6 +80,38 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // Share / public proposal link — reuse the EXISTING public-link endpoints.
+  // Enable/disable only mutate the quote's public* fields (no status change, no
+  // email, no audit). Each returns the new {publicEnabled, publicToken} so the
+  // Proposal step can update its Share state immediately (Copy works without a
+  // full reload). Throws the backend message on failure.
+  const postPublicLink = async (q: Quote, action: "enable" | "disable") => {
+    const res = await fetch(`/api/quotes/${q.id}/${action}-public-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message)
+          ? parsed.message.join("; ")
+          : parsed?.message || body
+      } catch {
+        // non-JSON body — use raw text
+      }
+      throw new Error(message?.slice(0, 300) || `Could not ${action} the public link (${res.status}).`)
+    }
+    const data = await res.json().catch(() => ({}))
+    return {
+      publicEnabled: Boolean(data?.publicEnabled),
+      publicToken: typeof data?.publicToken === "string" ? data.publicToken : null,
+    }
+  }
+  const handleEnablePublicLink = (q: Quote) => postPublicLink(q, "enable")
+  const handleDisablePublicLink = (q: Quote) => postPublicLink(q, "disable")
+
   // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
   // selected language. Reuses the canonical helper + same-origin authenticated
   // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
@@ -120,6 +152,8 @@ export function BuilderV2Client({
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
+      onEnablePublicLink={handleEnablePublicLink}
+      onDisablePublicLink={handleDisablePublicLink}
       initialStep="hotels"
     />
   )
