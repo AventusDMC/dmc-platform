@@ -9,6 +9,15 @@ import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { cn } from "../../../../lib/utils"
 import type { ItineraryDay, Meal } from "../../../../lib/quote-types"
+// Reused AS-IS (no modification): deterministic, pure, no-AI/no-network day
+// narrative renderer (en/es/pt/ar) + client-safe guard. Same helper backs the
+// classic Route Planner and proposal-v3 day text.
+import {
+  buildDayNarrativePreview,
+  isClientSafeNarrative,
+  NARRATIVE_LOCALES,
+  type NarrativeLocale,
+} from "../../../../app/quotes/[id]/day-narrative-preview"
 import {
   MapPin,
   Hotel,
@@ -20,6 +29,7 @@ import {
   Save,
   X,
   Loader2,
+  Wand2,
 } from "lucide-react"
 
 const MEAL_LABEL: Record<Meal, string> = { B: "Breakfast", L: "Lunch", D: "Dinner" }
@@ -54,6 +64,12 @@ function DayCard({ day }: { day: ItineraryDay }) {
   const [editing, setEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState(day.title)
   const [notesDraft, setNotesDraft] = useState(day.notes ?? "")
+  // Declared language of the current notes draft. Seeded from the saved tag;
+  // set when a draft is generated; cleared on manual edit (we can no longer
+  // assert the language). Sent on save as notesLanguage (existing PATCH field).
+  const [notesLanguage, setNotesLanguage] = useState<string | null>(day.notesLanguage ?? null)
+  // Selected language for the "Generate draft" tool.
+  const [draftLocale, setDraftLocale] = useState<NarrativeLocale>("en")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,8 +77,36 @@ function DayCard({ day }: { day: ItineraryDay }) {
     // Re-seed drafts from the current (possibly refreshed) day values.
     setTitleDraft(day.title)
     setNotesDraft(day.notes ?? "")
+    setNotesLanguage(day.notesLanguage ?? null)
     setError(null)
     setEditing(true)
+  }
+
+  // Deterministic, frontend-only draft generation. Builds a localized client
+  // narrative from the day title + overnight city + visits (as activities) via
+  // the existing helper, runs the client-safe guard, then fills the textarea
+  // for review. Never auto-saves; confirms before replacing existing notes.
+  const generateDraft = (locale: NarrativeLocale) => {
+    setError(null)
+    const preview = buildDayNarrativePreview(
+      {
+        title: titleDraft,
+        notes: notesDraft || null,
+        overnightCity: day.overnightCity,
+        dayNumber: day.day,
+        appliedServices: day.visits.map((v) => ({ kind: "activity" as const, name: v })),
+      },
+      { locale },
+    )
+    if (!isClientSafeNarrative(preview.text)) {
+      setError("The generated draft was withheld by the client-safe check. Please write the narrative manually.")
+      return
+    }
+    if (notesDraft.trim() && !window.confirm("Replace the current narrative with the generated draft?")) {
+      return
+    }
+    setNotesDraft(preview.text)
+    setNotesLanguage(locale)
   }
 
   const cancelEdit = () => {
@@ -79,7 +123,9 @@ function DayCard({ day }: { day: ItineraryDay }) {
       const res = await fetch(`/api/itinerary/day/${day.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: titleDraft.trim(), notes: notesDraft }),
+        // notesLanguage tags the language of `notes` so the proposal advisory
+        // stays accurate; null when the text was typed/edited manually.
+        body: JSON.stringify({ title: titleDraft.trim(), notes: notesDraft, notesLanguage }),
       })
       if (!res.ok) {
         const body = await res.text()
@@ -153,13 +199,58 @@ function DayCard({ day }: { day: ItineraryDay }) {
                   placeholder="Day title"
                 />
               </label>
+              {/* Draft tools — deterministic, no AI. Generates a localized
+                  client narrative from the day structure for review. */}
+              <div className="rounded-md border border-dashed border-border bg-muted/30 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Draft tools
+                  </span>
+                  <label className="sr-only" htmlFor={`draft-lang-${day.id}`}>
+                    Draft language
+                  </label>
+                  <select
+                    id={`draft-lang-${day.id}`}
+                    value={draftLocale}
+                    onChange={(e) => setDraftLocale(e.target.value as NarrativeLocale)}
+                    disabled={saving}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {NARRATIVE_LOCALES.map((l) => (
+                      <option key={l} value={l}>
+                        {l.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2"
+                    onClick={() => generateDraft(draftLocale)}
+                    disabled={saving || titleDraft.trim() === ""}
+                  >
+                    <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Generate {draftLocale.toUpperCase()} draft
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Builds a client-facing draft from the day title and visits (localized regeneration,
+                  not a literal translation). Review and edit before saving — nothing is saved
+                  automatically.
+                </p>
+              </div>
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted-foreground">
                   Descriptive narrative
                 </span>
                 <textarea
                   value={notesDraft}
-                  onChange={(e) => setNotesDraft(e.target.value)}
+                  onChange={(e) => {
+                    setNotesDraft(e.target.value)
+                    // Manual edit → we can no longer assert the language.
+                    setNotesLanguage(null)
+                  }}
                   disabled={saving}
                   rows={5}
                   className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
