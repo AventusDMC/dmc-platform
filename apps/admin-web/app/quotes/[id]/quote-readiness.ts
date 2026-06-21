@@ -437,6 +437,20 @@ export function getAllQuoteServices(quote: Pick<QuoteReadinessQuote, 'quoteItems
   return [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
 }
 
+/**
+ * True when Quote Builder V2 is the default at `/quotes/[id]` (feature flag).
+ * When on, the classic workspace is served at `/quotes/[id]/classic`, so the
+ * classic page's self-navigation must target that base. Flag OFF → unchanged.
+ */
+export function quoteBuilderV2IsDefault() {
+  return process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT === 'true';
+}
+
+/** Base path for the CLASSIC workspace self-links (flag-aware). */
+export function classicQuoteBasePath(quoteId: string) {
+  return `/quotes/${quoteId}${quoteBuilderV2IsDefault() ? '/classic' : ''}`;
+}
+
 export function buildQuoteWorkspaceHref(
   quoteId: string,
   step: QuoteWorkspaceStep,
@@ -450,7 +464,7 @@ export function buildQuoteWorkspaceHref(
       search.set(key, value);
     }
   });
-  return `/quotes/${quoteId}?${search.toString()}`;
+  return `${classicQuoteBasePath(quoteId)}?${search.toString()}`;
 }
 
 function buildIssueHref(

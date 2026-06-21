@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { ChevronRight, Eye, Send, Loader2 } from "lucide-react"
+import { ChevronRight, Eye, Send, Loader2, ExternalLink } from "lucide-react"
 import { Button } from "../../ui/button"
 import { cn } from "../../../lib/utils"
 import type { QuoteMeta, QuoteStatus } from "../../../lib/quote-types"
@@ -55,6 +55,8 @@ export interface QuoteBuilderShellProps {
   onPreview?: () => void
   /** Mark the quote as Sent (status → SENT). Confirms before mutating. */
   onSend?: () => void
+  /** Link to the classic quote workspace (fallback for not-yet-in-V2 editing). */
+  classicHref?: string
 }
 
 export function QuoteBuilderShell({
@@ -66,6 +68,7 @@ export function QuoteBuilderShell({
   sendError,
   onPreview,
   onSend,
+  classicHref,
 }: QuoteBuilderShellProps) {
   // "Mark as Sent" performs a status-only change (status → SENT). It does NOT
   // email the client or create a public link. The Itinerary step keeps its own
@@ -99,6 +102,16 @@ export function QuoteBuilderShell({
 
         <div className="flex flex-col items-stretch gap-1 lg:items-end">
           <div className="flex flex-wrap items-center gap-2">
+            {classicHref ? (
+              <a
+                href={classicHref}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Open the full classic quote workspace (services, pricing, versions, etc.)"
+              >
+                <ExternalLink className="size-4" aria-hidden="true" />
+                Open Classic Builder
+              </a>
+            ) : null}
             <Button variant="outline" size="sm" className="gap-2" onClick={onPreview}>
               <Eye className="size-4" aria-hidden="true" />
               Preview Proposal
