@@ -210,6 +210,8 @@ export function QuoteBuilderV2({
           <PassengersStep
             passengers={quote.passengers}
             roomingGroups={quote.roomingGroups}
+            passengersError={quote.passengersLoadError}
+            roomingError={quote.roomingLoadError}
             classicHref={`/quotes/${quote.id}/classic`}
           />
         )

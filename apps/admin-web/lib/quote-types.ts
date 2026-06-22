@@ -289,6 +289,14 @@ export interface Quote {
   passengers: Passenger[]
   /** Read-only rooming groups + assignments (operational; no pricing impact). */
   roomingGroups: RoomingGroupSummary[]
+  /**
+   * True when the passengers GET failed (vs returning a real empty list) — the
+   * UI shows a non-blocking load warning instead of the "no passengers" empty
+   * state, so a transient fetch error is never mistaken for "none added".
+   */
+  passengersLoadError?: boolean
+  /** True when the rooming GET failed (vs returning a real empty list). */
+  roomingLoadError?: boolean
   pricing: PricingBreakdown
   proposal: ProposalContent
   readiness: ProposalReadinessItem[]

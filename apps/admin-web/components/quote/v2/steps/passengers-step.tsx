@@ -5,7 +5,24 @@ import { Badge } from "../../../ui/badge"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import type { Passenger, RoomingGroupSummary } from "../../../../lib/quote-types"
-import { Users, BedDouble, ExternalLink } from "lucide-react"
+import { Users, BedDouble, ExternalLink, AlertTriangle } from "lucide-react"
+
+// Non-blocking load-failure notice — shown when a best-effort GET failed, so a
+// transient error is never mistaken for a genuinely empty list.
+function LoadWarning({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning-foreground"
+    >
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+      <span>
+        Couldn’t load {label} right now. This is a temporary issue — try refreshing, or open the classic
+        builder. (Nothing here has changed.)
+      </span>
+    </div>
+  )
+}
 
 // READ-ONLY passengers + rooming summary. This step intentionally exposes NO
 // mutation affordances (no add/edit/delete/assign). Full passenger & rooming
@@ -89,11 +106,21 @@ function RoomingCard({ g }: { g: RoomingGroupSummary }) {
 export interface PassengersStepProps {
   passengers: Passenger[]
   roomingGroups: RoomingGroupSummary[]
+  /** True when the passengers GET failed — show a warning, not the empty state. */
+  passengersError?: boolean
+  /** True when the rooming GET failed — show a warning, not the empty state. */
+  roomingError?: boolean
   /** Link to the classic builder where passengers/rooming are managed. */
   classicHref?: string
 }
 
-export function PassengersStep({ passengers, roomingGroups, classicHref }: PassengersStepProps) {
+export function PassengersStep({
+  passengers,
+  roomingGroups,
+  passengersError = false,
+  roomingError = false,
+  classicHref,
+}: PassengersStepProps) {
   return (
     <div className="space-y-6">
       <StepHeader
@@ -118,7 +145,9 @@ export function PassengersStep({ passengers, roomingGroups, classicHref }: Passe
       {/* Passengers */}
       <section>
         <h3 className="mb-2 text-sm font-semibold text-foreground">Passengers</h3>
-        {passengers.length === 0 ? (
+        {passengersError ? (
+          <LoadWarning label="passengers" />
+        ) : passengers.length === 0 ? (
           <StepEmptyState
             icon={Users}
             title="No passengers added yet."
@@ -144,7 +173,9 @@ export function PassengersStep({ passengers, roomingGroups, classicHref }: Passe
       {/* Rooming */}
       <section>
         <h3 className="mb-2 text-sm font-semibold text-foreground">Rooming</h3>
-        {roomingGroups.length === 0 ? (
+        {roomingError ? (
+          <LoadWarning label="the rooming list" />
+        ) : roomingGroups.length === 0 ? (
           <StepEmptyState
             icon={BedDouble}
             title="No rooming list created yet."

@@ -87,6 +87,9 @@ export interface RawErpQuote {
   // meta summary string above).
   passengers?: unknown
   roomingGroups?: unknown
+  // True when the respective best-effort GET failed (vs a real empty list).
+  passengersLoadError?: unknown
+  roomingLoadError?: unknown
   pricing?: unknown
   proposal?: unknown
   readiness?: unknown
@@ -555,6 +558,8 @@ export function adaptErpQuote(raw: RawErpQuote | null | undefined, fallbackId: s
     transport: mapTransport(safeRaw),
     passengers: mapPassengers(safeRaw),
     roomingGroups: mapRooming(safeRaw),
+    passengersLoadError: asBool(safeRaw.passengersLoadError),
+    roomingLoadError: asBool(safeRaw.roomingLoadError),
     pricing: mapPricing(safeRaw, meta.currency),
     proposal: mapProposal(safeRaw),
     readiness: mapReadiness(safeRaw),
@@ -807,6 +812,8 @@ function mapErpQuoteToRaw(
   fallbackId: string,
   apiPassengers: ApiPassenger[] = [],
   apiRooming: ApiRoomingGroup[] = [],
+  passengersLoadError = false,
+  roomingLoadError = false,
 ): RawErpQuote {
   const id = q.id ?? fallbackId
   const pax = (q.adults ?? 0) + (q.children ?? 0)
@@ -1132,6 +1139,8 @@ function mapErpQuoteToRaw(
     transport,
     passengers,
     roomingGroups,
+    passengersLoadError,
+    roomingLoadError,
     pricing,
     proposal: {
       included: splitTextLines(q.inclusionsText),
@@ -1177,8 +1186,11 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
 
   // Passengers + rooming are READ-ONLY in V2 and best-effort: fetched from the
   // EXISTING GET endpoints (no new endpoints, no mutation). Their absence must
-  // never break the builder render. Auth redirects still propagate.
+  // never break the builder render. A FAILED fetch is tracked separately from a
+  // genuine empty list (200 []) so the UI can warn instead of claiming "none".
+  // Auth redirects still propagate.
   let passengers: ApiPassenger[] = []
+  let passengersLoadError = false
   try {
     const res = await adminPageFetchJson<ApiPassenger[] | null>(`/api/quotes/${id}/passengers`, "Builder V2 passengers", {
       cache: "no-store",
@@ -1189,9 +1201,11 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
   } catch (err) {
     if (isNextRedirectError(err)) throw err
     passengers = []
+    passengersLoadError = true
   }
 
   let rooming: ApiRoomingGroup[] = []
+  let roomingLoadError = false
   try {
     const res = await adminPageFetchJson<ApiRoomingGroup[] | null>(`/api/quotes/${id}/rooming`, "Builder V2 rooming", {
       cache: "no-store",
@@ -1202,9 +1216,10 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
   } catch (err) {
     if (isNextRedirectError(err)) throw err
     rooming = []
+    roomingLoadError = true
   }
 
-  return mapErpQuoteToRaw(main, itinerary, id, passengers, rooming)
+  return mapErpQuoteToRaw(main, itinerary, id, passengers, rooming, passengersLoadError, roomingLoadError)
 }
 
 /**

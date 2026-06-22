@@ -91,7 +91,29 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'case "passengers"',
       'passengers={quote.passengers}',
       'roomingGroups={quote.roomingGroups}',
+      'passengersError={quote.passengersLoadError}',
+      'roomingError={quote.roomingLoadError}',
       'classicHref={`/quotes/${quote.id}/classic`}',
+    ]);
+  });
+
+  it('distinguishes a FAILED GET from a true-empty list (item 9 hardening)', () => {
+    // Adapter: tracks load errors separately and only the catch sets them true.
+    contains(adapterSrc, [
+      'passengersLoadError',
+      'roomingLoadError',
+      'passengersLoadError = true',
+      'roomingLoadError = true',
+      'passengersLoadError: asBool(safeRaw.passengersLoadError)',
+    ]);
+    // Types expose the flags.
+    contains(typesSrc, ['passengersLoadError?: boolean', 'roomingLoadError?: boolean']);
+    // Step shows a non-blocking warning that takes precedence over the empty state.
+    contains(stepSrc, [
+      'function LoadWarning',
+      'passengersError ? (',
+      'roomingError ? (',
+      'Couldn’t load',
     ]);
   });
 
