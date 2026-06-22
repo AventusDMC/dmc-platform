@@ -13,6 +13,7 @@ const steps: WorkflowStep[] = [
   { id: "hotels", label: "Hotels", description: "Accommodation & rooming", status: "partial" },
   { id: "experiences", label: "Experiences", description: "Visits & entrances", status: "partial" },
   { id: "transport", label: "Transport", description: "Vehicles & transfers", status: "partial" },
+  { id: "passengers", label: "Passengers", description: "Travellers & rooming", status: "complete" },
   { id: "pricing", label: "Pricing", description: "Costs & margin", status: "partial" },
   { id: "proposal", label: "Proposal", description: "Review & generate PDF", status: "missing" },
 ]
@@ -212,6 +213,13 @@ export const demoQuote: Quote = {
     { id: "t6", route: "Dead Sea → Bethany Baptism Site (half day)", type: "Touring", day: "Day 7", vehicleClass: "Coach 35-seat", supplier: "Jordan Select Transport", supplierContract: "on-request", priceStatus: "partial", amount: 260, warning: "Rate provisional — awaiting supplier confirmation" },
     { id: "t7", route: "Dead Sea → Queen Alia Airport", type: "Transfer", day: "Day 8", vehicleClass: "Coach 35-seat", supplier: "Jordan Select Transport", supplierContract: "contracted", priceStatus: "complete", amount: 300, warning: null },
   ],
+  passengers: [
+    { id: "p1", fullName: "Maria Gonzalez", gender: "F", dateOfBirth: "12 Mar 1979", nationality: "Spain", passportNumber: "ESP4421987", passportExpiry: "30 Jun 2030", dietaryNotes: "Vegetarian", mobilityNotes: null, emergencyContact: "Luis Gonzalez +34 600 112 233", remarks: null },
+    { id: "p2", fullName: "Luis Gonzalez", gender: "M", dateOfBirth: "02 Sep 1977", nationality: "Spain", passportNumber: "ESP4421988", passportExpiry: "30 Jun 2030", dietaryNotes: null, mobilityNotes: null, emergencyContact: null, remarks: null },
+  ],
+  roomingGroups: [
+    { id: "r1", label: "Room 1", hotel: "Grand Hyatt Amman", day: "Day 1: Arrival Amman", roomType: "Deluxe", occupancyType: "double", guideRoom: false, leaderRoom: false, notes: null, passengers: ["Maria Gonzalez", "Luis Gonzalez"] },
+  ],
   pricing: {
     lines: [
       { id: "c1", label: "Accommodation (7 nights)", amount: 31200, status: "partial", note: "Wadi Rum camp unselected · Dead Sea on request" },
@@ -265,6 +273,8 @@ export const emptyQuote: Quote = {
   hotelCities: [],
   experiences: [],
   transport: [],
+  passengers: [],
+  roomingGroups: [],
   readiness: [],
   pricing: { ...demoQuote.pricing, lines: [], netCost: 0, margin: 0, sellingPrice: 0, perPerson: 0 },
 }

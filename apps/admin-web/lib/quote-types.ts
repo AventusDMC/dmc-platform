@@ -12,6 +12,7 @@ export type StepId =
   | "hotels"
   | "experiences"
   | "transport"
+  | "passengers"
   | "pricing"
   | "proposal"
 
@@ -162,6 +163,47 @@ export interface TransportService {
   transportLabel?: string | null
 }
 
+/**
+ * A traveller on the quote — READ-ONLY summary for V2. Full passenger
+ * management (add/edit/delete) lives in the classic builder. All fields are
+ * PII/display; none affect pricing.
+ */
+export interface Passenger {
+  id: string
+  fullName: string
+  gender?: string | null
+  dateOfBirth?: string | null
+  nationality?: string | null
+  passportNumber?: string | null
+  passportExpiry?: string | null
+  dietaryNotes?: string | null
+  mobilityNotes?: string | null
+  emergencyContact?: string | null
+  remarks?: string | null
+}
+
+/**
+ * A rooming group with its assigned passengers — READ-ONLY summary for V2.
+ * Room assignment / occupancy editing lives in the classic builder. Occupancy
+ * here is operational (who-sleeps-where); it is NOT a pricing input.
+ */
+export interface RoomingGroupSummary {
+  id: string
+  /** Room label (temporaryRoomLabel, or a derived "Room N"). */
+  label: string
+  /** Hotel name for the stay this room belongs to, when known. */
+  hotel: string | null
+  /** Itinerary day this room is scoped to (e.g. "Day 3: Petra"), when known. */
+  day: string | null
+  roomType: string | null
+  occupancyType: string | null
+  guideRoom: boolean
+  leaderRoom: boolean
+  notes: string | null
+  /** Assigned passenger full names. */
+  passengers: string[]
+}
+
 /** A single cost component line in the pricing breakdown. */
 export interface CostLine {
   id: string
@@ -243,6 +285,10 @@ export interface Quote {
   hotelCities: HotelCityBlock[]
   experiences: Experience[]
   transport: TransportService[]
+  /** Read-only passenger list (PII; no pricing impact). */
+  passengers: Passenger[]
+  /** Read-only rooming groups + assignments (operational; no pricing impact). */
+  roomingGroups: RoomingGroupSummary[]
   pricing: PricingBreakdown
   proposal: ProposalContent
   readiness: ProposalReadinessItem[]
