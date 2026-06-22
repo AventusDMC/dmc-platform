@@ -5350,16 +5350,45 @@ export class QuotesService {
   async updateItemDisplayText(
     quoteId: string,
     itemId: string,
-    data: {
-      externalClientDescription?: string | null;
-      externalIncludes?: string | null;
-      externalExcludes?: string | null;
-      externalHotelsOrSimilar?: string | null;
-      transportLabel?: string | null;
-    },
+    data: Record<string, unknown>,
     actor?: CompanyScopedActor,
   ) {
     const actorCompanyId = requireActorCompanyId(actor);
+
+    const ALLOWED_DISPLAY_TEXT_FIELDS = [
+      'externalClientDescription',
+      'externalIncludes',
+      'externalExcludes',
+      'externalHotelsOrSimilar',
+      'transportLabel',
+    ] as const;
+    const allowedSet = new Set<string>(ALLOWED_DISPLAY_TEXT_FIELDS);
+
+    // STRICT whitelist: any non-whitelisted key (pricing/identity/quantity/etc.)
+    // is rejected with 400 — the payload is never partially applied. This makes
+    // it impossible to smuggle a pricing field through this pricing-inert route.
+    const payload = data ?? {};
+    const forbiddenKeys = Object.keys(payload).filter((key) => !allowedSet.has(key));
+    if (forbiddenKeys.length > 0) {
+      throw new BadRequestException(
+        `Unsupported field(s): ${forbiddenKeys.join(', ')}. This endpoint only updates display text ` +
+          `(${ALLOWED_DISPLAY_TEXT_FIELDS.join(', ')}); pricing/identity fields are not editable here.`,
+      );
+    }
+
+    const updateData: Record<string, string | null> = {};
+    for (const field of ALLOWED_DISPLAY_TEXT_FIELDS) {
+      if (!(field in payload)) {
+        continue;
+      }
+      const value = payload[field];
+      updateData[field] = value === null || value === undefined ? null : String(value);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('No editable display-text fields provided');
+    }
+
     // Revision guard (matches the other item mutations). Company scoping is also
     // enforced at the controller via findOne(quoteId, actor).
     await this.assertQuoteMutationAccess(quoteId, actor);
@@ -5379,27 +5408,6 @@ export class QuotesService {
 
     if (item.quote.clientCompanyId !== actorCompanyId && item.quote.brandCompanyId !== actorCompanyId) {
       throw new BadRequestException('Quote item not found');
-    }
-
-    const ALLOWED_DISPLAY_TEXT_FIELDS = [
-      'externalClientDescription',
-      'externalIncludes',
-      'externalExcludes',
-      'externalHotelsOrSimilar',
-      'transportLabel',
-    ] as const;
-
-    const updateData: Record<string, string | null> = {};
-    for (const field of ALLOWED_DISPLAY_TEXT_FIELDS) {
-      const value = (data as Record<string, unknown>)[field];
-      if (value === undefined) {
-        continue;
-      }
-      updateData[field] = value === null ? null : String(value);
-    }
-
-    if (Object.keys(updateData).length === 0) {
-      throw new BadRequestException('No editable display-text fields provided');
     }
 
     return this.prisma.quoteItem.update({

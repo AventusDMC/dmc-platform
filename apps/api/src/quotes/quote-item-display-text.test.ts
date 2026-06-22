@@ -107,6 +107,30 @@ function baseItem(overrides: Partial<ItemRow> = {}): ItemRow {
   };
 }
 
+const FORBIDDEN_SAMPLE = {
+  totalCost: 9999,
+  totalSell: 9999,
+  sellPrice: 1,
+  costPrice: 1,
+  quantity: 99,
+  paxCount: 99,
+  markupPercent: 50,
+  markupAmount: 50,
+  overrideCost: 5,
+  currency: 'EUR',
+  fxRate: 2,
+  serviceDate: '2030-01-01',
+  serviceType: 'HACK',
+  serviceId: 'svc-x',
+  contractId: 'c-x',
+  optionId: 'opt-x',
+  clientDescription: 'should-not-write',
+  customServiceName: 'should-not-write',
+  internalNotes: 'should-not-write',
+  externalInternalNotes: 'should-not-write',
+  pricingDescription: 'should-not-write',
+};
+
 test('updates only whitelisted display-text fields and never re-prices', async () => {
   const { service, calls } = makeService(baseItem());
 
@@ -119,50 +143,52 @@ test('updates only whitelisted display-text fields and never re-prices', async (
       externalExcludes: 'New excludes',
       externalHotelsOrSimilar: 'Hotel X or similar',
       transportLabel: 'Amman → Petra',
-      // Forbidden fields below must be ignored (whitelist) — never written.
-      totalCost: 9999,
-      totalSell: 9999,
-      sellPrice: 1,
-      quantity: 99,
-      paxCount: 99,
-      markupPercent: 50,
-      markupAmount: 50,
-      overrideCost: 5,
-      currency: 'EUR',
-      serviceDate: '2030-01-01',
-      serviceType: 'HACK',
-      serviceId: 'svc-x',
-      optionId: 'opt-x',
-      clientDescription: 'should-not-write',
-      customServiceName: 'should-not-write',
-      internalNotes: 'should-not-write',
-      externalInternalNotes: 'should-not-write',
-      pricingDescription: 'should-not-write',
     } as any,
     ACTOR,
   );
 
-  const data = calls.update?.data as Record<string, unknown>;
-  // Whitelisted fields written.
-  assert.deepEqual(data, {
+  // Exactly the whitelisted fields are written — nothing else.
+  assert.deepEqual(calls.update?.data, {
     externalClientDescription: 'New client description',
     externalIncludes: 'New includes',
     externalExcludes: 'New excludes',
     externalHotelsOrSimilar: 'Hotel X or similar',
     transportLabel: 'Amman → Petra',
   });
-  // Forbidden fields NOT written.
-  for (const forbidden of [
-    'totalCost', 'totalSell', 'sellPrice', 'quantity', 'paxCount', 'markupPercent', 'markupAmount',
-    'overrideCost', 'currency', 'serviceDate', 'serviceType', 'serviceId', 'optionId',
-    'clientDescription', 'customServiceName', 'internalNotes', 'externalInternalNotes', 'pricingDescription',
-  ]) {
-    assert.equal(Object.prototype.hasOwnProperty.call(data, forbidden), false, `must not write ${forbidden}`);
-  }
   // No repricing was triggered, and item totals are unchanged.
   assert.equal(calls.pricingTriggered, false);
   assert.equal((updated as any).totalCost, 100);
   assert.equal((updated as any).totalSell, 150);
+});
+
+test('rejects (400) a payload containing ONLY forbidden fields and mutates nothing', async () => {
+  const { service, calls } = makeService(baseItem());
+
+  await assert.rejects(
+    () => service.updateItemDisplayText('quote-1', 'item-1', { ...FORBIDDEN_SAMPLE } as any, ACTOR),
+    (err: any) => err?.status === 400 && /Unsupported field/.test(err?.message),
+  );
+  // Nothing was written and no repricing ran.
+  assert.equal(calls.update, undefined);
+  assert.equal(calls.pricingTriggered, false);
+});
+
+test('rejects (400) a payload mixing allowed + forbidden fields (no partial apply)', async () => {
+  const { service, calls } = makeService(baseItem());
+
+  await assert.rejects(
+    () =>
+      service.updateItemDisplayText(
+        'quote-1',
+        'item-1',
+        { transportLabel: 'Amman → Petra', totalSell: 9999, markupPercent: 50 } as any,
+        ACTOR,
+      ),
+    (err: any) => err?.status === 400 && /Unsupported field/.test(err?.message),
+  );
+  // The allowed field must NOT be applied when forbidden fields are present.
+  assert.equal(calls.update, undefined);
+  assert.equal(calls.pricingTriggered, false);
 });
 
 test('accepts null to clear a display-text field without re-pricing', async () => {

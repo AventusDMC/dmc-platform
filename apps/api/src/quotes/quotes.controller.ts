@@ -1383,11 +1383,12 @@ export class QuotesController {
   }
 
   // Pricing-inert client-facing display-text update. Updates ONLY the whitelisted
-  // text fields below; never re-prices the quote. Any other field present in the
-  // request body (totals, quantities, IDs, serviceDate, currency/FX, etc.) is
-  // ignored here and never reaches the service.
+  // text fields; never re-prices the quote. The raw body is forwarded so the
+  // service can STRICT-reject (400) any non-whitelisted field (totals,
+  // quantities, IDs, serviceDate, currency/FX, etc.) instead of silently
+  // ignoring it.
   @Patch(':id/items/:itemId/display-text')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'finance')
   async updateItemDisplayText(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
@@ -1403,15 +1404,7 @@ export class QuotesController {
     return this.quotesService.updateItemDisplayText(
       id,
       itemId,
-      {
-        externalClientDescription:
-          body.externalClientDescription === undefined ? undefined : body.externalClientDescription || null,
-        externalIncludes: body.externalIncludes === undefined ? undefined : body.externalIncludes || null,
-        externalExcludes: body.externalExcludes === undefined ? undefined : body.externalExcludes || null,
-        externalHotelsOrSimilar:
-          body.externalHotelsOrSimilar === undefined ? undefined : body.externalHotelsOrSimilar || null,
-        transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
-      },
+      (body ?? {}) as Record<string, unknown>,
       actor,
     );
   }
