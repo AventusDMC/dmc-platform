@@ -80,6 +80,34 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // Update a quote item's CLIENT-FACING display text via the pricing-inert
+  // endpoint: PATCH /api/quotes/:id/items/:itemId/display-text. Only whitelisted
+  // text fields (external-package text + transport route label) are forwarded;
+  // the backend never re-prices. Throws the backend message on failure so the
+  // inline editor can surface it; refreshes the route on success.
+  const handleUpdateDisplayText = async (quoteItemId: string, patch: Record<string, string | null>) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/items/${quoteItemId}/display-text`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message)
+          ? parsed.message.join("; ")
+          : parsed?.message || body
+      } catch {
+        // non-JSON body — use raw text
+      }
+      throw new Error(message?.slice(0, 300) || `Could not save client text (${res.status}).`)
+    }
+    router.refresh()
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -152,6 +180,7 @@ export function BuilderV2Client({
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
+      onUpdateDisplayText={handleUpdateDisplayText}
       onEnablePublicLink={handleEnablePublicLink}
       onDisablePublicLink={handleDisablePublicLink}
       initialStep="hotels"

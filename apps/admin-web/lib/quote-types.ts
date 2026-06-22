@@ -127,6 +127,19 @@ export interface Experience {
   status: Status
   amount: number
   included: boolean
+  /** Underlying QuoteItem id — present for real items; required to edit display text. */
+  quoteItemId?: string
+  /**
+   * True only when this item exposes editable client-facing display text. In V2
+   * this is limited to EXTERNAL-PACKAGE items (the only experience text the
+   * proposal renders from per-item fields). Normal experiences stay read-only.
+   */
+  editableText?: boolean
+  /** External-package client-facing text (rendered by the proposal). Edited inertly. */
+  externalClientDescription?: string | null
+  externalIncludes?: string | null
+  externalExcludes?: string | null
+  externalHotelsOrSimilar?: string | null
 }
 
 /** A ground transport / transfer service. */
@@ -141,6 +154,12 @@ export interface TransportService {
   priceStatus: Status
   amount: number | null
   warning: string | null
+  /** Underlying QuoteItem id — present for real items; required to edit display text. */
+  quoteItemId?: string
+  /** True when this transport line exposes an editable client-facing route label. */
+  editableText?: boolean
+  /** Client-facing transport route label (rendered by the proposal). Edited inertly. */
+  transportLabel?: string | null
 }
 
 /** A single cost component line in the pricing breakdown. */

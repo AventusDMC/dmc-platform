@@ -5,13 +5,28 @@ import { Badge } from "../../../ui/badge"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge, ContractBadge } from "../status-badges"
+import { DisplayTextEditor } from "./display-text-editor"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { TransportService } from "../../../../lib/quote-types"
 import { Bus, AlertTriangle } from "lucide-react"
 
-function ServiceRow({ svc, currency }: { svc: TransportService; currency: string }) {
+export type UpdateDisplayText = (
+  quoteItemId: string,
+  patch: Record<string, string | null>,
+) => void | Promise<void>
+
+function ServiceRow({
+  svc,
+  currency,
+  onUpdateDisplayText,
+}: {
+  svc: TransportService
+  currency: string
+  onUpdateDisplayText?: UpdateDisplayText
+}) {
   const unassigned = svc.supplier.toLowerCase() === "unassigned"
+  const canEdit = Boolean(onUpdateDisplayText && svc.editableText && svc.quoteItemId)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -45,6 +60,14 @@ function ServiceRow({ svc, currency }: { svc: TransportService; currency: string
           <span>{svc.warning}</span>
         </div>
       )}
+      {canEdit ? (
+        <DisplayTextEditor
+          fields={[
+            { key: "transportLabel", label: "Route label", value: svc.transportLabel ?? "" },
+          ]}
+          onSave={(patch) => onUpdateDisplayText!(svc.quoteItemId!, patch)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -52,21 +75,30 @@ function ServiceRow({ svc, currency }: { svc: TransportService; currency: string
 export interface TransportStepProps {
   services: TransportService[]
   currency: string
+  /** When provided, each real transport line exposes an inline route-label editor. */
+  onUpdateDisplayText?: UpdateDisplayText
 }
 
-export function TransportStep({ services, currency }: TransportStepProps) {
+export function TransportStep({ services, currency, onUpdateDisplayText }: TransportStepProps) {
   const priced = services
     .filter((s) => s.amount != null)
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
+  const anyEditable = Boolean(
+    onUpdateDisplayText && services.some((s) => s.editableText && s.quoteItemId),
+  )
 
   return (
     <div>
       <StepHeader
         title="Transport & Transfers"
         description="Vehicles, transfers and touring days with assigned ground suppliers and rates."
-        statusLabel="View only"
+        statusLabel={anyEditable ? "Limited editing" : "View only"}
         statusTone="view"
-        helper="Transport services are shown for review. Editing will come later."
+        helper={
+          anyEditable
+            ? "Transport services are shown for review. Each route's client label can be edited; pricing is unchanged."
+            : "Transport services are shown for review. Editing will come later."
+        }
       />
       {services.length === 0 ? (
         <StepEmptyState
@@ -89,7 +121,12 @@ export function TransportStep({ services, currency }: TransportStepProps) {
           </div>
           <div className="divide-y divide-border">
             {services.map((svc) => (
-              <ServiceRow key={svc.id} svc={svc} currency={currency} />
+              <ServiceRow
+                key={svc.id}
+                svc={svc}
+                currency={currency}
+                onUpdateDisplayText={onUpdateDisplayText}
+              />
             ))}
           </div>
         </Card>

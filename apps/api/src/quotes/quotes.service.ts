@@ -5331,6 +5331,83 @@ export class QuotesService {
     return this.hydrateOneOffExternalPackageItem(updatedItem);
   }
 
+  /**
+   * Pricing-inert update of a quote item's CLIENT-FACING display text.
+   *
+   * This deliberately does NOT route through `updateItem`/`resolveQuoteItemValues`
+   * (which always re-resolves cost) and does NOT call `recalculateQuoteTotals` or
+   * `syncJordanPassEntranceFees`. It writes ONLY the whitelisted text columns via a
+   * single `quoteItem.update`, so:
+   *   - item count is unchanged (no create/delete)
+   *   - the item's totalCost/totalSell are unchanged (not in the update payload)
+   *   - quote totals, package pricing, and supplier-contract pricing are unchanged
+   *     (no recalculation runs)
+   *
+   * Whitelist = only fields the proposal-v3 mapper already renders client-facing:
+   * external-package text (externalClientDescription/Includes/Excludes/HotelsOrSimilar)
+   * and the transport route label. Any other field is ignored.
+   */
+  async updateItemDisplayText(
+    quoteId: string,
+    itemId: string,
+    data: {
+      externalClientDescription?: string | null;
+      externalIncludes?: string | null;
+      externalExcludes?: string | null;
+      externalHotelsOrSimilar?: string | null;
+      transportLabel?: string | null;
+    },
+    actor?: CompanyScopedActor,
+  ) {
+    const actorCompanyId = requireActorCompanyId(actor);
+    // Revision guard (matches the other item mutations). Company scoping is also
+    // enforced at the controller via findOne(quoteId, actor).
+    await this.assertQuoteMutationAccess(quoteId, actor);
+
+    // Scope the item to the URL quote so an item belonging to a different quote can
+    // never be edited through a mismatched :quoteId/:itemId pair.
+    const item = (await this.prisma.quoteItem.findFirst({
+      where: { id: itemId, quoteId },
+      include: {
+        quote: { select: { clientCompanyId: true, brandCompanyId: true } },
+      },
+    } as any)) as any;
+
+    if (!item) {
+      throw new BadRequestException('Quote item not found');
+    }
+
+    if (item.quote.clientCompanyId !== actorCompanyId && item.quote.brandCompanyId !== actorCompanyId) {
+      throw new BadRequestException('Quote item not found');
+    }
+
+    const ALLOWED_DISPLAY_TEXT_FIELDS = [
+      'externalClientDescription',
+      'externalIncludes',
+      'externalExcludes',
+      'externalHotelsOrSimilar',
+      'transportLabel',
+    ] as const;
+
+    const updateData: Record<string, string | null> = {};
+    for (const field of ALLOWED_DISPLAY_TEXT_FIELDS) {
+      const value = (data as Record<string, unknown>)[field];
+      if (value === undefined) {
+        continue;
+      }
+      updateData[field] = value === null ? null : String(value);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('No editable display-text fields provided');
+    }
+
+    return this.prisma.quoteItem.update({
+      where: { id: item.id },
+      data: updateData,
+    });
+  }
+
   async assignServiceToItem(quoteId: string, itemId: string, serviceId: string, actor?: CompanyScopedActor) {
     const quote = await this.assertQuoteMutationAccess(quoteId, actor);
     const [item, service] = await Promise.all([

@@ -184,6 +184,18 @@ type CreateQuoteItemBody = {
 
 type UpdateQuoteItemBody = Partial<CreateQuoteItemBody>;
 
+// Pricing-inert display-text update. Only these client-facing fields — which the
+// proposal-v3 mapper already renders — may be edited via the display-text route.
+// Every pricing/identity/quantity field is intentionally absent here so it can
+// never be forwarded to the service.
+type UpdateQuoteItemDisplayTextBody = {
+  externalClientDescription?: string | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalHotelsOrSimilar?: string | null;
+  transportLabel?: string | null;
+};
+
 type ExpandExcursionTemplateBody = {
   itineraryId?: string | null;
   serviceDate?: string | null;
@@ -1368,6 +1380,40 @@ export class QuotesController {
     }
 
     return this.quotesService.detachItemHotelContract(id, itemId, actor);
+  }
+
+  // Pricing-inert client-facing display-text update. Updates ONLY the whitelisted
+  // text fields below; never re-prices the quote. Any other field present in the
+  // request body (totals, quantities, IDs, serviceDate, currency/FX, etc.) is
+  // ignored here and never reaches the service.
+  @Patch(':id/items/:itemId/display-text')
+  @Roles('admin', 'viewer', 'finance')
+  async updateItemDisplayText(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: UpdateQuoteItemDisplayTextBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.updateItemDisplayText(
+      id,
+      itemId,
+      {
+        externalClientDescription:
+          body.externalClientDescription === undefined ? undefined : body.externalClientDescription || null,
+        externalIncludes: body.externalIncludes === undefined ? undefined : body.externalIncludes || null,
+        externalExcludes: body.externalExcludes === undefined ? undefined : body.externalExcludes || null,
+        externalHotelsOrSimilar:
+          body.externalHotelsOrSimilar === undefined ? undefined : body.externalHotelsOrSimilar || null,
+        transportLabel: body.transportLabel === undefined ? undefined : body.transportLabel || null,
+      },
+      actor,
+    );
   }
 
   @Get(':id/options')
