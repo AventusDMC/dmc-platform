@@ -184,6 +184,18 @@ type CreateQuoteItemBody = {
 
 type UpdateQuoteItemBody = Partial<CreateQuoteItemBody>;
 
+// Pricing-inert display-text update. Only these client-facing fields — which the
+// proposal-v3 mapper already renders — may be edited via the display-text route.
+// Every pricing/identity/quantity field is intentionally absent here so it can
+// never be forwarded to the service.
+type UpdateQuoteItemDisplayTextBody = {
+  externalClientDescription?: string | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalHotelsOrSimilar?: string | null;
+  transportLabel?: string | null;
+};
+
 type ExpandExcursionTemplateBody = {
   itineraryId?: string | null;
   serviceDate?: string | null;
@@ -1368,6 +1380,33 @@ export class QuotesController {
     }
 
     return this.quotesService.detachItemHotelContract(id, itemId, actor);
+  }
+
+  // Pricing-inert client-facing display-text update. Updates ONLY the whitelisted
+  // text fields; never re-prices the quote. The raw body is forwarded so the
+  // service can STRICT-reject (400) any non-whitelisted field (totals,
+  // quantities, IDs, serviceDate, currency/FX, etc.) instead of silently
+  // ignoring it.
+  @Patch(':id/items/:itemId/display-text')
+  @Roles('admin', 'finance')
+  async updateItemDisplayText(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: UpdateQuoteItemDisplayTextBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.updateItemDisplayText(
+      id,
+      itemId,
+      (body ?? {}) as Record<string, unknown>,
+      actor,
+    );
   }
 
   @Get(':id/options')

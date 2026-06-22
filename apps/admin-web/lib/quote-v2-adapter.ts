@@ -379,6 +379,14 @@ function mapHotelCities(raw: RawErpQuote): HotelCityBlock[] {
   })
 }
 
+// Optional nullable text passthrough: null stays null, present strings survive,
+// everything else collapses to undefined (field simply absent).
+function asTextOrNull(value: unknown): string | null | undefined {
+  if (value === null) return null
+  if (typeof value === "string") return value
+  return undefined
+}
+
 function mapExperiences(raw: RawErpQuote): Experience[] {
   return asArray(raw.experiences).map((e, i) => {
     const r = rec(e)
@@ -391,6 +399,12 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       status: normStatus(r.status),
       amount: asNumber(r.amount),
       included: asBool(r.included),
+      quoteItemId: typeof r.quoteItemId === "string" ? r.quoteItemId : undefined,
+      editableText: asBool(r.editableText),
+      externalClientDescription: asTextOrNull(r.externalClientDescription),
+      externalIncludes: asTextOrNull(r.externalIncludes),
+      externalExcludes: asTextOrNull(r.externalExcludes),
+      externalHotelsOrSimilar: asTextOrNull(r.externalHotelsOrSimilar),
     }
   })
 }
@@ -409,6 +423,9 @@ function mapTransport(raw: RawErpQuote): TransportService[] {
       priceStatus: normStatus(r.priceStatus),
       amount: asNumberOrNull(r.amount),
       warning: r.warning == null ? null : asString(r.warning) || null,
+      quoteItemId: typeof r.quoteItemId === "string" ? r.quoteItemId : undefined,
+      editableText: asBool(r.editableText),
+      transportLabel: asTextOrNull(r.transportLabel),
     }
   })
 }
@@ -560,6 +577,14 @@ interface ApiQuoteItem {
   sellPrice?: number | null
   pricingDescription?: string | null
   excursionTemplateComponentOptional?: boolean | null
+  // Client-facing display-text fields the proposal renders (returned by the
+  // GET /quotes/:id `include`). Editable inertly via the display-text endpoint.
+  transportLabel?: string | null
+  externalPackageName?: string | null
+  externalClientDescription?: string | null
+  externalIncludes?: string | null
+  externalExcludes?: string | null
+  externalHotelsOrSimilar?: string | null
   activity?: { name?: string | null } | null
   service?: ApiService | null
   appliedVehicleRate?: ApiVehicleRate | null
@@ -682,6 +707,13 @@ function isTransportItem(it: ApiQuoteItem): boolean {
 
 function isHotelItem(it: ApiQuoteItem): boolean {
   return it.hotelId != null
+}
+
+// An external multi-country package item — the only experience whose client-facing
+// text (description / includes / excludes / hotels-or-similar) the proposal renders
+// from per-item fields, hence the only experience type editable in V2.
+function isExternalPackageItem(it: ApiQuoteItem): boolean {
+  return Boolean(it.externalPackageName) || it.service?.serviceType?.code === "EXTERNAL_PACKAGE"
 }
 
 /** Map an existing ERP quote (+ optional itinerary) into the loose RawErpQuote. */
@@ -853,11 +885,16 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
         priceStatus: sell > 0 ? "complete" : "missing",
         amount: sell > 0 ? sell : null,
         warning: sell > 0 ? null : "No rate available",
+        // Inert display-text edit: every real transport line can edit its label.
+        quoteItemId: it.id ?? undefined,
+        editableText: Boolean(it.id),
+        transportLabel: it.transportLabel ?? null,
       })
       continue
     }
 
     // everything else = experience / entrance / service
+    const externalPackage = isExternalPackageItem(it)
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
@@ -867,6 +904,13 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
       status: sell > 0 ? "complete" : "partial",
       amount: sell,
       included: !it.excursionTemplateComponentOptional,
+      // Inert display-text edit: ONLY external-package items expose editable text.
+      quoteItemId: it.id ?? undefined,
+      editableText: Boolean(it.id) && externalPackage,
+      externalClientDescription: externalPackage ? it.externalClientDescription ?? null : null,
+      externalIncludes: externalPackage ? it.externalIncludes ?? null : null,
+      externalExcludes: externalPackage ? it.externalExcludes ?? null : null,
+      externalHotelsOrSimilar: externalPackage ? it.externalHotelsOrSimilar ?? null : null,
     })
   }
 

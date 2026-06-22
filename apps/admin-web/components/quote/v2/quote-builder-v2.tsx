@@ -51,6 +51,12 @@ export interface QuoteBuilderV2Props {
    * only — does not change pricing. When omitted, Hotels stays read-only.
    */
   onSetPrimaryHotel?: (optionId: string, hotelOptionId: string) => void | Promise<void>
+  /**
+   * Update a quote item's client-facing display text (pricing-inert). Limited to
+   * external-package text + transport route labels. When omitted,
+   * Experiences/Transport stay read-only.
+   */
+  onUpdateDisplayText?: (quoteItemId: string, patch: Record<string, string | null>) => void | Promise<void>
   /** Enable the public proposal link; resolves to the new public state. */
   onEnablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   /** Disable the public proposal link; resolves to the new public state. */
@@ -69,6 +75,7 @@ export function QuoteBuilderV2({
   onDownloadPdf,
   onPreview,
   onSetPrimaryHotel,
+  onUpdateDisplayText,
   onEnablePublicLink,
   onDisablePublicLink,
   initialStep = "setup",
@@ -183,10 +190,20 @@ export function QuoteBuilderV2({
         )
       case "experiences":
         return (
-          <ExperiencesStep experiences={quote.experiences} currency={quote.meta.currency} />
+          <ExperiencesStep
+            experiences={quote.experiences}
+            currency={quote.meta.currency}
+            onUpdateDisplayText={onUpdateDisplayText}
+          />
         )
       case "transport":
-        return <TransportStep services={quote.transport} currency={quote.meta.currency} />
+        return (
+          <TransportStep
+            services={quote.transport}
+            currency={quote.meta.currency}
+            onUpdateDisplayText={onUpdateDisplayText}
+          />
+        )
       case "pricing":
         return <PricingStep pricing={quote.pricing} />
       case "proposal":
