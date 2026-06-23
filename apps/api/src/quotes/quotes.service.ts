@@ -45,6 +45,11 @@ import { resolveProposalLanguage } from './proposal-i18n';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
 import { calculateMultiCurrencyQuoteItemPricing, convertCurrency, isSupportedCurrency } from './multi-currency-pricing';
+import {
+  buildEntranceFeeUpdateData,
+  decideEntranceFeeCoverage,
+  isPetraEntranceSite,
+} from './jordan-pass-coverage';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 
@@ -9629,26 +9634,35 @@ export class QuotesService {
             select: { petraDayCount: true },
           });
 
+    const quoteCurrency = this.normalizeCurrencyCode(quote.quoteCurrency);
+    const petraDayCount = passProduct?.petraDayCount ?? 0;
+
     for (const item of items) {
       if (!item.entranceFee || !item.service) {
         continue;
       }
 
-      const variantIncludedInJordanPass = (item as any).ticketRateVariant?.includedInJordanPass;
-      let covered = passType !== 'NONE' && (variantIncludedInJordanPass ?? item.entranceFee.includedInJordanPass);
+      const ticketRateVariant = (item as any).ticketRateVariant;
+      const key = item.optionId || 'base';
+      const used = petraCoverageByOption.get(key) || 0;
 
-      if (covered && this.isPetraEntranceSite(item.entranceFee.siteName)) {
-        const key = item.optionId || 'base';
-        const used = petraCoverageByOption.get(key) || 0;
-        covered = used < (passProduct?.petraDayCount ?? 0);
-        if (covered) {
-          petraCoverageByOption.set(key, used + 1);
-        }
+      // Pure coverage decision (incl. per-option Petra day-cap), shared with the
+      // future dry-run preview so the two cannot drift.
+      const { covered, consumesPetraVisit } = decideEntranceFeeCoverage({
+        passType,
+        variantIncludedInJordanPass: ticketRateVariant?.includedInJordanPass,
+        entranceFeeIncludedInJordanPass: item.entranceFee.includedInJordanPass,
+        siteName: item.entranceFee.siteName,
+        petraVisitsUsedForOption: used,
+        petraDayCount,
+      });
+      if (consumesPetraVisit) {
+        petraCoverageByOption.set(key, used + 1);
       }
 
-      const ticketUnitCost = Number((item as any).ticketRateVariant?.costPrice ?? item.entranceFee.foreignerFeeJod);
-      const ticketCurrency = ((item as any).ticketRateVariant?.currency || 'JOD').trim().toUpperCase();
-      const ticketLabel = (item as any).ticketRateVariant?.label ? ` | ${(item as any).ticketRateVariant.label}` : '';
+      const ticketUnitCost = Number(ticketRateVariant?.costPrice ?? item.entranceFee.foreignerFeeJod);
+      const ticketCurrency = (ticketRateVariant?.currency || 'JOD').trim().toUpperCase();
+      const ticketLabel = ticketRateVariant?.label ? ` | ${ticketRateVariant.label}` : '';
       const unitCost = covered ? 0 : ticketUnitCost;
       const pricing = this.calculateCentralizedQuoteItemPricing({
         service: item.service,
@@ -9659,7 +9673,7 @@ export class QuotesService {
         dayCount: item.dayCount ?? 1,
         unitCost,
         markupPercent: item.markupPercent,
-        quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
+        quoteCurrency,
         supplierPricing: {
           costBaseAmount: unitCost,
           costCurrency: ticketCurrency,
@@ -9671,31 +9685,20 @@ export class QuotesService {
           tourismFeeCurrency: item.tourismFeeCurrency ?? ticketCurrency,
           tourismFeeMode: item.tourismFeeMode ?? null,
         },
-        structuredServiceRatePricingMode: ((item as any).ticketRateVariant?.pricingBasis as StructuredServiceRatePricingMode | null | undefined) ?? 'PER_PERSON',
+        structuredServiceRatePricingMode: (ticketRateVariant?.pricingBasis as StructuredServiceRatePricingMode | null | undefined) ?? 'PER_PERSON',
         legacyCurrency: ticketCurrency,
       });
 
       await this.prisma.quoteItem.update({
         where: { id: item.id },
-        data: {
-          jordanPassCovered: covered,
-          jordanPassSavingsJod: covered ? ticketUnitCost : 0,
-          pricingDescription: covered
-            ? `${item.entranceFee.siteName}${ticketLabel} | Covered by Jordan Pass`
-            : `${item.entranceFee.siteName}${ticketLabel} | Entrance fee`,
-          baseCost: pricing.totalCost,
-          costBaseAmount: unitCost,
-          costCurrency: ticketCurrency,
-          currency: pricing.quoteCurrency,
-          quoteCurrency: pricing.quoteCurrency,
-          fxRate: pricing.fxRate,
-          fxFromCurrency: pricing.fxFromCurrency,
-          fxToCurrency: pricing.fxToCurrency,
-          fxRateDate: pricing.fxRateDate,
-          finalCost: pricing.totalCost,
-          totalCost: pricing.totalCost,
-          totalSell: pricing.totalSell,
-        },
+        data: buildEntranceFeeUpdateData({
+          covered,
+          ticketUnitCost,
+          ticketCurrency,
+          ticketLabel,
+          siteName: item.entranceFee.siteName,
+          pricing,
+        }),
       });
     }
   }
@@ -9753,7 +9756,7 @@ export class QuotesService {
   }
 
   private isPetraEntranceSite(siteName: string) {
-    return /\bpetra\b/i.test(siteName);
+    return isPetraEntranceSite(siteName);
   }
 
   private async calculateQuoteItemsTotalCostForPax(
