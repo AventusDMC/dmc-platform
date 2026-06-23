@@ -7,7 +7,7 @@ import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import type { Passenger, RoomingGroupSummary } from "../../../../lib/quote-types"
-import { Users, BedDouble, ExternalLink, AlertTriangle, Pencil, Loader2, X, Plus } from "lucide-react"
+import { Users, BedDouble, ExternalLink, AlertTriangle, Pencil, Loader2, X, Plus, Trash2 } from "lucide-react"
 
 export type UpdatePassenger = (
   passengerId: string,
@@ -193,12 +193,39 @@ function PassengerEditForm({
 function PassengerRow({
   p,
   onUpdatePassenger,
+  onDeletePassenger,
+  roomLabels,
 }: {
   p: Passenger
   onUpdatePassenger?: UpdatePassenger
+  /** Delete this passenger (pricing-inert). Only set when role+status+load allow. */
+  onDeletePassenger?: (passengerId: string) => void | Promise<void>
+  /** Rooms this passenger is assigned to (for the delete confirmation warning). */
+  roomLabels?: string[]
 }) {
   const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const canEdit = Boolean(onUpdatePassenger)
+  const canDelete = Boolean(onDeletePassenger)
+
+  const doDelete = async () => {
+    if (!onDeletePassenger) return
+    let message = `Delete passenger ${p.fullName}? This permanently removes the passenger from this quote.`
+    if (roomLabels && roomLabels.length > 0) {
+      message += `\n\nThis will also remove the passenger from rooming: ${roomLabels.join(", ")}.`
+    }
+    if (typeof window !== "undefined" && !window.confirm(message)) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await onDeletePassenger(p.id)
+      // Parent refreshes V2 data on success; this row unmounts.
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Could not delete passenger.")
+      setDeleting(false)
+    }
+  }
 
   const facts = [
     p.gender,
@@ -248,18 +275,42 @@ function PassengerRow({
             </div>
           ) : null}
         </div>
-        {canEdit ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 gap-1 px-2 text-xs"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil className="h-3 w-3" aria-hidden="true" />
-            Edit
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1">
+          {canEdit ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setEditing(true)}
+              disabled={deleting}
+            >
+              <Pencil className="h-3 w-3" aria-hidden="true" />
+              Edit
+            </Button>
+          ) : null}
+          {canDelete ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+              onClick={doDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : (
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+              )}
+              Delete
+            </Button>
+          ) : null}
+        </div>
       </div>
+      {deleteError ? (
+        <p className="mt-1.5 text-xs text-destructive" role="alert">
+          {deleteError}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -424,6 +475,17 @@ export interface PassengersStepProps {
    */
   onAddPassenger?: (patch: Record<string, string | null>) => void | Promise<void>
   /**
+   * Delete an EXISTING passenger (pricing-inert; existing DELETE endpoint).
+   * Only wired for admin/operations roles. Shown per-row only when status allows
+   * and both passengers + rooming loaded (rooming impact must be known).
+   */
+  onDeletePassenger?: (passengerId: string) => void | Promise<void>
+  /**
+   * Whether the quote status permits passenger deletion (non-finalized). Computed
+   * upstream from the raw status; when false the Delete control is hidden.
+   */
+  statusDeletable?: boolean
+  /**
    * Assign an EXISTING passenger to an EXISTING rooming group (pricing-inert).
    * When both assign + unassign are provided, the Rooming section exposes
    * assignment editing only (no room create/edit/type/occupancy).
@@ -445,6 +507,8 @@ export function PassengersStep({
   roomingError = false,
   onUpdatePassenger,
   onAddPassenger,
+  onDeletePassenger,
+  statusDeletable = false,
   onAssignRoom,
   onUnassignRoom,
   pricedPax = 0,
@@ -457,9 +521,24 @@ export function PassengersStep({
   // current list, so adding could create a misleading/duplicate state. Only the
   // load warning is shown until the list loads.
   const showAdd = canAddPassenger && !passengersError
+  // Delete is destructive: only when role allows (onDeletePassenger provided),
+  // status permits, AND both passengers + rooming loaded (so the rooming-impact
+  // warning can be shown reliably).
+  const canDeletePassenger =
+    Boolean(onDeletePassenger) && statusDeletable && !passengersError && !roomingError
   const countMismatch = pricedPax > 0 && passengers.length > pricedPax
   const roomingEditable = Boolean(onAssignRoom && onUnassignRoom)
   const allPassengers = passengers.map((p) => ({ id: p.id, name: p.fullName }))
+  // Map each passenger id → the room label(s) they're assigned to, for the
+  // delete confirmation's rooming-impact warning.
+  const roomsByPassenger = new Map<string, string[]>()
+  for (const g of roomingGroups) {
+    for (const ap of g.assignedPassengers) {
+      const arr = roomsByPassenger.get(ap.id) ?? []
+      arr.push(g.label)
+      roomsByPassenger.set(ap.id, arr)
+    }
+  }
   // Passengers already assigned within a stay (hotel + day) can't be added to
   // another room of that same stay — mirror the backend's one-room-per-stay rule
   // in the "Add passenger" list so we don't offer an assignment that would fail.
@@ -561,7 +640,13 @@ export function PassengersStep({
             </div>
             <div className="divide-y divide-border">
               {passengers.map((p) => (
-                <PassengerRow key={p.id} p={p} onUpdatePassenger={onUpdatePassenger} />
+                <PassengerRow
+                  key={p.id}
+                  p={p}
+                  onUpdatePassenger={onUpdatePassenger}
+                  onDeletePassenger={canDeletePassenger ? onDeletePassenger : undefined}
+                  roomLabels={roomsByPassenger.get(p.id) ?? []}
+                />
               ))}
             </div>
           </Card>

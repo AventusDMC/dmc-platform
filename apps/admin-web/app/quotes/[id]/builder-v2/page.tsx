@@ -36,6 +36,9 @@ export default async function QuoteBuilderV2Page({
   const canEditPassengers = hasRequiredRole(role, ["admin", "operations", "viewer"])
   // Rooming assignment endpoints share the same backend @Roles set as passengers.
   const canEditRooming = hasRequiredRole(role, ["admin", "operations", "viewer"])
+  // Passenger DELETE is destructive — intentionally STRICTER than the backend
+  // (admin/operations only; backend still allows viewer, pre-existing/unchanged).
+  const canDeletePassenger = hasRequiredRole(role, ["admin", "operations"])
 
   return (
     <BuilderV2Client
@@ -43,6 +46,7 @@ export default async function QuoteBuilderV2Page({
       error={error}
       canEditPassengers={canEditPassengers}
       canEditRooming={canEditRooming}
+      canDeletePassenger={canDeletePassenger}
     />
   )
 }

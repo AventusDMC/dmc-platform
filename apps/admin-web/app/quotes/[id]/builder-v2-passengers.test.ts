@@ -86,10 +86,9 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'Cancel',
       "role=\"alert\"", // inline error
     ]);
-    // No passenger add/delete, no pax/room-count/FOC/pricing edits in the step.
-    // (Rooming ASSIGNMENT add/remove is allowed and tested separately.)
+    // No pax/room-count/FOC/pricing edits in the step. (Passenger add/delete and
+    // rooming assignment are allowed and tested separately.)
     excludes(stepSrc, [
-      'Delete passenger',
       'onUpdateRooming',
       'createRoomingGroup',
       'deleteRoomingGroup',
@@ -150,7 +149,7 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'showAdd && !adding',
       'showAdd && adding',
     ]);
-    excludes(stepSrc, ['Delete passenger', 'Remove passenger']);
+    excludes(stepSrc, ['Bulk', 'Import passengers']);
     // Client: POST passengers only, role-gated; no recalc/pax/room writes.
     contains(clientSrc, [
       'handleAddPassenger',
@@ -256,6 +255,48 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
   it('adapter surfaces assigned passenger ids for rooming (needed to unassign/filter)', () => {
     contains(adapterSrc, ['assignedPassengers', 'a.quotePassenger?.id']);
     contains(typesSrc, ['assignedPassengers: { id: string; name: string }[]']);
+  });
+
+  it('delete passenger — admin/operations only, status+load guarded, confirm + rooming-impact, DELETE only', () => {
+    const pageSrc = readFileSync(new URL('./builder-v2/page.tsx', import.meta.url), 'utf8');
+    const clientSrc = readFileSync(new URL('./builder-v2/builder-v2-client.tsx', import.meta.url), 'utf8');
+    // Page: role gate STRICTER than backend — admin/operations only (no viewer).
+    contains(pageSrc, [
+      'canDeletePassenger',
+      'hasRequiredRole(role, ["admin", "operations"])',
+      'canDeletePassenger={canDeletePassenger}',
+    ]);
+    // Client: existing DELETE endpoint only, role-gated.
+    contains(clientSrc, [
+      'handleDeletePassenger',
+      'method: "DELETE"',
+      '`/api/quotes/${quote.id}/passengers/${passengerId}`',
+      'onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}',
+    ]);
+    // Orchestrator: status guard is an ALLOWLIST of editable statuses (default-safe
+    // → finalized AND unknown/missing statuses hide Delete) + wiring.
+    contains(builderSrc, [
+      'PASSENGER_DELETE_EDITABLE_STATUSES',
+      '"DRAFT"',
+      '"READY"',
+      '"REVISION_REQUESTED"',
+      'passengerDeleteStatusOk',
+      'statusDeletable={passengerDeleteStatusOk}',
+      'onDeletePassenger={onDeletePassenger}',
+    ]);
+    // Not a denylist (which would allow an unknown status).
+    excludes(builderSrc, ['DELETE_FINALIZED']);
+    // Step: combined guard (role + status + both loaded) + confirmation + rooming impact.
+    contains(stepSrc, [
+      'statusDeletable && !passengersError && !roomingError',
+      'roomsByPassenger',
+      'Delete passenger ${p.fullName}? This permanently removes the passenger from this quote.',
+      'This will also remove the passenger from rooming:',
+      'window.confirm',
+      'Trash2',
+    ]);
+    // No separate unassign call inside the delete handler (cascade handles it).
+    excludes(clientSrc, ['recalculateQuoteTotals']);
   });
 
   it('demo data provides passengers + rooming + the step so empty/non-empty states render', () => {
