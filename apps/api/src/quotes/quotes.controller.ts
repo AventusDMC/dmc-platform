@@ -1233,7 +1233,16 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.updateItem(itemId, {
+    return this.quotesService.updateItem(itemId, this.buildUpdateItemServiceInput(id, body), actor);
+  }
+
+  /**
+   * Map the update-item request body to the service input. Shared by updateItem
+   * (apply) and the dry-run preview endpoint so both interpret the payload
+   * identically. Pure mapping — no side effects.
+   */
+  private buildUpdateItemServiceInput(id: string, body: UpdateQuoteItemBody) {
+    return {
       quoteId: id,
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
@@ -1317,7 +1326,26 @@ export class QuotesController {
       transportAddOns: Array.isArray(body.transportAddOns)
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
-    }, actor);
+    };
+  }
+
+  @Post(':id/items/:itemId/preview')
+  @Roles('admin', 'operations')
+  async previewItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: UpdateQuoteItemBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    // Dry-run pricing preview for editing one existing item. Persists nothing and
+    // never recalculates the live quote. Flag-gated (default OFF) + status/role
+    // guarded inside the service; reuses the same body mapping as the real edit.
+    return this.quotesService.previewUpdateQuoteItem(
+      id,
+      itemId,
+      this.buildUpdateItemServiceInput(id, body),
+      actor,
+    );
   }
 
   @Get(':id/items/:itemId/suggested-services')

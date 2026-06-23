@@ -50,6 +50,7 @@ import {
   decideEntranceFeeCoverage,
   isPetraEntranceSite,
 } from './jordan-pass-coverage';
+import { isQuotePricingPreviewEnabled } from './quote-pricing-preview-flags';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 
@@ -3173,8 +3174,46 @@ export class QuotesService {
         : data.optionId
           ? (await this.ensureOptionBelongsToQuote(quote.id, data.optionId, actor)).id
           : undefined;
-    const values = await this.resolveQuoteItemValues({
-      quoteId: quote.id,
+    const values = await this.resolveQuoteItemValues(
+      this.buildQuoteItemUpdateResolveInput(existingItem, data, quote.id, optionId),
+    );
+
+    const item = await this.prisma.quoteItem.update({
+      where: { id: itemId },
+      data: values.data,
+      include: values.include,
+    } as any);
+
+    if (existingItem.quoteId !== quote.id) {
+      await this.recalculateQuoteTotals(existingItem.quoteId);
+    }
+
+    await this.recalculateQuoteTotals(quote.id);
+
+    const sourceIntegrityWarnings = await this.buildDuplicateSourceWarnings(item);
+
+    return {
+      ...this.hydrateOneOffExternalPackageItem(item),
+      promotionExplanation: values.promotionExplanation,
+      sourceIntegrityWarnings,
+    };
+  }
+
+  /**
+   * Build the exact resolveQuoteItemValues input for editing an existing item by
+   * merging the persisted item with the partial update payload (patch semantics:
+   * `undefined` keeps the existing value). Pure field-mapping — no DB, no writes.
+   * Shared by updateItem (apply) and previewUpdateQuoteItem (dry-run) so the two
+   * resolve identical projected values and cannot drift.
+   */
+  private buildQuoteItemUpdateResolveInput(
+    existingItem: any,
+    data: any,
+    quoteId: string,
+    optionId: string | undefined,
+  ) {
+    return {
+      quoteId,
       optionId,
       packageTemplateId:
         data.packageTemplateId === undefined
@@ -3369,26 +3408,310 @@ export class QuotesService {
       normalizedKey: data.normalizedKey,
       routeName: data.routeName,
       transportAddOns: data.transportAddOns,
-    });
+    };
+  }
 
-    const item = await this.prisma.quoteItem.update({
-      where: { id: itemId },
-      data: values.data,
-      include: values.include,
-    } as any);
+  /**
+   * Dry-run pricing PREVIEW for editing a single existing quote item (PR2).
+   *
+   * Persists NOTHING. Does not call updateItem, recalculateQuoteTotals, or any
+   * write-heavy sync. It reuses the SAME pure resolve/pricing logic the real
+   * apply uses (buildQuoteItemUpdateResolveInput + resolveQuoteItemValues for the
+   * edited item; projectJordanPassEntranceFeeUpdates for Jordan Pass) so the
+   * projection matches what an apply would persist. Quote totals are projected
+   * via the additive delta over the affected items (recalc's totals are
+   * Σ items + pax-based Jordan Pass product totals + off-by-default engine
+   * deltas, so an item edit moves the total only by the changed items' delta).
+   */
+  async previewUpdateQuoteItem(
+    quoteId: string,
+    itemId: string,
+    data: any,
+    actor?: CompanyScopedActor,
+  ) {
+    const round = (value: number) => Number(value.toFixed(2));
+    const emptyBody = {
+      quote: null as null | Record<string, unknown>,
+      item: null as null | Record<string, unknown>,
+      affectedItemCount: 0,
+      jordanPass: null as null | Record<string, unknown>,
+      warnings: [] as string[],
+      reResolved: { rates: false, fx: false },
+    };
 
-    if (existingItem.quoteId !== quote.id) {
-      await this.recalculateQuoteTotals(existingItem.quoteId);
+    // Flag gate — when OFF the endpoint is not available and computes nothing.
+    if (!isQuotePricingPreviewEnabled()) {
+      return { available: false, blocked: true, blockedReason: 'feature_disabled', statusCode: null, ...emptyBody };
     }
 
-    await this.recalculateQuoteTotals(quote.id);
+    const actorCompanyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: { id: quoteId },
+      select: {
+        id: true,
+        status: true,
+        clientCompanyId: true,
+        brandCompanyId: true,
+        adults: true,
+        children: true,
+        roomCount: true,
+        nightCount: true,
+        quoteCurrency: true,
+        jordanPassType: true,
+        pricingType: true,
+        pricingMode: true,
+        totalCost: true,
+        totalSell: true,
+      },
+    });
+    if (!quote || (quote.clientCompanyId !== actorCompanyId && quote.brandCompanyId !== actorCompanyId)) {
+      throw new BadRequestException('Quote not found');
+    }
 
-    const sourceIntegrityWarnings = await this.buildDuplicateSourceWarnings(item);
+    const statusCode = String(quote.status ?? '').trim().toUpperCase();
+    const ALLOWED_PREVIEW_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
+    if (!ALLOWED_PREVIEW_STATUSES.has(statusCode)) {
+      // Finalized / unknown status — preview is blocked (default-safe).
+      return { available: true, blocked: true, blockedReason: 'status', statusCode, ...emptyBody };
+    }
+
+    // The item must belong to this quote (blocks cross-quote item ids).
+    const existingItem: any = await this.prisma.quoteItem.findFirst({
+      where: { id: itemId, quoteId },
+    });
+    if (!existingItem) {
+      throw new BadRequestException('Quote item not found for this quote');
+    }
+
+    // Out-of-scope / invalid payload guard.
+    if (data == null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new BadRequestException('A preview payload object is required');
+    }
+    if (data.quantity != null && (!Number.isFinite(Number(data.quantity)) || Number(data.quantity) <= 0)) {
+      throw new BadRequestException('quantity must be a positive number');
+    }
+
+    const warnings: string[] = [];
+
+    // Determinism: transport rate selection falls back to "now" when no service
+    // date is present, so require an explicit/effective serviceDate for transport.
+    const isTransportItem = Boolean(
+      existingItem.transportServiceTypeId ||
+        existingItem.routeId ||
+        existingItem.touringRouteId ||
+        data.transportServiceTypeId ||
+        data.routeId ||
+        data.touringRouteId,
+    );
+    const effectiveServiceDate = data.serviceDate ?? existingItem.serviceDate ?? null;
+    if (isTransportItem && !effectiveServiceDate) {
+      throw new BadRequestException('serviceDate is required to preview pricing for transport items');
+    }
+
+    const isSlab =
+      this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB';
+    const currentQuoteCost = Number(quote.totalCost ?? 0);
+    const currentQuoteSell = Number(quote.totalSell ?? 0);
+    const currentItemCost = Number(existingItem.totalCost ?? 0);
+    const currentItemSell = Number(existingItem.totalSell ?? 0);
+    const affectsBaseTotals = !existingItem.optionId;
+    if (!affectsBaseTotals) {
+      warnings.push('Option item — base quote totals are unaffected by this edit.');
+    }
+    if (isPackagePricingLiveApplyEnabled() || isOvernightStationaryLiveApplyEnabled()) {
+      warnings.push('Package/overnight live-apply is ON; transport engine deltas are not recomputed in this preview.');
+    }
+
+    const passType = this.normalizeJordanPassType(quote.jordanPassType);
+    const passProduct =
+      passType === 'NONE'
+        ? null
+        : await this.prisma.jordanPassProduct.findUnique({
+            where: { code: passType },
+            select: { petraDayCount: true },
+          });
+    const jpCtx = {
+      adults: quote.adults,
+      children: quote.children,
+      roomCount: quote.roomCount,
+      nightCount: quote.nightCount,
+      quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
+      passType,
+      petraDayCount: passProduct?.petraDayCount ?? 0,
+    };
+
+    const isEntranceItem = Boolean(existingItem.entranceFeeId);
+
+    let projectedItemCost: number;
+    let projectedItemSell: number;
+    let quoteCostDelta: number;
+    let quoteSellDelta: number;
+    let affectedItemCount: number;
+    let itemCostDelta = 0;
+    let itemSellDelta = 0;
+    let jordanPass: Record<string, unknown> | null = null;
+    let ratesReResolved = false;
+
+    if (isEntranceItem) {
+      // Jordan-Pass-aware path: re-derive the whole option-scoped entrance set
+      // (current vs projected) with the SHARED projection so sibling Petra-cap
+      // shifts are captured. Reuses the PR #547 pure coverage functions.
+      const include = {
+        entranceFee: true,
+        ticketRateVariant: true,
+        service: { include: { serviceType: true } },
+      } as const;
+      const entranceItems: any[] = await this.prisma.quoteItem.findMany({
+        where: { quoteId, entranceFeeId: { not: null }, optionId: existingItem.optionId ?? null },
+        include,
+        orderBy: [{ createdAt: 'asc' }],
+      });
+
+      let projectedVariant = entranceItems.find((it) => it.id === itemId)?.ticketRateVariant ?? existingItem.ticketRateVariant ?? null;
+      if (data.ticketRateVariantId !== undefined) {
+        projectedVariant =
+          data.ticketRateVariantId == null
+            ? null
+            : await this.prisma.ticketRateVariant.findUnique({ where: { id: data.ticketRateVariantId } });
+        if (data.ticketRateVariantId != null && !projectedVariant) {
+          warnings.push('Selected ticket rate variant was not found; previewed at the base entrance fee.');
+        }
+      }
+      if (data.serviceId !== undefined && data.serviceId !== existingItem.serviceId) {
+        warnings.push('Changing the underlying service of an entrance item is not fully simulated in preview.');
+      }
+
+      const projectedEntranceItems = entranceItems.map((it) => {
+        if (it.id !== itemId) return it;
+        return {
+          ...it,
+          ticketRateVariant: data.ticketRateVariantId === undefined ? it.ticketRateVariant : projectedVariant,
+          quantity: data.quantity ?? it.quantity,
+          paxCount: data.paxCount === undefined ? it.paxCount : data.paxCount,
+          roomCount: data.roomCount === undefined ? it.roomCount : data.roomCount,
+          nightCount: data.nightCount === undefined ? it.nightCount : data.nightCount,
+          dayCount: data.dayCount === undefined ? it.dayCount : data.dayCount,
+          markupPercent: data.markupPercent ?? it.markupPercent,
+        };
+      });
+
+      const currentProj = this.projectJordanPassEntranceFeeUpdates(entranceItems, jpCtx);
+      const projectedProj = this.projectJordanPassEntranceFeeUpdates(projectedEntranceItems, jpCtx);
+      ratesReResolved = true;
+
+      const currentById = new Map(currentProj.map((u) => [u.id, u]));
+      const projectedById = new Map(projectedProj.map((u) => [u.id, u]));
+
+      let entranceCostDelta = 0;
+      let entranceSellDelta = 0;
+      const impacted: Array<Record<string, unknown>> = [];
+      for (const id of new Set([...currentById.keys(), ...projectedById.keys()])) {
+        const cur = currentById.get(id);
+        const proj = projectedById.get(id);
+        const curCost = Number(cur?.data.totalCost ?? 0);
+        const curSell = Number(cur?.data.totalSell ?? 0);
+        const projCost = Number(proj?.data.totalCost ?? 0);
+        const projSell = Number(proj?.data.totalSell ?? 0);
+        entranceCostDelta += projCost - curCost;
+        entranceSellDelta += projSell - curSell;
+        if (curCost !== projCost || curSell !== projSell || Boolean(cur?.covered) !== Boolean(proj?.covered)) {
+          impacted.push({
+            itemId: id,
+            wasCovered: Boolean(cur?.covered),
+            willBeCovered: Boolean(proj?.covered),
+            costDelta: round(projCost - curCost),
+          });
+        }
+      }
+
+      const editedProjected = projectedById.get(itemId);
+      const editedCurrent = currentById.get(itemId);
+      projectedItemCost = Number(editedProjected?.data.totalCost ?? currentItemCost);
+      projectedItemSell = Number(editedProjected?.data.totalSell ?? currentItemSell);
+      // Prefer the projection's current value for the edited item for consistency.
+      const baselineItemCost = Number(editedCurrent?.data.totalCost ?? currentItemCost);
+      const baselineItemSell = Number(editedCurrent?.data.totalSell ?? currentItemSell);
+
+      quoteCostDelta = affectsBaseTotals ? round(entranceCostDelta) : 0;
+      quoteSellDelta = affectsBaseTotals ? round(entranceSellDelta) : 0;
+      affectedItemCount = impacted.length;
+      jordanPass = { changed: impacted.length > 0, affectedEntranceItems: impacted };
+
+      // Report the edited item delta against its projection baseline.
+      itemCostDelta = round(projectedItemCost - baselineItemCost);
+      itemSellDelta = round(projectedItemSell - baselineItemSell);
+    } else {
+      // Non-Jordan-Pass path: resolve the edited item only; the quote total moves
+      // by exactly this item's delta (no sibling coverage shifts possible).
+      const optionId = existingItem.optionId || undefined;
+      let values: any;
+      try {
+        values = await this.resolveQuoteItemValues(
+          this.buildQuoteItemUpdateResolveInput(existingItem, data, quoteId, optionId),
+        );
+        ratesReResolved = true;
+      } catch (error) {
+        warnings.push(
+          `Could not resolve pricing for this edit: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+        return {
+          available: true,
+          blocked: false,
+          blockedReason: null,
+          statusCode,
+          pricingResolvable: false,
+          quote: {
+            current: { totalCost: round(currentQuoteCost), totalSell: round(currentQuoteSell) },
+            projected: null,
+            delta: null,
+          },
+          item: {
+            current: { totalCost: round(currentItemCost), totalSell: round(currentItemSell) },
+            projected: null,
+            delta: null,
+          },
+          affectedItemCount: 0,
+          jordanPass: null,
+          warnings,
+          reResolved: { rates: false, fx: false },
+        };
+      }
+
+      projectedItemCost = Number(values.data.totalCost ?? 0);
+      projectedItemSell = Number(values.data.totalSell ?? 0);
+      itemCostDelta = round(projectedItemCost - currentItemCost);
+      itemSellDelta = round(projectedItemSell - currentItemSell);
+      quoteCostDelta = affectsBaseTotals ? itemCostDelta : 0;
+      quoteSellDelta = affectsBaseTotals ? itemSellDelta : 0;
+      affectedItemCount = itemCostDelta !== 0 || itemSellDelta !== 0 ? 1 : 0;
+    }
+
+    const projectedQuoteCost = round(currentQuoteCost + quoteCostDelta);
+    const projectedQuoteSell = isSlab ? round(currentQuoteSell) : round(currentQuoteSell + quoteSellDelta);
+    if (isSlab && quoteSellDelta !== 0) {
+      warnings.push('SLAB pricing: the client total is slab-driven, so this edit changes cost only (selling price unchanged).');
+    }
 
     return {
-      ...this.hydrateOneOffExternalPackageItem(item),
-      promotionExplanation: values.promotionExplanation,
-      sourceIntegrityWarnings,
+      available: true,
+      blocked: false,
+      blockedReason: null,
+      statusCode,
+      pricingResolvable: true,
+      quote: {
+        current: { totalCost: round(currentQuoteCost), totalSell: round(currentQuoteSell) },
+        projected: { totalCost: projectedQuoteCost, totalSell: projectedQuoteSell },
+        delta: { totalCost: round(quoteCostDelta), totalSell: isSlab ? 0 : round(quoteSellDelta) },
+      },
+      item: {
+        current: { totalCost: round(currentItemCost), totalSell: round(currentItemSell) },
+        projected: { totalCost: round(projectedItemCost), totalSell: round(projectedItemSell) },
+        delta: { totalCost: itemCostDelta, totalSell: itemSellDelta },
+      },
+      affectedItemCount,
+      jordanPass,
+      warnings,
+      reResolved: { rates: ratesReResolved, fx: false },
     };
   }
 
@@ -9624,7 +9947,6 @@ export class QuotesService {
       },
       orderBy: [{ createdAt: 'asc' }],
     });
-    const petraCoverageByOption = new Map<string, number>();
     const passType = this.normalizeJordanPassType(quote.jordanPassType);
     const passProduct =
       passType === 'NONE'
@@ -9634,8 +9956,48 @@ export class QuotesService {
             select: { petraDayCount: true },
           });
 
-    const quoteCurrency = this.normalizeCurrencyCode(quote.quoteCurrency);
-    const petraDayCount = passProduct?.petraDayCount ?? 0;
+    // Compute-only projection (shared with the dry-run preview), then persist.
+    const updates = this.projectJordanPassEntranceFeeUpdates(items, {
+      adults: quote.adults,
+      children: quote.children,
+      roomCount: quote.roomCount,
+      nightCount: quote.nightCount,
+      quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
+      passType,
+      petraDayCount: passProduct?.petraDayCount ?? 0,
+    });
+
+    for (const update of updates) {
+      await this.prisma.quoteItem.update({
+        where: { id: update.id },
+        data: update.data,
+      });
+    }
+  }
+
+  /**
+   * Compute-only Jordan Pass / entrance-fee projection. Mirrors the prior inline
+   * loop of syncJordanPassEntranceFees exactly (same createdAt order, same
+   * per-option Petra day-cap, same pricing call, same payload assembly) but
+   * RETURNS the per-item update payloads instead of writing them. No DB writes —
+   * `items` are pre-loaded and `calculateCentralizedQuoteItemPricing` is pure.
+   * Shared by syncJordanPassEntranceFees (apply/recalc → writes the result) and
+   * previewUpdateQuoteItem (dry-run → reads the result) so the two cannot drift.
+   */
+  private projectJordanPassEntranceFeeUpdates(
+    items: any[],
+    ctx: {
+      adults: number;
+      children: number;
+      roomCount: number;
+      nightCount: number;
+      quoteCurrency: string;
+      passType: string;
+      petraDayCount: number;
+    },
+  ): Array<{ id: string; covered: boolean; data: ReturnType<typeof buildEntranceFeeUpdateData> }> {
+    const petraCoverageByOption = new Map<string, number>();
+    const out: Array<{ id: string; covered: boolean; data: ReturnType<typeof buildEntranceFeeUpdateData> }> = [];
 
     for (const item of items) {
       if (!item.entranceFee || !item.service) {
@@ -9646,15 +10008,13 @@ export class QuotesService {
       const key = item.optionId || 'base';
       const used = petraCoverageByOption.get(key) || 0;
 
-      // Pure coverage decision (incl. per-option Petra day-cap), shared with the
-      // future dry-run preview so the two cannot drift.
       const { covered, consumesPetraVisit } = decideEntranceFeeCoverage({
-        passType,
+        passType: ctx.passType,
         variantIncludedInJordanPass: ticketRateVariant?.includedInJordanPass,
         entranceFeeIncludedInJordanPass: item.entranceFee.includedInJordanPass,
         siteName: item.entranceFee.siteName,
         petraVisitsUsedForOption: used,
-        petraDayCount,
+        petraDayCount: ctx.petraDayCount,
       });
       if (consumesPetraVisit) {
         petraCoverageByOption.set(key, used + 1);
@@ -9667,13 +10027,13 @@ export class QuotesService {
       const pricing = this.calculateCentralizedQuoteItemPricing({
         service: item.service,
         quantity: item.quantity,
-        paxCount: item.paxCount ?? quote.adults + quote.children,
-        roomCount: item.roomCount ?? quote.roomCount,
-        nightCount: item.nightCount ?? quote.nightCount,
+        paxCount: item.paxCount ?? ctx.adults + ctx.children,
+        roomCount: item.roomCount ?? ctx.roomCount,
+        nightCount: item.nightCount ?? ctx.nightCount,
         dayCount: item.dayCount ?? 1,
         unitCost,
         markupPercent: item.markupPercent,
-        quoteCurrency,
+        quoteCurrency: ctx.quoteCurrency,
         supplierPricing: {
           costBaseAmount: unitCost,
           costCurrency: ticketCurrency,
@@ -9689,8 +10049,9 @@ export class QuotesService {
         legacyCurrency: ticketCurrency,
       });
 
-      await this.prisma.quoteItem.update({
-        where: { id: item.id },
+      out.push({
+        id: item.id,
+        covered,
         data: buildEntranceFeeUpdateData({
           covered,
           ticketUnitCost,
@@ -9701,6 +10062,8 @@ export class QuotesService {
         }),
       });
     }
+
+    return out;
   }
 
   private async calculateJordanPassTotals(quote: {
