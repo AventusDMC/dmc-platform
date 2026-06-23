@@ -17,9 +17,12 @@ import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../pro
 export function BuilderV2Client({
   quote,
   error = null,
+  canEditPassengers = false,
 }: {
   quote: Quote | null
   error?: string | null
+  /** Whether the current user's role may update passengers (mirrors backend). */
+  canEditPassengers?: boolean
 }) {
   const router = useRouter()
 
@@ -207,7 +210,7 @@ export function BuilderV2Client({
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
-      onUpdatePassenger={handleUpdatePassenger}
+      onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onEnablePublicLink={handleEnablePublicLink}
       onDisablePublicLink={handleDisablePublicLink}
       initialStep="hotels"
