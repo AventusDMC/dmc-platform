@@ -58,6 +58,12 @@ export interface QuoteBuilderV2Props {
    * Experiences/Transport stay read-only.
    */
   onUpdateDisplayText?: (quoteItemId: string, patch: Record<string, string | null>) => void | Promise<void>
+  /**
+   * Update an EXISTING passenger's PII (pricing-inert). When provided, the
+   * Passengers step exposes per-passenger inline editing. Rooming stays
+   * read-only. When omitted, passengers are read-only.
+   */
+  onUpdatePassenger?: (passengerId: string, patch: Record<string, string | null>) => void | Promise<void>
   /** Enable the public proposal link; resolves to the new public state. */
   onEnablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   /** Disable the public proposal link; resolves to the new public state. */
@@ -77,6 +83,7 @@ export function QuoteBuilderV2({
   onPreview,
   onSetPrimaryHotel,
   onUpdateDisplayText,
+  onUpdatePassenger,
   onEnablePublicLink,
   onDisablePublicLink,
   initialStep = "setup",
@@ -212,6 +219,7 @@ export function QuoteBuilderV2({
             roomingGroups={quote.roomingGroups}
             passengersError={quote.passengersLoadError}
             roomingError={quote.roomingLoadError}
+            onUpdatePassenger={onUpdatePassenger}
             classicHref={`/quotes/${quote.id}/classic`}
           />
         )
