@@ -70,22 +70,40 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
     ]);
   });
 
-  it('passengers step is strictly read-only — no mutation affordances', () => {
+  it('passenger PII editing — edit/save/cancel exist; NO add/delete/rooming/pax-count controls', () => {
+    // Passenger edit affordances present.
+    contains(stepSrc, [
+      'PassengerEditForm',
+      'onUpdatePassenger',
+      'Limited editing',
+      'setEditing(true)',
+      'First name',
+      'Last name',
+      'Passport expiry',
+      'Date of birth',
+      "type=\"date\"",
+      'Saving…',
+      'Cancel',
+      "role=\"alert\"", // inline error
+    ]);
+    // Whitelisted passenger fields only — NO rooming/pax/room-count/FOC/pricing edits.
     excludes(stepSrc, [
-      'fetch(',
-      'onClick',
-      'useState',
-      'method:',
-      '<button',
-      '<input',
-      '<textarea',
       'Add passenger',
-      'Delete',
-      'Save',
+      'Delete passenger',
+      'onUpdateRooming',
+      'Assign',
+      'Unassign',
+      'roomCount',
+      'adults',
+      'children',
+      'Single supplement',
+      'singleSupplement',
+      'totalCost',
+      'totalSell',
     ]);
   });
 
-  it('orchestrator wires the read-only passengers step with a classic link', () => {
+  it('orchestrator wires passenger-edit + read-only rooming with a classic link', () => {
     contains(builderSrc, [
       'PassengersStep',
       'case "passengers"',
@@ -93,8 +111,25 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'roomingGroups={quote.roomingGroups}',
       'passengersError={quote.passengersLoadError}',
       'roomingError={quote.roomingLoadError}',
+      'onUpdatePassenger={onUpdatePassenger}',
       'classicHref={`/quotes/${quote.id}/classic`}',
     ]);
+  });
+
+  it('passenger edit uses the EXISTING PATCH passengers endpoint (pricing-inert, no recalc)', () => {
+    const clientSrc = readFileSync(
+      new URL('./builder-v2/builder-v2-client.tsx', import.meta.url),
+      'utf8',
+    );
+    contains(clientSrc, [
+      'handleUpdatePassenger',
+      '/api/quotes/${quote.id}/passengers/${passengerId}',
+      'method: "PATCH"',
+      'router.refresh()',
+      'onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}',
+    ]);
+    // No pax-count / room-count / pricing writes anywhere in the client.
+    excludes(clientSrc, ['roomCount', 'singleSupplement', 'recalculateQuoteTotals']);
   });
 
   it('distinguishes a FAILED GET from a true-empty list (item 9 hardening)', () => {
@@ -114,6 +149,24 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'passengersError ? (',
       'roomingError ? (',
       'Couldn’t load',
+    ]);
+  });
+
+  it('gates the passenger Edit affordance by role (reuses existing session signal; mirrors backend)', () => {
+    const pageSrc = readFileSync(new URL('./builder-v2/page.tsx', import.meta.url), 'utf8');
+    const clientSrc = readFileSync(new URL('./builder-v2/builder-v2-client.tsx', import.meta.url), 'utf8');
+    // Page reuses the existing session-role helper and mirrors the backend allow-list.
+    contains(pageSrc, [
+      'readSessionActor',
+      'hasRequiredRole',
+      '["admin", "operations", "viewer"]',
+      'canEditPassengers',
+      'canEditPassengers={canEditPassengers}',
+    ]);
+    // Client only wires the passenger PATCH callback when the role is allowed.
+    contains(clientSrc, [
+      'canEditPassengers',
+      'onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}',
     ]);
   });
 

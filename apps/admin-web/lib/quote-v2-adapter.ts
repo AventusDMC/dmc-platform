@@ -451,6 +451,8 @@ function mapPassengers(raw: RawErpQuote): Passenger[] {
     return {
       id: asString(r.id, `pax-${i + 1}`),
       fullName: fullName || "—",
+      firstName: asTextOrNull(r.firstName),
+      lastName: asTextOrNull(r.lastName),
       gender: asTextOrNull(r.gender),
       dateOfBirth: asTextOrNull(r.dateOfBirth),
       nationality: asTextOrNull(r.nationality),
@@ -460,6 +462,8 @@ function mapPassengers(raw: RawErpQuote): Passenger[] {
       mobilityNotes: asTextOrNull(r.mobilityNotes),
       emergencyContact: asTextOrNull(r.emergencyContact),
       remarks: asTextOrNull(r.remarks),
+      dateOfBirthRaw: asTextOrNull(r.dateOfBirthRaw),
+      passportExpiryRaw: asTextOrNull(r.passportExpiryRaw),
     }
   })
 }
@@ -1025,6 +1029,9 @@ function mapErpQuoteToRaw(
     mobilityNotes: p.mobilityNotes ?? null,
     emergencyContact: p.emergencyContact ?? null,
     remarks: p.remarks ?? null,
+    // Raw ISO (unformatted) for the edit form's date inputs.
+    dateOfBirthRaw: p.dateOfBirth ?? null,
+    passportExpiryRaw: p.passportExpiry ?? null,
   }))
   const roomingGroups = apiRooming.map((g, i) => ({
     id: g.id ?? `room-${i + 1}`,

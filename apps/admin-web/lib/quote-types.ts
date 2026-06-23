@@ -171,6 +171,9 @@ export interface TransportService {
 export interface Passenger {
   id: string
   fullName: string
+  /** Structured names — used to seed the edit form (display uses fullName). */
+  firstName?: string | null
+  lastName?: string | null
   gender?: string | null
   dateOfBirth?: string | null
   nationality?: string | null
@@ -180,6 +183,12 @@ export interface Passenger {
   mobilityNotes?: string | null
   emergencyContact?: string | null
   remarks?: string | null
+  /**
+   * Raw ISO date values (unformatted) used ONLY to seed the edit form's
+   * `<input type="date">`. The display fields above stay human-formatted.
+   */
+  dateOfBirthRaw?: string | null
+  passportExpiryRaw?: string | null
 }
 
 /**
