@@ -134,7 +134,30 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
     ]);
   });
 
-  it('orchestrator wires passenger-edit + rooming-assignment + classic link', () => {
+  it('add passenger — uses existing POST endpoint, role-gated, no priced-pax change, no delete', () => {
+    const clientSrc = readFileSync(new URL('./builder-v2/builder-v2-client.tsx', import.meta.url), 'utf8');
+    // Step: Add affordance + form (reuses PassengerEditForm) + helper + count-mismatch advisory.
+    contains(stepSrc, [
+      'onAddPassenger',
+      'BLANK_PASSENGER',
+      'Add passenger',
+      'setAdding(true)',
+      'Adding passenger details does not change priced pax count',
+      'countMismatch',
+      'may differ from priced pax count',
+    ]);
+    excludes(stepSrc, ['Delete passenger', 'Remove passenger']);
+    // Client: POST passengers only, role-gated; no recalc/pax/room writes.
+    contains(clientSrc, [
+      'handleAddPassenger',
+      'method: "POST"',
+      '`/api/quotes/${quote.id}/passengers`',
+      'onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}',
+    ]);
+    excludes(clientSrc, ['recalculateQuoteTotals', 'roomCount', 'singleSupplement']);
+  });
+
+  it('orchestrator wires passenger add/edit + rooming-assignment + pricedPax + classic link', () => {
     contains(builderSrc, [
       'PassengersStep',
       'case "passengers"',
@@ -143,8 +166,10 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'passengersError={quote.passengersLoadError}',
       'roomingError={quote.roomingLoadError}',
       'onUpdatePassenger={onUpdatePassenger}',
+      'onAddPassenger={onAddPassenger}',
       'onAssignRoom={onAssignRoom}',
       'onUnassignRoom={onUnassignRoom}',
+      'pricedPax={quote.meta.pax}',
       'classicHref={`/quotes/${quote.id}/classic`}',
     ]);
   });

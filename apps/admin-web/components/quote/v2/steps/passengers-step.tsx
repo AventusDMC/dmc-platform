@@ -107,7 +107,9 @@ function PassengerEditForm({
     setError(null)
     try {
       await onSave(patch)
-      // Parent refreshes on success; leave saving true until unmount/re-render.
+      // Success: close the form. The parent has refreshed V2 data, so the
+      // read view (or new passenger row) reflects the change.
+      onCancel()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save passenger details.")
       setSaving(false)
@@ -416,15 +418,25 @@ export interface PassengersStepProps {
    */
   onUpdatePassenger?: UpdatePassenger
   /**
+   * Add a NEW passenger (pricing-inert; existing POST endpoint). When provided,
+   * the Passengers section shows an "Add passenger" affordance. Adding a
+   * passenger does NOT change the priced pax count.
+   */
+  onAddPassenger?: (patch: Record<string, string | null>) => void | Promise<void>
+  /**
    * Assign an EXISTING passenger to an EXISTING rooming group (pricing-inert).
    * When both assign + unassign are provided, the Rooming section exposes
    * assignment editing only (no room create/edit/type/occupancy).
    */
   onAssignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
   onUnassignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
+  /** Priced pax count (adults + children) — for the count-mismatch advisory only. */
+  pricedPax?: number
   /** Link to the classic builder where passengers/rooming are managed. */
   classicHref?: string
 }
+
+const BLANK_PASSENGER: Passenger = { id: "", fullName: "" }
 
 export function PassengersStep({
   passengers,
@@ -432,11 +444,16 @@ export function PassengersStep({
   passengersError = false,
   roomingError = false,
   onUpdatePassenger,
+  onAddPassenger,
   onAssignRoom,
   onUnassignRoom,
+  pricedPax = 0,
   classicHref,
 }: PassengersStepProps) {
+  const [adding, setAdding] = useState(false)
   const passengersEditable = Boolean(onUpdatePassenger)
+  const canAddPassenger = Boolean(onAddPassenger)
+  const countMismatch = pricedPax > 0 && passengers.length > pricedPax
   const roomingEditable = Boolean(onAssignRoom && onUnassignRoom)
   const allPassengers = passengers.map((p) => ({ id: p.id, name: p.fullName }))
   // Passengers already assigned within a stay (hotel + day) can't be added to
@@ -473,19 +490,62 @@ export function PassengersStep({
 
       {/* Passengers */}
       <section>
-        <div className="mb-2 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-foreground">Passengers</h3>
-          <Badge variant="outline" className="font-normal text-muted-foreground">
-            {passengersEditable ? "Limited editing" : "Read only"}
-          </Badge>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">Passengers</h3>
+            <Badge variant="outline" className="font-normal text-muted-foreground">
+              {passengersEditable || canAddPassenger ? "Limited editing" : "Read only"}
+            </Badge>
+          </div>
+          {canAddPassenger && !adding ? (
+            <Button size="sm" variant="outline" className="h-7 gap-1 px-2.5 text-xs" onClick={() => setAdding(true)}>
+              <Plus className="h-3 w-3" aria-hidden="true" />
+              Add passenger
+            </Button>
+          ) : null}
         </div>
+
+        {canAddPassenger ? (
+          <p className="mb-2 text-xs text-muted-foreground">
+            Adding passenger details does not change priced pax count. Pax counts are managed in Classic
+            Builder.
+          </p>
+        ) : null}
+
+        {countMismatch ? (
+          <div
+            role="status"
+            className="mb-2 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-2.5 text-xs text-warning-foreground"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+            <span>
+              Passenger list count ({passengers.length}) may differ from priced pax count ({pricedPax}).
+              Adjust pax count in Classic Builder if needed.
+            </span>
+          </div>
+        ) : null}
+
+        {adding && onAddPassenger ? (
+          <div className="mb-3">
+            <PassengerEditForm
+              passenger={BLANK_PASSENGER}
+              onCancel={() => setAdding(false)}
+              onSave={(patch) => onAddPassenger(patch)}
+            />
+          </div>
+        ) : null}
+
         {passengersError ? (
           <LoadWarning label="passengers" />
         ) : passengers.length === 0 ? (
           <StepEmptyState
             icon={Users}
             title="No passengers added yet."
-            description="Traveller names and details appear here once added in the classic builder."
+            description={
+              canAddPassenger
+                ? 'Use "Add passenger" above, or manage the full list in the classic builder.'
+                : "Traveller names and details appear here once added in the classic builder."
+            }
           />
         ) : (
           <Card className="overflow-hidden p-0">

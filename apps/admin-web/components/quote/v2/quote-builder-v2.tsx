@@ -65,6 +65,11 @@ export interface QuoteBuilderV2Props {
    */
   onUpdatePassenger?: (passengerId: string, patch: Record<string, string | null>) => void | Promise<void>
   /**
+   * Add a NEW passenger (pricing-inert; existing POST endpoint). Does NOT change
+   * the priced pax count. When omitted, no Add affordance is shown.
+   */
+  onAddPassenger?: (patch: Record<string, string | null>) => void | Promise<void>
+  /**
    * Assign / unassign an EXISTING passenger to an EXISTING rooming group
    * (pricing-inert). When both are provided, Rooming exposes assignment editing
    * only. When omitted, rooming stays read-only.
@@ -91,6 +96,7 @@ export function QuoteBuilderV2({
   onSetPrimaryHotel,
   onUpdateDisplayText,
   onUpdatePassenger,
+  onAddPassenger,
   onAssignRoom,
   onUnassignRoom,
   onEnablePublicLink,
@@ -229,8 +235,10 @@ export function QuoteBuilderV2({
             passengersError={quote.passengersLoadError}
             roomingError={quote.roomingLoadError}
             onUpdatePassenger={onUpdatePassenger}
+            onAddPassenger={onAddPassenger}
             onAssignRoom={onAssignRoom}
             onUnassignRoom={onUnassignRoom}
+            pricedPax={quote.meta.pax}
             classicHref={`/quotes/${quote.id}/classic`}
           />
         )
