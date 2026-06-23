@@ -7,6 +7,7 @@ import { StepEmptyState } from "../states"
 import { StatusBadge } from "../status-badges"
 import { DisplayTextEditor, type DisplayTextField } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
+import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { Experience } from "../../../../lib/quote-types"
 import { Ticket } from "lucide-react"
@@ -29,14 +30,19 @@ function ExperienceRow({
   exp,
   currency,
   onUpdateDisplayText,
+  classicHref,
 }: {
   exp: Experience
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
+  classicHref?: string
 }) {
   // Only external-package items expose editable client text; everything else is
   // read-only (its client copy is catalog- or narrative-driven).
   const canEdit = Boolean(onUpdateDisplayText && exp.editableText && exp.quoteItemId)
+  // Adding/removing/pricing services stays in Classic; offer a contextual deep
+  // link to the same item there. Pure navigation — no V2 mutation.
+  const classicItemHref = buildClassicItemHref(classicHref, "services", exp.quoteItemId)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -67,6 +73,7 @@ function ExperienceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {exp.amount > 0 ? formatCurrency(exp.amount, currency) : "Incl."}
           </span>
+          {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
       {canEdit ? (
@@ -132,6 +139,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 exp={exp}
                 currency={currency}
                 onUpdateDisplayText={onUpdateDisplayText}
+                classicHref={classicHref}
               />
             ))}
           </div>
