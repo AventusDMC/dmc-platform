@@ -273,15 +273,19 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       '`/api/quotes/${quote.id}/passengers/${passengerId}`',
       'onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}',
     ]);
-    // Orchestrator: finalized-status guard (broader set incl. EXPIRED/CONVERTED) + wiring.
+    // Orchestrator: status guard is an ALLOWLIST of editable statuses (default-safe
+    // → finalized AND unknown/missing statuses hide Delete) + wiring.
     contains(builderSrc, [
-      'DELETE_FINALIZED',
+      'PASSENGER_DELETE_EDITABLE_STATUSES',
+      '"DRAFT"',
+      '"READY"',
+      '"REVISION_REQUESTED"',
       'passengerDeleteStatusOk',
       'statusDeletable={passengerDeleteStatusOk}',
       'onDeletePassenger={onDeletePassenger}',
-      '"EXPIRED"',
-      '"CONVERTED"',
     ]);
+    // Not a denylist (which would allow an unknown status).
+    excludes(builderSrc, ['DELETE_FINALIZED']);
     // Step: combined guard (role + status + both loaded) + confirmation + rooming impact.
     contains(stepSrc, [
       'statusDeletable && !passengersError && !roomingError',

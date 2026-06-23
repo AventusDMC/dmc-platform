@@ -177,18 +177,11 @@ export function QuoteBuilderV2({
   const lifecycleLocked = LIFECYCLE_LOCKED.has(statusCode)
   const canMarkSent = insights.canSend && !lifecycleLocked
 
-  // Passenger DELETE status guard (destructive): only on non-finalized quotes.
-  // Default-safe — an unknown/empty status hides Delete. Finalized set is broader
-  // than LIFECYCLE_LOCKED (also EXPIRED/CONVERTED).
-  const DELETE_FINALIZED = new Set([
-    "SENT",
-    "ACCEPTED",
-    "CONFIRMED",
-    "CANCELLED",
-    "EXPIRED",
-    "CONVERTED",
-  ])
-  const passengerDeleteStatusOk = statusCode !== "" && !DELETE_FINALIZED.has(statusCode)
+  // Passenger DELETE status guard (destructive) — ALLOWLIST of editable statuses
+  // only. Default-safe: any finalized status (SENT/ACCEPTED/CONFIRMED/CANCELLED/
+  // EXPIRED/CONVERTED) AND any unknown/empty status hides Delete.
+  const PASSENGER_DELETE_EDITABLE_STATUSES = new Set(["DRAFT", "READY", "REVISION_REQUESTED"])
+  const passengerDeleteStatusOk = PASSENGER_DELETE_EDITABLE_STATUSES.has(statusCode)
 
   const sendDisabledReason = lifecycleLocked
     ? `Quote is already ${statusCode.toLowerCase()} — it can no longer be marked as sent here.`
