@@ -6,6 +6,7 @@ import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge } from "../status-badges"
 import { DisplayTextEditor, type DisplayTextField } from "./display-text-editor"
+import { ClassicGuidance } from "./classic-guidance"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { Experience } from "../../../../lib/quote-types"
 import { Ticket } from "lucide-react"
@@ -83,9 +84,11 @@ export interface ExperiencesStepProps {
   currency: string
   /** When provided, external-package items expose an inline "Client text" editor. */
   onUpdateDisplayText?: UpdateDisplayText
+  /** Link to the classic builder for the Classic-only experience edits. */
+  classicHref?: string
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -102,6 +105,12 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText }: 
             : "Experiences and entrances are shown for review. Editing will come later."
         }
       />
+
+      <ClassicGuidance
+        message="Adding, removing, and pricing services, activities, entrance fees, meals, guides, and external packages are managed in Classic Builder. V2 currently supports limited client text editing only where available."
+        classicHref={classicHref}
+      />
+
       {experiences.length === 0 ? (
         <StepEmptyState
           icon={Ticket}

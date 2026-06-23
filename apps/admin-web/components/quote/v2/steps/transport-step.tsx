@@ -6,6 +6,7 @@ import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge, ContractBadge } from "../status-badges"
 import { DisplayTextEditor } from "./display-text-editor"
+import { ClassicGuidance } from "./classic-guidance"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { TransportService } from "../../../../lib/quote-types"
@@ -77,9 +78,11 @@ export interface TransportStepProps {
   currency: string
   /** When provided, each real transport line exposes an inline route-label editor. */
   onUpdateDisplayText?: UpdateDisplayText
+  /** Link to the classic builder for the Classic-only transport edits. */
+  classicHref?: string
 }
 
-export function TransportStep({ services, currency, onUpdateDisplayText }: TransportStepProps) {
+export function TransportStep({ services, currency, onUpdateDisplayText, classicHref }: TransportStepProps) {
   const priced = services
     .filter((s) => s.amount != null)
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
@@ -100,6 +103,12 @@ export function TransportStep({ services, currency, onUpdateDisplayText }: Trans
             : "Transport services are shown for review. Editing will come later."
         }
       />
+
+      <ClassicGuidance
+        message="Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. V2 currently supports limited client text editing only where available."
+        classicHref={classicHref}
+      />
+
       {services.length === 0 ? (
         <StepEmptyState
           icon={Bus}
