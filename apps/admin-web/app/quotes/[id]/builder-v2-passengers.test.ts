@@ -145,6 +145,10 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'Adding passenger details does not change priced pax count',
       'countMismatch',
       'may differ from priced pax count',
+      // Item-21 hardening: Add UI suppressed when the passengers GET failed.
+      'const showAdd = canAddPassenger && !passengersError',
+      'showAdd && !adding',
+      'showAdd && adding',
     ]);
     excludes(stepSrc, ['Delete passenger', 'Remove passenger']);
     // Client: POST passengers only, role-gated; no recalc/pax/room writes.

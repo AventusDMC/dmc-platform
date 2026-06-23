@@ -453,6 +453,10 @@ export function PassengersStep({
   const [adding, setAdding] = useState(false)
   const passengersEditable = Boolean(onUpdatePassenger)
   const canAddPassenger = Boolean(onAddPassenger)
+  // Suppress the Add UI when the passengers GET failed — we can't show the
+  // current list, so adding could create a misleading/duplicate state. Only the
+  // load warning is shown until the list loads.
+  const showAdd = canAddPassenger && !passengersError
   const countMismatch = pricedPax > 0 && passengers.length > pricedPax
   const roomingEditable = Boolean(onAssignRoom && onUnassignRoom)
   const allPassengers = passengers.map((p) => ({ id: p.id, name: p.fullName }))
@@ -497,7 +501,7 @@ export function PassengersStep({
               {passengersEditable || canAddPassenger ? "Limited editing" : "Read only"}
             </Badge>
           </div>
-          {canAddPassenger && !adding ? (
+          {showAdd && !adding ? (
             <Button size="sm" variant="outline" className="h-7 gap-1 px-2.5 text-xs" onClick={() => setAdding(true)}>
               <Plus className="h-3 w-3" aria-hidden="true" />
               Add passenger
@@ -505,7 +509,7 @@ export function PassengersStep({
           ) : null}
         </div>
 
-        {canAddPassenger ? (
+        {showAdd ? (
           <p className="mb-2 text-xs text-muted-foreground">
             Adding passenger details does not change priced pax count. Pax counts are managed in Classic
             Builder.
@@ -525,7 +529,7 @@ export function PassengersStep({
           </div>
         ) : null}
 
-        {adding && onAddPassenger ? (
+        {showAdd && adding && onAddPassenger ? (
           <div className="mb-3">
             <PassengerEditForm
               passenger={BLANK_PASSENGER}
