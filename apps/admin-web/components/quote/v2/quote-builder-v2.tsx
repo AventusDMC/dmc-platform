@@ -64,6 +64,13 @@ export interface QuoteBuilderV2Props {
    * read-only. When omitted, passengers are read-only.
    */
   onUpdatePassenger?: (passengerId: string, patch: Record<string, string | null>) => void | Promise<void>
+  /**
+   * Assign / unassign an EXISTING passenger to an EXISTING rooming group
+   * (pricing-inert). When both are provided, Rooming exposes assignment editing
+   * only. When omitted, rooming stays read-only.
+   */
+  onAssignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
+  onUnassignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
   /** Enable the public proposal link; resolves to the new public state. */
   onEnablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   /** Disable the public proposal link; resolves to the new public state. */
@@ -84,6 +91,8 @@ export function QuoteBuilderV2({
   onSetPrimaryHotel,
   onUpdateDisplayText,
   onUpdatePassenger,
+  onAssignRoom,
+  onUnassignRoom,
   onEnablePublicLink,
   onDisablePublicLink,
   initialStep = "setup",
@@ -220,6 +229,8 @@ export function QuoteBuilderV2({
             passengersError={quote.passengersLoadError}
             roomingError={quote.roomingLoadError}
             onUpdatePassenger={onUpdatePassenger}
+            onAssignRoom={onAssignRoom}
+            onUnassignRoom={onUnassignRoom}
             classicHref={`/quotes/${quote.id}/classic`}
           />
         )

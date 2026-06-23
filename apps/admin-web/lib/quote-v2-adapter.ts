@@ -473,9 +473,18 @@ function mapPassengers(raw: RawErpQuote): Passenger[] {
 function mapRooming(raw: RawErpQuote): RoomingGroupSummary[] {
   return asArray(raw.roomingGroups).map((g, i) => {
     const r = rec(g)
-    const passengers = asArray(r.passengers)
+    // Assigned passengers carry id (for unassign) + name (display). Tolerate the
+    // legacy `passengers` (names-only) shape from demo/fallback data.
+    const assignedPassengers = asArray(r.assignedPassengers)
+      .map((a) => {
+        const ar = rec(a)
+        return { id: asString(ar.id), name: asString(ar.name) }
+      })
+      .filter((p) => p.name.length > 0)
+    const legacyNames = asArray(r.passengers)
       .map((name) => asString(name))
       .filter((name) => name.length > 0)
+    const passengers = assignedPassengers.length > 0 ? assignedPassengers.map((p) => p.name) : legacyNames
     return {
       id: asString(r.id, `room-${i + 1}`),
       label: asString(r.label, `Room ${i + 1}`),
@@ -487,6 +496,7 @@ function mapRooming(raw: RawErpQuote): RoomingGroupSummary[] {
       leaderRoom: asBool(r.leaderRoom),
       notes: asTextOrNull(r.notes) ?? null,
       passengers,
+      assignedPassengers,
     }
   })
 }
@@ -750,7 +760,7 @@ interface ApiRoomingGroup {
   temporaryRoomLabel?: string | null
   itineraryDay?: { dayNumber?: number | null; title?: string | null } | null
   hotelQuoteItem?: { hotel?: { name?: string | null } | null; roomCategory?: { name?: string | null } | null } | null
-  assignments?: Array<{ quotePassenger?: { firstName?: string | null; lastName?: string | null } | null }> | null
+  assignments?: Array<{ quotePassenger?: { id?: string | null; firstName?: string | null; lastName?: string | null } | null }> | null
 }
 
 function splitTextLines(text: string | null | undefined): string[] {
@@ -1045,9 +1055,12 @@ function mapErpQuoteToRaw(
     guideRoom: Boolean(g.guideRoom),
     leaderRoom: Boolean(g.leaderRoom),
     notes: g.notes ?? null,
-    passengers: (g.assignments ?? [])
-      .map((a) => [a.quotePassenger?.firstName, a.quotePassenger?.lastName].filter(Boolean).join(" ").trim())
-      .filter((n) => n.length > 0),
+    assignedPassengers: (g.assignments ?? [])
+      .map((a) => ({
+        id: a.quotePassenger?.id ?? "",
+        name: [a.quotePassenger?.firstName, a.quotePassenger?.lastName].filter(Boolean).join(" ").trim(),
+      }))
+      .filter((p) => p.id && p.name),
   }))
 
   // ---- destination (best-effort; never invented) ----

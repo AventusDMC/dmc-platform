@@ -209,8 +209,10 @@ export interface RoomingGroupSummary {
   guideRoom: boolean
   leaderRoom: boolean
   notes: string | null
-  /** Assigned passenger full names. */
+  /** Assigned passenger full names (display). */
   passengers: string[]
+  /** Assigned passengers with ids — needed to unassign + to filter the add-list. */
+  assignedPassengers: { id: string; name: string }[]
 }
 
 /** A single cost component line in the pricing breakdown. */

@@ -218,7 +218,7 @@ export const demoQuote: Quote = {
     { id: "p2", fullName: "Luis Gonzalez", gender: "M", dateOfBirth: "02 Sep 1977", nationality: "Spain", passportNumber: "ESP4421988", passportExpiry: "30 Jun 2030", dietaryNotes: null, mobilityNotes: null, emergencyContact: null, remarks: null },
   ],
   roomingGroups: [
-    { id: "r1", label: "Room 1", hotel: "Grand Hyatt Amman", day: "Day 1: Arrival Amman", roomType: "Deluxe", occupancyType: "double", guideRoom: false, leaderRoom: false, notes: null, passengers: ["Maria Gonzalez", "Luis Gonzalez"] },
+    { id: "r1", label: "Room 1", hotel: "Grand Hyatt Amman", day: "Day 1: Arrival Amman", roomType: "Deluxe", occupancyType: "double", guideRoom: false, leaderRoom: false, notes: null, passengers: ["Maria Gonzalez", "Luis Gonzalez"], assignedPassengers: [{ id: "p1", name: "Maria Gonzalez" }, { id: "p2", name: "Luis Gonzalez" }] },
   ],
   pricing: {
     lines: [

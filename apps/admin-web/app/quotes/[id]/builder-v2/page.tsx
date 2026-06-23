@@ -34,6 +34,15 @@ export default async function QuoteBuilderV2Page({
   const sessionToken = (await cookies()).get("dmc_session")?.value || ""
   const role = readSessionActor(sessionToken)?.role ?? null
   const canEditPassengers = hasRequiredRole(role, ["admin", "operations", "viewer"])
+  // Rooming assignment endpoints share the same backend @Roles set as passengers.
+  const canEditRooming = hasRequiredRole(role, ["admin", "operations", "viewer"])
 
-  return <BuilderV2Client quote={quote} error={error} canEditPassengers={canEditPassengers} />
+  return (
+    <BuilderV2Client
+      quote={quote}
+      error={error}
+      canEditPassengers={canEditPassengers}
+      canEditRooming={canEditRooming}
+    />
+  )
 }

@@ -86,16 +86,18 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'Cancel',
       "role=\"alert\"", // inline error
     ]);
-    // Whitelisted passenger fields only — NO rooming/pax/room-count/FOC/pricing edits.
+    // No passenger add/delete, no pax/room-count/FOC/pricing edits in the step.
+    // (Rooming ASSIGNMENT add/remove is allowed and tested separately.)
     excludes(stepSrc, [
-      'Add passenger',
       'Delete passenger',
       'onUpdateRooming',
-      'Assign',
-      'Unassign',
+      'createRoomingGroup',
+      'deleteRoomingGroup',
+      'Delete room',
+      'Add room',
+      'setRoomType',
+      'setOccupancy',
       'roomCount',
-      'adults',
-      'children',
       'Single supplement',
       'singleSupplement',
       'totalCost',
@@ -103,7 +105,36 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
     ]);
   });
 
-  it('orchestrator wires passenger-edit + read-only rooming with a classic link', () => {
+  it('rooming ASSIGNMENT editing only — add/remove existing passenger; NO group/type/occupancy/count edits', () => {
+    contains(stepSrc, [
+      'onAssign',
+      'onUnassign',
+      'assignedPassengers',
+      'Add passenger', // the add-to-room select placeholder
+      'Rooming assignment only',
+      'Room counts, room types, occupancy, and pricing are managed in Classic',
+      'available', // filters passengers not already in this room
+      'Remove ${p.name}',
+      'roomingEditable',
+    ]);
+    // Rooming edits are limited to assignment — NOT group lifecycle / type / occupancy / counts.
+    excludes(stepSrc, [
+      'createRoomingGroup',
+      'deleteRoomingGroup',
+      'Delete room',
+      'Add room',
+      'New room',
+      'setRoomType',
+      'setOccupancy',
+      'setGuide',
+      'setLeader',
+      'roomCount',
+      'Single supplement',
+      'singleSupplement',
+    ]);
+  });
+
+  it('orchestrator wires passenger-edit + rooming-assignment + classic link', () => {
     contains(builderSrc, [
       'PassengersStep',
       'case "passengers"',
@@ -112,8 +143,27 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'passengersError={quote.passengersLoadError}',
       'roomingError={quote.roomingLoadError}',
       'onUpdatePassenger={onUpdatePassenger}',
+      'onAssignRoom={onAssignRoom}',
+      'onUnassignRoom={onUnassignRoom}',
       'classicHref={`/quotes/${quote.id}/classic`}',
     ]);
+  });
+
+  it('rooming assignment uses ONLY the existing assignment POST/DELETE endpoints (gated, pricing-inert)', () => {
+    const clientSrc = readFileSync(new URL('./builder-v2/builder-v2-client.tsx', import.meta.url), 'utf8');
+    contains(clientSrc, [
+      'handleAssignRoom',
+      'handleUnassignRoom',
+      '/api/quotes/${quote.id}/rooming/${roomingGroupId}/assignments',
+      '/api/quotes/${quote.id}/rooming/${roomingGroupId}/assignments/${passengerId}',
+      'method: "POST"',
+      'method: "DELETE"',
+      'quotePassengerId: passengerId',
+      'onAssignRoom={canEditRooming ? handleAssignRoom : undefined}',
+      'onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}',
+    ]);
+    // No room create/edit/delete or pricing writes.
+    excludes(clientSrc, ['createRoomingGroup', 'deleteRoomingGroup', 'recalculateQuoteTotals', 'roomCount', 'singleSupplement']);
   });
 
   it('passenger edit uses the EXISTING PATCH passengers endpoint (pricing-inert, no recalc)', () => {
@@ -162,12 +212,21 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       '["admin", "operations", "viewer"]',
       'canEditPassengers',
       'canEditPassengers={canEditPassengers}',
+      'canEditRooming',
+      'canEditRooming={canEditRooming}',
     ]);
-    // Client only wires the passenger PATCH callback when the role is allowed.
+    // Client only wires the mutation callbacks when the role is allowed.
     contains(clientSrc, [
       'canEditPassengers',
       'onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}',
+      'canEditRooming',
+      'onAssignRoom={canEditRooming ? handleAssignRoom : undefined}',
     ]);
+  });
+
+  it('adapter surfaces assigned passenger ids for rooming (needed to unassign/filter)', () => {
+    contains(adapterSrc, ['assignedPassengers', 'a.quotePassenger?.id']);
+    contains(typesSrc, ['assignedPassengers: { id: string; name: string }[]']);
   });
 
   it('demo data provides passengers + rooming + the step so empty/non-empty states render', () => {
