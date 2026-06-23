@@ -5,6 +5,7 @@ import { Card } from "../../../ui/card"
 import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
+import { ClassicGuidance } from "./classic-guidance"
 import type { SetupField } from "../../../../lib/quote-types"
 
 const groups: {
@@ -20,9 +21,11 @@ const groups: {
 export interface SetupStepProps {
   fields: SetupField[]
   onEdit?: () => void
+  /** Link to the classic builder for the Classic-only setup edits. */
+  classicHref?: string
 }
 
-export function SetupStep({ fields, onEdit }: SetupStepProps) {
+export function SetupStep({ fields, onEdit, classicHref }: SetupStepProps) {
   return (
     <div>
       <StepHeader
@@ -34,6 +37,11 @@ export function SetupStep({ fields, onEdit }: SetupStepProps) {
             Edit details
           </Button>
         }
+      />
+
+      <ClassicGuidance
+        message="Quote setup, client details, travel dates, currency, pax counts, room counts, FOC, and single supplement are managed in Classic Builder."
+        classicHref={classicHref}
       />
 
       {fields.length === 0 ? (

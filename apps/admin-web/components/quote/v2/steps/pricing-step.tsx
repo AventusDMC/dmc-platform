@@ -4,15 +4,18 @@ import { Card } from "../../../ui/card"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge } from "../status-badges"
+import { ClassicGuidance } from "./classic-guidance"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { PricingBreakdown } from "../../../../lib/quote-types"
 import { Calculator } from "lucide-react"
 
 export interface PricingStepProps {
   pricing: PricingBreakdown
+  /** Link to the classic builder for the Classic-only pricing edits. */
+  classicHref?: string
 }
 
-export function PricingStep({ pricing }: PricingStepProps) {
+export function PricingStep({ pricing, classicHref }: PricingStepProps) {
   const { lines, netCost, markupPercent, margin, sellingPrice, pax, perPerson, currency } = pricing
 
   return (
@@ -23,6 +26,11 @@ export function PricingStep({ pricing }: PricingStepProps) {
         statusLabel="View only"
         statusTone="view"
         helper="Pricing is displayed from the existing pricing engine and is not editable in V2 yet."
+      />
+
+      <ClassicGuidance
+        message="Pricing, markups, overrides, pax/room counts, FOC, single supplement, and recalculation are managed in Classic Builder. V2 pricing is read-only."
+        classicHref={classicHref}
       />
 
       {lines.length === 0 ? (

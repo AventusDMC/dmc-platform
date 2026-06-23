@@ -213,7 +213,7 @@ export function QuoteBuilderV2({
   const renderStep = () => {
     switch (current) {
       case "setup":
-        return <SetupStep fields={quote.setupFields} />
+        return <SetupStep fields={quote.setupFields} classicHref={`/quotes/${quote.id}/classic`} />
       case "itinerary":
         return <ItineraryStep days={quote.itinerary} />
       case "hotels":
@@ -222,6 +222,7 @@ export function QuoteBuilderV2({
             cities={quote.hotelCities}
             currency={quote.meta.currency}
             onSetPrimary={onSetPrimaryHotel}
+            classicHref={`/quotes/${quote.id}/classic`}
           />
         )
       case "experiences":
@@ -230,6 +231,7 @@ export function QuoteBuilderV2({
             experiences={quote.experiences}
             currency={quote.meta.currency}
             onUpdateDisplayText={onUpdateDisplayText}
+            classicHref={`/quotes/${quote.id}/classic`}
           />
         )
       case "transport":
@@ -238,6 +240,7 @@ export function QuoteBuilderV2({
             services={quote.transport}
             currency={quote.meta.currency}
             onUpdateDisplayText={onUpdateDisplayText}
+            classicHref={`/quotes/${quote.id}/classic`}
           />
         )
       case "passengers":
@@ -258,7 +261,7 @@ export function QuoteBuilderV2({
           />
         )
       case "pricing":
-        return <PricingStep pricing={quote.pricing} />
+        return <PricingStep pricing={quote.pricing} classicHref={`/quotes/${quote.id}/classic`} />
       case "proposal":
         return (
           <ProposalStep

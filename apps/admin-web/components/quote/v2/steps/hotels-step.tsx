@@ -7,6 +7,7 @@ import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { ContractBadge } from "../status-badges"
+import { ClassicGuidance } from "./classic-guidance"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { HotelSelection, HotelCityBlock } from "../../../../lib/quote-types"
@@ -123,6 +124,8 @@ export interface HotelsStepProps {
    * stays fully read-only.
    */
   onSetPrimary?: (optionId: string, hotelOptionId: string) => void | Promise<void>
+  /** Link to the classic builder for the Classic-only hotel edits. */
+  classicHref?: string
 }
 
 /**
@@ -140,7 +143,7 @@ function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
   return eligible
 }
 
-export function HotelsStep({ cities, currency, onSetPrimary }: HotelsStepProps) {
+export function HotelsStep({ cities, currency, onSetPrimary, classicHref }: HotelsStepProps) {
   const canEdit = Boolean(onSetPrimary)
   // Only claim "Set primary only" when at least one city actually exposes a
   // "Set as primary" action (2+ editable real options in the same set). Fallback
@@ -181,6 +184,12 @@ export function HotelsStep({ cities, currency, onSetPrimary }: HotelsStepProps) 
             : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
         }
       />
+
+      <ClassicGuidance
+        message="Full hotel editing, adding/removing options, room categories, contracts, and manual rates are managed in Classic Builder. V2 currently supports Set as primary only where available."
+        classicHref={classicHref}
+      />
+
       {cities.length === 0 ? (
         <StepEmptyState
           icon={Building2}
