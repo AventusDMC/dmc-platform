@@ -140,6 +140,31 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // Add a NEW passenger via the EXISTING endpoint: POST /api/quotes/:id/passengers.
+  // Pricing-inert — createPassenger does NOT recalculate, and this never changes
+  // the quote's priced pax count (adults/children). Throws on failure; refreshes
+  // on success.
+  const handleAddPassenger = async (patch: Record<string, string | null>) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/passengers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || body
+      } catch {
+        // non-JSON body
+      }
+      throw new Error(message?.slice(0, 300) || `Could not add passenger (${res.status}).`)
+    }
+    router.refresh()
+  }
+
   // Assign an EXISTING passenger to an EXISTING rooming group via the EXISTING
   // endpoint: POST /api/quotes/:id/rooming/:roomingGroupId/assignments
   // { quotePassengerId }. Pricing-inert — no recalculation. Throws on failure;
@@ -255,6 +280,7 @@ export function BuilderV2Client({
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
+      onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onAssignRoom={canEditRooming ? handleAssignRoom : undefined}
       onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}
       onEnablePublicLink={handleEnablePublicLink}
