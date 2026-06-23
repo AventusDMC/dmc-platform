@@ -34,6 +34,8 @@ import type {
   Experience,
   TransportService,
   TransportType,
+  Passenger,
+  RoomingGroupSummary,
   PricingBreakdown,
   CostLine,
   ProposalContent,
@@ -81,6 +83,13 @@ export interface RawErpQuote {
   hotelCities?: unknown
   experiences?: unknown
   transport?: unknown
+  // Read-only passenger list + rooming groups (distinct from the `rooming`
+  // meta summary string above).
+  passengers?: unknown
+  roomingGroups?: unknown
+  // True when the respective best-effort GET failed (vs a real empty list).
+  passengersLoadError?: unknown
+  roomingLoadError?: unknown
   pricing?: unknown
   proposal?: unknown
   readiness?: unknown
@@ -225,6 +234,7 @@ const STEP_IDS: StepId[] = [
   "hotels",
   "experiences",
   "transport",
+  "passengers",
   "pricing",
   "proposal",
 ]
@@ -240,6 +250,7 @@ const STEP_DEFS: Record<StepId, { label: string; description: string }> = {
   hotels: { label: "Hotels", description: "Accommodation & rooming" },
   experiences: { label: "Experiences", description: "Visits & entrances" },
   transport: { label: "Transport", description: "Vehicles & transfers" },
+  passengers: { label: "Passengers", description: "Travellers & rooming" },
   pricing: { label: "Pricing", description: "Costs & margin" },
   proposal: { label: "Proposal", description: "Review & generate PDF" },
 }
@@ -430,6 +441,52 @@ function mapTransport(raw: RawErpQuote): TransportService[] {
   })
 }
 
+// Read-only passenger summary. Pure PII passthrough; never affects pricing.
+function mapPassengers(raw: RawErpQuote): Passenger[] {
+  return asArray(raw.passengers).map((p, i) => {
+    const r = rec(p)
+    const fullName =
+      [asString(r.firstName), asString(r.lastName)].filter(Boolean).join(" ").trim() ||
+      asString(r.fullName, "—")
+    return {
+      id: asString(r.id, `pax-${i + 1}`),
+      fullName: fullName || "—",
+      gender: asTextOrNull(r.gender),
+      dateOfBirth: asTextOrNull(r.dateOfBirth),
+      nationality: asTextOrNull(r.nationality),
+      passportNumber: asTextOrNull(r.passportNumber),
+      passportExpiry: asTextOrNull(r.passportExpiry),
+      dietaryNotes: asTextOrNull(r.dietaryNotes),
+      mobilityNotes: asTextOrNull(r.mobilityNotes),
+      emergencyContact: asTextOrNull(r.emergencyContact),
+      remarks: asTextOrNull(r.remarks),
+    }
+  })
+}
+
+// Read-only rooming summary. Occupancy/room type are OPERATIONAL display only —
+// they are never pricing inputs (the engine prices from quote pax/room scalars).
+function mapRooming(raw: RawErpQuote): RoomingGroupSummary[] {
+  return asArray(raw.roomingGroups).map((g, i) => {
+    const r = rec(g)
+    const passengers = asArray(r.passengers)
+      .map((name) => asString(name))
+      .filter((name) => name.length > 0)
+    return {
+      id: asString(r.id, `room-${i + 1}`),
+      label: asString(r.label, `Room ${i + 1}`),
+      hotel: asTextOrNull(r.hotel) ?? null,
+      day: asTextOrNull(r.day) ?? null,
+      roomType: asTextOrNull(r.roomType) ?? null,
+      occupancyType: asTextOrNull(r.occupancyType) ?? null,
+      guideRoom: asBool(r.guideRoom),
+      leaderRoom: asBool(r.leaderRoom),
+      notes: asTextOrNull(r.notes) ?? null,
+      passengers,
+    }
+  })
+}
+
 // NOTE: pricing is mapped 1:1 from the ERP pricing-engine result. No totals
 // are recomputed here — netCost / margin / sellingPrice / perPerson are
 // displayed exactly as the engine produced them.
@@ -499,6 +556,10 @@ export function adaptErpQuote(raw: RawErpQuote | null | undefined, fallbackId: s
     hotelCities: mapHotelCities(safeRaw),
     experiences: mapExperiences(safeRaw),
     transport: mapTransport(safeRaw),
+    passengers: mapPassengers(safeRaw),
+    roomingGroups: mapRooming(safeRaw),
+    passengersLoadError: asBool(safeRaw.passengersLoadError),
+    roomingLoadError: asBool(safeRaw.roomingLoadError),
     pricing: mapPricing(safeRaw, meta.currency),
     proposal: mapProposal(safeRaw),
     readiness: mapReadiness(safeRaw),
@@ -659,6 +720,34 @@ interface ApiItineraryDay {
 interface ApiItinerary {
   days?: ApiItineraryDay[] | null
 }
+// Shapes returned by the existing READ endpoints GET /api/quotes/:id/passengers
+// and GET /api/quotes/:id/rooming (loose/optional — only the read fields).
+interface ApiPassenger {
+  id?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  gender?: string | null
+  dateOfBirth?: string | null
+  nationality?: string | null
+  passportNumber?: string | null
+  passportExpiry?: string | null
+  dietaryNotes?: string | null
+  mobilityNotes?: string | null
+  emergencyContact?: string | null
+  remarks?: string | null
+}
+interface ApiRoomingGroup {
+  id?: string | null
+  roomType?: string | null
+  occupancyType?: string | null
+  guideRoom?: boolean | null
+  leaderRoom?: boolean | null
+  notes?: string | null
+  temporaryRoomLabel?: string | null
+  itineraryDay?: { dayNumber?: number | null; title?: string | null } | null
+  hotelQuoteItem?: { hotel?: { name?: string | null } | null; roomCategory?: { name?: string | null } | null } | null
+  assignments?: Array<{ quotePassenger?: { firstName?: string | null; lastName?: string | null } | null }> | null
+}
 
 function splitTextLines(text: string | null | undefined): string[] {
   if (!text) return []
@@ -717,7 +806,15 @@ function isExternalPackageItem(it: ApiQuoteItem): boolean {
 }
 
 /** Map an existing ERP quote (+ optional itinerary) into the loose RawErpQuote. */
-function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: string): RawErpQuote {
+function mapErpQuoteToRaw(
+  q: ApiQuote,
+  itin: ApiItinerary | null,
+  fallbackId: string,
+  apiPassengers: ApiPassenger[] = [],
+  apiRooming: ApiRoomingGroup[] = [],
+  passengersLoadError = false,
+  roomingLoadError = false,
+): RawErpQuote {
   const id = q.id ?? fallbackId
   const pax = (q.adults ?? 0) + (q.children ?? 0)
   const nights = q.nightCount ?? 0
@@ -914,6 +1011,38 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     })
   }
 
+  // ---- passengers + rooming (read-only; from existing GET endpoints) ----
+  const passengers = apiPassengers.map((p, i) => ({
+    id: p.id ?? `pax-${i + 1}`,
+    firstName: p.firstName ?? "",
+    lastName: p.lastName ?? "",
+    gender: p.gender ?? null,
+    dateOfBirth: p.dateOfBirth ? formatQuoteDate(p.dateOfBirth) || p.dateOfBirth : null,
+    nationality: p.nationality ?? null,
+    passportNumber: p.passportNumber ?? null,
+    passportExpiry: p.passportExpiry ? formatQuoteDate(p.passportExpiry) || p.passportExpiry : null,
+    dietaryNotes: p.dietaryNotes ?? null,
+    mobilityNotes: p.mobilityNotes ?? null,
+    emergencyContact: p.emergencyContact ?? null,
+    remarks: p.remarks ?? null,
+  }))
+  const roomingGroups = apiRooming.map((g, i) => ({
+    id: g.id ?? `room-${i + 1}`,
+    label: g.temporaryRoomLabel?.trim() || `Room ${i + 1}`,
+    hotel: g.hotelQuoteItem?.hotel?.name ?? null,
+    day: g.itineraryDay
+      ? `Day ${g.itineraryDay.dayNumber ?? "?"}${g.itineraryDay.title ? `: ${g.itineraryDay.title}` : ""}`
+      : null,
+    roomType: g.roomType ?? g.hotelQuoteItem?.roomCategory?.name ?? null,
+    occupancyType: g.occupancyType ?? null,
+    guideRoom: Boolean(g.guideRoom),
+    leaderRoom: Boolean(g.leaderRoom),
+    notes: g.notes ?? null,
+    passengers: (g.assignments ?? [])
+      .map((a) => [a.quotePassenger?.firstName, a.quotePassenger?.lastName].filter(Boolean).join(" ").trim())
+      .filter((n) => n.length > 0),
+  }))
+
   // ---- destination (best-effort; never invented) ----
   const destination = days.find((d) => d.overnightCity)?.overnightCity ?? hotelCities[0]?.city ?? "—"
 
@@ -954,6 +1083,7 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     { id: "hotels", status: stepStatus(hotelsSelected, hotelCities.length > 0) },
     { id: "experiences", status: stepStatus(experiences.length > 0) },
     { id: "transport", status: stepStatus(transportPriced, transport.length > 0) },
+    { id: "passengers", status: stepStatus(passengers.length > 0 || roomingGroups.length > 0) },
     { id: "pricing", status: stepStatus(totalSell > 0) },
     { id: "proposal", status: stepStatus(splitTextLines(q.inclusionsText).length > 0) },
   ]
@@ -1007,6 +1137,10 @@ function mapErpQuoteToRaw(q: ApiQuote, itin: ApiItinerary | null, fallbackId: st
     hotelCities,
     experiences,
     transport,
+    passengers,
+    roomingGroups,
+    passengersLoadError,
+    roomingLoadError,
     pricing,
     proposal: {
       included: splitTextLines(q.inclusionsText),
@@ -1050,7 +1184,42 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
     itinerary = null
   }
 
-  return mapErpQuoteToRaw(main, itinerary, id)
+  // Passengers + rooming are READ-ONLY in V2 and best-effort: fetched from the
+  // EXISTING GET endpoints (no new endpoints, no mutation). Their absence must
+  // never break the builder render. A FAILED fetch is tracked separately from a
+  // genuine empty list (200 []) so the UI can warn instead of claiming "none".
+  // Auth redirects still propagate.
+  let passengers: ApiPassenger[] = []
+  let passengersLoadError = false
+  try {
+    const res = await adminPageFetchJson<ApiPassenger[] | null>(`/api/quotes/${id}/passengers`, "Builder V2 passengers", {
+      cache: "no-store",
+      allow404: true,
+      timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
+    })
+    passengers = Array.isArray(res) ? res : []
+  } catch (err) {
+    if (isNextRedirectError(err)) throw err
+    passengers = []
+    passengersLoadError = true
+  }
+
+  let rooming: ApiRoomingGroup[] = []
+  let roomingLoadError = false
+  try {
+    const res = await adminPageFetchJson<ApiRoomingGroup[] | null>(`/api/quotes/${id}/rooming`, "Builder V2 rooming", {
+      cache: "no-store",
+      allow404: true,
+      timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
+    })
+    rooming = Array.isArray(res) ? res : []
+  } catch (err) {
+    if (isNextRedirectError(err)) throw err
+    rooming = []
+    roomingLoadError = true
+  }
+
+  return mapErpQuoteToRaw(main, itinerary, id, passengers, rooming, passengersLoadError, roomingLoadError)
 }
 
 /**

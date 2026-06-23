@@ -17,6 +17,7 @@ import { ItineraryStep } from "./steps/itinerary-step"
 import { HotelsStep } from "./steps/hotels-step"
 import { ExperiencesStep } from "./steps/experiences-step"
 import { TransportStep } from "./steps/transport-step"
+import { PassengersStep } from "./steps/passengers-step"
 import { PricingStep } from "./steps/pricing-step"
 import { ProposalStep } from "./steps/proposal-step"
 import {
@@ -202,6 +203,16 @@ export function QuoteBuilderV2({
             services={quote.transport}
             currency={quote.meta.currency}
             onUpdateDisplayText={onUpdateDisplayText}
+          />
+        )
+      case "passengers":
+        return (
+          <PassengersStep
+            passengers={quote.passengers}
+            roomingGroups={quote.roomingGroups}
+            passengersError={quote.passengersLoadError}
+            roomingError={quote.roomingLoadError}
+            classicHref={`/quotes/${quote.id}/classic`}
           />
         )
       case "pricing":
