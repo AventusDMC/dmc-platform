@@ -7,6 +7,7 @@ import { StepEmptyState } from "../states"
 import { StatusBadge, ContractBadge } from "../status-badges"
 import { DisplayTextEditor } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
+import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { TransportService } from "../../../../lib/quote-types"
@@ -21,13 +22,18 @@ function ServiceRow({
   svc,
   currency,
   onUpdateDisplayText,
+  classicHref,
 }: {
   svc: TransportService
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
+  classicHref?: string
 }) {
   const unassigned = svc.supplier.toLowerCase() === "unassigned"
   const canEdit = Boolean(onUpdateDisplayText && svc.editableText && svc.quoteItemId)
+  // Adding/removing transport, supplier/rate assignment and priced changes stay
+  // in Classic; offer a contextual deep link to the same item. Pure navigation.
+  const classicItemHref = buildClassicItemHref(classicHref, "transport", svc.quoteItemId)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -53,6 +59,7 @@ function ServiceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {svc.amount != null ? formatCurrency(svc.amount, currency) : "—"}
           </span>
+          {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
       {svc.warning && (
@@ -135,6 +142,7 @@ export function TransportStep({ services, currency, onUpdateDisplayText, classic
                 svc={svc}
                 currency={currency}
                 onUpdateDisplayText={onUpdateDisplayText}
+                classicHref={classicHref}
               />
             ))}
           </div>
