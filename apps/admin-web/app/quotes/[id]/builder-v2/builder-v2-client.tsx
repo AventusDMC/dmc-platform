@@ -18,11 +18,14 @@ export function BuilderV2Client({
   quote,
   error = null,
   canEditPassengers = false,
+  canEditRooming = false,
 }: {
   quote: Quote | null
   error?: string | null
   /** Whether the current user's role may update passengers (mirrors backend). */
   canEditPassengers?: boolean
+  /** Whether the current user's role may edit rooming assignments (mirrors backend). */
+  canEditRooming?: boolean
 }) {
   const router = useRouter()
 
@@ -137,6 +140,47 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // Assign an EXISTING passenger to an EXISTING rooming group via the EXISTING
+  // endpoint: POST /api/quotes/:id/rooming/:roomingGroupId/assignments
+  // { quotePassengerId }. Pricing-inert — no recalculation. Throws on failure;
+  // refreshes on success.
+  const handleAssignRoom = async (roomingGroupId: string, passengerId: string) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/rooming/${roomingGroupId}/assignments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quotePassengerId: passengerId }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || body
+      } catch {
+        // non-JSON body
+      }
+      throw new Error(message?.slice(0, 300) || `Could not assign passenger to room (${res.status}).`)
+    }
+    router.refresh()
+  }
+
+  // Unassign an EXISTING passenger from an EXISTING rooming group via the
+  // EXISTING endpoint: DELETE /api/quotes/:id/rooming/:roomingGroupId/assignments/:passengerId.
+  // Pricing-inert — no recalculation. Throws on failure; refreshes on success.
+  const handleUnassignRoom = async (roomingGroupId: string, passengerId: string) => {
+    if (!quote) return
+    const res = await fetch(
+      `/api/quotes/${quote.id}/rooming/${roomingGroupId}/assignments/${passengerId}`,
+      { method: "DELETE" },
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      throw new Error(body?.slice(0, 200) || `Could not remove passenger from room (${res.status}).`)
+    }
+    router.refresh()
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -211,6 +255,8 @@ export function BuilderV2Client({
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
+      onAssignRoom={canEditRooming ? handleAssignRoom : undefined}
+      onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}
       onEnablePublicLink={handleEnablePublicLink}
       onDisablePublicLink={handleDisablePublicLink}
       initialStep="hotels"

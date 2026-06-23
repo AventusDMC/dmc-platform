@@ -7,7 +7,7 @@ import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import type { Passenger, RoomingGroupSummary } from "../../../../lib/quote-types"
-import { Users, BedDouble, ExternalLink, AlertTriangle, Pencil, Loader2 } from "lucide-react"
+import { Users, BedDouble, ExternalLink, AlertTriangle, Pencil, Loader2, X, Plus } from "lucide-react"
 
 export type UpdatePassenger = (
   passengerId: string,
@@ -262,8 +262,46 @@ function PassengerRow({
   )
 }
 
-function RoomingCard({ g }: { g: RoomingGroupSummary }) {
+function RoomingCard({
+  g,
+  allPassengers,
+  unavailableIds,
+  onAssign,
+  onUnassign,
+}: {
+  g: RoomingGroupSummary
+  allPassengers: { id: string; name: string }[]
+  /** Passenger ids already assigned to this room OR another room in the same stay. */
+  unavailableIds: Set<string>
+  onAssign?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
+  onUnassign?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
+}) {
+  const editable = Boolean(onAssign && onUnassign)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [selected, setSelected] = useState("")
+
   const facts = [g.roomType, g.occupancyType].filter(Boolean) as string[]
+  // Available = quote passengers not already assigned to this room OR another
+  // room in the same stay (the backend enforces one room per stay; this avoids a
+  // predictable error). The backend remains the source of truth.
+  const available = allPassengers.filter((p) => p.id && !unavailableIds.has(p.id))
+
+  const run = async (fn?: (gid: string, pid: string) => void | Promise<void>, pid?: string) => {
+    if (!fn || !pid) return
+    setSaving(true)
+    setError(null)
+    try {
+      await fn(g.id, pid)
+      setSelected("")
+      // Parent refreshes V2 data on success; card re-renders with new state.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update rooming assignment.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -286,13 +324,80 @@ function RoomingCard({ g }: { g: RoomingGroupSummary }) {
           <span key={i}>{f}</span>
         ))}
       </div>
-      <div className="mt-1.5 text-xs text-foreground">
-        {g.passengers.length > 0 ? (
-          g.passengers.join(", ")
-        ) : (
-          <span className="italic text-muted-foreground">No passengers assigned.</span>
-        )}
-      </div>
+
+      {/* Assigned passengers */}
+      {editable ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {g.assignedPassengers.length > 0 ? (
+            g.assignedPassengers.map((p) => (
+              <span
+                key={p.id}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground"
+              >
+                {p.name}
+                <button
+                  type="button"
+                  aria-label={`Remove ${p.name}`}
+                  className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                  disabled={saving}
+                  onClick={() => run(onUnassign, p.id)}
+                >
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </span>
+            ))
+          ) : (
+            <span className="text-xs italic text-muted-foreground">No passengers assigned.</span>
+          )}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-xs text-foreground">
+          {g.passengers.length > 0 ? (
+            g.passengers.join(", ")
+          ) : (
+            <span className="italic text-muted-foreground">No passengers assigned.</span>
+          )}
+        </div>
+      )}
+
+      {/* Add passenger (assign one at a time) */}
+      {editable ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            value={selected}
+            disabled={saving || available.length === 0}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            <option value="">{available.length === 0 ? "All passengers assigned" : "Add passenger…"}</option>
+            {available.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 px-2 text-xs"
+            disabled={saving || !selected}
+            onClick={() => run(onAssign, selected)}
+          >
+            {saving ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            ) : (
+              <Plus className="h-3 w-3" aria-hidden="true" />
+            )}
+            Add
+          </Button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mt-1.5 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
       {g.notes ? <div className="mt-1 text-xs text-muted-foreground">Notes: {g.notes}</div> : null}
     </div>
   )
@@ -310,6 +415,13 @@ export interface PassengersStepProps {
    * passenger row shows an Edit affordance. Rooming stays read-only regardless.
    */
   onUpdatePassenger?: UpdatePassenger
+  /**
+   * Assign an EXISTING passenger to an EXISTING rooming group (pricing-inert).
+   * When both assign + unassign are provided, the Rooming section exposes
+   * assignment editing only (no room create/edit/type/occupancy).
+   */
+  onAssignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
+  onUnassignRoom?: (roomingGroupId: string, passengerId: string) => void | Promise<void>
   /** Link to the classic builder where passengers/rooming are managed. */
   classicHref?: string
 }
@@ -320,9 +432,24 @@ export function PassengersStep({
   passengersError = false,
   roomingError = false,
   onUpdatePassenger,
+  onAssignRoom,
+  onUnassignRoom,
   classicHref,
 }: PassengersStepProps) {
   const passengersEditable = Boolean(onUpdatePassenger)
+  const roomingEditable = Boolean(onAssignRoom && onUnassignRoom)
+  const allPassengers = passengers.map((p) => ({ id: p.id, name: p.fullName }))
+  // Passengers already assigned within a stay (hotel + day) can't be added to
+  // another room of that same stay — mirror the backend's one-room-per-stay rule
+  // in the "Add passenger" list so we don't offer an assignment that would fail.
+  const stayKey = (g: RoomingGroupSummary) => `${g.hotel ?? ""}||${g.day ?? ""}`
+  const stayAssigned = new Map<string, Set<string>>()
+  for (const g of roomingGroups) {
+    const k = stayKey(g)
+    const set = stayAssigned.get(k) ?? new Set<string>()
+    g.assignedPassengers.forEach((p) => set.add(p.id))
+    stayAssigned.set(k, set)
+  }
   return (
     <div className="space-y-6">
       <StepHeader
@@ -377,14 +504,18 @@ export function PassengersStep({
         )}
       </section>
 
-      {/* Rooming — READ ONLY (room assignment / occupancy managed in classic) */}
+      {/* Rooming — assignment editing only (room counts/types/occupancy stay in classic) */}
       <section>
         <div className="mb-2 flex items-center gap-2">
           <h3 className="text-sm font-semibold text-foreground">Rooming</h3>
           <Badge variant="outline" className="font-normal text-muted-foreground">
-            Read only
+            {roomingEditable ? "Limited editing" : "Read only"}
           </Badge>
         </div>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Rooming assignment only. Room counts, room types, occupancy, and pricing are managed in Classic
+          Builder.
+        </p>
         {roomingError ? (
           <LoadWarning label="the rooming list" />
         ) : roomingGroups.length === 0 ? (
@@ -403,7 +534,14 @@ export function PassengersStep({
             </div>
             <div className="divide-y divide-border">
               {roomingGroups.map((g) => (
-                <RoomingCard key={g.id} g={g} />
+                <RoomingCard
+                  key={g.id}
+                  g={g}
+                  allPassengers={allPassengers}
+                  unavailableIds={stayAssigned.get(stayKey(g)) ?? new Set<string>()}
+                  onAssign={onAssignRoom}
+                  onUnassign={onUnassignRoom}
+                />
               ))}
             </div>
           </Card>
