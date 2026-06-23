@@ -70,6 +70,12 @@ export interface QuoteBuilderV2Props {
    */
   onAddPassenger?: (patch: Record<string, string | null>) => void | Promise<void>
   /**
+   * Delete an EXISTING passenger (pricing-inert; existing DELETE endpoint).
+   * Should be wired only for admin/operations roles. The Delete control is
+   * additionally hidden by status (finalized quotes) and load-failure guards.
+   */
+  onDeletePassenger?: (passengerId: string) => void | Promise<void>
+  /**
    * Assign / unassign an EXISTING passenger to an EXISTING rooming group
    * (pricing-inert). When both are provided, Rooming exposes assignment editing
    * only. When omitted, rooming stays read-only.
@@ -97,6 +103,7 @@ export function QuoteBuilderV2({
   onUpdateDisplayText,
   onUpdatePassenger,
   onAddPassenger,
+  onDeletePassenger,
   onAssignRoom,
   onUnassignRoom,
   onEnablePublicLink,
@@ -170,6 +177,19 @@ export function QuoteBuilderV2({
   const lifecycleLocked = LIFECYCLE_LOCKED.has(statusCode)
   const canMarkSent = insights.canSend && !lifecycleLocked
 
+  // Passenger DELETE status guard (destructive): only on non-finalized quotes.
+  // Default-safe — an unknown/empty status hides Delete. Finalized set is broader
+  // than LIFECYCLE_LOCKED (also EXPIRED/CONVERTED).
+  const DELETE_FINALIZED = new Set([
+    "SENT",
+    "ACCEPTED",
+    "CONFIRMED",
+    "CANCELLED",
+    "EXPIRED",
+    "CONVERTED",
+  ])
+  const passengerDeleteStatusOk = statusCode !== "" && !DELETE_FINALIZED.has(statusCode)
+
   const sendDisabledReason = lifecycleLocked
     ? `Quote is already ${statusCode.toLowerCase()} — it can no longer be marked as sent here.`
     : !insights.canSend
@@ -236,6 +256,8 @@ export function QuoteBuilderV2({
             roomingError={quote.roomingLoadError}
             onUpdatePassenger={onUpdatePassenger}
             onAddPassenger={onAddPassenger}
+            onDeletePassenger={onDeletePassenger}
+            statusDeletable={passengerDeleteStatusOk}
             onAssignRoom={onAssignRoom}
             onUnassignRoom={onUnassignRoom}
             pricedPax={quote.meta.pax}

@@ -19,6 +19,7 @@ export function BuilderV2Client({
   error = null,
   canEditPassengers = false,
   canEditRooming = false,
+  canDeletePassenger = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -26,6 +27,12 @@ export function BuilderV2Client({
   canEditPassengers?: boolean
   /** Whether the current user's role may edit rooming assignments (mirrors backend). */
   canEditRooming?: boolean
+  /**
+   * Whether the current user's role may delete passengers. Intentionally
+   * STRICTER than the backend (admin/operations only) for this destructive
+   * action; the backend still permits viewer (pre-existing, unchanged).
+   */
+  canDeletePassenger?: boolean
 }) {
   const router = useRouter()
 
@@ -165,6 +172,28 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // Delete an EXISTING passenger via the EXISTING endpoint:
+  // DELETE /api/quotes/:id/passengers/:passengerId. Pricing-inert — removePassenger
+  // does NOT recalculate and never changes priced pax (adults/children). The
+  // backend cascade also removes the passenger's rooming assignment (no separate
+  // unassign call). Throws on failure; refreshes on success.
+  const handleDeletePassenger = async (passengerId: string) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/passengers/${passengerId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      let message = body
+      try {
+        const parsed = JSON.parse(body)
+        message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || body
+      } catch {
+        // non-JSON body
+      }
+      throw new Error(message?.slice(0, 300) || `Could not delete passenger (${res.status}).`)
+    }
+    router.refresh()
+  }
+
   // Assign an EXISTING passenger to an EXISTING rooming group via the EXISTING
   // endpoint: POST /api/quotes/:id/rooming/:roomingGroupId/assignments
   // { quotePassengerId }. Pricing-inert — no recalculation. Throws on failure;
@@ -281,6 +310,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
+      onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}
       onAssignRoom={canEditRooming ? handleAssignRoom : undefined}
       onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}
       onEnablePublicLink={handleEnablePublicLink}
