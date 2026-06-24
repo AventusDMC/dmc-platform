@@ -15,7 +15,16 @@ const TOKEN_VERSION = 'v1';
 
 export function getPreviewTokenSecret(): string {
   // Mirrors the auth session-secret pattern: env override with a dev fallback.
+  // IMPORTANT: the dev fallback is for local/test only. When the apply guard is
+  // enabled in production a real QUOTE_PREVIEW_TOKEN_SECRET MUST be set — the
+  // apply endpoint refuses to operate on the dev fallback in production (see
+  // isPreviewTokenSecretConfigured + the NODE_ENV check in applyPreviewQuoteItem).
   return process.env.QUOTE_PREVIEW_TOKEN_SECRET || 'dmc-local-dev-preview-token-secret';
+}
+
+/** True only when an explicit (non-fallback) token secret is configured. */
+export function isPreviewTokenSecretConfigured(): boolean {
+  return Boolean(process.env.QUOTE_PREVIEW_TOKEN_SECRET && process.env.QUOTE_PREVIEW_TOKEN_SECRET.trim());
 }
 
 // Deterministic canonical JSON: object keys sorted, `undefined` dropped, Dates

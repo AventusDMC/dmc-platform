@@ -54,6 +54,7 @@ import { isQuotePricingApplyEnabled, isQuotePricingPreviewEnabled } from './quot
 import {
   buildPreviewToken,
   getPreviewTokenSecret,
+  isPreviewTokenSecretConfigured,
   normalizePayloadHash,
   verifyPreviewToken,
 } from './quote-preview-token';
@@ -3854,6 +3855,13 @@ export class QuotesService {
     // Dual flag gate: apply requires BOTH preview and apply flags ON.
     if (!isQuotePricingPreviewEnabled() || !isQuotePricingApplyEnabled()) {
       return { applied: false, available: false, blocked: true, blockedReason: 'feature_disabled' };
+    }
+
+    // Secret safety: never sign/verify apply tokens with the dev fallback secret
+    // in production. If apply is enabled in prod, a real QUOTE_PREVIEW_TOKEN_SECRET
+    // is required — refuse (and write nothing) rather than trust a forgeable token.
+    if (process.env.NODE_ENV === 'production' && !isPreviewTokenSecretConfigured()) {
+      return { applied: false, blocked: true, blockedReason: 'token_secret_not_configured' };
     }
 
     const actorCompanyId = requireActorCompanyId(actor);

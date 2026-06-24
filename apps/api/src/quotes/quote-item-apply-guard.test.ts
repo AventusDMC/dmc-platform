@@ -238,6 +238,27 @@ test('status: finalized status after preview → 409 status_blocked', async () =
   assert.equal(calls.updateItem, 0);
 });
 
+test('secret safety: production without QUOTE_PREVIEW_TOKEN_SECRET → blocked, no write', async () => {
+  enable(true, true);
+  const prevNodeEnv = process.env.NODE_ENV;
+  const prevSecret = process.env.QUOTE_PREVIEW_TOKEN_SECRET;
+  delete process.env.QUOTE_PREVIEW_TOKEN_SECRET;
+  (process.env as any).NODE_ENV = 'production';
+  try {
+    const { svc, calls } = makeService();
+    // token value is irrelevant — the secret guard runs before token verification.
+    const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, 'v1.x.y', true, ACTOR);
+    assert.equal(out.applied, false);
+    assert.equal(out.blockedReason, 'token_secret_not_configured');
+    assert.equal(calls.updateItem, 0);
+    assert.equal(calls.writes, 0);
+  } finally {
+    (process.env as any).NODE_ENV = prevNodeEnv;
+    if (prevSecret === undefined) delete process.env.QUOTE_PREVIEW_TOKEN_SECRET;
+    else process.env.QUOTE_PREVIEW_TOKEN_SECRET = prevSecret;
+  }
+});
+
 test('meal-only: non-meal (transport) item apply → 400 out-of-scope, no write', async () => {
   enable(true, true);
   const { svc, calls } = makeService({ transport: true, service: { category: 'transport', serviceType: { code: 'POINT_TO_POINT', name: 'Transfer' } } });
