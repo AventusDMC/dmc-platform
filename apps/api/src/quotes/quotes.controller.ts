@@ -1348,6 +1348,31 @@ export class QuotesController {
     );
   }
 
+  @Post(':id/items/:itemId/apply-preview')
+  @Roles('admin', 'operations')
+  async applyPreviewItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: UpdateQuoteItemBody & { previewToken?: string; acknowledgedDelta?: boolean },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    // Apply a previously-previewed MEAL edit. Validates the stateless preview
+    // token, re-derives the dry-run, and only on a full match delegates to the
+    // existing updateItem write path. Dual-flag-gated (QUOTE_PRICING_PREVIEW +
+    // QUOTE_PRICING_APPLY, both default OFF) and status/role/meal guarded inside
+    // the service. The same body mapping as the real edit is used so the applied
+    // payload matches what was previewed.
+    const { previewToken, acknowledgedDelta, ...editBody } = body ?? {};
+    return this.quotesService.applyPreviewQuoteItem(
+      id,
+      itemId,
+      this.buildUpdateItemServiceInput(id, editBody),
+      previewToken,
+      Boolean(acknowledgedDelta),
+      actor,
+    );
+  }
+
   @Get(':id/items/:itemId/suggested-services')
   async findSuggestedServices(@Param('id') id: string, @Param('itemId') itemId: string) {
     const quote = await this.quotesService.findOne(id);

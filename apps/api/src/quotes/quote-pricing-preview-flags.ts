@@ -17,3 +17,14 @@ function readBooleanEnv(name: string): boolean {
 export function isQuotePricingPreviewEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_PREVIEW');
 }
+
+// `quote.pricingApply` gates the dry-run preview APPLY guard (PR4):
+// POST /quotes/:id/items/:itemId/apply-preview. STRICTER than preview — apply
+// writes (re-uses updateItem). It requires BOTH this flag AND the preview flag
+// to be ON; either OFF → the apply endpoint is unavailable and writes nothing.
+// Default OFF.
+export const QUOTE_PRICING_APPLY_FLAG = 'quote.pricingApply';
+
+export function isQuotePricingApplyEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_APPLY');
+}
