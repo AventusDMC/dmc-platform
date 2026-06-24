@@ -5,12 +5,14 @@ import { X, Info, AlertTriangle, Loader2, CheckCircle2, Calculator } from "lucid
 import { Button } from "../../../ui/button"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type {
-  ApplyMealPricingHandler,
+  ApplyItemPricingHandler,
   Experience,
   PreviewItemHandler,
   PricingPreviewResult,
   PricingPreviewTotals,
 } from "../../../../lib/quote-types"
+
+type ItemKind = "meal" | "activity"
 
 function TotalsRow({
   label,
@@ -65,6 +67,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls =
   "h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+const readonlyCls = "h-8 rounded-md border border-input bg-muted/40 px-2 text-sm text-muted-foreground flex items-center"
 
 // Map a backend machine-code (from the apply throw / preview block) to a message.
 function messageForCode(code: string): { text: string; forceRePreview: boolean } {
@@ -86,13 +89,21 @@ function messageForCode(code: string): { text: string; forceRePreview: boolean }
 }
 
 /**
- * Meal-only "Preview & apply meal pricing" modal. Preview first (read-only), then
- * apply via the dedicated apply-preview endpoint. No changes are saved until
- * Apply. Builds the payload from RAW meal fields (never from totals / pricingDescription).
+ * "Preview & apply pricing" modal for an existing MEAL or ACTIVITY item. Preview
+ * first (read-only), then apply via the dedicated apply-preview endpoint — nothing
+ * is saved until Apply. The payload is built ONLY from raw fields (never from
+ * totals / pricingDescription).
+ *
+ * - meal: name, unit cost, quantity, pax, currency, service date are editable.
+ * - activity: quantity, pax, service date are editable; name + rate variant +
+ *   currency are read-only (rate selection stays Classic-only). The payload
+ *   carries the existing activityId / activityRateVariantId / serviceId so the
+ *   backend re-prices at the current rate.
  */
-export function MealPricingApplyModal({
+export function ItemPricingApplyModal({
   open,
   onClose,
+  kind,
   exp,
   currency,
   onPreview,
@@ -100,10 +111,11 @@ export function MealPricingApplyModal({
 }: {
   open: boolean
   onClose: () => void
+  kind: ItemKind
   exp: Experience
   currency: string
   onPreview: PreviewItemHandler
-  onApply: ApplyMealPricingHandler
+  onApply: ApplyItemPricingHandler
 }) {
   const [name, setName] = useState(exp.customServiceName ?? exp.name ?? "")
   const [unitCost, setUnitCost] = useState(String(exp.unitCost ?? 0))
@@ -120,19 +132,33 @@ export function MealPricingApplyModal({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<null | { item: PricingPreviewTotals; quote: PricingPreviewTotals }>(null)
 
+  const isMeal = kind === "meal"
+  const isActivity = kind === "activity"
+
   // The exact payload sent to BOTH preview and apply (so the token's payload hash
   // matches). Built from raw fields — no totals, no pricingDescription parsing.
-  const payload = useMemo(
-    () => ({
+  // Meal: editable name/unitCost/currency. Activity: re-price at the existing
+  // rate variant (ids carried verbatim); currency is rate-derived (not sent).
+  const payload = useMemo(() => {
+    if (isActivity) {
+      return {
+        activityId: exp.activityId ?? undefined,
+        activityRateVariantId: exp.activityRateVariantId ?? undefined,
+        serviceId: exp.serviceId ?? undefined,
+        quantity: Number(quantity),
+        paxCount: Number(paxCount),
+        serviceDate: serviceDate || undefined,
+      }
+    }
+    return {
       customServiceName: name,
       unitCost: Number(unitCost),
       quantity: Number(quantity),
       paxCount: Number(paxCount),
       currency: itemCurrency,
       serviceDate: serviceDate || undefined,
-    }),
-    [name, unitCost, quantity, paxCount, itemCurrency, serviceDate],
-  )
+    }
+  }, [isActivity, exp.activityId, exp.activityRateVariantId, exp.serviceId, name, unitCost, quantity, paxCount, itemCurrency, serviceDate])
 
   if (!open) return null
 
@@ -174,8 +200,9 @@ export function MealPricingApplyModal({
       ((preview.item?.delta && (preview.item.delta.totalCost !== 0 || preview.item.delta.totalSell !== 0)) ||
         (preview.quote?.delta && (preview.quote.delta.totalCost !== 0 || preview.quote.delta.totalSell !== 0))),
   )
+  const kindMatches = isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)
   // Apply is offered only after a successful, resolvable, unblocked preview WITH a token.
-  const canApply = Boolean(exp.isMeal && exp.quoteItemId && token && !featureDisabled && !blocked && !notResolvable && !success)
+  const canApply = Boolean(kindMatches && exp.quoteItemId && token && !featureDisabled && !blocked && !notResolvable && !success)
 
   const runApply = async () => {
     if (!token) return
@@ -207,17 +234,19 @@ export function MealPricingApplyModal({
     }
   }
 
+  const heading = isActivity ? "Preview & apply activity pricing" : "Preview & apply meal pricing"
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Preview and apply meal pricing"
+      aria-label={heading}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div className="w-full max-w-lg rounded-lg border border-border bg-background shadow-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">Preview &amp; apply meal pricing</h2>
+          <h2 className="text-sm font-semibold text-foreground">{heading}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -229,19 +258,34 @@ export function MealPricingApplyModal({
             <span>Preview first. No changes are saved until you apply.</span>
           </div>
 
-          {/* Editable meal fields */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="col-span-2">
-              <Field label="Meal name">
-                <input className={inputCls} value={name} onChange={(e) => edit(setName)(e.target.value)} />
-              </Field>
-            </div>
-            <Field label="Unit cost">
-              <input className={inputCls} type="number" min="0" step="0.01" value={unitCost} onChange={(e) => edit(setUnitCost)(e.target.value)} />
-            </Field>
-            <Field label="Currency">
-              <input className={inputCls} value={itemCurrency} onChange={(e) => edit(setItemCurrency)(e.target.value.toUpperCase())} />
-            </Field>
+            {isActivity ? (
+              <>
+                <div className="col-span-2">
+                  <Field label="Activity (rate variant changes stay in Classic)">
+                    <div className={readonlyCls}>{exp.name}</div>
+                  </Field>
+                </div>
+                <Field label="Currency (rate-derived)">
+                  <div className={readonlyCls}>{itemCurrency}</div>
+                </Field>
+                <div />
+              </>
+            ) : (
+              <>
+                <div className="col-span-2">
+                  <Field label="Meal name">
+                    <input className={inputCls} value={name} onChange={(e) => edit(setName)(e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="Unit cost">
+                  <input className={inputCls} type="number" min="0" step="0.01" value={unitCost} onChange={(e) => edit(setUnitCost)(e.target.value)} />
+                </Field>
+                <Field label="Currency">
+                  <input className={inputCls} value={itemCurrency} onChange={(e) => edit(setItemCurrency)(e.target.value.toUpperCase())} />
+                </Field>
+              </>
+            )}
             <Field label="Quantity">
               <input className={inputCls} type="number" min="1" step="1" value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)} />
             </Field>
@@ -260,7 +304,6 @@ export function MealPricingApplyModal({
             Preview
           </Button>
 
-          {/* Results / states */}
           {error ? (
             <div className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm text-warning-foreground">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />

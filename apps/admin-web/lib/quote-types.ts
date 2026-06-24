@@ -154,6 +154,17 @@ export interface Experience {
   paxCount?: number | null
   currency?: string | null
   serviceDate?: string | null
+  /**
+   * Activity-only pricing apply. `isActivity` gates the "Preview & apply activity
+   * pricing" affordance; the ids are the RAW persisted values used to rebuild the
+   * activity edit payload (re-price at the current rate variant — rate selection
+   * stays Classic). No pricingDescription parsing.
+   */
+  isActivity?: boolean
+  activityId?: string | null
+  activityRateVariantId?: string | null
+  serviceId?: string | null
+  dayCount?: number | null
 }
 
 /** A ground transport / transfer service. */
@@ -396,11 +407,11 @@ export interface MealApplyResult {
 }
 
 /**
- * Applies a previously-previewed meal edit. Sends the SAME payload used for the
- * preview plus the previewToken and acknowledgedDelta. Resolves to the apply
- * result; rejects (Error message = backend code) on stale/invalid/blocked.
+ * Applies a previously-previewed MEAL or ACTIVITY edit. Sends the SAME payload
+ * used for the preview plus the previewToken and acknowledgedDelta. Resolves to
+ * the apply result; rejects (Error message = backend code) on stale/invalid/blocked.
  */
-export type ApplyMealPricingHandler = (
+export type ApplyItemPricingHandler = (
   quoteItemId: string,
   payload: Record<string, unknown>,
   previewToken: string,

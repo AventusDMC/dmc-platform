@@ -11,9 +11,9 @@ import { DisplayTextEditor, type DisplayTextField } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
 import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
 import { PricingPreviewModal } from "./pricing-preview-modal"
-import { MealPricingApplyModal } from "./meal-pricing-apply-modal"
+import { ItemPricingApplyModal } from "./item-pricing-apply-modal"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { ApplyMealPricingHandler, Experience, PreviewItemHandler } from "../../../../lib/quote-types"
+import type { ApplyItemPricingHandler, Experience, PreviewItemHandler } from "../../../../lib/quote-types"
 import { Ticket, Calculator } from "lucide-react"
 
 export type UpdateDisplayText = (
@@ -36,28 +36,31 @@ function ExperienceRow({
   onUpdateDisplayText,
   classicHref,
   onPreviewItem,
-  onApplyMealPricing,
+  onApplyItemPricing,
 }: {
   exp: Experience
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
   classicHref?: string
   onPreviewItem?: PreviewItemHandler
-  onApplyMealPricing?: ApplyMealPricingHandler
+  onApplyItemPricing?: ApplyItemPricingHandler
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [mealApplyOpen, setMealApplyOpen] = useState(false)
+  const [applyOpen, setApplyOpen] = useState(false)
   // Only external-package items expose editable client text; everything else is
   // read-only (its client copy is catalog- or narrative-driven).
   const canEdit = Boolean(onUpdateDisplayText && exp.editableText && exp.quoteItemId)
   // Adding/removing/pricing services stays in Classic; offer a contextual deep
   // link to the same item there. Pure navigation — no V2 mutation.
   const classicItemHref = buildClassicItemHref(classicHref, "services", exp.quoteItemId)
-  // Meal-only pricing APPLY (real meal items + role/status-gated handlers).
-  const canApplyMeal = Boolean(onApplyMealPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)
-  // Read-only pricing preview for non-meal real items (PR3). Meal rows use the
-  // apply modal instead, so they don't show the read-only preview link.
-  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApplyMeal
+  // Pricing APPLY is supported for real MEAL or ACTIVITY items (role/status-gated handlers).
+  const canApplyMeal = Boolean(onApplyItemPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)
+  const canApplyActivity = Boolean(onApplyItemPricing && onPreviewItem && exp.isActivity && exp.quoteItemId)
+  const canApply = canApplyMeal || canApplyActivity
+  const applyKind: "meal" | "activity" = canApplyActivity ? "activity" : "meal"
+  // Read-only pricing preview for other real items (PR3). Meal/activity rows use
+  // the apply modal instead, so they don't show the read-only preview link.
+  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApply
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -88,16 +91,16 @@ function ExperienceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {exp.amount > 0 ? formatCurrency(exp.amount, currency) : "Incl."}
           </span>
-          {canApplyMeal ? (
+          {canApply ? (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
-              onClick={() => setMealApplyOpen(true)}
-              title="Preview and apply meal pricing — nothing is saved until you apply"
+              onClick={() => setApplyOpen(true)}
+              title="Preview and apply pricing — nothing is saved until you apply"
             >
               <Calculator className="size-3.5" aria-hidden="true" />
-              Preview &amp; apply meal pricing
+              {applyKind === "activity" ? "Preview & apply activity pricing" : "Preview & apply meal pricing"}
             </Button>
           ) : canPreview ? (
             <Button
@@ -130,14 +133,15 @@ function ExperienceRow({
           onPreview={onPreviewItem!}
         />
       ) : null}
-      {canApplyMeal ? (
-        <MealPricingApplyModal
-          open={mealApplyOpen}
-          onClose={() => setMealApplyOpen(false)}
+      {canApply ? (
+        <ItemPricingApplyModal
+          open={applyOpen}
+          onClose={() => setApplyOpen(false)}
+          kind={applyKind}
           exp={exp}
           currency={currency}
           onPreview={onPreviewItem!}
-          onApply={onApplyMealPricing!}
+          onApply={onApplyItemPricing!}
         />
       ) : null}
     </div>
@@ -154,10 +158,10 @@ export interface ExperiencesStepProps {
   /** When provided (role/status-gated), rows expose a read-only pricing preview. */
   onPreviewItem?: PreviewItemHandler
   /** When provided (role/status-gated), MEAL rows expose preview + apply. */
-  onApplyMealPricing?: ApplyMealPricingHandler
+  onApplyItemPricing?: ApplyItemPricingHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyMealPricing }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -203,7 +207,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 onUpdateDisplayText={onUpdateDisplayText}
                 classicHref={classicHref}
                 onPreviewItem={onPreviewItem}
-                onApplyMealPricing={onApplyMealPricing}
+                onApplyItemPricing={onApplyItemPricing}
               />
             ))}
           </div>

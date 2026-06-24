@@ -309,7 +309,7 @@ export function BuilderV2Client({
   // the feature is disabled); on a 4xx it throws with the backend machine code
   // (e.g. stale_preview, payload_mismatch, token_secret_not_configured) so the
   // modal can map it to a message. Refreshes V2 data on a successful apply.
-  const handleApplyMealPricing = async (
+  const handleApplyItemPricing = async (
     quoteItemId: string,
     payload: Record<string, unknown>,
     previewToken: string,
@@ -380,7 +380,7 @@ export function BuilderV2Client({
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
-      onApplyMealPricing={canPreviewPricing ? handleApplyMealPricing : undefined}
+      onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}

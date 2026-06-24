@@ -259,11 +259,35 @@ test('secret safety: production without QUOTE_PREVIEW_TOKEN_SECRET → blocked, 
   }
 });
 
-test('meal-only: non-meal (transport) item apply → 400 out-of-scope, no write', async () => {
+test('unsupported type (transport) apply → 400 out-of-scope, no write', async () => {
   enable(true, true);
   const { svc, calls } = makeService({ transport: true, service: { category: 'transport', serviceType: { code: 'POINT_TO_POINT', name: 'Transfer' } } });
   const token = await mintToken(svc);
-  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'meal items');
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
   assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('guide item apply is still blocked (out of scope this PR)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ service: { category: 'guide', serviceType: { code: 'GUIDE', name: 'Guiding' } } });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('activity item apply succeeds (allowlist broadened to meal + activity)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({
+    service: { category: 'activity', serviceType: { code: 'ACTIVITY', name: 'Sightseeing' } },
+    resolved: { cost: 150, sell: 180 },
+  });
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(out.matchedPreview, true);
+  assert.deepEqual(out.item.after, { totalCost: 150, totalSell: 180 });
+  assert.equal(calls.updateItem, 1);
   assert.equal(calls.writes, 0);
 });
