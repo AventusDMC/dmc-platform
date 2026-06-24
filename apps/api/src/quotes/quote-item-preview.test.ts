@@ -49,6 +49,7 @@ function makeService(opts: Opts) {
         return null;
       },
       findMany: async () => opts.entranceItems ?? [],
+      aggregate: async () => ({ _count: { _all: (opts.entranceItems?.length ?? 1) }, _max: { updatedAt: null } }),
       update: async (args: any) => {
         writes.push({ op: 'update', args });
         throw new Error('quoteItem.update must not run during preview');

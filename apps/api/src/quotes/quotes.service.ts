@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import {
   BookingOperationServiceStatus,
   BookingOperationServiceType,
@@ -50,7 +50,13 @@ import {
   decideEntranceFeeCoverage,
   isPetraEntranceSite,
 } from './jordan-pass-coverage';
-import { isQuotePricingPreviewEnabled } from './quote-pricing-preview-flags';
+import { isQuotePricingApplyEnabled, isQuotePricingPreviewEnabled } from './quote-pricing-preview-flags';
+import {
+  buildPreviewToken,
+  getPreviewTokenSecret,
+  normalizePayloadHash,
+  verifyPreviewToken,
+} from './quote-preview-token';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 
@@ -3429,6 +3435,30 @@ export class QuotesService {
     data: any,
     actor?: CompanyScopedActor,
   ) {
+    const { response, snapshot } = await this.computeItemPreview(quoteId, itemId, data, actor);
+    if (snapshot) {
+      // Sign the snapshot into a stateless preview token (PR4). The apply guard
+      // re-derives the snapshot and compares it to this (verified) payload.
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const exp = issuedAt + 15 * 60; // ~15 min TTL
+      (response as any).previewToken = buildPreviewToken({ ...snapshot, issuedAt, exp }, getPreviewTokenSecret());
+    }
+    return response;
+  }
+
+  /**
+   * Internal: compute the dry-run preview AND the raw snapshot used to build /
+   * compare the preview token. Persists nothing. snapshot is null for any
+   * blocked / unavailable / unresolvable case (no token is issued then). Shared
+   * by previewUpdateQuoteItem (signs) and applyPreviewQuoteItem (re-derives to
+   * detect staleness) so the two paths agree by construction.
+   */
+  private async computeItemPreview(
+    quoteId: string,
+    itemId: string,
+    data: any,
+    actor?: CompanyScopedActor,
+  ): Promise<{ response: any; snapshot: any | null }> {
     const round = (value: number) => Number(value.toFixed(2));
     const emptyBody = {
       quote: null as null | Record<string, unknown>,
@@ -3441,7 +3471,10 @@ export class QuotesService {
 
     // Flag gate — when OFF the endpoint is not available and computes nothing.
     if (!isQuotePricingPreviewEnabled()) {
-      return { available: false, blocked: true, blockedReason: 'feature_disabled', statusCode: null, ...emptyBody };
+      return {
+        response: { available: false, blocked: true, blockedReason: 'feature_disabled', statusCode: null, ...emptyBody },
+        snapshot: null,
+      };
     }
 
     const actorCompanyId = requireActorCompanyId(actor);
@@ -3462,6 +3495,7 @@ export class QuotesService {
         pricingMode: true,
         totalCost: true,
         totalSell: true,
+        updatedAt: true,
       },
     });
     if (!quote || (quote.clientCompanyId !== actorCompanyId && quote.brandCompanyId !== actorCompanyId)) {
@@ -3472,7 +3506,10 @@ export class QuotesService {
     const ALLOWED_PREVIEW_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
     if (!ALLOWED_PREVIEW_STATUSES.has(statusCode)) {
       // Finalized / unknown status — preview is blocked (default-safe).
-      return { available: true, blocked: true, blockedReason: 'status', statusCode, ...emptyBody };
+      return {
+        response: { available: true, blocked: true, blockedReason: 'status', statusCode, ...emptyBody },
+        snapshot: null,
+      };
     }
 
     // The item must belong to this quote (blocks cross-quote item ids).
@@ -3490,6 +3527,16 @@ export class QuotesService {
     if (data.quantity != null && (!Number.isFinite(Number(data.quantity)) || Number(data.quantity) <= 0)) {
       throw new BadRequestException('quantity must be a positive number');
     }
+
+    // Option-scoped concurrency stamps for the preview token (detect sibling
+    // add/delete/edit between preview and apply).
+    const scopeAgg = await this.prisma.quoteItem.aggregate({
+      where: { quoteId, optionId: existingItem.optionId ?? null },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    });
+    const baseItemCount = scopeAgg._count._all;
+    const maxItemUpdatedAt = scopeAgg._max.updatedAt ? scopeAgg._max.updatedAt.toISOString() : null;
 
     const warnings: string[] = [];
 
@@ -3551,6 +3598,9 @@ export class QuotesService {
     let itemSellDelta = 0;
     let jordanPass: Record<string, unknown> | null = null;
     let ratesReResolved = false;
+    let resolvedRateRefs: Record<string, string | null> = {};
+    let snapFxRate: number | null = null;
+    let snapFxRateDate: string | null = null;
 
     if (isEntranceItem) {
       // Jordan-Pass-aware path: re-derive the whole option-scoped entrance set
@@ -3655,25 +3705,28 @@ export class QuotesService {
           `Could not resolve pricing for this edit: ${error instanceof Error ? error.message : 'unknown error'}`,
         );
         return {
-          available: true,
-          blocked: false,
-          blockedReason: null,
-          statusCode,
-          pricingResolvable: false,
-          quote: {
-            current: { totalCost: round(currentQuoteCost), totalSell: round(currentQuoteSell) },
-            projected: null,
-            delta: null,
+          response: {
+            available: true,
+            blocked: false,
+            blockedReason: null,
+            statusCode,
+            pricingResolvable: false,
+            quote: {
+              current: { totalCost: round(currentQuoteCost), totalSell: round(currentQuoteSell) },
+              projected: null,
+              delta: null,
+            },
+            item: {
+              current: { totalCost: round(currentItemCost), totalSell: round(currentItemSell) },
+              projected: null,
+              delta: null,
+            },
+            affectedItemCount: 0,
+            jordanPass: null,
+            warnings,
+            reResolved: { rates: false, fx: false },
           },
-          item: {
-            current: { totalCost: round(currentItemCost), totalSell: round(currentItemSell) },
-            projected: null,
-            delta: null,
-          },
-          affectedItemCount: 0,
-          jordanPass: null,
-          warnings,
-          reResolved: { rates: false, fx: false },
+          snapshot: null,
         };
       }
 
@@ -3684,6 +3737,15 @@ export class QuotesService {
       quoteCostDelta = affectsBaseTotals ? itemCostDelta : 0;
       quoteSellDelta = affectsBaseTotals ? itemSellDelta : 0;
       affectedItemCount = itemCostDelta !== 0 || itemSellDelta !== 0 ? 1 : 0;
+      resolvedRateRefs = {
+        appliedVehicleRateId: values.data.appliedVehicleRateId ?? null,
+        contractId: values.data.contractId ?? null,
+        ticketRateVariantId: values.data.ticketRateVariantId ?? null,
+        activityRateVariantId: values.data.activityRateVariantId ?? null,
+        touringRoutePricingId: values.data.touringRoutePricingId ?? null,
+      };
+      snapFxRate = values.data.fxRate ?? null;
+      snapFxRateDate = values.data.fxRateDate ? new Date(values.data.fxRateDate).toISOString() : null;
     }
 
     const projectedQuoteCost = round(currentQuoteCost + quoteCostDelta);
@@ -3692,7 +3754,7 @@ export class QuotesService {
       warnings.push('SLAB pricing: the client total is slab-driven, so this edit changes cost only (selling price unchanged).');
     }
 
-    return {
+    const response = {
       available: true,
       blocked: false,
       blockedReason: null,
@@ -3712,6 +3774,183 @@ export class QuotesService {
       jordanPass,
       warnings,
       reResolved: { rates: ratesReResolved, fx: false },
+    };
+
+    const snapshot = {
+      quoteId,
+      itemId,
+      companyId: actorCompanyId,
+      optionScope: existingItem.optionId ?? 'base',
+      quoteUpdatedAt: quote.updatedAt ? new Date(quote.updatedAt).toISOString() : null,
+      itemUpdatedAt: existingItem.updatedAt ? new Date(existingItem.updatedAt).toISOString() : null,
+      baseItemCount,
+      maxItemUpdatedAt,
+      normalizedPayloadHash: normalizePayloadHash(data),
+      serviceDate: effectiveServiceDate ? new Date(effectiveServiceDate).toISOString() : null,
+      resolvedRateRefs,
+      projItemCost: round(projectedItemCost),
+      projItemSell: round(projectedItemSell),
+      projQuoteCost: projectedQuoteCost,
+      projQuoteSell: projectedQuoteSell,
+      fxRate: snapFxRate,
+      fxRateDate: snapFxRateDate,
+      quoteStatus: statusCode,
+    };
+
+    return { response, snapshot };
+  }
+
+  /** Compare a verified token payload to a freshly re-derived snapshot. Returns
+   *  the first differing field name (stale), or null when they fully agree. */
+  private previewSnapshotMismatch(token: any, snap: any): string | null {
+    const scalarKeys = [
+      'quoteId',
+      'itemId',
+      'companyId',
+      'optionScope',
+      'quoteUpdatedAt',
+      'itemUpdatedAt',
+      'baseItemCount',
+      'maxItemUpdatedAt',
+      'serviceDate',
+      'projItemCost',
+      'projItemSell',
+      'projQuoteCost',
+      'projQuoteSell',
+      'fxRate',
+      'fxRateDate',
+      'quoteStatus',
+    ];
+    for (const key of scalarKeys) {
+      if (JSON.stringify(token?.[key] ?? null) !== JSON.stringify(snap?.[key] ?? null)) {
+        return key;
+      }
+    }
+    // Canonical (key-order-independent) compare — the token's nested object was
+    // key-sorted when signed, while the fresh snapshot keeps insertion order.
+    if (normalizePayloadHash(token?.resolvedRateRefs ?? {}) !== normalizePayloadHash(snap?.resolvedRateRefs ?? {})) {
+      return 'resolvedRateRefs';
+    }
+    return null;
+  }
+
+  /**
+   * Apply a previously-previewed edit to a MEAL item (PR4). Validates the
+   * stateless preview token, re-derives the snapshot, and only on a full match
+   * delegates to the existing updateItem (the single pricing write path —
+   * recalculateQuoteTotals remains the source of truth). Persists nothing on any
+   * blocked / stale / invalid path. Meal-only for this version.
+   */
+  async applyPreviewQuoteItem(
+    quoteId: string,
+    itemId: string,
+    data: any,
+    previewToken: unknown,
+    acknowledgedDelta: boolean,
+    actor?: CompanyScopedActor,
+  ) {
+    const round = (value: number) => Number(value.toFixed(2));
+
+    // Dual flag gate: apply requires BOTH preview and apply flags ON.
+    if (!isQuotePricingPreviewEnabled() || !isQuotePricingApplyEnabled()) {
+      return { applied: false, available: false, blocked: true, blockedReason: 'feature_disabled' };
+    }
+
+    const actorCompanyId = requireActorCompanyId(actor);
+
+    // Verify token signature + structure (cheap, before any DB work).
+    const tokenPayload = verifyPreviewToken(previewToken, getPreviewTokenSecret());
+    if (!tokenPayload) {
+      throw new BadRequestException('invalid_preview_token');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    if (!tokenPayload.exp || Number(tokenPayload.exp) <= now) {
+      throw new ConflictException({ code: 'stale_preview', message: 'Preview token has expired; re-run the preview.' });
+    }
+    // Bind token to this request + company (blocks cross-quote/item/tenant replay).
+    if (tokenPayload.quoteId !== quoteId || tokenPayload.itemId !== itemId || tokenPayload.companyId !== actorCompanyId) {
+      throw new BadRequestException('invalid_preview_token');
+    }
+    // The apply payload must be exactly what was previewed.
+    if (normalizePayloadHash(data) !== tokenPayload.normalizedPayloadHash) {
+      throw new BadRequestException('payload_mismatch');
+    }
+
+    // Meal-only gate for this PR. Reject every other item type as out of scope.
+    const mealItem: any = await this.prisma.quoteItem.findFirst({
+      where: { id: itemId, quoteId },
+      include: { service: { include: { serviceType: true } } },
+    });
+    if (!mealItem) {
+      throw new BadRequestException('Quote item not found for this quote');
+    }
+    if (!mealItem.service || !this.isMealService(mealItem.service)) {
+      throw new BadRequestException('Only meal items can be applied in this version (apply is out of scope for this item type).');
+    }
+
+    // Re-run the dry-run at apply time and compare to the token (no write yet).
+    const { response, snapshot } = await this.computeItemPreview(quoteId, itemId, data, actor);
+    if (!snapshot) {
+      if (response.blockedReason === 'feature_disabled') {
+        return { applied: false, available: false, blocked: true, blockedReason: 'feature_disabled' };
+      }
+      if (response.blockedReason === 'status') {
+        throw new ConflictException({ code: 'status_blocked', message: `Quote status (${response.statusCode}) does not allow apply.`, statusCode: response.statusCode });
+      }
+      throw new ConflictException({ code: 'not_resolvable', message: 'Pricing could not be resolved at apply time.', warnings: response.warnings });
+    }
+    const mismatch = this.previewSnapshotMismatch(tokenPayload, snapshot);
+    if (mismatch) {
+      throw new ConflictException({
+        code: 'stale_preview',
+        message: `The quote changed since the preview (${mismatch}); re-run the preview and try again.`,
+        mismatchField: mismatch,
+        quote: response.quote,
+        item: response.item,
+      });
+    }
+
+    // Confirmation required when the previewed edit changes pricing.
+    const deltaNonZero =
+      (response.item?.delta && (response.item.delta.totalCost !== 0 || response.item.delta.totalSell !== 0)) ||
+      (response.quote?.delta && (response.quote.delta.totalCost !== 0 || response.quote.delta.totalSell !== 0));
+    if (deltaNonZero && acknowledgedDelta !== true) {
+      throw new ConflictException({
+        code: 'confirmation_required',
+        message: 'This edit changes pricing; re-submit with acknowledgedDelta=true to apply.',
+        quote: response.quote,
+        item: response.item,
+      });
+    }
+
+    const before = { item: response.item.current, quote: response.quote.current };
+
+    // APPLY via the EXISTING write path. No parallel pricing/recalc logic here.
+    await this.updateItem(itemId, data, actor);
+
+    const afterItem = await this.prisma.quoteItem.findUnique({ where: { id: itemId }, select: { totalCost: true, totalSell: true } });
+    const afterQuote = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { totalCost: true, totalSell: true } });
+    const after = {
+      item: { totalCost: round(Number(afterItem?.totalCost ?? 0)), totalSell: round(Number(afterItem?.totalSell ?? 0)) },
+      quote: { totalCost: round(Number(afterQuote?.totalCost ?? 0)), totalSell: round(Number(afterQuote?.totalSell ?? 0)) },
+    };
+
+    // Integrity: the persisted item totals must match the previewed projection.
+    const integrityOk =
+      after.item.totalCost === round(Number(tokenPayload.projItemCost)) &&
+      after.item.totalSell === round(Number(tokenPayload.projItemSell));
+    const warnings = integrityOk
+      ? []
+      : ['Applied totals differ from the previewed projection — please re-check pricing.'];
+
+    return {
+      applied: true,
+      blocked: false,
+      matchedPreview: true,
+      integrityOk,
+      item: { before: before.item, after: after.item },
+      quote: { before: before.quote, after: after.quote },
+      warnings,
     };
   }
 
