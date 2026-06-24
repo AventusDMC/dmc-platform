@@ -73,6 +73,27 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     excludes(modalSrc, ['fetch(', "method: 'PATCH'", "method: 'DELETE'", "method: 'POST'", 'method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
   });
 
+  it('modal: activity qty/pax are read-only (hardening); meal qty/pax/unitCost stay editable; serviceDate editable for both', () => {
+    contains(modalSrc, [
+      // activity: quantity + pax rendered read-only (managed in Classic)
+      'Quantity (managed in Classic)',
+      'Pax count (quote pax, set in Classic)',
+      '<div className={readonlyCls}>{quantity}</div>',
+      '<div className={readonlyCls}>{paxCount}</div>',
+      // helper text explaining the activity pricing inputs
+      'Activity pricing is driven by the selected activity rate and service date. Rate selection and pax/quote counts are managed in Classic Builder.',
+      // serviceDate stays editable for BOTH kinds (valid activity pricing input)
+      'type="date" value={serviceDate} onChange={(e) => edit(setServiceDate)(e.target.value)}',
+      // meal qty/pax/unitCost stay editable inputs (meal UI unchanged)
+      'value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)}',
+      'value={paxCount} onChange={(e) => edit(setPaxCount)(e.target.value)}',
+      'value={unitCost} onChange={(e) => edit(setUnitCost)(e.target.value)}',
+      // activity payload still carries the raw qty/pax fields (read-only, not removed)
+      'quantity: Number(quantity)',
+      'paxCount: Number(paxCount)',
+    ]);
+  });
+
   it('Experiences step: meal AND activity rows use the apply modal; non-supported keep read-only preview; prior features intact', () => {
     contains(experiencesSrc, [
       'ItemPricingApplyModal',

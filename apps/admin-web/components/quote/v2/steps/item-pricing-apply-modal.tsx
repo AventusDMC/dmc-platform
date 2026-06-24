@@ -95,10 +95,12 @@ function messageForCode(code: string): { text: string; forceRePreview: boolean }
  * totals / pricingDescription).
  *
  * - meal: name, unit cost, quantity, pax, currency, service date are editable.
- * - activity: quantity, pax, service date are editable; name + rate variant +
- *   currency are read-only (rate selection stays Classic-only). The payload
- *   carries the existing activityId / activityRateVariantId / serviceId so the
- *   backend re-prices at the current rate.
+ * - activity: only service date is editable; name + rate variant + currency +
+ *   quantity + pax are read-only. Activity cost is driven by the rate variant
+ *   (Classic-only) and quote-level pax (Classic-only) — item qty/pax are not
+ *   cost drivers, so they are shown read-only to avoid implying a priced edit.
+ *   The payload still carries the existing activityId / activityRateVariantId /
+ *   serviceId (raw fields) so the backend re-prices at the current rate.
  */
 export function ItemPricingApplyModal({
   open,
@@ -286,18 +288,40 @@ export function ItemPricingApplyModal({
                 </Field>
               </>
             )}
-            <Field label="Quantity">
-              <input className={inputCls} type="number" min="1" step="1" value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)} />
-            </Field>
-            <Field label="Pax count">
-              <input className={inputCls} type="number" min="1" step="1" value={paxCount} onChange={(e) => edit(setPaxCount)(e.target.value)} />
-            </Field>
+            {isActivity ? (
+              <>
+                {/* Activity qty/pax are NOT cost drivers: paxCount normalizes to
+                    quote pax and quantity is ignored by activity pricing, so they
+                    are read-only here (managed in Classic). */}
+                <Field label="Quantity (managed in Classic)">
+                  <div className={readonlyCls}>{quantity}</div>
+                </Field>
+                <Field label="Pax count (quote pax, set in Classic)">
+                  <div className={readonlyCls}>{paxCount}</div>
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Quantity">
+                  <input className={inputCls} type="number" min="1" step="1" value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)} />
+                </Field>
+                <Field label="Pax count">
+                  <input className={inputCls} type="number" min="1" step="1" value={paxCount} onChange={(e) => edit(setPaxCount)(e.target.value)} />
+                </Field>
+              </>
+            )}
             <div className="col-span-2">
               <Field label="Service date">
                 <input className={inputCls} type="date" value={serviceDate} onChange={(e) => edit(setServiceDate)(e.target.value)} />
               </Field>
             </div>
           </div>
+
+          {isActivity ? (
+            <p className="text-xs text-muted-foreground">
+              Activity pricing is driven by the selected activity rate and service date. Rate selection and pax/quote counts are managed in Classic Builder.
+            </p>
+          ) : null}
 
           <Button variant="outline" size="sm" className="gap-2" onClick={runPreview} disabled={loading || applying}>
             {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Calculator className="size-4" aria-hidden="true" />}
