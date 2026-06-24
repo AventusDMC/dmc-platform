@@ -141,6 +141,19 @@ export interface Experience {
   externalIncludes?: string | null
   externalExcludes?: string | null
   externalHotelsOrSimilar?: string | null
+  /**
+   * Meal-only pricing apply (PR5). `isMeal` gates the "Preview & apply meal
+   * pricing" affordance; the remaining fields are the RAW persisted values used
+   * to build the meal edit payload without parsing pricingDescription. unitCost
+   * is reconstructed from costBaseAmount.
+   */
+  isMeal?: boolean
+  customServiceName?: string | null
+  unitCost?: number | null
+  quantity?: number | null
+  paxCount?: number | null
+  currency?: string | null
+  serviceDate?: string | null
 }
 
 /** A ground transport / transfer service. */
@@ -369,3 +382,27 @@ export type PreviewItemHandler = (
   quoteItemId: string,
   payload: Record<string, unknown>,
 ) => Promise<PricingPreviewResult>
+
+/** Result of the meal pricing apply (POST /api/quotes/:id/items/:itemId/apply-preview). */
+export interface MealApplyResult {
+  applied?: boolean
+  available?: boolean
+  blocked?: boolean
+  blockedReason?: string | null
+  integrityOk?: boolean
+  item?: { before: PricingPreviewTotals; after: PricingPreviewTotals }
+  quote?: { before: PricingPreviewTotals; after: PricingPreviewTotals }
+  warnings?: string[]
+}
+
+/**
+ * Applies a previously-previewed meal edit. Sends the SAME payload used for the
+ * preview plus the previewToken and acknowledgedDelta. Resolves to the apply
+ * result; rejects (Error message = backend code) on stale/invalid/blocked.
+ */
+export type ApplyMealPricingHandler = (
+  quoteItemId: string,
+  payload: Record<string, unknown>,
+  previewToken: string,
+  acknowledgedDelta: boolean,
+) => Promise<MealApplyResult>

@@ -65,6 +65,12 @@ export interface QuoteBuilderV2Props {
    */
   onPreviewItem?: import("../../../lib/quote-types").PreviewItemHandler
   /**
+   * Apply a previewed MEAL pricing edit (role/status-gated). When provided, meal
+   * rows expose "Preview & apply meal pricing". Reuses the preview + apply-preview
+   * endpoints; never writes via the existing item PATCH path.
+   */
+  onApplyMealPricing?: import("../../../lib/quote-types").ApplyMealPricingHandler
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -108,6 +114,7 @@ export function QuoteBuilderV2({
   onSetPrimaryHotel,
   onUpdateDisplayText,
   onPreviewItem,
+  onApplyMealPricing,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -240,6 +247,7 @@ export function QuoteBuilderV2({
             onUpdateDisplayText={onUpdateDisplayText}
             classicHref={`/quotes/${quote.id}/classic`}
             onPreviewItem={onPreviewItem}
+            onApplyMealPricing={onApplyMealPricing}
           />
         )
       case "transport":

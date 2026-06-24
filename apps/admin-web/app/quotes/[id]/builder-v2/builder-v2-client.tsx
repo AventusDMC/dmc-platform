@@ -302,6 +302,42 @@ export function BuilderV2Client({
     return parsed
   }
 
+  // APPLY a previously-previewed MEAL edit via the dedicated apply-preview proxy.
+  // Sends the SAME payload used for the preview + previewToken + acknowledgedDelta.
+  // This is the ONLY write path used by the meal UI — no PATCH/DELETE item calls.
+  // On a 2xx it returns the apply result (which may be {available:false,...} when
+  // the feature is disabled); on a 4xx it throws with the backend machine code
+  // (e.g. stale_preview, payload_mismatch, token_secret_not_configured) so the
+  // modal can map it to a message. Refreshes V2 data on a successful apply.
+  const handleApplyMealPricing = async (
+    quoteItemId: string,
+    payload: Record<string, unknown>,
+    previewToken: string,
+    acknowledgedDelta: boolean,
+  ) => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/items/${quoteItemId}/apply-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, previewToken, acknowledgedDelta }),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const code = parsed?.code || (Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message) || `apply_failed_${res.status}`
+      throw new Error(code)
+    }
+    if (parsed?.applied) {
+      router.refresh()
+    }
+    return parsed
+  }
+
   // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
   // selected language. Reuses the canonical helper + same-origin authenticated
   // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
@@ -344,6 +380,7 @@ export function BuilderV2Client({
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
+      onApplyMealPricing={canPreviewPricing ? handleApplyMealPricing : undefined}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}
