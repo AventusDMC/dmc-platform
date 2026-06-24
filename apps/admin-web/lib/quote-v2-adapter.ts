@@ -416,7 +416,7 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       externalIncludes: asTextOrNull(r.externalIncludes),
       externalExcludes: asTextOrNull(r.externalExcludes),
       externalHotelsOrSimilar: asTextOrNull(r.externalHotelsOrSimilar),
-      // Meal-only raw fields for the pricing apply UI (no pricingDescription parsing).
+      // Meal/activity raw fields for the pricing apply UI (no pricingDescription parsing).
       isMeal: asBool(r.isMeal),
       customServiceName: asTextOrNull(r.customServiceName),
       unitCost: asNumberOrNull(r.unitCost),
@@ -424,6 +424,11 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       paxCount: asNumberOrNull(r.paxCount),
       currency: asTextOrNull(r.currency),
       serviceDate: asTextOrNull(r.serviceDate),
+      isActivity: asBool(r.isActivity),
+      activityId: asTextOrNull(r.activityId),
+      activityRateVariantId: asTextOrNull(r.activityRateVariantId),
+      serviceId: asTextOrNull(r.serviceId),
+      dayCount: asNumberOrNull(r.dayCount),
     }
   })
 }
@@ -668,6 +673,12 @@ interface ApiQuoteItem {
   quantity?: number | null
   paxCount?: number | null
   currency?: string | null
+  // Activity raw fields (persisted columns) used to rebuild an activity edit
+  // payload without parsing pricingDescription (re-price at the current variant).
+  // activityId is already declared above.
+  activityRateVariantId?: string | null
+  serviceId?: string | null
+  dayCount?: number | null
   excursionTemplateComponentOptional?: boolean | null
   // Client-facing display-text fields the proposal renders (returned by the
   // GET /quotes/:id `include`). Editable inertly via the display-text endpoint.
@@ -1026,6 +1037,10 @@ function mapErpQuoteToRaw(
     // Meal items (serviceType.code === 'MEAL') expose the pricing apply UI; the
     // raw fields below let it build the edit payload without parsing pricingDescription.
     const isMealItem = it.service?.serviceType?.code === "MEAL"
+    // Activity items (serviceType.code === 'ACTIVITY') expose the activity pricing
+    // apply UI (re-price qty/pax/date at the current rate variant). Required ids
+    // are persisted columns; rate-variant selection stays Classic-only.
+    const isActivityItem = it.service?.serviceType?.code === "ACTIVITY"
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
@@ -1045,11 +1060,18 @@ function mapErpQuoteToRaw(
       // Meal pricing apply (PR5): raw fields only for real meal items.
       isMeal: Boolean(it.id) && isMealItem,
       customServiceName: isMealItem ? it.customServiceName ?? null : null,
+      // Activity pricing apply: raw fields only for real activity items.
+      isActivity: Boolean(it.id) && isActivityItem,
+      activityId: isActivityItem ? it.activityId ?? null : null,
+      activityRateVariantId: isActivityItem ? it.activityRateVariantId ?? null : null,
+      serviceId: isActivityItem ? it.serviceId ?? null : null,
+      // Shared raw fields surfaced for meal OR activity (used to build the payload).
       unitCost: isMealItem ? it.costBaseAmount ?? null : null,
-      quantity: isMealItem ? it.quantity ?? null : null,
-      paxCount: isMealItem ? it.paxCount ?? null : null,
-      currency: isMealItem ? it.currency ?? null : null,
-      serviceDate: isMealItem ? it.serviceDate ?? null : null,
+      quantity: isMealItem || isActivityItem ? it.quantity ?? null : null,
+      paxCount: isMealItem || isActivityItem ? it.paxCount ?? null : null,
+      currency: isMealItem || isActivityItem ? it.currency ?? null : null,
+      serviceDate: isMealItem || isActivityItem ? it.serviceDate ?? null : null,
+      dayCount: isActivityItem ? it.dayCount ?? null : null,
     })
   }
 

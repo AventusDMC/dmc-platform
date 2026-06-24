@@ -3884,16 +3884,23 @@ export class QuotesService {
       throw new BadRequestException('payload_mismatch');
     }
 
-    // Meal-only gate for this PR. Reject every other item type as out of scope.
-    const mealItem: any = await this.prisma.quoteItem.findFirst({
+    // Supported-type gate: meal OR activity for now. Every other item type
+    // (guide/entrance/external-package/transport/hotel) is rejected as out of
+    // scope. Activity is safe because its edit payload rebuilds from persisted
+    // columns and the preview token already detects activity rate drift; guide
+    // is intentionally excluded until its fields are persisted.
+    const supportedItem: any = await this.prisma.quoteItem.findFirst({
       where: { id: itemId, quoteId },
       include: { service: { include: { serviceType: true } } },
     });
-    if (!mealItem) {
+    if (!supportedItem) {
       throw new BadRequestException('Quote item not found for this quote');
     }
-    if (!mealItem.service || !this.isMealService(mealItem.service)) {
-      throw new BadRequestException('Only meal items can be applied in this version (apply is out of scope for this item type).');
+    const isSupportedApplyType =
+      Boolean(supportedItem.service) &&
+      (this.isMealService(supportedItem.service) || this.isActivityService(supportedItem.service));
+    if (!isSupportedApplyType) {
+      throw new BadRequestException('Only meal and activity items can be applied in this version (apply is out of scope for this item type).');
     }
 
     // Re-run the dry-run at apply time and compare to the token (no write yet).
