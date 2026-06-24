@@ -6331,6 +6331,10 @@ export class QuotesService {
     let tourismFeeCurrency = (effectiveService as any).tourismFeeCurrency ?? null;
     let tourismFeeMode = (effectiveService as any).tourismFeeMode ?? null;
     let pricingDescription: string | null = null;
+    // Operator-entered meal name, persisted to QuoteItem.customServiceName so a
+    // meal edit payload can be rebuilt without parsing pricingDescription. Stays
+    // null for non-meal items (inert — does not feed pricing).
+    let resolvedCustomServiceName: string | null = null;
     let appliedVehicleRateId: string | null = null;
     let routeId: string | null = null;
     let transportServiceTypeId: string | null = null;
@@ -6905,6 +6909,9 @@ export class QuotesService {
       supplierCostBaseAmount = mealUnitCost;
       supplierCostCurrency = currency;
       pricingDescription = `${mealName} | Meal | PER_PERSON | ${paxCount} pax`;
+      // Persist the raw meal name so it can be reused as a payload field later
+      // (V2 meal apply). pricingDescription above is intentionally unchanged.
+      resolvedCustomServiceName = mealName;
     }
 
     if (this.isExternalPackageService(effectiveService)) {
@@ -7196,6 +7203,10 @@ export class QuotesService {
                   : `${roomCount} room${roomCount === 1 ? '' : 's'}`
               } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
             : pricingDescription,
+        // Inert: stores the meal name for payload reconstruction (null for
+        // non-meal items). Never read by pricing; consumed by V2 meal apply +
+        // operational vouchers (which may show the stored meal name).
+        customServiceName: resolvedCustomServiceName,
         appliedVehicleRateId,
         // Per-day journey label for daily-package transport lines (e.g. "Wadi
         // Rum (full day)", "Amman → Petra"). Computed by the auto-builder and
