@@ -11,8 +11,9 @@ import { DisplayTextEditor, type DisplayTextField } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
 import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
 import { PricingPreviewModal } from "./pricing-preview-modal"
+import { MealPricingApplyModal } from "./meal-pricing-apply-modal"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { Experience, PreviewItemHandler } from "../../../../lib/quote-types"
+import type { ApplyMealPricingHandler, Experience, PreviewItemHandler } from "../../../../lib/quote-types"
 import { Ticket, Calculator } from "lucide-react"
 
 export type UpdateDisplayText = (
@@ -35,23 +36,28 @@ function ExperienceRow({
   onUpdateDisplayText,
   classicHref,
   onPreviewItem,
+  onApplyMealPricing,
 }: {
   exp: Experience
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
   classicHref?: string
   onPreviewItem?: PreviewItemHandler
+  onApplyMealPricing?: ApplyMealPricingHandler
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [mealApplyOpen, setMealApplyOpen] = useState(false)
   // Only external-package items expose editable client text; everything else is
   // read-only (its client copy is catalog- or narrative-driven).
   const canEdit = Boolean(onUpdateDisplayText && exp.editableText && exp.quoteItemId)
   // Adding/removing/pricing services stays in Classic; offer a contextual deep
   // link to the same item there. Pure navigation — no V2 mutation.
   const classicItemHref = buildClassicItemHref(classicHref, "services", exp.quoteItemId)
-  // Read-only pricing preview is available only for real items (have quoteItemId)
-  // and only when the role/status-gated handler was supplied.
-  const canPreview = Boolean(onPreviewItem && exp.quoteItemId)
+  // Meal-only pricing APPLY (real meal items + role/status-gated handlers).
+  const canApplyMeal = Boolean(onApplyMealPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)
+  // Read-only pricing preview for non-meal real items (PR3). Meal rows use the
+  // apply modal instead, so they don't show the read-only preview link.
+  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApplyMeal
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -82,7 +88,18 @@ function ExperienceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {exp.amount > 0 ? formatCurrency(exp.amount, currency) : "Incl."}
           </span>
-          {canPreview ? (
+          {canApplyMeal ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setMealApplyOpen(true)}
+              title="Preview and apply meal pricing — nothing is saved until you apply"
+            >
+              <Calculator className="size-3.5" aria-hidden="true" />
+              Preview &amp; apply meal pricing
+            </Button>
+          ) : canPreview ? (
             <Button
               variant="ghost"
               size="sm"
@@ -113,6 +130,16 @@ function ExperienceRow({
           onPreview={onPreviewItem!}
         />
       ) : null}
+      {canApplyMeal ? (
+        <MealPricingApplyModal
+          open={mealApplyOpen}
+          onClose={() => setMealApplyOpen(false)}
+          exp={exp}
+          currency={currency}
+          onPreview={onPreviewItem!}
+          onApply={onApplyMealPricing!}
+        />
+      ) : null}
     </div>
   )
 }
@@ -126,9 +153,11 @@ export interface ExperiencesStepProps {
   classicHref?: string
   /** When provided (role/status-gated), rows expose a read-only pricing preview. */
   onPreviewItem?: PreviewItemHandler
+  /** When provided (role/status-gated), MEAL rows expose preview + apply. */
+  onApplyMealPricing?: ApplyMealPricingHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyMealPricing }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -174,6 +203,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 onUpdateDisplayText={onUpdateDisplayText}
                 classicHref={classicHref}
                 onPreviewItem={onPreviewItem}
+                onApplyMealPricing={onApplyMealPricing}
               />
             ))}
           </div>

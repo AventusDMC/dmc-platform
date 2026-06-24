@@ -416,6 +416,14 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       externalIncludes: asTextOrNull(r.externalIncludes),
       externalExcludes: asTextOrNull(r.externalExcludes),
       externalHotelsOrSimilar: asTextOrNull(r.externalHotelsOrSimilar),
+      // Meal-only raw fields for the pricing apply UI (no pricingDescription parsing).
+      isMeal: asBool(r.isMeal),
+      customServiceName: asTextOrNull(r.customServiceName),
+      unitCost: asNumberOrNull(r.unitCost),
+      quantity: asNumberOrNull(r.quantity),
+      paxCount: asNumberOrNull(r.paxCount),
+      currency: asTextOrNull(r.currency),
+      serviceDate: asTextOrNull(r.serviceDate),
     }
   })
 }
@@ -651,6 +659,15 @@ interface ApiQuoteItem {
   totalSell?: number | null
   sellPrice?: number | null
   pricingDescription?: string | null
+  // Raw meal fields (persisted columns, serialized by the GET item spread) used
+  // to rebuild a meal edit payload WITHOUT parsing pricingDescription.
+  // customServiceName is the stored meal name (PR #551); unitCost is
+  // reconstructed from costBaseAmount.
+  customServiceName?: string | null
+  costBaseAmount?: number | null
+  quantity?: number | null
+  paxCount?: number | null
+  currency?: string | null
   excursionTemplateComponentOptional?: boolean | null
   // Client-facing display-text fields the proposal renders (returned by the
   // GET /quotes/:id `include`). Editable inertly via the display-text endpoint.
@@ -1006,6 +1023,9 @@ function mapErpQuoteToRaw(
 
     // everything else = experience / entrance / service
     const externalPackage = isExternalPackageItem(it)
+    // Meal items (serviceType.code === 'MEAL') expose the pricing apply UI; the
+    // raw fields below let it build the edit payload without parsing pricingDescription.
+    const isMealItem = it.service?.serviceType?.code === "MEAL"
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
@@ -1022,6 +1042,14 @@ function mapErpQuoteToRaw(
       externalIncludes: externalPackage ? it.externalIncludes ?? null : null,
       externalExcludes: externalPackage ? it.externalExcludes ?? null : null,
       externalHotelsOrSimilar: externalPackage ? it.externalHotelsOrSimilar ?? null : null,
+      // Meal pricing apply (PR5): raw fields only for real meal items.
+      isMeal: Boolean(it.id) && isMealItem,
+      customServiceName: isMealItem ? it.customServiceName ?? null : null,
+      unitCost: isMealItem ? it.costBaseAmount ?? null : null,
+      quantity: isMealItem ? it.quantity ?? null : null,
+      paxCount: isMealItem ? it.paxCount ?? null : null,
+      currency: isMealItem ? it.currency ?? null : null,
+      serviceDate: isMealItem ? it.serviceDate ?? null : null,
     })
   }
 
