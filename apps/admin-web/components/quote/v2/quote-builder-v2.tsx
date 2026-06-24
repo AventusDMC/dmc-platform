@@ -59,6 +59,12 @@ export interface QuoteBuilderV2Props {
    */
   onUpdateDisplayText?: (quoteItemId: string, patch: Record<string, string | null>) => void | Promise<void>
   /**
+   * Request a read-only dry-run pricing preview for an existing item edit.
+   * Role/status-gated by the caller. When provided, Experiences/Transport rows
+   * expose a "Preview pricing" affordance. Never applies — display only.
+   */
+  onPreviewItem?: import("../../../lib/quote-types").PreviewItemHandler
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -101,6 +107,7 @@ export function QuoteBuilderV2({
   onPreview,
   onSetPrimaryHotel,
   onUpdateDisplayText,
+  onPreviewItem,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -232,6 +239,7 @@ export function QuoteBuilderV2({
             currency={quote.meta.currency}
             onUpdateDisplayText={onUpdateDisplayText}
             classicHref={`/quotes/${quote.id}/classic`}
+            onPreviewItem={onPreviewItem}
           />
         )
       case "transport":
@@ -241,6 +249,7 @@ export function QuoteBuilderV2({
             currency={quote.meta.currency}
             onUpdateDisplayText={onUpdateDisplayText}
             classicHref={`/quotes/${quote.id}/classic`}
+            onPreviewItem={onPreviewItem}
           />
         )
       case "passengers":

@@ -5,13 +5,16 @@ import { Badge } from "../../../ui/badge"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge, ContractBadge } from "../status-badges"
+import { useState } from "react"
+import { Button } from "../../../ui/button"
 import { DisplayTextEditor } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
 import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
+import { PricingPreviewModal } from "./pricing-preview-modal"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { TransportService } from "../../../../lib/quote-types"
-import { Bus, AlertTriangle } from "lucide-react"
+import type { TransportService, PreviewItemHandler } from "../../../../lib/quote-types"
+import { Bus, AlertTriangle, Calculator } from "lucide-react"
 
 export type UpdateDisplayText = (
   quoteItemId: string,
@@ -23,17 +26,22 @@ function ServiceRow({
   currency,
   onUpdateDisplayText,
   classicHref,
+  onPreviewItem,
 }: {
   svc: TransportService
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
   classicHref?: string
+  onPreviewItem?: PreviewItemHandler
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false)
   const unassigned = svc.supplier.toLowerCase() === "unassigned"
   const canEdit = Boolean(onUpdateDisplayText && svc.editableText && svc.quoteItemId)
   // Adding/removing transport, supplier/rate assignment and priced changes stay
   // in Classic; offer a contextual deep link to the same item. Pure navigation.
   const classicItemHref = buildClassicItemHref(classicHref, "transport", svc.quoteItemId)
+  // Read-only pricing preview — real items only, role/status-gated handler.
+  const canPreview = Boolean(onPreviewItem && svc.quoteItemId)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -59,6 +67,18 @@ function ServiceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {svc.amount != null ? formatCurrency(svc.amount, currency) : "—"}
           </span>
+          {canPreview ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setPreviewOpen(true)}
+              title="Preview projected pricing — no changes will be saved"
+            >
+              <Calculator className="size-3.5" aria-hidden="true" />
+              Preview pricing
+            </Button>
+          ) : null}
           {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
@@ -76,6 +96,16 @@ function ServiceRow({
           onSave={(patch) => onUpdateDisplayText!(svc.quoteItemId!, patch)}
         />
       ) : null}
+      {canPreview ? (
+        <PricingPreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={`${svc.route} — ${svc.day}`}
+          currency={currency}
+          quoteItemId={svc.quoteItemId!}
+          onPreview={onPreviewItem!}
+        />
+      ) : null}
     </div>
   )
 }
@@ -87,9 +117,11 @@ export interface TransportStepProps {
   onUpdateDisplayText?: UpdateDisplayText
   /** Link to the classic builder for the Classic-only transport edits. */
   classicHref?: string
+  /** When provided (role/status-gated), rows expose a read-only pricing preview. */
+  onPreviewItem?: PreviewItemHandler
 }
 
-export function TransportStep({ services, currency, onUpdateDisplayText, classicHref }: TransportStepProps) {
+export function TransportStep({ services, currency, onUpdateDisplayText, classicHref, onPreviewItem }: TransportStepProps) {
   const priced = services
     .filter((s) => s.amount != null)
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
@@ -143,6 +175,7 @@ export function TransportStep({ services, currency, onUpdateDisplayText, classic
                 currency={currency}
                 onUpdateDisplayText={onUpdateDisplayText}
                 classicHref={classicHref}
+                onPreviewItem={onPreviewItem}
               />
             ))}
           </div>

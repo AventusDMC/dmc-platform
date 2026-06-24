@@ -20,6 +20,7 @@ export function BuilderV2Client({
   canEditPassengers = false,
   canEditRooming = false,
   canDeletePassenger = false,
+  canPreviewPricing = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -33,6 +34,12 @@ export function BuilderV2Client({
    * action; the backend still permits viewer (pre-existing, unchanged).
    */
   canDeletePassenger?: boolean
+  /**
+   * Whether the current user's role may request the read-only pricing preview
+   * (admin/operations). The backend remains the source of truth (flag + role +
+   * status); this only avoids showing an affordance that would be blocked.
+   */
+  canPreviewPricing?: boolean
 }) {
   const router = useRouter()
 
@@ -267,6 +274,34 @@ export function BuilderV2Client({
   const handleEnablePublicLink = (q: Quote) => postPublicLink(q, "enable")
   const handleDisablePublicLink = (q: Quote) => postPublicLink(q, "disable")
 
+  // READ-ONLY dry-run pricing preview for an existing item edit via the
+  // feature-flagged endpoint: POST /api/quotes/:id/items/:itemId/preview. It
+  // persists nothing and never recalculates the live quote — the backend
+  // returns a structured projection (or a blocked/feature_disabled response).
+  // This is NOT an apply: no PATCH/POST/DELETE item mutation is ever called here.
+  const handlePreviewItem = async (quoteItemId: string, payload: Record<string, unknown>) => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/items/${quoteItemId}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const message = Array.isArray(parsed?.message)
+        ? parsed.message.join("; ")
+        : parsed?.message || text
+      throw new Error(message?.slice(0, 300) || `Could not preview pricing (${res.status}).`)
+    }
+    return parsed
+  }
+
   // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
   // selected language. Reuses the canonical helper + same-origin authenticated
   // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
@@ -308,6 +343,7 @@ export function BuilderV2Client({
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
       onUpdateDisplayText={handleUpdateDisplayText}
+      onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}
