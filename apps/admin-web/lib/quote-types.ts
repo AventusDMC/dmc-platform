@@ -332,3 +332,40 @@ export interface NextAction {
   label: string
   step: StepId
 }
+
+/**
+ * Result of the read-only dry-run pricing preview
+ * (POST /api/quotes/:id/items/:itemId/preview). Mirrors the backend response.
+ * Persisted nothing — used to display projected pricing before any apply.
+ */
+export interface PricingPreviewTotals {
+  totalCost: number
+  totalSell: number
+}
+export interface PricingPreviewResult {
+  available: boolean
+  blocked: boolean
+  blockedReason?: string | null
+  statusCode?: string | null
+  pricingResolvable?: boolean
+  quote?: {
+    current: PricingPreviewTotals
+    projected: PricingPreviewTotals | null
+    delta: PricingPreviewTotals | null
+  } | null
+  item?: {
+    current: PricingPreviewTotals
+    projected: PricingPreviewTotals | null
+    delta: PricingPreviewTotals | null
+  } | null
+  affectedItemCount?: number
+  jordanPass?: { changed: boolean; affectedEntranceItems: unknown[] } | null
+  warnings?: string[]
+  reResolved?: { rates: boolean; fx: boolean }
+}
+
+/** Requests a pricing preview for an existing item edit. Read-only (no apply). */
+export type PreviewItemHandler = (
+  quoteItemId: string,
+  payload: Record<string, unknown>,
+) => Promise<PricingPreviewResult>

@@ -40,6 +40,16 @@ export default async function QuoteBuilderV2Page({
   // (admin/operations only; backend still allows viewer, pre-existing/unchanged).
   const canDeletePassenger = hasRequiredRole(role, ["admin", "operations"])
 
+  // Read-only pricing preview affordance — admin/operations only (mirrors the
+  // backend POST /quotes/:id/items/:itemId/preview @Roles). Additionally gated by
+  // an editable-status allowlist so the affordance is hidden on finalized/unknown
+  // statuses (default-safe). The backend independently enforces flag + role +
+  // status and returns a blocked/feature_disabled response regardless.
+  const PREVIEW_EDITABLE_STATUSES = new Set(["DRAFT", "READY", "REVISION_REQUESTED"])
+  const quoteStatusCode = (quote?.meta?.statusCode ?? "").toUpperCase()
+  const canPreviewPricing =
+    hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -47,6 +57,7 @@ export default async function QuoteBuilderV2Page({
       canEditPassengers={canEditPassengers}
       canEditRooming={canEditRooming}
       canDeletePassenger={canDeletePassenger}
+      canPreviewPricing={canPreviewPricing}
     />
   )
 }

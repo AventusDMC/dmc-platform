@@ -1,16 +1,19 @@
 "use client"
 
+import { useState } from "react"
 import { Card } from "../../../ui/card"
 import { Badge } from "../../../ui/badge"
+import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { StatusBadge } from "../status-badges"
 import { DisplayTextEditor, type DisplayTextField } from "./display-text-editor"
 import { ClassicGuidance } from "./classic-guidance"
 import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
+import { PricingPreviewModal } from "./pricing-preview-modal"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { Experience } from "../../../../lib/quote-types"
-import { Ticket } from "lucide-react"
+import type { Experience, PreviewItemHandler } from "../../../../lib/quote-types"
+import { Ticket, Calculator } from "lucide-react"
 
 export type UpdateDisplayText = (
   quoteItemId: string,
@@ -31,18 +34,24 @@ function ExperienceRow({
   currency,
   onUpdateDisplayText,
   classicHref,
+  onPreviewItem,
 }: {
   exp: Experience
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
   classicHref?: string
+  onPreviewItem?: PreviewItemHandler
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false)
   // Only external-package items expose editable client text; everything else is
   // read-only (its client copy is catalog- or narrative-driven).
   const canEdit = Boolean(onUpdateDisplayText && exp.editableText && exp.quoteItemId)
   // Adding/removing/pricing services stays in Classic; offer a contextual deep
   // link to the same item there. Pure navigation — no V2 mutation.
   const classicItemHref = buildClassicItemHref(classicHref, "services", exp.quoteItemId)
+  // Read-only pricing preview is available only for real items (have quoteItemId)
+  // and only when the role/status-gated handler was supplied.
+  const canPreview = Boolean(onPreviewItem && exp.quoteItemId)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -73,6 +82,18 @@ function ExperienceRow({
           <span className="w-20 text-right text-sm font-semibold text-foreground">
             {exp.amount > 0 ? formatCurrency(exp.amount, currency) : "Incl."}
           </span>
+          {canPreview ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setPreviewOpen(true)}
+              title="Preview projected pricing — no changes will be saved"
+            >
+              <Calculator className="size-3.5" aria-hidden="true" />
+              Preview pricing
+            </Button>
+          ) : null}
           {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
@@ -80,6 +101,16 @@ function ExperienceRow({
         <DisplayTextEditor
           fields={externalPackageFields(exp)}
           onSave={(patch) => onUpdateDisplayText!(exp.quoteItemId!, patch)}
+        />
+      ) : null}
+      {canPreview ? (
+        <PricingPreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={`${exp.name} — ${exp.city}`}
+          currency={currency}
+          quoteItemId={exp.quoteItemId!}
+          onPreview={onPreviewItem!}
         />
       ) : null}
     </div>
@@ -93,9 +124,11 @@ export interface ExperiencesStepProps {
   onUpdateDisplayText?: UpdateDisplayText
   /** Link to the classic builder for the Classic-only experience edits. */
   classicHref?: string
+  /** When provided (role/status-gated), rows expose a read-only pricing preview. */
+  onPreviewItem?: PreviewItemHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -140,6 +173,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 currency={currency}
                 onUpdateDisplayText={onUpdateDisplayText}
                 classicHref={classicHref}
+                onPreviewItem={onPreviewItem}
               />
             ))}
           </div>
