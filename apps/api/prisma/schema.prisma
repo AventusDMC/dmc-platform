@@ -1187,6 +1187,9 @@ model QuoteItem {
   quoteCurrency                      String                  @default("USD")
   pricingDescription                 String?
   customServiceName                  String?
+  guideType                          String?
+  guideDuration                      String?
+  guideOvernight                     Boolean?
   transportLabel                     String?
   standaloneTransfer                 Boolean                 @default(false)
   itineraryId                        String?                 @db.Uuid

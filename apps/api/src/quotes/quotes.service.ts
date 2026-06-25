@@ -3300,9 +3300,24 @@ export class QuotesService {
       occupancyType:
         data.occupancyType === undefined ? existingItem.occupancyType || undefined : data.occupancyType,
       mealPlan: data.mealPlan === undefined ? existingItem.mealPlan || undefined : data.mealPlan,
-      guideType: data.guideType,
-      guideDuration: data.guideDuration,
-      overnight: data.overnight,
+      // Patch semantics: when a guide field is omitted on edit, fall back to the
+      // persisted column so a guide update need not re-send guideType/Duration/
+      // overnight. `?? undefined` (not a bare fallback) is required so non-guide
+      // items resolve to undefined and do not trip the guide-compat guard in
+      // resolveQuoteItemValues (which throws when guideType !== undefined on a
+      // non-guide service).
+      guideType:
+        data.guideType === undefined
+          ? (existingItem as { guideType?: string | null }).guideType ?? undefined
+          : data.guideType,
+      guideDuration:
+        data.guideDuration === undefined
+          ? (existingItem as { guideDuration?: string | null }).guideDuration ?? undefined
+          : data.guideDuration,
+      overnight:
+        data.overnight === undefined
+          ? (existingItem as { guideOvernight?: boolean | null }).guideOvernight ?? undefined
+          : data.overnight,
       customServiceName:
         data.customServiceName === undefined
           ? (existingItem as { customServiceName?: string | null }).customServiceName ?? undefined
@@ -6342,6 +6357,14 @@ export class QuotesService {
     // meal edit payload can be rebuilt without parsing pricingDescription. Stays
     // null for non-meal items (inert — does not feed pricing).
     let resolvedCustomServiceName: string | null = null;
+    // Guide pricing inputs, persisted to QuoteItem.guideType/guideDuration/
+    // guideOvernight so a guide edit payload can be rebuilt without parsing
+    // pricingDescription. Stored as canonical values ('local'/'escort',
+    // 'half_day'/'full_day'). Stay null for non-guide items (inert — these are
+    // copies of the values already used for pricing, they do not feed pricing).
+    let resolvedGuideType: string | null = null;
+    let resolvedGuideDuration: string | null = null;
+    let resolvedGuideOvernight: boolean | null = null;
     let appliedVehicleRateId: string | null = null;
     let routeId: string | null = null;
     let transportServiceTypeId: string | null = null;
@@ -6808,6 +6831,11 @@ export class QuotesService {
       supplierCostBaseAmount = baseCost;
       supplierCostCurrency = currency;
       pricingDescription = `Guide | ${this.formatGuideType(guideType)} | ${this.formatGuideDuration(guideDuration)} | Overnight: ${overnight ? 'Yes' : 'No'}`;
+      // Persist the canonical guide inputs (inert copies; pricingDescription and
+      // baseCost above are unchanged).
+      resolvedGuideType = guideType;
+      resolvedGuideDuration = guideDuration;
+      resolvedGuideOvernight = overnight;
     } else if (data.guideType !== undefined || data.guideDuration !== undefined || data.overnight !== undefined) {
       throw new BadRequestException('Selected service is not guide-compatible. Choose a service with a guide service type or category.');
     }
@@ -7214,6 +7242,11 @@ export class QuotesService {
         // non-meal items). Never read by pricing; consumed by V2 meal apply +
         // operational vouchers (which may show the stored meal name).
         customServiceName: resolvedCustomServiceName,
+        // Inert: stores the canonical guide inputs for payload reconstruction
+        // (null for non-guide items). Never read by pricing.
+        guideType: resolvedGuideType,
+        guideDuration: resolvedGuideDuration,
+        guideOvernight: resolvedGuideOvernight,
         appliedVehicleRateId,
         // Per-day journey label for daily-package transport lines (e.g. "Wadi
         // Rum (full day)", "Amman → Petra"). Computed by the auto-builder and
