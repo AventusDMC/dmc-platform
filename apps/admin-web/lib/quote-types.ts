@@ -165,6 +165,16 @@ export interface Experience {
   activityRateVariantId?: string | null
   serviceId?: string | null
   dayCount?: number | null
+  /**
+   * Guide-only pricing apply. `isGuide` gates the "Preview & apply guide pricing"
+   * affordance; the fields are the RAW persisted guide columns (PR #554) used to
+   * rebuild the guide edit payload (no pricingDescription parsing). `guideOvernight`
+   * is mapped to the backend `overnight` input field in the payload.
+   */
+  isGuide?: boolean
+  guideType?: string | null
+  guideDuration?: string | null
+  guideOvernight?: boolean | null
 }
 
 /** A ground transport / transfer service. */

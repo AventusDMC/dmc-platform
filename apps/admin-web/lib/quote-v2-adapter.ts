@@ -429,6 +429,11 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       activityRateVariantId: asTextOrNull(r.activityRateVariantId),
       serviceId: asTextOrNull(r.serviceId),
       dayCount: asNumberOrNull(r.dayCount),
+      // Guide raw fields (persisted columns, PR #554) for the guide apply UI.
+      isGuide: asBool(r.isGuide),
+      guideType: asTextOrNull(r.guideType),
+      guideDuration: asTextOrNull(r.guideDuration),
+      guideOvernight: typeof r.guideOvernight === "boolean" ? r.guideOvernight : null,
     }
   })
 }
@@ -679,6 +684,11 @@ interface ApiQuoteItem {
   activityRateVariantId?: string | null
   serviceId?: string | null
   dayCount?: number | null
+  // Guide raw fields (persisted columns, PR #554) used to rebuild a guide edit
+  // payload without parsing pricingDescription.
+  guideType?: string | null
+  guideDuration?: string | null
+  guideOvernight?: boolean | null
   excursionTemplateComponentOptional?: boolean | null
   // Client-facing display-text fields the proposal renders (returned by the
   // GET /quotes/:id `include`). Editable inertly via the display-text endpoint.
@@ -1041,6 +1051,11 @@ function mapErpQuoteToRaw(
     // apply UI (re-price qty/pax/date at the current rate variant). Required ids
     // are persisted columns; rate-variant selection stays Classic-only.
     const isActivityItem = it.service?.serviceType?.code === "ACTIVITY"
+    // Guide items (serviceType.code === 'GUIDE') expose the guide pricing apply
+    // UI (re-price guideType/guideDuration/overnight/quantity). Required inputs
+    // are persisted columns (PR #554), so the payload rebuilds without parsing
+    // pricingDescription.
+    const isGuideItem = it.service?.serviceType?.code === "GUIDE"
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
@@ -1064,14 +1079,19 @@ function mapErpQuoteToRaw(
       isActivity: Boolean(it.id) && isActivityItem,
       activityId: isActivityItem ? it.activityId ?? null : null,
       activityRateVariantId: isActivityItem ? it.activityRateVariantId ?? null : null,
-      serviceId: isActivityItem ? it.serviceId ?? null : null,
-      // Shared raw fields surfaced for meal OR activity (used to build the payload).
+      serviceId: isActivityItem || isGuideItem ? it.serviceId ?? null : null,
+      // Guide pricing apply (PR C): raw persisted guide fields only.
+      isGuide: Boolean(it.id) && isGuideItem,
+      guideType: isGuideItem ? it.guideType ?? null : null,
+      guideDuration: isGuideItem ? it.guideDuration ?? null : null,
+      guideOvernight: isGuideItem ? it.guideOvernight ?? null : null,
+      // Shared raw fields surfaced for meal OR activity OR guide (payload inputs).
       unitCost: isMealItem ? it.costBaseAmount ?? null : null,
-      quantity: isMealItem || isActivityItem ? it.quantity ?? null : null,
-      paxCount: isMealItem || isActivityItem ? it.paxCount ?? null : null,
-      currency: isMealItem || isActivityItem ? it.currency ?? null : null,
-      serviceDate: isMealItem || isActivityItem ? it.serviceDate ?? null : null,
-      dayCount: isActivityItem ? it.dayCount ?? null : null,
+      quantity: isMealItem || isActivityItem || isGuideItem ? it.quantity ?? null : null,
+      paxCount: isMealItem || isActivityItem || isGuideItem ? it.paxCount ?? null : null,
+      currency: isMealItem || isActivityItem || isGuideItem ? it.currency ?? null : null,
+      serviceDate: isMealItem || isActivityItem || isGuideItem ? it.serviceDate ?? null : null,
+      dayCount: isActivityItem || isGuideItem ? it.dayCount ?? null : null,
     })
   }
 
