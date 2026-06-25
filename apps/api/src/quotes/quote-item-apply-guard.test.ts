@@ -268,9 +268,42 @@ test('unsupported type (transport) apply → 400 out-of-scope, no write', async 
   assert.equal(calls.writes, 0);
 });
 
-test('guide item apply is still blocked (out of scope this PR)', async () => {
+test('guide item apply succeeds (allowlist broadened to meal + activity + guide, PR B)', async () => {
   enable(true, true);
-  const { svc, calls } = makeService({ service: { category: 'guide', serviceType: { code: 'GUIDE', name: 'Guiding' } } });
+  const { svc, calls } = makeService({
+    service: { category: 'guide', serviceType: { code: 'GUIDE', name: 'Guiding' } },
+    resolved: { cost: 200, sell: 240 },
+  });
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(out.matchedPreview, true);
+  assert.deepEqual(out.item.after, { totalCost: 200, totalSell: 240 });
+  assert.equal(calls.updateItem, 1); // delegates to the existing updateItem write path
+  assert.equal(calls.writes, 0); // never writes via direct quoteItem.update
+});
+
+test('entrance item apply remains blocked (out of scope)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ service: { category: 'ticketing', serviceType: { code: 'ENTRANCE_TICKET', name: 'Entrance' } } });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('external-package item apply remains blocked (out of scope)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ service: { category: 'external_package', serviceType: { code: 'EXTERNAL_PACKAGE', name: 'External package' } } });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('hotel item apply remains blocked (out of scope)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ service: { category: 'hotel', serviceType: { code: 'HOTEL', name: 'Hotel' } } });
   const token = await mintToken(svc);
   await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
   assert.equal(calls.updateItem, 0);
