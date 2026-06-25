@@ -12,7 +12,7 @@ import type {
   PricingPreviewTotals,
 } from "../../../../lib/quote-types"
 
-type ItemKind = "meal" | "activity"
+type ItemKind = "meal" | "activity" | "guide"
 
 function TotalsRow({
   label,
@@ -89,10 +89,10 @@ function messageForCode(code: string): { text: string; forceRePreview: boolean }
 }
 
 /**
- * "Preview & apply pricing" modal for an existing MEAL or ACTIVITY item. Preview
- * first (read-only), then apply via the dedicated apply-preview endpoint — nothing
- * is saved until Apply. The payload is built ONLY from raw fields (never from
- * totals / pricingDescription).
+ * "Preview & apply pricing" modal for an existing MEAL, ACTIVITY or GUIDE item.
+ * Preview first (read-only), then apply via the dedicated apply-preview endpoint —
+ * nothing is saved until Apply. The payload is built ONLY from raw fields (never
+ * from totals / pricingDescription).
  *
  * - meal: name, unit cost, quantity, pax, currency, service date are editable.
  * - activity: only service date is editable; name + rate variant + currency +
@@ -101,6 +101,11 @@ function messageForCode(code: string): { text: string; forceRePreview: boolean }
  *   cost drivers, so they are shown read-only to avoid implying a priced edit.
  *   The payload still carries the existing activityId / activityRateVariantId /
  *   serviceId (raw fields) so the backend re-prices at the current rate.
+ * - guide: guideType, guideDuration, guideOvernight, quantity and service date are
+ *   editable (the guide cost drivers, PR #554/#555). paxCount + dayCount + currency
+ *   + name are read-only (not guide cost drivers — managed in Classic). The payload
+ *   carries the raw guide fields; guideOvernight is mapped to the backend `overnight`
+ *   input.
  */
 export function ItemPricingApplyModal({
   open,
@@ -125,6 +130,10 @@ export function ItemPricingApplyModal({
   const [paxCount, setPaxCount] = useState(String(exp.paxCount ?? 1))
   const [itemCurrency, setItemCurrency] = useState(exp.currency ?? currency ?? "USD")
   const [serviceDate, setServiceDate] = useState((exp.serviceDate ?? "").slice(0, 10))
+  // Guide-only editable cost drivers (raw persisted columns).
+  const [guideType, setGuideType] = useState(exp.guideType ?? "local")
+  const [guideDuration, setGuideDuration] = useState(exp.guideDuration ?? "full_day")
+  const [guideOvernight, setGuideOvernight] = useState(Boolean(exp.guideOvernight))
 
   const [preview, setPreview] = useState<PricingPreviewResult | null>(null)
   const [token, setToken] = useState<string | null>(null)
@@ -136,12 +145,24 @@ export function ItemPricingApplyModal({
 
   const isMeal = kind === "meal"
   const isActivity = kind === "activity"
+  const isGuide = kind === "guide"
 
   // The exact payload sent to BOTH preview and apply (so the token's payload hash
   // matches). Built from raw fields — no totals, no pricingDescription parsing.
   // Meal: editable name/unitCost/currency. Activity: re-price at the existing
   // rate variant (ids carried verbatim); currency is rate-derived (not sent).
   const payload = useMemo(() => {
+    if (isGuide) {
+      // Guide cost drivers (raw fields). guideOvernight maps to backend `overnight`.
+      return {
+        guideType,
+        guideDuration,
+        overnight: guideOvernight,
+        quantity: Number(quantity),
+        serviceId: exp.serviceId ?? undefined,
+        serviceDate: serviceDate || undefined,
+      }
+    }
     if (isActivity) {
       return {
         activityId: exp.activityId ?? undefined,
@@ -160,7 +181,7 @@ export function ItemPricingApplyModal({
       currency: itemCurrency,
       serviceDate: serviceDate || undefined,
     }
-  }, [isActivity, exp.activityId, exp.activityRateVariantId, exp.serviceId, name, unitCost, quantity, paxCount, itemCurrency, serviceDate])
+  }, [isGuide, isActivity, exp.activityId, exp.activityRateVariantId, exp.serviceId, guideType, guideDuration, guideOvernight, name, unitCost, quantity, paxCount, itemCurrency, serviceDate])
 
   if (!open) return null
 
@@ -202,7 +223,7 @@ export function ItemPricingApplyModal({
       ((preview.item?.delta && (preview.item.delta.totalCost !== 0 || preview.item.delta.totalSell !== 0)) ||
         (preview.quote?.delta && (preview.quote.delta.totalCost !== 0 || preview.quote.delta.totalSell !== 0))),
   )
-  const kindMatches = isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)
+  const kindMatches = isGuide ? Boolean(exp.isGuide) : isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)
   // Apply is offered only after a successful, resolvable, unblocked preview WITH a token.
   const canApply = Boolean(kindMatches && exp.quoteItemId && token && !featureDisabled && !blocked && !notResolvable && !success)
 
@@ -236,7 +257,11 @@ export function ItemPricingApplyModal({
     }
   }
 
-  const heading = isActivity ? "Preview & apply activity pricing" : "Preview & apply meal pricing"
+  const heading = isGuide
+    ? "Preview & apply guide pricing"
+    : isActivity
+      ? "Preview & apply activity pricing"
+      : "Preview & apply meal pricing"
 
   return (
     <div
@@ -261,7 +286,43 @@ export function ItemPricingApplyModal({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {isActivity ? (
+            {isGuide ? (
+              <>
+                <div className="col-span-2">
+                  <Field label="Guide service">
+                    <div className={readonlyCls}>{exp.name}</div>
+                  </Field>
+                </div>
+                <Field label="Guide type">
+                  <select className={inputCls} value={guideType} onChange={(e) => edit(setGuideType)(e.target.value)}>
+                    <option value="local">Local</option>
+                    <option value="escort">Escort</option>
+                  </select>
+                </Field>
+                <Field label="Duration">
+                  <select className={inputCls} value={guideDuration} onChange={(e) => edit(setGuideDuration)(e.target.value)}>
+                    <option value="half_day">Half day</option>
+                    <option value="full_day">Full day</option>
+                  </select>
+                </Field>
+                <Field label="Overnight">
+                  <label className="flex h-8 items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={guideOvernight}
+                      onChange={(e) => {
+                        setGuideOvernight(e.target.checked)
+                        invalidatePreview()
+                      }}
+                    />
+                    <span>Overnight supplement</span>
+                  </label>
+                </Field>
+                <Field label="Currency (rate-derived)">
+                  <div className={readonlyCls}>{itemCurrency}</div>
+                </Field>
+              </>
+            ) : isActivity ? (
               <>
                 <div className="col-span-2">
                   <Field label="Activity (rate variant changes stay in Classic)">
@@ -288,7 +349,22 @@ export function ItemPricingApplyModal({
                 </Field>
               </>
             )}
-            {isActivity ? (
+            {isGuide ? (
+              <>
+                {/* Guide cost drivers: quantity IS a driver (editable). paxCount +
+                    dayCount are NOT guide cost drivers → read-only (Classic). */}
+                <Field label="Quantity">
+                  <input className={inputCls} type="number" min="1" step="1" value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)} />
+                </Field>
+                <Field label="Pax count (managed in Classic)">
+                  <div className={readonlyCls}>{paxCount}</div>
+                </Field>
+                <Field label="Day count (managed in Classic)">
+                  <div className={readonlyCls}>{exp.dayCount ?? "—"}</div>
+                </Field>
+                <div />
+              </>
+            ) : isActivity ? (
               <>
                 {/* Activity qty/pax are NOT cost drivers: paxCount normalizes to
                     quote pax and quantity is ignored by activity pricing, so they
@@ -320,6 +396,10 @@ export function ItemPricingApplyModal({
           {isActivity ? (
             <p className="text-xs text-muted-foreground">
               Activity pricing is driven by the selected activity rate and service date. Rate selection and pax/quote counts are managed in Classic Builder.
+            </p>
+          ) : isGuide ? (
+            <p className="text-xs text-muted-foreground">
+              Guide pricing is driven by guide type, duration, overnight status, quantity, and service date. Pax count and day count are managed in Classic Builder.
             </p>
           ) : null}
 

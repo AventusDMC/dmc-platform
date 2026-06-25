@@ -36,23 +36,31 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
       'isActivity: Boolean(it.id) && isActivityItem',
       'activityId: isActivityItem ? it.activityId',
       'activityRateVariantId: isActivityItem ? it.activityRateVariantId',
-      'serviceId: isActivityItem ? it.serviceId',
+      'serviceId: isActivityItem || isGuideItem ? it.serviceId',
       'isActivity: asBool(r.isActivity)',
-      // shared raw fields surfaced for meal OR activity
-      'quantity: isMealItem || isActivityItem ? it.quantity',
-      'paxCount: isMealItem || isActivityItem ? it.paxCount',
-      'serviceDate: isMealItem || isActivityItem ? it.serviceDate',
+      // guide (PR C)
+      'it.service?.serviceType?.code === "GUIDE"',
+      'isGuide: Boolean(it.id) && isGuideItem',
+      'guideType: isGuideItem ? it.guideType',
+      'guideDuration: isGuideItem ? it.guideDuration',
+      'guideOvernight: isGuideItem ? it.guideOvernight',
+      'isGuide: asBool(r.isGuide)',
+      // shared raw fields surfaced for meal OR activity OR guide
+      'quantity: isMealItem || isActivityItem || isGuideItem ? it.quantity',
+      'paxCount: isMealItem || isActivityItem || isGuideItem ? it.paxCount',
+      'serviceDate: isMealItem || isActivityItem || isGuideItem ? it.serviceDate',
+      'dayCount: isActivityItem || isGuideItem ? it.dayCount',
     ]);
     // Required ids/values must come from columns, never parsed from text.
-    excludes(adapterSrc, ['pricingDescription.split', '| Meal | PER_PERSON', '| Activity |']);
+    excludes(adapterSrc, ['pricingDescription.split', '| Meal | PER_PERSON', '| Activity |', 'pricingDescription.match']);
   });
 
   it('modal: preview-first label, ack checkbox, gated Apply, error mapping; meal+activity payloads; no fetch', () => {
     contains(modalSrc, [
       'Preview first. No changes are saved until you apply.',
       'I understand this will update the quote totals.',
-      // kind-aware gating on a successful preview token
-      'const kindMatches = isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)',
+      // kind-aware gating on a successful preview token (meal/activity/guide)
+      'const kindMatches = isGuide ? Boolean(exp.isGuide) : isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)',
       'const canApply = Boolean(kindMatches && exp.quoteItemId && token',
       // error-code mapping
       'Pricing apply is not enabled.',
@@ -66,9 +74,15 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
       'activityId: exp.activityId',
       'activityRateVariantId: exp.activityRateVariantId',
       'serviceId: exp.serviceId',
+      // guide payload (raw fields; guideOvernight → backend `overnight`)
+      'guideType,',
+      'guideDuration,',
+      'overnight: guideOvernight,',
+      'serviceId: exp.serviceId ?? undefined,',
       // headings per kind
       'Preview & apply activity pricing',
       'Preview & apply meal pricing',
+      'Preview & apply guide pricing',
     ]);
     excludes(modalSrc, ['fetch(', "method: 'PATCH'", "method: 'DELETE'", "method: 'POST'", 'method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
   });
@@ -94,14 +108,34 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     ]);
   });
 
+  it('modal: guide cost drivers editable (type/duration/overnight/quantity); pax + day count read-only; helper text', () => {
+    contains(modalSrc, [
+      // guide editable cost drivers
+      'value={guideType} onChange={(e) => edit(setGuideType)(e.target.value)}',
+      'value={guideDuration} onChange={(e) => edit(setGuideDuration)(e.target.value)}',
+      'checked={guideOvernight}',
+      // quantity stays an editable input (quantity IS a guide cost driver)
+      'value={quantity} onChange={(e) => edit(setQuantity)(e.target.value)}',
+      // pax + day count read-only for guide (managed in Classic)
+      'Pax count (managed in Classic)',
+      'Day count (managed in Classic)',
+      // helper text (exact)
+      'Guide pricing is driven by guide type, duration, overnight status, quantity, and service date. Pax count and day count are managed in Classic Builder.',
+      // guide payload maps guideOvernight → overnight
+      'overnight: guideOvernight,',
+    ]);
+  });
+
   it('Experiences step: meal AND activity rows use the apply modal; non-supported keep read-only preview; prior features intact', () => {
     contains(experiencesSrc, [
       'ItemPricingApplyModal',
       'onApplyItemPricing',
       'const canApplyMeal = Boolean(onApplyItemPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)',
       'const canApplyActivity = Boolean(onApplyItemPricing && onPreviewItem && exp.isActivity && exp.quoteItemId)',
-      'const canApply = canApplyMeal || canApplyActivity',
+      'const canApplyGuide = Boolean(onApplyItemPricing && onPreviewItem && exp.isGuide && exp.quoteItemId)',
+      'const canApply = canApplyMeal || canApplyActivity || canApplyGuide',
       'kind={applyKind}',
+      'Preview & apply guide pricing',
       // read-only preview suppressed for meal/activity apply rows
       'Boolean(onPreviewItem && exp.quoteItemId) && !canApply',
       // prior features retained

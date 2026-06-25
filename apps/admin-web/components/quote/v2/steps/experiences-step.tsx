@@ -53,13 +53,14 @@ function ExperienceRow({
   // Adding/removing/pricing services stays in Classic; offer a contextual deep
   // link to the same item there. Pure navigation — no V2 mutation.
   const classicItemHref = buildClassicItemHref(classicHref, "services", exp.quoteItemId)
-  // Pricing APPLY is supported for real MEAL or ACTIVITY items (role/status-gated handlers).
+  // Pricing APPLY is supported for real MEAL, ACTIVITY or GUIDE items (role/status-gated handlers).
   const canApplyMeal = Boolean(onApplyItemPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)
   const canApplyActivity = Boolean(onApplyItemPricing && onPreviewItem && exp.isActivity && exp.quoteItemId)
-  const canApply = canApplyMeal || canApplyActivity
-  const applyKind: "meal" | "activity" = canApplyActivity ? "activity" : "meal"
-  // Read-only pricing preview for other real items (PR3). Meal/activity rows use
-  // the apply modal instead, so they don't show the read-only preview link.
+  const canApplyGuide = Boolean(onApplyItemPricing && onPreviewItem && exp.isGuide && exp.quoteItemId)
+  const canApply = canApplyMeal || canApplyActivity || canApplyGuide
+  const applyKind: "meal" | "activity" | "guide" = canApplyGuide ? "guide" : canApplyActivity ? "activity" : "meal"
+  // Read-only pricing preview for other real items (PR3). Meal/activity/guide rows
+  // use the apply modal instead, so they don't show the read-only preview link.
   const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApply
   return (
     <div className="px-4 py-3">
@@ -100,7 +101,11 @@ function ExperienceRow({
               title="Preview and apply pricing — nothing is saved until you apply"
             >
               <Calculator className="size-3.5" aria-hidden="true" />
-              {applyKind === "activity" ? "Preview & apply activity pricing" : "Preview & apply meal pricing"}
+              {applyKind === "guide"
+                ? "Preview & apply guide pricing"
+                : applyKind === "activity"
+                  ? "Preview & apply activity pricing"
+                  : "Preview & apply meal pricing"}
             </Button>
           ) : canPreview ? (
             <Button
