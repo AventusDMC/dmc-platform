@@ -237,15 +237,42 @@ describe('Quote Builder V2 — read-only pricing apply audit viewer', () => {
     contains(builderSrc, ['onLoadApplyAudit', 'onLoadApplyAudit={onLoadApplyAudit}']);
   });
 
-  it('client fetches the audit via GET only, gated by the role/status flag; no mutation', () => {
+  it('client fetches the audit via GET only, gated by the read-only audit flag; no mutation', () => {
     contains(clientSrc, [
       '/api/quotes/${quote.id}/pricing-apply-audit',
-      'onLoadApplyAudit={canPreviewPricing ? handleLoadApplyAudit : undefined}',
+      // audit viewing uses its OWN read-only gate, NOT the editable-status preview gate
+      'onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}',
     ]);
+    // apply controls stay on the editable-status preview gate (unchanged)
+    contains(clientSrc, ['onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}']);
     const start = clientSrc.indexOf('const handleLoadApplyAudit');
     const end = clientSrc.indexOf('const handlePreview ');
     const region = start >= 0 && end > start ? clientSrc.slice(start, end) : clientSrc;
     assert.ok(region.includes('method: "GET"'), 'audit handler must GET');
     excludes(region, ['method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
+  });
+
+  it('audit viewing is role-gated but NOT editable-status-gated; apply preview stays status-gated', () => {
+    // Read-only audit gate: admin/operations, independent of quote status so it
+    // stays visible on SENT/CONFIRMED/finalized quotes.
+    contains(pageSrc, [
+      'const canViewPricingApplyAudit = hasRequiredRole(role, ["admin", "operations"])',
+      'canViewPricingApplyAudit={canViewPricingApplyAudit}',
+    ]);
+    // The audit gate must not reference the editable-status allowlist. Verify the
+    // single line that defines it does not depend on PREVIEW_EDITABLE_STATUSES.
+    const auditLine = pageSrc
+      .split('\n')
+      .find((l) => l.includes('const canViewPricingApplyAudit =')) ?? '';
+    assert.ok(!auditLine.includes('PREVIEW_EDITABLE_STATUSES'), 'audit gate must not depend on editable status');
+    assert.ok(!auditLine.includes('quoteStatusCode'), 'audit gate must not depend on quote status');
+    // Apply/preview gate is UNCHANGED — still role AND editable status.
+    contains(pageSrc, [
+      'const canPreviewPricing =\n    hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)',
+    ]);
+  });
+
+  it('client passes the audit gate prop through with a safe default', () => {
+    contains(clientSrc, ['canViewPricingApplyAudit = false', 'canViewPricingApplyAudit?: boolean']);
   });
 });

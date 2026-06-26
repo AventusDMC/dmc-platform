@@ -21,6 +21,7 @@ export function BuilderV2Client({
   canEditRooming = false,
   canDeletePassenger = false,
   canPreviewPricing = false,
+  canViewPricingApplyAudit = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -40,6 +41,13 @@ export function BuilderV2Client({
    * status); this only avoids showing an affordance that would be blocked.
    */
   canPreviewPricing?: boolean
+  /**
+   * Whether the current user's role may VIEW the read-only pricing-apply audit
+   * (admin/operations). Intentionally NOT tied to editable status — audit history
+   * stays visible on SENT/CONFIRMED/finalized quotes. Backend enforces role +
+   * quote read access and returns only sanitized fields.
+   */
+  canViewPricingApplyAudit?: boolean
 }) {
   const router = useRouter()
 
@@ -396,7 +404,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
-      onLoadApplyAudit={canPreviewPricing ? handleLoadApplyAudit : undefined}
+      onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}
