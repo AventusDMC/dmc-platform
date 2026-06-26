@@ -324,3 +324,26 @@ test('activity item apply succeeds (allowlist broadened to meal + activity)', as
   assert.equal(calls.updateItem, 1);
   assert.equal(calls.writes, 0);
 });
+
+test('scoping aligned with write path: actor whose company is NOT the quote client/brand can preview + apply', async () => {
+  // Repro of the prod "Quote not found" bug: an internal/operations admin manages a quote
+  // whose client is an Agent company and brand is a Supplier company — neither equals the
+  // actor's own company. Preview/apply must now authorize like updateItem (assertQuoteMutationAccess).
+  enable(true, true);
+  const { svc, db, calls } = makeService({ resolved: { cost: 150, sell: 180 } });
+  db.quote.clientCompanyId = 'client-agent-company';
+  db.quote.brandCompanyId = 'supplier-brand-company';
+  // mintToken runs a preview; it must succeed despite the company mismatch (previously threw "Quote not found").
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.deepEqual(out.item.after, { totalCost: 150, totalSell: 180 });
+  assert.equal(calls.updateItem, 1); // delegates to the existing write path
+  assert.equal(calls.writes, 0);
+});
+
+test('missing quote still returns "Quote not found" via assertQuoteMutationAccess', async () => {
+  enable(true, true);
+  const { svc } = makeService();
+  await expectHttp(() => svc.previewUpdateQuoteItem('missing-quote-id', ITEM_ID, MEAL_DATA, ACTOR), 400, 'Quote not found');
+});
