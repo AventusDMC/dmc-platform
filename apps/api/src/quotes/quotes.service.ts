@@ -3983,6 +3983,57 @@ export class QuotesService {
       ? []
       : ['Applied totals differ from the previewed projection — please re-check pricing.'];
 
+    // Audit every successful V2 pricing apply via the existing AuditService →
+    // AuditLog (no schema change). No-ops if no audit service/company. Metadata is
+    // a flat, non-secret summary of before/after/delta totals + the applied edit
+    // fields — never the preview token. Audit must never block a successful apply.
+    try {
+      await this.auditService?.log?.({
+        actor: actor
+          ? { id: (actor as { id?: string }).id ?? null, companyId: (actor as { companyId?: string }).companyId ?? null }
+          : null,
+        action: 'quote.pricing.apply',
+        entity: 'quoteItem',
+        entityId: itemId,
+        metadata: {
+          quoteId,
+          quoteItemId: itemId,
+          serviceType: supportedItem?.service?.serviceType?.code ?? null,
+          previousItemTotalCost: before.item.totalCost,
+          previousItemTotalSell: before.item.totalSell,
+          newItemTotalCost: after.item.totalCost,
+          newItemTotalSell: after.item.totalSell,
+          deltaItemCost: round(after.item.totalCost - before.item.totalCost),
+          deltaItemSell: round(after.item.totalSell - before.item.totalSell),
+          previousQuoteTotalCost: before.quote.totalCost,
+          previousQuoteTotalSell: before.quote.totalSell,
+          newQuoteTotalCost: after.quote.totalCost,
+          newQuoteTotalSell: after.quote.totalSell,
+          deltaQuoteCost: round(after.quote.totalCost - before.quote.totalCost),
+          deltaQuoteSell: round(after.quote.totalSell - before.quote.totalSell),
+          acknowledgedDelta: acknowledgedDelta === true,
+          integrityOk,
+          appliedPayload: {
+            customServiceName: data?.customServiceName ?? undefined,
+            unitCost: data?.unitCost ?? undefined,
+            quantity: data?.quantity ?? undefined,
+            paxCount: data?.paxCount ?? undefined,
+            currency: data?.currency ?? undefined,
+            serviceDate: data?.serviceDate ?? undefined,
+            guideType: data?.guideType ?? undefined,
+            guideDuration: data?.guideDuration ?? undefined,
+            overnight: data?.overnight ?? undefined,
+            activityId: data?.activityId ?? undefined,
+            activityRateVariantId: data?.activityRateVariantId ?? undefined,
+            serviceId: data?.serviceId ?? undefined,
+          },
+        },
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.warn('[quote/pricing-apply] audit log failed (apply succeeded):', (auditErr as Error)?.message);
+    }
+
     return {
       applied: true,
       blocked: false,
