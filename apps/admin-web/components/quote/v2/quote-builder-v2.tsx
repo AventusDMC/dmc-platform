@@ -71,6 +71,12 @@ export interface QuoteBuilderV2Props {
    */
   onApplyItemPricing?: import("../../../lib/quote-types").ApplyItemPricingHandler
   /**
+   * Load the read-only `quote.pricing.apply` audit history for this quote
+   * (role/status-gated). When provided, the Experiences step shows a collapsible
+   * "Pricing Apply Audit" panel. Read-only — never mutates the quote.
+   */
+  onLoadApplyAudit?: import("../../../lib/quote-types").LoadApplyAuditHandler
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -115,6 +121,7 @@ export function QuoteBuilderV2({
   onUpdateDisplayText,
   onPreviewItem,
   onApplyItemPricing,
+  onLoadApplyAudit,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -248,6 +255,7 @@ export function QuoteBuilderV2({
             classicHref={`/quotes/${quote.id}/classic`}
             onPreviewItem={onPreviewItem}
             onApplyItemPricing={onApplyItemPricing}
+            onLoadApplyAudit={onLoadApplyAudit}
           />
         )
       case "transport":

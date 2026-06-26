@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
-import type { Quote } from "../../../../lib/quote-types"
+import type { PricingApplyAuditEntry, Quote } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
@@ -338,6 +338,21 @@ export function BuilderV2Client({
     return parsed
   }
 
+  // Load the read-only `quote.pricing.apply` audit history for this quote via the
+  // same-origin proxy (cookie auth; backend is admin/operations + quote-scoped and
+  // returns sanitized fields only — no tokens/secrets). Throws on a non-2xx so the
+  // panel can show its own non-blocking message; never mutates the quote.
+  const handleLoadApplyAudit = async (): Promise<PricingApplyAuditEntry[]> => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/pricing-apply-audit`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    })
+    if (!res.ok) throw new Error(`apply_audit_failed_${res.status}`)
+    return (await res.json()) as PricingApplyAuditEntry[]
+  }
+
   // Preview ONLY: open the existing proposal-v3 HTML preview in a new tab, in the
   // selected language. Reuses the canonical helper + same-origin authenticated
   // proxy (/api/quotes/:id/proposal-v3/html). No PDF generated, nothing sent.
@@ -381,6 +396,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
+      onLoadApplyAudit={canPreviewPricing ? handleLoadApplyAudit : undefined}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}

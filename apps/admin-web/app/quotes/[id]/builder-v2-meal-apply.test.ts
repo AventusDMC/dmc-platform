@@ -196,3 +196,56 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     ]);
   });
 });
+
+describe('Quote Builder V2 — read-only pricing apply audit viewer', () => {
+  const panelSrc = read('../../../components/quote/v2/steps/pricing-apply-audit-panel.tsx');
+  const auditProxySrc = read('../../../app/api/quotes/[id]/pricing-apply-audit/route.ts');
+
+  it('proxy is GET-only and forwards to the backend pricing-apply-audit endpoint', () => {
+    contains(auditProxySrc, [
+      'export async function GET',
+      '/quotes/${id}/pricing-apply-audit',
+      "method: 'GET'",
+      'buildActorHeaders(request)',
+      'forwardProxyJsonResponse',
+    ]);
+    excludes(auditProxySrc, ['export async function POST', 'export async function PATCH', 'export async function DELETE', "method: 'PATCH'", "method: 'DELETE'", "method: 'POST'"]);
+  });
+
+  it('panel is collapsible, lazy-loads on expand, shows empty + non-blocking error states; no fetch inside', () => {
+    contains(panelSrc, [
+      'Pricing Apply Audit',
+      'No V2 pricing apply audit entries yet.',
+      'Could not load the pricing apply audit. The quote is unaffected.',
+      // lazy load on first expand via the injected handler
+      'await onLoad()',
+      'aria-expanded={open}',
+    ]);
+    // The panel must never fetch directly — it calls the injected onLoad handler.
+    excludes(panelSrc, ['fetch(']);
+  });
+
+  it('Experiences step renders the audit panel, gated on the onLoadApplyAudit handler', () => {
+    contains(experiencesSrc, [
+      'PricingApplyAuditPanel',
+      'onLoadApplyAudit',
+      'onLoadApplyAudit ? <PricingApplyAuditPanel currency={currency} onLoad={onLoadApplyAudit} /> : null',
+    ]);
+  });
+
+  it('builder threads onLoadApplyAudit to the Experiences step', () => {
+    contains(builderSrc, ['onLoadApplyAudit', 'onLoadApplyAudit={onLoadApplyAudit}']);
+  });
+
+  it('client fetches the audit via GET only, gated by the role/status flag; no mutation', () => {
+    contains(clientSrc, [
+      '/api/quotes/${quote.id}/pricing-apply-audit',
+      'onLoadApplyAudit={canPreviewPricing ? handleLoadApplyAudit : undefined}',
+    ]);
+    const start = clientSrc.indexOf('const handleLoadApplyAudit');
+    const end = clientSrc.indexOf('const handlePreview ');
+    const region = start >= 0 && end > start ? clientSrc.slice(start, end) : clientSrc;
+    assert.ok(region.includes('method: "GET"'), 'audit handler must GET');
+    excludes(region, ['method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
+  });
+});

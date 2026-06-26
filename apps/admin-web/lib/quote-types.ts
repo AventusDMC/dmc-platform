@@ -427,3 +427,29 @@ export type ApplyItemPricingHandler = (
   previewToken: string,
   acknowledgedDelta: boolean,
 ) => Promise<MealApplyResult>
+
+/** One sanitized row of the read-only V2 pricing-apply audit history. */
+export interface PricingApplyAuditEntry {
+  id: string
+  timestamp: string
+  actor: { name: string | null; email: string | null } | null
+  quoteItemId: string | null
+  serviceType: string | null
+  itemName: string | null
+  previousItemTotalCost: number | null
+  newItemTotalCost: number | null
+  deltaItemCost: number | null
+  previousItemTotalSell: number | null
+  newItemTotalSell: number | null
+  deltaItemSell: number | null
+  newQuoteTotalCost: number | null
+  newQuoteTotalSell: number | null
+  deltaQuoteCost: number | null
+  deltaQuoteSell: number | null
+  acknowledgedDelta: boolean | null
+  integrityOk: boolean | null
+  appliedPayload?: Record<string, unknown>
+}
+
+/** Loads the read-only pricing-apply audit entries for the current quote. */
+export type LoadApplyAuditHandler = () => Promise<PricingApplyAuditEntry[]>

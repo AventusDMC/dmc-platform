@@ -21,6 +21,8 @@ type Opts = {
   service?: any;
   entranceFeeId?: string | null;
   transport?: boolean;
+  auditRows?: any[];
+  users?: any[];
 };
 
 function makeService(opts: Opts = {}) {
@@ -43,6 +45,8 @@ function makeService(opts: Opts = {}) {
     agg: { count: 5, max: new Date('2026-06-01T00:00:00.000Z') },
     afterItem: null as any,
     afterQuote: null as any,
+    auditRows: opts.auditRows ?? [],
+    users: opts.users ?? [],
   };
   const calls = { updateItem: 0, writes: 0 };
 
@@ -63,6 +67,19 @@ function makeService(opts: Opts = {}) {
     },
     jordanPassProduct: { findUnique: async () => null },
     ticketRateVariant: { findUnique: async () => null },
+    auditLog: {
+      // Mirror the Postgres JSON-path filter used by getPricingApplyAudit:
+      // where action === X AND metadata->>quoteId === Y.
+      findMany: async ({ where }: any) =>
+        db.auditRows.filter(
+          (r: any) =>
+            (where?.action === undefined || r.action === where.action) &&
+            (where?.metadata === undefined || (r.metadata ?? {})[where.metadata.path[0]] === where.metadata.equals),
+        ),
+    },
+    user: {
+      findMany: async ({ where }: any) => db.users.filter((u: any) => (where?.id?.in ?? []).includes(u.id)),
+    },
   };
 
   const auditCalls: any[] = [];
@@ -385,4 +402,79 @@ test('apply still succeeds even if the audit log throws (audit must not block ap
   const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
   assert.equal(out.applied, true);
   assert.equal(calls.updateItem, 1);
+});
+
+// ── Read-only pricing-apply audit viewer (getPricingApplyAudit) ──────────────
+
+const AUDIT_ROWS = [
+  {
+    id: 'a1', userId: 'user-1', entityId: ITEM_ID, action: 'quote.pricing.apply',
+    createdAt: new Date('2026-06-10T09:30:00.000Z'),
+    metadata: {
+      quoteId: QUOTE_ID, quoteItemId: ITEM_ID, serviceType: 'MEAL',
+      previousItemTotalCost: 100, previousItemTotalSell: 120,
+      newItemTotalCost: 150, newItemTotalSell: 180,
+      deltaItemCost: 50, deltaItemSell: 60,
+      newQuoteTotalCost: 1050, newQuoteTotalSell: 1260,
+      deltaQuoteCost: 50, deltaQuoteSell: 60,
+      acknowledgedDelta: true, integrityOk: true,
+      // Simulate a hostile metadata blob: a secret-looking key must NOT surface.
+      previewToken: 'v1.SECRET.SIGNATURE',
+      appliedPayload: { customServiceName: 'Lunch', unitCost: 75, quantity: 2, previewToken: 'v1.SECRET.SIGNATURE' },
+    },
+  },
+  // Same quote but a DIFFERENT action — must be excluded by the action filter.
+  {
+    id: 'a2', userId: 'user-1', entityId: ITEM_ID, action: 'quote.update',
+    createdAt: new Date('2026-06-11T09:30:00.000Z'),
+    metadata: { quoteId: QUOTE_ID, secret: 'should-not-appear' },
+  },
+  // Right action but a DIFFERENT quote — must be excluded by the quote filter.
+  {
+    id: 'a3', userId: 'user-2', entityId: 'other-item', action: 'quote.pricing.apply',
+    createdAt: new Date('2026-06-12T09:30:00.000Z'),
+    metadata: { quoteId: 'OTHER-QUOTE', serviceType: 'GUIDE' },
+  },
+];
+
+test('audit viewer returns only quote.pricing.apply entries for the requested quote', async () => {
+  const { svc } = makeService({
+    auditRows: AUDIT_ROWS,
+    users: [{ id: 'user-1', firstName: 'Ada', lastName: 'Ops', email: 'ada@example.com' }],
+  });
+  const rows: any[] = await (svc as any).getPricingApplyAudit(QUOTE_ID, ACTOR);
+  assert.equal(rows.length, 1, 'only the matching quote+action entry is returned');
+  assert.equal(rows[0].id, 'a1');
+  assert.equal(rows[0].serviceType, 'MEAL');
+  assert.equal(rows[0].previousItemTotalCost, 100);
+  assert.equal(rows[0].newItemTotalCost, 150);
+  assert.equal(rows[0].deltaItemCost, 50);
+  assert.equal(rows[0].acknowledgedDelta, true);
+  assert.equal(rows[0].integrityOk, true);
+  assert.equal(rows[0].actor.name, 'Ada Ops');
+  assert.equal(rows[0].actor.email, 'ada@example.com');
+});
+
+test('audit viewer never leaks tokens/secrets from metadata or appliedPayload', async () => {
+  const { svc } = makeService({ auditRows: AUDIT_ROWS, users: [] });
+  const rows: any[] = await (svc as any).getPricingApplyAudit(QUOTE_ID, ACTOR);
+  const hay = JSON.stringify(rows);
+  assert.ok(!hay.includes('SECRET'), 'no preview-token secret in the serialized output');
+  assert.ok(!hay.includes('previewToken'), 'no previewToken key surfaced');
+  assert.ok(!('previewToken' in rows[0]), 'top-level previewToken absent');
+  assert.ok(!('previewToken' in rows[0].appliedPayload), 'appliedPayload previewToken absent');
+  // The whitelisted payload fields are still present.
+  assert.equal(rows[0].appliedPayload.customServiceName, 'Lunch');
+  assert.equal(rows[0].appliedPayload.quantity, 2);
+});
+
+test('audit viewer returns an empty list when there are no apply entries', async () => {
+  const { svc } = makeService({ auditRows: [], users: [] });
+  const rows: any[] = await (svc as any).getPricingApplyAudit(QUOTE_ID, ACTOR);
+  assert.deepEqual(rows, []);
+});
+
+test('audit viewer is quote-access-scoped (missing quote → 400 Quote not found)', async () => {
+  const { svc } = makeService({ auditRows: AUDIT_ROWS, users: [] });
+  await expectHttp(() => (svc as any).getPricingApplyAudit('missing-quote-id', ACTOR), 400, 'Quote not found');
 });

@@ -12,8 +12,9 @@ import { ClassicGuidance } from "./classic-guidance"
 import { EditInClassicLink, buildClassicItemHref } from "./edit-in-classic-link"
 import { PricingPreviewModal } from "./pricing-preview-modal"
 import { ItemPricingApplyModal } from "./item-pricing-apply-modal"
+import { PricingApplyAuditPanel } from "./pricing-apply-audit-panel"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { ApplyItemPricingHandler, Experience, PreviewItemHandler } from "../../../../lib/quote-types"
+import type { ApplyItemPricingHandler, Experience, LoadApplyAuditHandler, PreviewItemHandler } from "../../../../lib/quote-types"
 import { Ticket, Calculator } from "lucide-react"
 
 export type UpdateDisplayText = (
@@ -164,9 +165,11 @@ export interface ExperiencesStepProps {
   onPreviewItem?: PreviewItemHandler
   /** When provided (role/status-gated), MEAL rows expose preview + apply. */
   onApplyItemPricing?: ApplyItemPricingHandler
+  /** When provided (role/status-gated), shows the read-only "Pricing Apply Audit" panel. */
+  onLoadApplyAudit?: LoadApplyAuditHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -233,6 +236,9 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
           </div>
         </Card>
       )}
+
+      {/* Read-only V2 pricing-apply audit history (role/status-gated). */}
+      {onLoadApplyAudit ? <PricingApplyAuditPanel currency={currency} onLoad={onLoadApplyAudit} /> : null}
     </div>
   )
 }
