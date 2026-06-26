@@ -50,6 +50,14 @@ export default async function QuoteBuilderV2Page({
   const canPreviewPricing =
     hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
 
+  // Read-only pricing-apply AUDIT viewing is intentionally NOT tied to editability.
+  // Audit history must stay visible after a quote is SENT/CONFIRMED/finalized so
+  // management can review what was applied — gating it on canPreviewPricing would
+  // hide it exactly when review matters. Mirrors the backend GET
+  // /quotes/:id/pricing-apply-audit @Roles('admin','operations'); the backend also
+  // enforces quote read access and returns only sanitized fields. No status gate.
+  const canViewPricingApplyAudit = hasRequiredRole(role, ["admin", "operations"])
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -58,6 +66,7 @@ export default async function QuoteBuilderV2Page({
       canEditRooming={canEditRooming}
       canDeletePassenger={canDeletePassenger}
       canPreviewPricing={canPreviewPricing}
+      canViewPricingApplyAudit={canViewPricingApplyAudit}
     />
   )
 }

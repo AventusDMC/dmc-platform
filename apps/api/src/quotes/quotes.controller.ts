@@ -1373,6 +1373,15 @@ export class QuotesController {
     );
   }
 
+  @Get(':id/pricing-apply-audit')
+  @Roles('admin', 'operations')
+  async getPricingApplyAudit(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    // Read-only audit history of V2 pricing applies for this quote. Returns only
+    // sanitized `quote.pricing.apply` entries (no tokens/secrets/raw metadata),
+    // scoped by the same access as the quote write path.
+    return this.quotesService.getPricingApplyAudit(id, actor);
+  }
+
   @Get(':id/items/:itemId/suggested-services')
   async findSuggestedServices(@Param('id') id: string, @Param('itemId') itemId: string) {
     const quote = await this.quotesService.findOne(id);

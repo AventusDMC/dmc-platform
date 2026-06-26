@@ -4045,6 +4045,65 @@ export class QuotesService {
     };
   }
 
+  /**
+   * Read-only audit history of V2 pricing applies for a quote. Returns ONLY
+   * `quote.pricing.apply` entries for this quote, scoped by the same access as
+   * the write path, and mapped to a WHITELISTED safe shape (before/after/delta
+   * totals + a small applied-payload summary + actor name/email). Raw audit
+   * metadata is never returned, so no token/secret can leak even if present.
+   */
+  async getPricingApplyAudit(quoteId: string, actor?: CompanyScopedActor) {
+    await this.assertQuoteMutationAccess(quoteId, actor);
+    const rows = await this.prisma.auditLog.findMany({
+      where: { action: 'quote.pricing.apply', metadata: { path: ['quoteId'], equals: quoteId } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    // AuditLog has no user relation; resolve actor name/email in one batch.
+    const userIds = Array.from(new Set(rows.map((r: any) => r.userId).filter((x: any): x is string => !!x)));
+    const users = userIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true, email: true } })
+      : [];
+    const userById = new Map(users.map((u: any) => [u.id, u]));
+    return rows.map((r: any) => {
+      const m = (r.metadata ?? {}) as Record<string, any>;
+      const ap = (m.appliedPayload ?? {}) as Record<string, any>;
+      const u = r.userId ? userById.get(r.userId) : null;
+      return {
+        id: r.id,
+        timestamp: r.createdAt,
+        actor: u ? { name: [u.firstName, u.lastName].filter(Boolean).join(' ') || null, email: u.email ?? null } : null,
+        quoteItemId: m.quoteItemId ?? r.entityId ?? null,
+        serviceType: m.serviceType ?? null,
+        itemName: ap.customServiceName ?? null,
+        previousItemTotalCost: m.previousItemTotalCost ?? null,
+        previousItemTotalSell: m.previousItemTotalSell ?? null,
+        newItemTotalCost: m.newItemTotalCost ?? null,
+        newItemTotalSell: m.newItemTotalSell ?? null,
+        deltaItemCost: m.deltaItemCost ?? null,
+        deltaItemSell: m.deltaItemSell ?? null,
+        newQuoteTotalCost: m.newQuoteTotalCost ?? null,
+        newQuoteTotalSell: m.newQuoteTotalSell ?? null,
+        deltaQuoteCost: m.deltaQuoteCost ?? null,
+        deltaQuoteSell: m.deltaQuoteSell ?? null,
+        acknowledgedDelta: m.acknowledgedDelta ?? null,
+        integrityOk: m.integrityOk ?? null,
+        // Whitelisted applied-payload fields only — never raw metadata/tokens.
+        appliedPayload: {
+          customServiceName: ap.customServiceName ?? undefined,
+          unitCost: ap.unitCost ?? undefined,
+          quantity: ap.quantity ?? undefined,
+          paxCount: ap.paxCount ?? undefined,
+          currency: ap.currency ?? undefined,
+          serviceDate: ap.serviceDate ?? undefined,
+          guideType: ap.guideType ?? undefined,
+          guideDuration: ap.guideDuration ?? undefined,
+          overnight: ap.overnight ?? undefined,
+        },
+      };
+    });
+  }
+
   private async buildDuplicateSourceWarnings(item: any) {
     const quoteId = item?.quoteId;
     if (!quoteId || typeof (this.prisma as any).quoteItem?.findMany !== 'function') {
