@@ -43,6 +43,7 @@ import type {
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
+import { isActivityServiceTypeCode } from "./activity-service-types"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -1047,10 +1048,12 @@ function mapErpQuoteToRaw(
     // Meal items (serviceType.code === 'MEAL') expose the pricing apply UI; the
     // raw fields below let it build the edit payload without parsing pricingDescription.
     const isMealItem = it.service?.serviceType?.code === "MEAL"
-    // Activity items (serviceType.code === 'ACTIVITY') expose the activity pricing
-    // apply UI (re-price qty/pax/date at the current rate variant). Required ids
-    // are persisted columns; rate-variant selection stays Classic-only.
-    const isActivityItem = it.service?.serviceType?.code === "ACTIVITY"
+    // Activity items expose the activity pricing apply UI (re-price qty/pax/date
+    // at the current rate variant). Detection MUST mirror the backend's
+    // ACTIVITY_SERVICE_TYPE_CODES (e.g. JEEP_TOUR, EXCURSION, …), not just the
+    // literal "ACTIVITY" — otherwise real activity rows get no apply control.
+    // Required ids are persisted columns; rate-variant selection stays Classic-only.
+    const isActivityItem = isActivityServiceTypeCode(it.service?.serviceType?.code)
     // Guide items (serviceType.code === 'GUIDE') expose the guide pricing apply
     // UI (re-price guideType/guideDuration/overnight/quantity). Required inputs
     // are persisted columns (PR #554), so the payload rebuilds without parsing

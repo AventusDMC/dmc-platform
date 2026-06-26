@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { isActivityServiceTypeCode, ACTIVITY_SERVICE_TYPE_CODES } from '../../../lib/activity-service-types';
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -31,8 +32,8 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
       'it.service?.serviceType?.code === "MEAL"',
       'customServiceName: isMealItem ? it.customServiceName',
       'isMeal: asBool(r.isMeal)',
-      // activity (new)
-      'it.service?.serviceType?.code === "ACTIVITY"',
+      // activity — detection mirrors backend ACTIVITY_SERVICE_TYPE_CODES (not exact "ACTIVITY")
+      'const isActivityItem = isActivityServiceTypeCode(it.service?.serviceType?.code)',
       'isActivity: Boolean(it.id) && isActivityItem',
       'activityId: isActivityItem ? it.activityId',
       'activityRateVariantId: isActivityItem ? it.activityRateVariantId',
@@ -53,6 +54,21 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     ]);
     // Required ids/values must come from columns, never parsed from text.
     excludes(adapterSrc, ['pricingDescription.split', '| Meal | PER_PERSON', '| Activity |', 'pricingDescription.match']);
+  });
+
+  it('activity detection recognizes real activity service-type codes (JEEP_TOUR etc.), not just "ACTIVITY"', () => {
+    // The exact codes that broke production validation + the rest of the backend set.
+    for (const code of ['JEEP_TOUR', 'ACTIVITY', 'EXCURSION', 'BOAT_RIDE', 'PETRA_BY_NIGHT', 'SAFARI', 'CRUISE', 'OPTIONAL_EXCURSION', 'SOUND_LIGHT_SHOW']) {
+      assert.ok(isActivityServiceTypeCode(code), `${code} should be detected as an activity`);
+    }
+    // Case/space-insensitive.
+    assert.ok(isActivityServiceTypeCode(' jeep_tour '), 'detection is trimmed + case-insensitive');
+    // Out-of-scope / other kinds must NOT be activities.
+    for (const code of ['MEAL', 'GUIDE', 'HOTEL', 'ENTRANCE_TICKET', 'POINT_TO_POINT', 'EXTERNAL_PACKAGE', '', null, undefined]) {
+      assert.ok(!isActivityServiceTypeCode(code as any), `${code} should NOT be an activity`);
+    }
+    // FE list mirrors the backend ACTIVITY_SERVICE_TYPE_CODES (incl. the JEEP_TOUR case from prod).
+    assert.ok(ACTIVITY_SERVICE_TYPE_CODES.includes('JEEP_TOUR'), 'FE list must include JEEP_TOUR');
   });
 
   it('modal: preview-first label, ack checkbox, gated Apply, error mapping; meal+activity payloads; no fetch', () => {
