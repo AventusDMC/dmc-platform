@@ -189,6 +189,21 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
         classicHref={classicHref}
       />
 
+      {/* Staff guidance for the in-scope V2 pricing apply. Shown only when apply is
+          enabled (role/status-gated handler present). */}
+      {onApplyItemPricing ? (
+        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <Calculator className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <div className="space-y-0.5">
+              <p>V2 pricing apply is supported for Meals, Activities, and Guides only.</p>
+              <p>Hotels, transport, entrance fees, and external packages remain Classic/read-only.</p>
+              <p>Activity pax/quantity changes remain Classic-only.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {experiences.length === 0 ? (
         <StepEmptyState
           icon={Ticket}

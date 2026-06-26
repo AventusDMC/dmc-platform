@@ -162,6 +162,16 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     excludes(experiencesSrc, ['fetch(']);
   });
 
+  it('Experiences step shows the V2 apply scope guidance banner, gated on apply being enabled', () => {
+    contains(experiencesSrc, [
+      'V2 pricing apply is supported for Meals, Activities, and Guides only.',
+      'Hotels, transport, entrance fees, and external packages remain Classic/read-only.',
+      'Activity pax/quantity changes remain Classic-only.',
+      // gated on the apply handler (only shown to apply-capable staff)
+      '{onApplyItemPricing ? (',
+    ]);
+  });
+
   it('builder threads onApplyItemPricing to the Experiences step', () => {
     contains(builderSrc, ['onApplyItemPricing', 'onApplyItemPricing={onApplyItemPricing}']);
   });

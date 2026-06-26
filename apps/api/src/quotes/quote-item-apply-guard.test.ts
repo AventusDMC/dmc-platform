@@ -65,9 +65,10 @@ function makeService(opts: Opts = {}) {
     ticketRateVariant: { findUnique: async () => null },
   };
 
+  const auditCalls: any[] = [];
   const svc = new QuotesService(
     prisma as any,
-    {} as any,
+    { log: async (v: any) => { auditCalls.push(v); } } as any,
     { findMatchingRate: async () => { throw new Error('no transport lookup'); } } as any,
     { evaluate: async () => null } as any,
     new QuotePricingService(),
@@ -91,7 +92,7 @@ function makeService(opts: Opts = {}) {
     return {};
   };
 
-  return { svc, db, calls };
+  return { svc, db, calls, auditCalls };
 }
 
 async function mintToken(svc: any) {
@@ -346,4 +347,42 @@ test('missing quote still returns "Quote not found" via assertQuoteMutationAcces
   enable(true, true);
   const { svc } = makeService();
   await expectHttp(() => svc.previewUpdateQuoteItem('missing-quote-id', ITEM_ID, MEAL_DATA, ACTOR), 400, 'Quote not found');
+});
+
+test('successful apply writes a quote.pricing.apply audit log entry with before/after/delta + payload summary', async () => {
+  enable(true, true);
+  const { svc, calls, auditCalls } = makeService({ resolved: { cost: 150, sell: 180 } });
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, { id: 'user-1', companyId: 'company-1' } as any);
+  assert.equal(out.applied, true);
+  assert.equal(calls.updateItem, 1);
+  const entry = auditCalls.find((e: any) => e.action === 'quote.pricing.apply');
+  assert.ok(entry, 'expected a quote.pricing.apply audit entry');
+  assert.equal(entry.entity, 'quoteItem');
+  assert.equal(entry.entityId, ITEM_ID);
+  assert.equal(entry.actor.id, 'user-1');
+  assert.equal(entry.actor.companyId, 'company-1');
+  const m = entry.metadata;
+  assert.equal(m.quoteId, QUOTE_ID);
+  assert.equal(m.quoteItemId, ITEM_ID);
+  assert.equal(m.serviceType, 'MEAL');
+  assert.equal(m.previousItemTotalCost, 100);
+  assert.equal(m.newItemTotalCost, 150);
+  assert.equal(m.deltaItemCost, 50);
+  assert.equal(m.newItemTotalSell, 180);
+  assert.equal(m.deltaItemSell, 60);
+  assert.equal(m.acknowledgedDelta, true);
+  assert.equal(m.integrityOk, true);
+  assert.equal(m.appliedPayload.customServiceName, 'Lunch'); // from MEAL_DATA, no token leaked
+  assert.ok(!('previewToken' in m.appliedPayload), 'audit payload must not include the preview token');
+});
+
+test('apply still succeeds even if the audit log throws (audit must not block apply)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ resolved: { cost: 150, sell: 180 } });
+  (svc as any).auditService = { log: async () => { throw new Error('audit DB down'); } };
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(calls.updateItem, 1);
 });
