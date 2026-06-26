@@ -3493,9 +3493,19 @@ export class QuotesService {
       };
     }
 
+    // Actor company id is still needed for the preview token's tenant binding
+    // (snapshot.companyId). requireActorCompanyId is a pure getter; assertQuoteMutationAccess
+    // calls it again internally (harmless).
     const actorCompanyId = requireActorCompanyId(actor);
-    const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId },
+    // Authorize identically to the actual write path (updateItem → apply path).
+    // assertQuoteMutationAccess requires an actor company, loads the quote by id,
+    // throws 'Quote not found' when missing, and enforces the latest-revision
+    // guard — the same model used by update/updateItem. The previous hand-rolled
+    // clientCompanyId/brandCompanyId match was STRICTER than the write path and
+    // wrongly rejected internal/operations actors whose company is neither the
+    // quote's client nor brand company (preview said "Quote not found" while the
+    // page loaded and apply would have been allowed).
+    const quote = (await this.assertQuoteMutationAccess(quoteId, actor, {
       select: {
         id: true,
         status: true,
@@ -3513,10 +3523,7 @@ export class QuotesService {
         totalSell: true,
         updatedAt: true,
       },
-    });
-    if (!quote || (quote.clientCompanyId !== actorCompanyId && quote.brandCompanyId !== actorCompanyId)) {
-      throw new BadRequestException('Quote not found');
-    }
+    })) as any;
 
     const statusCode = String(quote.status ?? '').trim().toUpperCase();
     const ALLOWED_PREVIEW_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
