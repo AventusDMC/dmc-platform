@@ -24,6 +24,7 @@ export function BuilderV2Client({
   canViewPricingApplyAudit = false,
   entrancePricingEnabled = false,
   transportPreviewEnabled = false,
+  hotelPreviewEnabled = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -65,6 +66,14 @@ export function BuilderV2Client({
    * so this is a UI affordance gate only.
    */
   transportPreviewEnabled?: boolean
+  /**
+   * Hotel pricing PREVIEW scope — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_HOTEL_PREVIEW flag, default OFF. When false,
+   * hotel rows stay diagnostics/read-only. Preview-ONLY (no apply). The backend
+   * independently enforces QUOTE_PRICING_HOTEL_PREVIEW + role + status, so this is
+   * a UI affordance gate only.
+   */
+  hotelPreviewEnabled?: boolean
 }) {
   const router = useRouter()
 
@@ -422,6 +431,7 @@ export function BuilderV2Client({
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
       transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
+      hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
       entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}

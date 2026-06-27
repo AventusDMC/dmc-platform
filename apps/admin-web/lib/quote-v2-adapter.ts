@@ -386,6 +386,9 @@ function mapHotelCities(raw: RawErpQuote): HotelCityBlock[] {
         // the "Set as primary" action (fallback hotels are always read-only).
         optionId: typeof ro.optionId === "string" ? ro.optionId : undefined,
         editable: asBool(ro.editable),
+        // Matched priced hotel QuoteItem id (target for the read-only hotel pricing
+        // preview). Present only for rows matched to a priced line. Read-only.
+        pricedQuoteItemId: typeof ro.pricedQuoteItemId === "string" ? ro.pricedQuoteItemId : undefined,
         // Read-only diagnostics object — passed through verbatim (built FE-side by
         // mapErpQuoteToRaw via buildHotelDiagnostics). Absent for demo/fallback data.
         diagnostics: isRecord(ro.diagnostics) ? (ro.diagnostics as unknown as HotelSelection["diagnostics"]) : undefined,
@@ -948,6 +951,7 @@ function mapErpQuoteToRaw(
     if (hotelLineByName.has(key)) continue
     const cost = it.totalCost ?? it.totalSell ?? it.sellPrice ?? 0
     hotelLineByName.set(key, {
+      quoteItemId: it.id ?? null,
       contractLinked: Boolean(it.contract),
       contractName: it.contract?.name ?? null,
       roomCategory: it.roomCategory?.name ?? null,
@@ -972,6 +976,7 @@ function mapErpQuoteToRaw(
       // QuoteItem has a linked supplier contract (the only case the diagnostics
       // promote) — otherwise keep the prior default. Uses data already in the GET.
       const optDefaultContract = ho.isPrimary ? "on-request" : "no-contract"
+      const optMatched = matchHotelLine(ho.hotelNameSnapshot ?? "")
       const optDiagnostics = buildHotelDiagnostics({
         selected: Boolean(ho.isPrimary),
         editable: true,
@@ -979,7 +984,7 @@ function mapErpQuoteToRaw(
         category,
         roomingSummary: ho.roomType ?? "—",
         contractStatus: optDefaultContract,
-        matchedLine: matchHotelLine(ho.hotelNameSnapshot ?? ""),
+        matchedLine: optMatched,
       })
       block.options.push({
         id: ho.id ?? `${city}-opt-${block.options.length + 1}`,
@@ -997,6 +1002,9 @@ function mapErpQuoteToRaw(
         // so the V2 step can offer "Set as primary" (PATCH isPrimary).
         optionId: opt.id,
         editable: true,
+        // Matched priced hotel QuoteItem id — target for the read-only hotel
+        // pricing preview (flag-gated). Read-only; never written.
+        pricedQuoteItemId: optMatched?.quoteItemId ?? undefined,
         diagnostics: optDiagnostics,
       })
     }
@@ -1019,6 +1027,7 @@ function mapErpQuoteToRaw(
           // linked contract / room category / rate). When a contract is linked we
           // PROMOTE the row to "contracted" so it stops reading as on-request and
           // drops out of the advisory review list; otherwise it stays "on-request".
+          const fbMatched = matchHotelLine(h.name)
           const fbDiagnostics = buildHotelDiagnostics({
             selected: true,
             editable: false,
@@ -1026,7 +1035,7 @@ function mapErpQuoteToRaw(
             category: "Unknown",
             roomingSummary: "—",
             contractStatus: "on-request",
-            matchedLine: matchHotelLine(h.name),
+            matchedLine: fbMatched,
           })
           block.options.push({
             id: `${city}-${h.name}`,
@@ -1042,6 +1051,9 @@ function mapErpQuoteToRaw(
             cityTax: 0,
             // Synthetic fallback row (no QuoteHotelOption) → always read-only.
             editable: false,
+            // Matched priced hotel QuoteItem id — target for the read-only hotel
+            // pricing preview (flag-gated). Read-only; never written.
+            pricedQuoteItemId: fbMatched?.quoteItemId ?? undefined,
             diagnostics: fbDiagnostics,
           })
         }

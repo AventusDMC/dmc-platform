@@ -88,8 +88,11 @@ describe('Quote Builder V2 — hotel diagnostics (PR #566, read-only)', () => {
       'buildHotelDiagnostics({',
       'const hotelLineByName = new Map<string, MatchedHotelLine>()',
       'contractLinked: Boolean(it.contract)',
-      'matchedLine: matchHotelLine(ho.hotelNameSnapshot ?? "")',
-      'matchedLine: matchHotelLine(h.name)',
+      // matched line is extracted (also reused for the hotel-preview target id)
+      'const optMatched = matchHotelLine(ho.hotelNameSnapshot ?? "")',
+      'const fbMatched = matchHotelLine(h.name)',
+      'matchedLine: optMatched',
+      'matchedLine: fbMatched',
     ]);
     contains(typesSrc, ['diagnostics?: import("./quote-hotel-diagnostics").HotelDiagnostics']);
   });

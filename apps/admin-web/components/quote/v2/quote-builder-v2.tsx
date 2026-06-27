@@ -92,6 +92,13 @@ export interface QuoteBuilderV2Props {
    */
   transportPreviewEnabled?: boolean
   /**
+   * Hotel pricing PREVIEW scope, behind a separate frontend flag (default OFF).
+   * When true (and onPreviewItem is provided), hotel rows with a matched priced
+   * line expose a read-only "Preview hotel pricing" affordance; when false hotel
+   * rows stay diagnostics/read-only. Preview-ONLY — there is no hotel apply.
+   */
+  hotelPreviewEnabled?: boolean
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -133,6 +140,7 @@ export function QuoteBuilderV2({
   onDownloadPdf,
   onPreview,
   onSetPrimaryHotel,
+  hotelPreviewEnabled,
   onUpdateDisplayText,
   onPreviewItem,
   onApplyItemPricing,
@@ -262,6 +270,8 @@ export function QuoteBuilderV2({
             currency={quote.meta.currency}
             onSetPrimary={onSetPrimaryHotel}
             classicHref={`/quotes/${quote.id}/classic`}
+            onPreviewItem={onPreviewItem}
+            hotelPreviewEnabled={hotelPreviewEnabled}
           />
         )
       case "experiences":

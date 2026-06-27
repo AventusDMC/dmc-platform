@@ -8,10 +8,11 @@ import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { ContractBadge } from "../status-badges"
 import { ClassicGuidance } from "./classic-guidance"
+import { PricingPreviewModal } from "./pricing-preview-modal"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { HotelSelection, HotelCityBlock } from "../../../../lib/quote-types"
-import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown } from "lucide-react"
+import type { HotelSelection, HotelCityBlock, PreviewItemHandler } from "../../../../lib/quote-types"
+import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown, Calculator } from "lucide-react"
 
 /** Short read-only label for the diagnostics contract state (distinct from the badge). */
 function contractStateLabel(state?: string): string | null {
@@ -56,6 +57,8 @@ function HotelOption({
   pending,
   disabled,
   onSetPrimary,
+  onPreviewItem,
+  hotelPreviewEnabled,
 }: {
   hotel: HotelSelection
   currency: string
@@ -66,11 +69,19 @@ function HotelOption({
   /** True while any option in the step is saving (locks the other buttons). */
   disabled: boolean
   onSetPrimary: () => void
+  /** Read-only pricing preview handler (role/status-gated by the caller). */
+  onPreviewItem?: PreviewItemHandler
+  /** Hotel pricing preview is behind a separate flag (default OFF). */
+  hotelPreviewEnabled?: boolean
 }) {
   const [showWhy, setShowWhy] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const diagnostics = hotel.diagnostics
   const reasons = diagnostics?.reasons ?? []
   const stateLabel = contractStateLabel(diagnostics?.contractState)
+  // Read-only pricing preview — only when the handler is present, the row has a
+  // matched priced hotel QuoteItem, AND the hotel-preview flag is ON. No apply.
+  const canPreview = Boolean(onPreviewItem && hotel.pricedQuoteItemId && hotelPreviewEnabled)
   return (
     <div>
     <div
@@ -108,6 +119,18 @@ function HotelOption({
         {/* "Selected" is a read-only status label (the current proposal primary).
             "Set as primary" only appears for real alternatives in the same set;
             it changes the proposal's primary hotel and does NOT change pricing. */}
+        {canPreview ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => setPreviewOpen(true)}
+            title="Preview projected hotel pricing — read-only, nothing is saved"
+          >
+            <Calculator className="size-3.5" aria-hidden="true" />
+            Preview hotel pricing
+          </Button>
+        ) : null}
         {hotel.selected ? (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -131,6 +154,17 @@ function HotelOption({
         ) : null}
       </div>
     </div>
+
+      {canPreview ? (
+        <PricingPreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={`${hotel.name} — ${hotel.city}`}
+          currency={currency}
+          quoteItemId={hotel.pricedQuoteItemId!}
+          onPreview={onPreviewItem!}
+        />
+      ) : null}
 
       {/* Read-only diagnostics — explains why a hotel reads as on-request / needs
           review. No edit/apply controls; hotel edits stay in Classic Builder. */}
@@ -176,6 +210,14 @@ export interface HotelsStepProps {
   onSetPrimary?: (optionId: string, hotelOptionId: string) => void | Promise<void>
   /** Link to the classic builder for the Classic-only hotel edits. */
   classicHref?: string
+  /** When provided (role/status-gated), rows expose a read-only pricing preview. */
+  onPreviewItem?: PreviewItemHandler
+  /**
+   * Hotel pricing PREVIEW scope (separate flag, default OFF). When false, hotel
+   * rows stay diagnostics/read-only with no preview affordance. Preview-ONLY —
+   * there is never an apply/confirm control for hotels.
+   */
+  hotelPreviewEnabled?: boolean
 }
 
 /**
@@ -193,7 +235,7 @@ function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
   return eligible
 }
 
-export function HotelsStep({ cities, currency, onSetPrimary, classicHref }: HotelsStepProps) {
+export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPreviewItem, hotelPreviewEnabled }: HotelsStepProps) {
   const canEdit = Boolean(onSetPrimary)
   // Only claim "Set primary only" when at least one city actually exposes a
   // "Set as primary" action (2+ editable real options in the same set). Fallback
@@ -303,6 +345,8 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref }: Hote
                           pending={pendingId === hotel.id}
                           disabled={pendingId !== null}
                           onSetPrimary={() => handleSetPrimary(hotel)}
+                          onPreviewItem={onPreviewItem}
+                          hotelPreviewEnabled={hotelPreviewEnabled}
                         />
                         {error && error.id === hotel.id ? (
                           <p

@@ -4,21 +4,23 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
-import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled } from './quote-pricing-preview-flags';
+import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled, isQuotePricingHotelPreviewEnabled } from './quote-pricing-preview-flags';
 
 const ACTOR = { companyId: 'company-1' } as any;
 
 function enablePreview() {
   process.env.QUOTE_PRICING_PREVIEW = '1';
-  // Entrance + transport previews are separate scopes (default OFF); reset them
-  // here so only the tests that opt in exercise those branches.
+  // Entrance + transport + hotel previews are separate scopes (default OFF); reset
+  // them here so only the tests that opt in exercise those branches.
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
+  delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
 }
 function disablePreview() {
   delete process.env.QUOTE_PRICING_PREVIEW;
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
+  delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
 }
 
 type Opts = {
@@ -136,6 +138,11 @@ test('flag default is OFF', () => {
 test('transport preview flag default is OFF', () => {
   disablePreview();
   assert.equal(isQuotePricingTransportPreviewEnabled(), false);
+});
+
+test('hotel preview flag default is OFF', () => {
+  disablePreview();
+  assert.equal(isQuotePricingHotelPreviewEnabled(), false);
 });
 
 test('flag OFF → not available, no compute', async () => {
@@ -270,6 +277,63 @@ test('transport preview is safe when pricing cannot be resolved: warnings, prici
   assert.equal(res.pricingBasis, null);
   assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
   assert.equal(res.previewToken, undefined); // unresolvable → no token
+  assert.equal(writes.length, 0);
+});
+
+test('hotel preview is BLOCKED out-of-scope when the hotel flag is OFF (even with global preview ON)', async () => {
+  enablePreview(); // global QUOTE_PRICING_PREVIEW ON, hotel flag left OFF
+  const hotelItem = { ...baseItem, hotelId: 'hotel-1' };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: hotelItem,
+    resolveStub: async () => {
+      throw new Error('resolveQuoteItemValues must not run for a blocked hotel preview');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+  assert.equal(res.blocked, true);
+  assert.equal(res.blockedReason, 'out_of_scope');
+  assert.equal(res.previewToken, undefined); // no token issued
+  assert.equal(writes.length, 0); // nothing written
+});
+
+test('hotel preview WORKS when the hotel flag is ON: pure projection, no writes', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_HOTEL_PREVIEW = '1';
+  const hotelItem = { ...baseItem, hotelId: 'hotel-1', totalCost: 300, totalSell: 360 };
+  const HOTEL_BASIS = 'Contractual Agreement 2026 | Low Season | Deluxe Room | DBL | HB | Rate USD 99 x 3 nights';
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: hotelItem,
+    resolveStub: async () => ({ data: { totalCost: 297, totalSell: 356.4, contractId: 'c-1', pricingDescription: HOTEL_BASIS } }),
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, true);
+  assert.deepEqual(res.item.current, { totalCost: 300, totalSell: 360 });
+  assert.deepEqual(res.item.projected, { totalCost: 297, totalSell: 356.4 });
+  assert.equal(res.pricingBasis, HOTEL_BASIS); // rate source / basis surfaced
+  assert.equal(writes.length, 0); // pure dry-run
+});
+
+test('hotel preview is safe when pricing cannot be resolved (on-request/fallback): warning, not a crash', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_HOTEL_PREVIEW = '1';
+  const hotelItem = { ...baseItem, hotelId: 'hotel-1' };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: hotelItem,
+    resolveStub: async () => {
+      throw new Error('No matching hotel rate for season');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, false);
+  assert.equal(res.item.projected, null);
+  assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
+  assert.equal(res.writes, undefined); // sanity
   assert.equal(writes.length, 0);
 });
 
