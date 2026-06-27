@@ -43,7 +43,7 @@ import type {
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
-import { classifyItemApplyKind } from "./quote-item-apply-kind"
+import { classifyItemApplyKind, entranceDisplayLabel } from "./quote-item-apply-kind"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -1066,10 +1066,13 @@ function mapErpQuoteToRaw(
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
       city: "—",
-      // Entrance items display AS Entrance/Jordan-Pass (not the underlying
-      // activity/service type), so the row's kind chip matches its apply control.
+      // Entrance items display AS their actual site name (e.g. "Bethany / Baptism
+      // Site") when available, else the generic Entrance/Jordan-Pass fallback — not
+      // the underlying activity/service type — so the row's kind chip matches its
+      // apply control. siteName comes from the entranceFee relation now included in
+      // the quote-item load.
       type: isEntranceItem
-        ? it.entranceFee?.siteName ?? "Entrance / Jordan Pass"
+        ? entranceDisplayLabel(it.entranceFee?.siteName)
         : it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
       day: formatQuoteDate(it.serviceDate),
       status: sell > 0 ? "complete" : "partial",
