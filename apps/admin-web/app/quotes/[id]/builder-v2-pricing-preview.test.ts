@@ -64,7 +64,6 @@ describe('Quote Builder V2 — read-only pricing preview modal', () => {
       contains(src, [
         'PricingPreviewModal',
         'onPreviewItem',
-        'Preview pricing',
         // existing features retained
         'EditInClassicLink',
         'DisplayTextEditor',
@@ -72,6 +71,11 @@ describe('Quote Builder V2 — read-only pricing preview modal', () => {
       // The step itself performs no mutation fetch.
       excludes(src, ['fetch(']);
     }
+    // Experiences keeps the generic read-only preview label.
+    contains(experiencesSrc, ['Preview pricing']);
+    // Transport preview is now behind its own flag (PR #565) and uses a transport-
+    // specific label; default OFF means transport rows are read-only.
+    contains(transportSrc, ['Preview transport pricing', 'transportPreviewEnabled']);
   });
 
   it('builder threads onPreviewItem to Experiences + Transport (read-only)', () => {

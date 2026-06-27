@@ -55,6 +55,7 @@ import {
   isQuotePricingPreviewEnabled,
   isQuotePricingEntrancePreviewEnabled,
   isQuotePricingEntranceApplyEnabled,
+  isQuotePricingTransportPreviewEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -3569,6 +3570,24 @@ export class QuotesService {
       };
     }
 
+    // Transport PREVIEW scope gate (separate flag, default OFF). Transport items
+    // are detected by their persisted transport keys. When the transport preview
+    // flag is OFF, a transport item preview is blocked as out-of-scope (no compute,
+    // no token) even though the global QUOTE_PRICING_PREVIEW flag is ON — so merging
+    // this feature does not expose transport preview automatically. Meal/activity/
+    // guide/entrance are unaffected. Transport stays preview-ONLY: even when this
+    // flag is ON, no apply token is issued for transport (see the snapshot override
+    // at the return below) and the apply guard independently rejects transport.
+    const isTransportPreviewItem = Boolean(
+      existingItem.transportServiceTypeId || existingItem.routeId || existingItem.touringRouteId,
+    );
+    if (isTransportPreviewItem && !isQuotePricingTransportPreviewEnabled()) {
+      return {
+        response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
+        snapshot: null,
+      };
+    }
+
     // Option-scoped concurrency stamps for the preview token (detect sibling
     // add/delete/edit between preview and apply).
     const scopeAgg = await this.prisma.quoteItem.aggregate({
@@ -3838,6 +3857,11 @@ export class QuotesService {
       quoteStatus: statusCode,
     };
 
+    // Transport is preview-ONLY. We do NOT special-case the token here: the apply
+    // path's supported-type gate (isMealActivityGuide || isEntranceApply) already
+    // rejects transport items as out of scope — the SAME guardrail that blocks
+    // hotel/external/entrance apply — so a transport preview token (if issued) is
+    // inert and apply scope is not expanded. See quote-item-apply-guard.test.ts.
     return { response, snapshot };
   }
 

@@ -337,11 +337,19 @@ test('secret safety: production without QUOTE_PREVIEW_TOKEN_SECRET → blocked, 
 
 test('unsupported type (transport) apply → 400 out-of-scope, no write', async () => {
   enable(true, true);
-  const { svc, calls } = makeService({ transport: true, service: { category: 'transport', serviceType: { code: 'POINT_TO_POINT', name: 'Transfer' } } });
-  const token = await mintToken(svc);
-  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
-  assert.equal(calls.updateItem, 0);
-  assert.equal(calls.writes, 0);
+  // Transport PREVIEW is behind its own flag (PR #565). Turn it ON so the preview
+  // mints a token — then prove apply still rejects transport at the supported-type
+  // gate (transport preview is inert for apply; apply scope is NOT expanded).
+  process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
+  try {
+    const { svc, calls } = makeService({ transport: true, service: { category: 'transport', serviceType: { code: 'POINT_TO_POINT', name: 'Transfer' } } });
+    const token = await mintToken(svc);
+    await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+    assert.equal(calls.updateItem, 0);
+    assert.equal(calls.writes, 0);
+  } finally {
+    delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
+  }
 });
 
 test('guide item apply succeeds (allowlist broadened to meal + activity + guide, PR B)', async () => {

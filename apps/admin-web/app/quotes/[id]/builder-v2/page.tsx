@@ -64,6 +64,13 @@ export default async function QuoteBuilderV2Page({
   // flags + role + status, so this only controls the UI affordance.
   const entrancePricingEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_ENTRANCE_PRICING === 'true'
 
+  // Transport pricing PREVIEW scope — a separate, build-time public flag, default
+  // OFF. When not 'true', transport rows stay fully Classic/read-only (no preview
+  // affordance). This is preview-ONLY (no apply). The backend independently enforces
+  // its own QUOTE_PRICING_TRANSPORT_PREVIEW flag + role + status and blocks transport
+  // preview as out-of-scope when its flag is OFF, so this only controls the UI.
+  const transportPreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_TRANSPORT_PREVIEW === 'true'
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -74,6 +81,7 @@ export default async function QuoteBuilderV2Page({
       canPreviewPricing={canPreviewPricing}
       canViewPricingApplyAudit={canViewPricingApplyAudit}
       entrancePricingEnabled={entrancePricingEnabled}
+      transportPreviewEnabled={transportPreviewEnabled}
     />
   )
 }

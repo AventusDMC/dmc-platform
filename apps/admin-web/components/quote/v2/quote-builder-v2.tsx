@@ -83,6 +83,13 @@ export interface QuoteBuilderV2Props {
    */
   entrancePricingEnabled?: boolean
   /**
+   * Transport pricing PREVIEW scope, behind a separate frontend flag (default OFF).
+   * When true (and onPreviewItem is provided), transport rows expose a read-only
+   * "Preview transport pricing" affordance; when false transport rows stay fully
+   * Classic/read-only. Preview-ONLY — there is no transport apply.
+   */
+  transportPreviewEnabled?: boolean
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -129,6 +136,7 @@ export function QuoteBuilderV2({
   onApplyItemPricing,
   onLoadApplyAudit,
   entrancePricingEnabled,
+  transportPreviewEnabled,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -274,6 +282,7 @@ export function QuoteBuilderV2({
             onUpdateDisplayText={onUpdateDisplayText}
             classicHref={`/quotes/${quote.id}/classic`}
             onPreviewItem={onPreviewItem}
+            transportPreviewEnabled={transportPreviewEnabled}
           />
         )
       case "passengers":

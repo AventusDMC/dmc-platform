@@ -23,6 +23,7 @@ export function BuilderV2Client({
   canPreviewPricing = false,
   canViewPricingApplyAudit = false,
   entrancePricingEnabled = false,
+  transportPreviewEnabled = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -56,6 +57,14 @@ export function BuilderV2Client({
    * entrance flags + role + status, so this is a UI affordance gate only.
    */
   entrancePricingEnabled?: boolean
+  /**
+   * Transport pricing PREVIEW scope — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_TRANSPORT_PREVIEW flag, default OFF. When false,
+   * transport rows stay fully Classic/read-only. Preview-ONLY (no apply). The
+   * backend independently enforces QUOTE_PRICING_TRANSPORT_PREVIEW + role + status,
+   * so this is a UI affordance gate only.
+   */
+  transportPreviewEnabled?: boolean
 }) {
   const router = useRouter()
 
@@ -412,6 +421,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
+      transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
       entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
