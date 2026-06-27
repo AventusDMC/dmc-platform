@@ -44,6 +44,7 @@ import type {
 import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
 import { classifyItemApplyKind, entranceDisplayLabel } from "./quote-item-apply-kind"
+import { buildHotelDiagnostics, type MatchedHotelLine } from "./quote-hotel-diagnostics"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -385,6 +386,9 @@ function mapHotelCities(raw: RawErpQuote): HotelCityBlock[] {
         // the "Set as primary" action (fallback hotels are always read-only).
         optionId: typeof ro.optionId === "string" ? ro.optionId : undefined,
         editable: asBool(ro.editable),
+        // Read-only diagnostics object — passed through verbatim (built FE-side by
+        // mapErpQuoteToRaw via buildHotelDiagnostics). Absent for demo/fallback data.
+        diagnostics: isRecord(ro.diagnostics) ? (ro.diagnostics as unknown as HotelSelection["diagnostics"]) : undefined,
       }
     })
     return { city, nights: asNumber(r.nights), options }
@@ -668,8 +672,14 @@ interface ApiQuoteItem {
   transportServiceTypeId?: string | null
   serviceDate?: string | null
   totalSell?: number | null
+  totalCost?: number | null
+  nightCount?: number | null
   sellPrice?: number | null
   pricingDescription?: string | null
+  // Hotel-line diagnostics inputs (already returned by the GET include: contract,
+  // roomCategory; totalCost/nightCount are scalars). Read-only — never written.
+  contract?: { id?: string | null; name?: string | null } | null
+  roomCategory?: { name?: string | null } | null
   // Raw meal fields (persisted columns, serialized by the GET item spread) used
   // to rebuild a meal edit payload WITHOUT parsing pricingDescription.
   // customServiceName is the stored meal name (PR #551); unitCost is
@@ -925,6 +935,29 @@ function mapErpQuoteToRaw(
     }
   })
 
+  // ---- hotel priced lines (read-only diagnostics) keyed by hotel name ----
+  // Hotel QuoteItems carry the authoritative linked contract / room category /
+  // rate that the Hotels-step rows (sourced from option-sets or the itinerary
+  // fallback) do not. Match by hotel name (case-insensitive) so V2 can EXPLAIN
+  // why a selected hotel reads as on-request without changing pricing/readiness.
+  // Read-only; the GET already returns these fields (contract, roomCategory).
+  const hotelLineByName = new Map<string, MatchedHotelLine>()
+  for (const it of q.quoteItems ?? []) {
+    if (!it.hotelId || !it.hotel?.name) continue
+    const key = it.hotel.name.trim().toLowerCase()
+    if (hotelLineByName.has(key)) continue
+    const cost = it.totalCost ?? it.totalSell ?? it.sellPrice ?? 0
+    hotelLineByName.set(key, {
+      contractLinked: Boolean(it.contract),
+      contractName: it.contract?.name ?? null,
+      roomCategory: it.roomCategory?.name ?? null,
+      hasRate: Number(cost) > 0,
+      pricingSummary: it.pricingDescription ?? null,
+    })
+  }
+  const matchHotelLine = (name: string): MatchedHotelLine | null =>
+    hotelLineByName.get((name || "").trim().toLowerCase()) ?? null
+
   // ---- hotels (from quoteOptions.hotelOptions, grouped by city) ----
   const cityMap = new Map<string, { city: string; nights: number; options: unknown[] }>()
   for (const opt of q.quoteOptions ?? []) {
@@ -954,6 +987,16 @@ function mapErpQuoteToRaw(
         // so the V2 step can offer "Set as primary" (PATCH isPrimary).
         optionId: opt.id,
         editable: true,
+        // Read-only diagnostics (display-only; does not change contractStatus).
+        diagnostics: buildHotelDiagnostics({
+          selected: Boolean(ho.isPrimary),
+          editable: true,
+          hasOptionSet: true,
+          category,
+          roomingSummary: ho.roomType ?? "—",
+          contractStatus: ho.isPrimary ? "on-request" : "no-contract",
+          matchedLine: matchHotelLine(ho.hotelNameSnapshot ?? ""),
+        }),
       })
     }
   }
@@ -985,6 +1028,18 @@ function mapErpQuoteToRaw(
             cityTax: 0,
             // Synthetic fallback row (no QuoteHotelOption) → always read-only.
             editable: false,
+            // Read-only diagnostics from the matched priced hotel line (which DOES
+            // carry the linked contract / room category / rate). Explains why the
+            // fallback row reads as on-request even though it may be contracted.
+            diagnostics: buildHotelDiagnostics({
+              selected: true,
+              editable: false,
+              hasOptionSet: false,
+              category: "Unknown",
+              roomingSummary: "—",
+              contractStatus: "on-request",
+              matchedLine: matchHotelLine(h.name),
+            }),
           })
         }
       }

@@ -109,6 +109,13 @@ export interface HotelSelection {
    * changed. Itinerary-fallback hotels are always read-only (false).
    */
   editable: boolean
+  /**
+   * Read-only diagnostics explaining why this hotel reads as on-request / needs
+   * review (linked contract, rate, room category, source). Display-only — never
+   * affects pricing, the contract badge, or proposal readiness. See
+   * `buildHotelDiagnostics` in `@/lib/quote-hotel-diagnostics`.
+   */
+  diagnostics?: import("./quote-hotel-diagnostics").HotelDiagnostics
 }
 
 /** Hotel options grouped by overnight city. */
