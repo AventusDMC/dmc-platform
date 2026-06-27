@@ -43,7 +43,7 @@ import type {
 } from "./quote-types"
 import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
-import { isActivityServiceTypeCode } from "./activity-service-types"
+import { classifyItemApplyKind } from "./quote-item-apply-kind"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -1051,29 +1051,26 @@ function mapErpQuoteToRaw(
 
     // everything else = experience / entrance / service
     const externalPackage = isExternalPackageItem(it)
-    // Meal items (serviceType.code === 'MEAL') expose the pricing apply UI; the
-    // raw fields below let it build the edit payload without parsing pricingDescription.
-    const isMealItem = it.service?.serviceType?.code === "MEAL"
-    // Activity items expose the activity pricing apply UI (re-price qty/pax/date
-    // at the current rate variant). Detection MUST mirror the backend's
-    // ACTIVITY_SERVICE_TYPE_CODES (e.g. JEEP_TOUR, EXCURSION, …), not just the
-    // literal "ACTIVITY" — otherwise real activity rows get no apply control.
-    // Required ids are persisted columns; rate-variant selection stays Classic-only.
-    const isActivityItem = isActivityServiceTypeCode(it.service?.serviceType?.code)
-    // Guide items (serviceType.code === 'GUIDE') expose the guide pricing apply
-    // UI (re-price guideType/guideDuration/overnight/quantity). Required inputs
-    // are persisted columns (PR #554), so the payload rebuilds without parsing
-    // pricingDescription.
-    const isGuideItem = it.service?.serviceType?.code === "GUIDE"
-    // Entrance / Jordan-Pass items are identified by entranceFeeId (the JP coverage
-    // key, mirroring the backend). Apply re-prices + re-syncs JP coverage via the
-    // existing recalc path; it is gated by a separate frontend flag in the step.
-    const isEntranceItem = Boolean(it.entranceFeeId)
+    // Pricing-apply kind (single source of truth). entranceFeeId is the DOMINANT
+    // signal: an item linked to an EntranceFee is ALWAYS Entrance/Jordan-Pass and
+    // never Meal/Activity/Guide, even when its service-type code/name looks like an
+    // activity. Items without entranceFeeId fall back to service-type codes, so
+    // real activities (JEEP_TOUR etc.) stay Activity. See classifyItemApplyKind.
+    const {
+      isEntrance: isEntranceItem,
+      isMeal: isMealItem,
+      isActivity: isActivityItem,
+      isGuide: isGuideItem,
+    } = classifyItemApplyKind(it)
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
       city: "—",
-      type: it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
+      // Entrance items display AS Entrance/Jordan-Pass (not the underlying
+      // activity/service type), so the row's kind chip matches its apply control.
+      type: isEntranceItem
+        ? it.entranceFee?.siteName ?? "Entrance / Jordan Pass"
+        : it.service?.serviceType?.name ?? (it.activityId ? "Activity" : "Service"),
       day: formatQuoteDate(it.serviceDate),
       status: sell > 0 ? "complete" : "partial",
       amount: sell,

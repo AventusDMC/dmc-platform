@@ -104,19 +104,26 @@ export function QuoteSummarySidebar({
           </h3>
           <span className="font-heading text-sm font-semibold text-primary">{readiness}%</span>
         </div>
+        {/* The percentage is the required-steps checklist (it gates "Mark as Sent").
+            The items below are a separate, advisory review list — they don't change
+            this percentage or block sending — so 100% can coexist with review items. */}
+        <p className="mt-1 text-xs text-muted-foreground">Required-steps checklist</p>
         <Progress value={readiness} className="mt-3 h-2" />
 
         <div className="mt-4">
           {ready ? (
             <p className="flex items-center gap-2 text-sm text-success">
               <CheckCircle2 className="size-4" aria-hidden="true" />
-              All blocking items resolved.
+              No items to review.
             </p>
           ) : (
             <>
               <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <AlertTriangle className="size-3.5 text-warning-foreground" aria-hidden="true" />
-                Blocking items ({blockingItems.length})
+                Items to review ({blockingItems.length})
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Advisory — these don&apos;t affect the checklist above or block sending.
               </p>
               <ul className="mt-2 space-y-1">
                 {blockingItems.map((item) => (
