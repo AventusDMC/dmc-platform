@@ -7,6 +7,7 @@ import { QuoteBuilderShell } from "./quote-builder-shell"
 import { QuoteHeaderSummary } from "./quote-header-summary"
 import { QuoteWorkflowStepper } from "./quote-workflow-stepper"
 import { QuoteSummarySidebar } from "./quote-summary-sidebar"
+import { V2ReadinessPanel } from "./v2-readiness-panel"
 import {
   QuoteBuilderLoading,
   QuoteBuilderEmpty,
@@ -28,6 +29,7 @@ import {
   getOutstandingItems,
   getReadiness,
 } from "../../../lib/quote-helpers"
+import { buildV2ReadinessAudit } from "../../../lib/quote-v2-readiness"
 import type { Quote, StepId } from "../../../lib/quote-types"
 
 export interface QuoteBuilderV2Props {
@@ -164,6 +166,7 @@ export function QuoteBuilderV2({
       componentStatuses: getComponentStatuses(quote),
       nextAction: getNextAction(quote),
       outstanding: getOutstandingItems(quote),
+      v2Readiness: buildV2ReadinessAudit(quote),
     }
   }, [quote])
 
@@ -377,7 +380,7 @@ export function QuoteBuilderV2({
             </div>
           </div>
 
-          <aside className="xl:sticky xl:top-[120px] xl:h-fit">
+          <aside className="space-y-4 xl:sticky xl:top-[120px] xl:h-fit">
             <QuoteSummarySidebar
               pricing={quote.pricing}
               readiness={insights.readiness}
@@ -386,6 +389,8 @@ export function QuoteBuilderV2({
               nextAction={insights.nextAction}
               onNavigate={setCurrent}
             />
+            {/* Read-only "can this quote be handled in V2?" audit (informational). */}
+            <V2ReadinessPanel audit={insights.v2Readiness} />
           </aside>
         </div>
       </div>
