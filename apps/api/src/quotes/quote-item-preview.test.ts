@@ -225,11 +225,14 @@ test('transport preview WORKS when the transport flag is ON: pure projection, no
     totalCost: 200,
     totalSell: 240,
   };
+  const TRANSPORT_BASIS = 'Point To Point | Amman → Petra | Sedan | ROUTE_TRANSFER | Per vehicle | Supplier transport discount 25% applied';
   const { service, writes } = makeService({
     quote: baseQuote,
     item: transportItem,
     // Pure resolve stub stands in for transportPricingService re-resolution.
-    resolveStub: async () => ({ data: { totalCost: 260, totalSell: 312, appliedVehicleRateId: 'vr-2' } }),
+    resolveStub: async () => ({
+      data: { totalCost: 260, totalSell: 312, appliedVehicleRateId: 'vr-2', pricingDescription: TRANSPORT_BASIS },
+    }),
   });
   const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
 
@@ -238,11 +241,36 @@ test('transport preview WORKS when the transport flag is ON: pure projection, no
   assert.deepEqual(res.item.current, { totalCost: 200, totalSell: 240 });
   assert.deepEqual(res.item.projected, { totalCost: 260, totalSell: 312 });
   assert.deepEqual(res.item.delta, { totalCost: 60, totalSell: 72 });
+  // Pricing basis / reason is surfaced from the resolver's pricingDescription.
+  assert.equal(res.pricingBasis, TRANSPORT_BASIS);
   // Pure dry-run: nothing persisted (no quote/item/totals mutation).
   assert.equal(writes.length, 0);
   // Transport is preview-ONLY. A token may be issued (same as any non-entrance
   // item), but it is INERT: the apply path's supported-type gate rejects transport
   // items as out of scope — proven by quote-item-apply-guard.test.ts.
+});
+
+test('transport preview is safe when pricing cannot be resolved: warnings, pricingResolvable=false, no basis, no write', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
+  const transportItem = { ...baseItem, routeId: 'r1', serviceDate: new Date('2026-07-01T00:00:00.000Z') };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: transportItem,
+    // Simulate an unresolvable rate — the resolver throws; preview must NOT throw.
+    resolveStub: async () => {
+      throw new Error('No matching transport rate');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, false);
+  assert.equal(res.item.projected, null);
+  assert.equal(res.pricingBasis, null);
+  assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
+  assert.equal(res.previewToken, undefined); // unresolvable → no token
+  assert.equal(writes.length, 0);
 });
 
 test('non-entrance edit: projects item + quote totals via delta, persists nothing', async () => {

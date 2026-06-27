@@ -5,6 +5,8 @@ import { describe, it } from 'node:test';
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
 const transportSrc = read('../../../components/quote/v2/steps/transport-step.tsx');
+const modalSrc = read('../../../components/quote/v2/steps/pricing-preview-modal.tsx');
+const typesSrc = read('../../../lib/quote-types.ts');
 const builderSrc = read('../../../components/quote/v2/quote-builder-v2.tsx');
 const clientSrc = read('./builder-v2/builder-v2-client.tsx');
 const pageSrc = read('./builder-v2/page.tsx');
@@ -60,6 +62,19 @@ describe('Quote Builder V2 — transport pricing preview (PR #565, preview-only)
 
   it('client preview handler posts to the read-only /preview endpoint (never apply)', () => {
     contains(clientSrc, ['/api/quotes/${quote.id}/items/${quoteItemId}/preview']);
+  });
+
+  it('preview modal displays the pricing basis/reason when returned, and still shows warnings', () => {
+    // pricingBasis is a typed field on the read-only preview result.
+    contains(typesSrc, ['pricingBasis?: string | null']);
+    contains(modalSrc, [
+      'result.pricingBasis',
+      'Pricing basis',
+      // warnings + the not-resolvable banner are still rendered
+      'result.pricingResolvable === false',
+      'Pricing could not be fully resolved for this item.',
+      'result.warnings',
+    ]);
   });
 
   it('V2 default flag is untouched (independent of the transport flag)', () => {

@@ -169,6 +169,14 @@ export function PricingPreviewModal({
               {result.quote ? (
                 <Row label="Quote totals" current={result.quote.current} projected={result.quote.projected} delta={result.quote.delta} currency={currency} />
               ) : null}
+              {result.pricingBasis ? (
+                <div className="rounded-md border border-border">
+                  <div className="border-b border-border bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Pricing basis
+                  </div>
+                  <div className="px-3 py-2 text-xs text-foreground break-words">{result.pricingBasis}</div>
+                </div>
+              ) : null}
               {typeof result.affectedItemCount === "number" ? (
                 <div className="text-xs text-muted-foreground">
                   Affected items: {result.affectedItemCount}

@@ -3489,6 +3489,9 @@ export class QuotesService {
       jordanPass: null as null | Record<string, unknown>,
       warnings: [] as string[],
       reResolved: { rates: false, fx: false },
+      // Human-readable pricing basis / reason (resolver pricingDescription).
+      // Display-only; populated for resolvable non-entrance items (e.g. transport).
+      pricingBasis: null as string | null,
     };
 
     // Flag gate — when OFF the endpoint is not available and computes nothing.
@@ -3658,6 +3661,8 @@ export class QuotesService {
     let itemSellDelta = 0;
     let jordanPass: Record<string, unknown> | null = null;
     let ratesReResolved = false;
+    // Human-readable pricing basis from the resolver (transport/meal/activity/guide).
+    let pricingBasis: string | null = null;
     let resolvedRateRefs: Record<string, string | null> = {};
     let snapFxRate: number | null = null;
     let snapFxRateDate: string | null = null;
@@ -3785,6 +3790,7 @@ export class QuotesService {
             jordanPass: null,
             warnings,
             reResolved: { rates: false, fx: false },
+            pricingBasis: null,
           },
           snapshot: null,
         };
@@ -3792,6 +3798,14 @@ export class QuotesService {
 
       projectedItemCost = Number(values.data.totalCost ?? 0);
       projectedItemSell = Number(values.data.totalSell ?? 0);
+      // Surface the resolver's pricing basis / reason (the persisted
+      // pricingDescription) for display — e.g. transport: service type | route |
+      // vehicle | classification | per-vehicle/capacity | supplier discount. Never
+      // used for pricing; display-only.
+      pricingBasis =
+        typeof values.data.pricingDescription === 'string' && values.data.pricingDescription.trim()
+          ? values.data.pricingDescription
+          : null;
       itemCostDelta = round(projectedItemCost - currentItemCost);
       itemSellDelta = round(projectedItemSell - currentItemSell);
       quoteCostDelta = affectsBaseTotals ? itemCostDelta : 0;
@@ -3834,6 +3848,7 @@ export class QuotesService {
       jordanPass,
       warnings,
       reResolved: { rates: ratesReResolved, fx: false },
+      pricingBasis,
     };
 
     const snapshot = {

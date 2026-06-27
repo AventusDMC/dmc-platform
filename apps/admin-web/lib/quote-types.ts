@@ -407,6 +407,13 @@ export interface PricingPreviewResult {
   jordanPass?: { changed: boolean; affectedEntranceItems: unknown[] } | null
   warnings?: string[]
   reResolved?: { rates: boolean; fx: boolean }
+  /**
+   * Human-readable pricing basis / reason from the resolver (the persisted
+   * `pricingDescription`), e.g. for transport: "Point To Point | Amman → Petra |
+   * Sedan | ROUTE_TRANSFER | Per vehicle | Supplier transport discount 25% applied".
+   * Display-only; null when not available. Never used for pricing/classification.
+   */
+  pricingBasis?: string | null
 }
 
 /** Requests a pricing preview for an existing item edit. Read-only (no apply). */
