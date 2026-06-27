@@ -368,7 +368,22 @@ export class AuthService {
   }
 
   private getSessionSecret() {
-    return process.env.DMC_AUTH_SESSION_SECRET || 'dmc-local-dev-session-secret';
+    const configured = process.env.DMC_AUTH_SESSION_SECRET?.trim();
+    if (configured) {
+      return configured;
+    }
+
+    // Fail closed in production: refuse to sign/verify sessions with the public
+    // in-repo dev fallback. Without this, a missing DMC_AUTH_SESSION_SECRET in
+    // production would silently fall back to a secret anyone can read from the
+    // source, letting attackers forge admin session tokens.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'DMC_AUTH_SESSION_SECRET is not configured. Refusing to use the insecure dev session secret in production.',
+      );
+    }
+
+    return 'dmc-local-dev-session-secret';
   }
 
   private extractBearerToken(value?: string) {
