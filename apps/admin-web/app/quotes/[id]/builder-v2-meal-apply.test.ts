@@ -11,6 +11,7 @@ const experiencesSrc = read('../../../components/quote/v2/steps/experiences-step
 const builderSrc = read('../../../components/quote/v2/quote-builder-v2.tsx');
 const clientSrc = read('./builder-v2/builder-v2-client.tsx');
 const adapterSrc = read('../../../lib/quote-v2-adapter.ts');
+const applyKindSrc = read('../../../lib/quote-item-apply-kind.ts');
 const pageSrc = read('./builder-v2/page.tsx');
 
 function contains(src: string, fragments: string[]) {
@@ -26,21 +27,31 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     excludes(proxySrc, ["method: 'PATCH'", "method: 'DELETE'", "method: 'PUT'"]);
   });
 
+  it('classifier module keys meal/activity/guide on service-type code, entrance on entranceFeeId', () => {
+    contains(applyKindSrc, [
+      // meal + guide keyed on service-type code
+      'it.service?.serviceType?.code === "MEAL"',
+      'it.service?.serviceType?.code === "GUIDE"',
+      // activity — detection mirrors backend ACTIVITY_SERVICE_TYPE_CODES (not exact
+      // "ACTIVITY"), and is suppressed when the item is an entrance (entranceFeeId).
+      'isActivity: !isEntrance && isActivityServiceTypeCode(it.service?.serviceType?.code)',
+    ]);
+  });
+
   it('adapter surfaces RAW meal + activity fields (no pricingDescription parsing)', () => {
     contains(adapterSrc, [
+      // adapter delegates kind classification to the shared leaf module
+      'classifyItemApplyKind(it)',
       // meal
-      'it.service?.serviceType?.code === "MEAL"',
       'customServiceName: isMealItem ? it.customServiceName',
       'isMeal: asBool(r.isMeal)',
-      // activity — detection mirrors backend ACTIVITY_SERVICE_TYPE_CODES (not exact "ACTIVITY")
-      'const isActivityItem = isActivityServiceTypeCode(it.service?.serviceType?.code)',
+      // activity
       'isActivity: Boolean(it.id) && isActivityItem',
       'activityId: isActivityItem ? it.activityId',
       'activityRateVariantId: isActivityItem ? it.activityRateVariantId',
       'serviceId: isActivityItem || isGuideItem ? it.serviceId',
       'isActivity: asBool(r.isActivity)',
       // guide (PR C)
-      'it.service?.serviceType?.code === "GUIDE"',
       'isGuide: Boolean(it.id) && isGuideItem',
       'guideType: isGuideItem ? it.guideType',
       'guideDuration: isGuideItem ? it.guideDuration',
@@ -280,8 +291,9 @@ describe('Quote Builder V2 — read-only pricing apply audit viewer', () => {
 
 describe('Quote Builder V2 — entrance / Jordan Pass pricing apply (separate flag)', () => {
   it('adapter surfaces RAW entrance fields (no pricingDescription parsing); entrance keyed on entranceFeeId', () => {
+    // entrance is keyed on entranceFeeId (the dominant apply-kind signal) in the classifier
+    contains(applyKindSrc, ['const isEntrance = Boolean(it.entranceFeeId)']);
     contains(adapterSrc, [
-      'const isEntranceItem = Boolean(it.entranceFeeId)',
       'isEntrance: Boolean(it.id) && isEntranceItem',
       'ticketRateVariantId: isEntranceItem ? it.ticketRateVariantId',
       'jordanPassCovered: isEntranceItem ? it.jordanPassCovered',

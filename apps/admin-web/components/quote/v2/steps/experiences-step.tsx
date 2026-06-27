@@ -195,17 +195,24 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
+  // V2 now supports limited pricing APPLY (Meals/Activities/Guides, and
+  // Entrance/Jordan Pass when its flag is on). When the apply handler is present
+  // the step is no longer view-only, so surface "Limited apply" instead of
+  // "View only" — staff need to know some rows are actionable.
+  const applyEnabled = Boolean(onApplyItemPricing)
   return (
     <div>
       <StepHeader
         title="Experiences & Entrances"
         description="Sightseeing visits, entrance fees and optional activities tied to the itinerary days."
-        statusLabel={anyEditable ? "Limited editing" : "View only"}
-        statusTone="view"
+        statusLabel={applyEnabled ? "Limited apply" : anyEditable ? "Limited editing" : "View only"}
+        statusTone={applyEnabled ? "preview" : "view"}
         helper={
-          anyEditable
-            ? "Experiences are shown for review. Client text for external packages can be edited; pricing is unchanged."
-            : "Experiences and entrances are shown for review. Editing will come later."
+          applyEnabled
+            ? "Pricing apply is available for selected services (Meals, Activities, Guides, Entrance/Jordan Pass). Other rows remain view-only or Classic."
+            : anyEditable
+              ? "Experiences are shown for review. Client text for external packages can be edited; pricing is unchanged."
+              : "Experiences and entrances are shown for review. Editing will come later."
         }
       />
 
