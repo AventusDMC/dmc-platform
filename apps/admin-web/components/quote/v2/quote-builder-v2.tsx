@@ -77,6 +77,12 @@ export interface QuoteBuilderV2Props {
    */
   onLoadApplyAudit?: import("../../../lib/quote-types").LoadApplyAuditHandler
   /**
+   * Entrance / Jordan-Pass apply scope (PR #561), behind a separate frontend flag
+   * (default OFF). When true (and apply is otherwise enabled), entrance rows expose
+   * preview + apply; when false they stay read-only.
+   */
+  entrancePricingEnabled?: boolean
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -122,6 +128,7 @@ export function QuoteBuilderV2({
   onPreviewItem,
   onApplyItemPricing,
   onLoadApplyAudit,
+  entrancePricingEnabled,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -256,6 +263,7 @@ export function QuoteBuilderV2({
             onPreviewItem={onPreviewItem}
             onApplyItemPricing={onApplyItemPricing}
             onLoadApplyAudit={onLoadApplyAudit}
+            entrancePricingEnabled={entrancePricingEnabled}
           />
         )
       case "transport":

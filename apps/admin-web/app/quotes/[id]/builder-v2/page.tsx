@@ -58,6 +58,12 @@ export default async function QuoteBuilderV2Page({
   // enforces quote read access and returns only sanitized fields. No status gate.
   const canViewPricingApplyAudit = hasRequiredRole(role, ["admin", "operations"])
 
+  // Entrance / Jordan-Pass apply scope (PR #561) — a separate, build-time public
+  // flag, default OFF. When not 'true', entrance rows stay read-only even for
+  // apply-capable staff. The backend independently enforces its own entrance
+  // flags + role + status, so this only controls the UI affordance.
+  const entrancePricingEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_ENTRANCE_PRICING === 'true'
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -67,6 +73,7 @@ export default async function QuoteBuilderV2Page({
       canDeletePassenger={canDeletePassenger}
       canPreviewPricing={canPreviewPricing}
       canViewPricingApplyAudit={canViewPricingApplyAudit}
+      entrancePricingEnabled={entrancePricingEnabled}
     />
   )
 }

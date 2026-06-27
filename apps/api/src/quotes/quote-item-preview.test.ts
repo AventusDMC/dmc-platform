@@ -10,9 +10,13 @@ const ACTOR = { companyId: 'company-1' } as any;
 
 function enablePreview() {
   process.env.QUOTE_PRICING_PREVIEW = '1';
+  // Entrance preview is a separate scope (default OFF); reset it here so only the
+  // entrance test that opts in exercises the Jordan-Pass branch.
+  delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
 }
 function disablePreview() {
   delete process.env.QUOTE_PRICING_PREVIEW;
+  delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
 }
 
 type Opts = {
@@ -236,6 +240,8 @@ test('no-op edit projects totals identical to current (delta zero)', async () =>
 
 test('entrance-fee edit: Jordan Pass projection (PR #547 pure path), persists nothing', async () => {
   enablePreview();
+  // Entrance preview is gated behind its own flag (PR #561, default OFF).
+  process.env.QUOTE_PRICING_ENTRANCE_PREVIEW = '1';
   const entranceItem = {
     id: 'e1',
     quoteId: 'q1',

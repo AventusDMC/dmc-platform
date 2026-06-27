@@ -8,12 +8,28 @@ const ACTOR = { companyId: 'company-1' } as any;
 const QUOTE_ID = 'q1';
 const ITEM_ID = 'i1';
 const MEAL_DATA = { quoteId: QUOTE_ID, quantity: 2, customServiceName: 'Lunch', unitCost: 50 } as any;
+// Entrance edit payload: quantity 2 (current item is 1), so it produces a delta.
+const ENTRANCE_DATA = { quoteId: QUOTE_ID, quantity: 2, serviceDate: '2026-07-01' } as any;
+// Deterministic per-unit entrance pricing used by the stubbed JP projection.
+const ENTRANCE_UNIT = { cost: 50, sell: 60 };
 
 function enable(preview: boolean, apply: boolean) {
   if (preview) process.env.QUOTE_PRICING_PREVIEW = '1';
   else delete process.env.QUOTE_PRICING_PREVIEW;
   if (apply) process.env.QUOTE_PRICING_APPLY = '1';
   else delete process.env.QUOTE_PRICING_APPLY;
+  // Default the entrance scope OFF for every test; entrance tests opt in via
+  // enableEntrance() AFTER calling enable(). This keeps the meal/activity/guide
+  // and out-of-scope tests independent of entrance-flag state / test order.
+  delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
+  delete process.env.QUOTE_PRICING_ENTRANCE_APPLY;
+}
+
+function enableEntrance(preview: boolean, apply: boolean) {
+  if (preview) process.env.QUOTE_PRICING_ENTRANCE_PREVIEW = '1';
+  else delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
+  if (apply) process.env.QUOTE_PRICING_ENTRANCE_APPLY = '1';
+  else delete process.env.QUOTE_PRICING_ENTRANCE_APPLY;
 }
 
 type Opts = {
@@ -23,11 +39,17 @@ type Opts = {
   transport?: boolean;
   auditRows?: any[];
   users?: any[];
+  entrance?: boolean;
 };
 
 function makeService(opts: Opts = {}) {
   const resolved = opts.resolved ?? { cost: 100, sell: 120 };
-  const service = opts.service ?? { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } };
+  const service =
+    opts.service ??
+    (opts.entrance
+      ? { category: 'ticketing', serviceType: { code: 'ENTRANCE_TICKET', name: 'Entrance' } }
+      : { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } });
+  const entranceFeeId = opts.entranceFeeId ?? (opts.entrance ? 'ef1' : null);
   const db: any = {
     quote: {
       id: QUOTE_ID, status: 'DRAFT', clientCompanyId: 'company-1', brandCompanyId: null,
@@ -36,11 +58,14 @@ function makeService(opts: Opts = {}) {
       updatedAt: new Date('2026-06-01T00:00:00.000Z'),
     },
     item: {
-      id: ITEM_ID, quoteId: QUOTE_ID, optionId: null, entranceFeeId: opts.entranceFeeId ?? null,
+      id: ITEM_ID, quoteId: QUOTE_ID, optionId: null, entranceFeeId,
       serviceDate: new Date('2026-07-01T00:00:00.000Z'),
       transportServiceTypeId: opts.transport ? 'tt1' : null, routeId: null, touringRouteId: null,
       serviceId: 's1', quantity: 1, totalCost: 100, totalSell: 120,
       updatedAt: new Date('2026-06-01T00:00:00.000Z'), service,
+      // Entrance relations the JP projection reads (stubbed projection ignores math).
+      entranceFee: opts.entrance ? { siteName: 'Madaba Mosaic', includedInJordanPass: false, foreignerFeeJod: 50 } : null,
+      ticketRateVariant: null,
     },
     agg: { count: 5, max: new Date('2026-06-01T00:00:00.000Z') },
     afterItem: null as any,
@@ -58,7 +83,9 @@ function makeService(opts: Opts = {}) {
     quoteItem: {
       findFirst: async ({ where }: any) =>
         where.id === ITEM_ID && where.quoteId === QUOTE_ID ? { ...db.item } : null,
-      findMany: async () => [],
+      // The entrance preview branch loads the option-scoped entrance set.
+      findMany: async ({ where }: any = {}) =>
+        where?.entranceFeeId && db.item.entranceFeeId ? [{ ...db.item }] : [],
       aggregate: async () => ({ _count: { _all: db.agg.count }, _max: { updatedAt: db.agg.max } }),
       findUnique: async () => db.afterItem ?? { totalCost: db.item.totalCost, totalSell: db.item.totalSell },
       update: async () => { calls.writes += 1; throw new Error('direct quoteItem.update must not run in apply'); },
@@ -102,18 +129,49 @@ function makeService(opts: Opts = {}) {
   // The real recalc/sync must never run from preview/apply guard logic.
   (svc as any).recalculateQuoteTotals = async () => { throw new Error('recalc must not run directly'); };
   // updateItem is the EXISTING write path apply delegates to — stub it to simulate the write.
-  (svc as any).updateItem = async () => {
+  (svc as any).updateItem = async (_id: string, d: any = {}) => {
     calls.updateItem += 1;
+    if (opts.entrance) {
+      // Simulate updateItem → recalc → syncJordanPassEntranceFees: the persisted
+      // entrance item + quote totals reflect the JP projection at the applied qty.
+      const q = Number(d?.quantity ?? db.item.quantity ?? 1);
+      db.afterItem = { totalCost: ENTRANCE_UNIT.cost * q, totalSell: ENTRANCE_UNIT.sell * q };
+      db.afterQuote = {
+        totalCost: 1000 + (ENTRANCE_UNIT.cost * q - ENTRANCE_UNIT.cost * 1),
+        totalSell: 1200 + (ENTRANCE_UNIT.sell * q - ENTRANCE_UNIT.sell * 1),
+      };
+      return {};
+    }
     db.afterItem = { totalCost: resolved.cost, totalSell: resolved.sell };
     db.afterQuote = { totalCost: 1000 + (resolved.cost - 100), totalSell: 1200 + (resolved.sell - 120) };
     return {};
   };
+  if (opts.entrance) {
+    // Deterministic JP/entrance projection (the pricing math itself is covered by
+    // jordan-pass-coverage.test.ts). Each entrance item prices at ENTRANCE_UNIT ×
+    // its quantity; the edited item's quantity differs in the projected set, so a
+    // delta arises. covered=false (no pass) keeps the unit cost in play.
+    (svc as any).projectJordanPassEntranceFeeUpdates = (items: any[]) =>
+      items.map((it) => ({
+        id: it.id,
+        covered: false,
+        data: {
+          totalCost: ENTRANCE_UNIT.cost * Number(it.quantity ?? 1),
+          totalSell: ENTRANCE_UNIT.sell * Number(it.quantity ?? 1),
+        },
+      }));
+  }
 
   return { svc, db, calls, auditCalls };
 }
 
 async function mintToken(svc: any) {
   const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, ACTOR);
+  return res.previewToken as string;
+}
+
+async function mintEntranceToken(svc: any) {
+  const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, ACTOR);
   return res.previewToken as string;
 }
 
@@ -477,4 +535,116 @@ test('audit viewer returns an empty list when there are no apply entries', async
 test('audit viewer is quote-access-scoped (missing quote → 400 Quote not found)', async () => {
   const { svc } = makeService({ auditRows: AUDIT_ROWS, users: [] });
   await expectHttp(() => (svc as any).getPricingApplyAudit('missing-quote-id', ACTOR), 400, 'Quote not found');
+});
+
+// ── Entrance / Jordan Pass preview-apply (separate flags, default OFF) ────────
+
+test('entrance: with entrance flags OFF, preview is blocked even when global preview is ON', async () => {
+  enable(true, true); // global preview+apply ON
+  // entrance flags left OFF by enable()
+  const { svc } = makeService({ entrance: true });
+  const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, ACTOR);
+  assert.equal(res.blocked, true);
+  assert.equal(res.blockedReason, 'out_of_scope');
+  assert.ok(!res.previewToken, 'no token issued when entrance preview is off');
+});
+
+test('entrance: with entrance APPLY flag OFF, apply is blocked (out of scope) even with a valid token', async () => {
+  enable(true, true);
+  enableEntrance(true, false); // preview ON so we can mint; apply OFF
+  const { svc, calls } = makeService({ entrance: true });
+  const token = await mintEntranceToken(svc);
+  assert.ok(token, 'entrance preview issues a token when entrance preview is ON');
+  await expectHttp(
+    () => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, ACTOR),
+    400,
+    'out of scope',
+  );
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('entrance: with entrance flags ON, preview works and projects a Jordan-Pass-aware delta', async () => {
+  enable(true, true);
+  enableEntrance(true, true);
+  const { svc } = makeService({ entrance: true });
+  const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, ACTOR);
+  assert.equal(res.available, true);
+  assert.equal(res.blocked, false);
+  assert.ok(typeof res.previewToken === 'string' && res.previewToken.startsWith('v1.'));
+  // qty 1 → 2 at ENTRANCE_UNIT 50/60 ⇒ item 50→100, delta +50/+60.
+  assert.deepEqual(res.item.projected, { totalCost: 100, totalSell: 120 });
+  assert.equal(res.item.delta.totalCost, 50);
+  assert.equal(res.quote.projected.totalCost, 1050);
+});
+
+test('entrance: apply works with signed token + acknowledgement + item AND quote integrity', async () => {
+  enable(true, true);
+  enableEntrance(true, true);
+  const { svc, calls } = makeService({ entrance: true });
+  const token = await mintEntranceToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(out.matchedPreview, true);
+  assert.equal(out.integrityOk, true);
+  assert.deepEqual(out.item.after, { totalCost: 100, totalSell: 120 });
+  assert.equal(out.quote.after.totalCost, 1050);
+  assert.equal(calls.updateItem, 1); // delegates to the existing write path (→ recalc → JP sync)
+  assert.equal(calls.writes, 0); // never writes via direct quoteItem.update
+});
+
+test('entrance: non-zero delta requires acknowledgement', async () => {
+  enable(true, true);
+  enableEntrance(true, true);
+  const { svc, calls } = makeService({ entrance: true });
+  const token = await mintEntranceToken(svc);
+  await expectHttp(
+    () => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, false, ACTOR),
+    409,
+    'confirmation_required',
+  );
+  assert.equal(calls.updateItem, 0);
+});
+
+test('entrance: stale/reused token (sibling set changed after preview) → 409 stale_preview, no write', async () => {
+  enable(true, true);
+  enableEntrance(true, true);
+  const { svc, db, calls } = makeService({ entrance: true });
+  const token = await mintEntranceToken(svc);
+  db.agg.count = 6; // a sibling entrance item was added between preview and apply
+  await expectHttp(
+    () => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, ACTOR),
+    409,
+    'stale_preview',
+  );
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('entrance: successful apply writes a quote.pricing.apply audit entry (ENTRANCE_TICKET), no token leaked', async () => {
+  enable(true, true);
+  enableEntrance(true, true);
+  const { svc, auditCalls } = makeService({ entrance: true });
+  const token = await mintEntranceToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, { id: 'user-9', companyId: 'company-1' } as any);
+  assert.equal(out.applied, true);
+  const entry = auditCalls.find((e: any) => e.action === 'quote.pricing.apply');
+  assert.ok(entry, 'expected a quote.pricing.apply audit entry');
+  assert.equal(entry.entity, 'quoteItem');
+  assert.equal(entry.entityId, ITEM_ID);
+  const m = entry.metadata;
+  assert.equal(m.quoteId, QUOTE_ID);
+  assert.equal(m.serviceType, 'ENTRANCE_TICKET');
+  assert.equal(m.acknowledgedDelta, true);
+  assert.equal(m.integrityOk, true);
+  assert.ok(!('previewToken' in (m.appliedPayload ?? {})), 'audit payload must not include the preview token');
+});
+
+test('entrance flags do NOT affect meal apply (existing scope unchanged when entrance flags OFF)', async () => {
+  enable(true, true); // entrance flags OFF
+  const { svc, calls } = makeService({ resolved: { cost: 150, sell: 180 } }); // meal
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(calls.updateItem, 1);
 });

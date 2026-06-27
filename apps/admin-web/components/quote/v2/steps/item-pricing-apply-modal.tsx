@@ -12,7 +12,7 @@ import type {
   PricingPreviewTotals,
 } from "../../../../lib/quote-types"
 
-type ItemKind = "meal" | "activity" | "guide"
+type ItemKind = "meal" | "activity" | "guide" | "entrance"
 
 function TotalsRow({
   label,
@@ -146,12 +146,24 @@ export function ItemPricingApplyModal({
   const isMeal = kind === "meal"
   const isActivity = kind === "activity"
   const isGuide = kind === "guide"
+  const isEntrance = kind === "entrance"
 
   // The exact payload sent to BOTH preview and apply (so the token's payload hash
   // matches). Built from raw fields — no totals, no pricingDescription parsing.
   // Meal: editable name/unitCost/currency. Activity: re-price at the existing
   // rate variant (ids carried verbatim); currency is rate-derived (not sent).
   const payload = useMemo(() => {
+    if (isEntrance) {
+      // Entrance / Jordan-Pass: re-price + re-sync JP coverage at the current
+      // ticket rate variant (carried verbatim — variant selection stays Classic).
+      // Service date is the only editable cost input; qty/pax are carried read-only.
+      return {
+        ticketRateVariantId: exp.ticketRateVariantId ?? undefined,
+        quantity: Number(quantity),
+        paxCount: Number(paxCount),
+        serviceDate: serviceDate || undefined,
+      }
+    }
     if (isGuide) {
       // Guide cost drivers (raw fields). guideOvernight maps to backend `overnight`.
       return {
@@ -181,7 +193,7 @@ export function ItemPricingApplyModal({
       currency: itemCurrency,
       serviceDate: serviceDate || undefined,
     }
-  }, [isGuide, isActivity, exp.activityId, exp.activityRateVariantId, exp.serviceId, guideType, guideDuration, guideOvernight, name, unitCost, quantity, paxCount, itemCurrency, serviceDate])
+  }, [isGuide, isActivity, isEntrance, exp.activityId, exp.activityRateVariantId, exp.serviceId, exp.ticketRateVariantId, guideType, guideDuration, guideOvernight, name, unitCost, quantity, paxCount, itemCurrency, serviceDate])
 
   if (!open) return null
 
@@ -223,7 +235,13 @@ export function ItemPricingApplyModal({
       ((preview.item?.delta && (preview.item.delta.totalCost !== 0 || preview.item.delta.totalSell !== 0)) ||
         (preview.quote?.delta && (preview.quote.delta.totalCost !== 0 || preview.quote.delta.totalSell !== 0))),
   )
-  const kindMatches = isGuide ? Boolean(exp.isGuide) : isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)
+  const kindMatches = isEntrance
+    ? Boolean(exp.isEntrance)
+    : isGuide
+      ? Boolean(exp.isGuide)
+      : isActivity
+        ? Boolean(exp.isActivity)
+        : Boolean(exp.isMeal)
   // Apply is offered only after a successful, resolvable, unblocked preview WITH a token.
   const canApply = Boolean(kindMatches && exp.quoteItemId && token && !featureDisabled && !blocked && !notResolvable && !success)
 
@@ -257,11 +275,13 @@ export function ItemPricingApplyModal({
     }
   }
 
-  const heading = isGuide
-    ? "Preview & apply guide pricing"
-    : isActivity
-      ? "Preview & apply activity pricing"
-      : "Preview & apply meal pricing"
+  const heading = isEntrance
+    ? "Preview & apply entrance pricing"
+    : isGuide
+      ? "Preview & apply guide pricing"
+      : isActivity
+        ? "Preview & apply activity pricing"
+        : "Preview & apply meal pricing"
 
   return (
     <div
@@ -286,7 +306,21 @@ export function ItemPricingApplyModal({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {isGuide ? (
+            {isEntrance ? (
+              <>
+                <div className="col-span-2">
+                  <Field label="Entrance / site (ticket variant changes stay in Classic)">
+                    <div className={readonlyCls}>{exp.entranceSiteName || exp.name}</div>
+                  </Field>
+                </div>
+                <Field label="Jordan Pass">
+                  <div className={readonlyCls}>{exp.jordanPassCovered ? "Covered" : "Not covered"}</div>
+                </Field>
+                <Field label="Currency (rate-derived)">
+                  <div className={readonlyCls}>{itemCurrency}</div>
+                </Field>
+              </>
+            ) : isGuide ? (
               <>
                 <div className="col-span-2">
                   <Field label="Guide service">
@@ -349,7 +383,19 @@ export function ItemPricingApplyModal({
                 </Field>
               </>
             )}
-            {isGuide ? (
+            {isEntrance ? (
+              <>
+                {/* Entrance qty/pax are managed in Classic; entrance pricing here
+                    re-prices + re-syncs Jordan Pass coverage at the current variant.
+                    Service date is the only editable cost input. */}
+                <Field label="Quantity (managed in Classic)">
+                  <div className={readonlyCls}>{quantity}</div>
+                </Field>
+                <Field label="Pax count (quote pax, set in Classic)">
+                  <div className={readonlyCls}>{paxCount}</div>
+                </Field>
+              </>
+            ) : isGuide ? (
               <>
                 {/* Guide cost drivers: quantity IS a driver (editable). paxCount +
                     dayCount are NOT guide cost drivers → read-only (Classic). */}
@@ -393,7 +439,11 @@ export function ItemPricingApplyModal({
             </div>
           </div>
 
-          {isActivity ? (
+          {isEntrance ? (
+            <p className="text-xs text-muted-foreground">
+              Entrance pricing re-prices at the current ticket rate variant and re-syncs Jordan Pass coverage. Service date is the only editable input; ticket variant, pax and quote counts are managed in Classic Builder. Applying may also adjust sibling entrance items whose Jordan Pass coverage shifts.
+            </p>
+          ) : isActivity ? (
             <p className="text-xs text-muted-foreground">
               Activity pricing is driven by the selected activity rate and service date. Rate selection and pax/quote counts are managed in Classic Builder.
             </p>

@@ -22,6 +22,7 @@ export function BuilderV2Client({
   canDeletePassenger = false,
   canPreviewPricing = false,
   canViewPricingApplyAudit = false,
+  entrancePricingEnabled = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -48,6 +49,13 @@ export function BuilderV2Client({
    * quote read access and returns only sanitized fields.
    */
   canViewPricingApplyAudit?: boolean
+  /**
+   * Entrance / Jordan-Pass apply scope (PR #561) — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_ENTRANCE_PRICING flag, default OFF. Only widens
+   * the apply surface to entrance rows; the backend still enforces its own
+   * entrance flags + role + status, so this is a UI affordance gate only.
+   */
+  entrancePricingEnabled?: boolean
 }) {
   const router = useRouter()
 
@@ -405,6 +413,7 @@ export function BuilderV2Client({
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
+      entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}
       onDeletePassenger={canDeletePassenger ? handleDeletePassenger : undefined}

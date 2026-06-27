@@ -28,3 +28,30 @@ export const QUOTE_PRICING_APPLY_FLAG = 'quote.pricingApply';
 export function isQuotePricingApplyEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_APPLY');
 }
+
+// ── Entrance / Jordan Pass pricing scope (separate, default OFF) ─────────────
+//
+// Entrance/Jordan-Pass items are a NEW scope on top of the meal/activity/guide
+// preview-apply. Because the global QUOTE_PRICING_PREVIEW / QUOTE_PRICING_APPLY
+// flags are already ON in production, this scope MUST gate on its OWN flags so
+// merging the feature does not expose it automatically. Both default OFF.
+//
+// `quote.pricingEntrancePreview` gates the entrance branch of the preview
+// (Jordan-Pass-aware re-projection). When OFF, an entrance item preview is
+// blocked as out-of-scope and no token is issued.
+export const QUOTE_PRICING_ENTRANCE_PREVIEW_FLAG = 'quote.pricingEntrancePreview';
+
+export function isQuotePricingEntrancePreviewEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_ENTRANCE_PREVIEW');
+}
+
+// `quote.pricingEntranceApply` gates APPLY for entrance/Jordan-Pass items. Like
+// the global apply, it is STRICTER than preview: an entrance apply requires the
+// global preview+apply flags AND the entrance preview flag AND this flag — any
+// one OFF → entrance apply is rejected as out-of-scope and nothing is written.
+// Default OFF.
+export const QUOTE_PRICING_ENTRANCE_APPLY_FLAG = 'quote.pricingEntranceApply';
+
+export function isQuotePricingEntranceApplyEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_ENTRANCE_APPLY');
+}
