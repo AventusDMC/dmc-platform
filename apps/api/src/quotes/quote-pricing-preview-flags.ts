@@ -55,3 +55,21 @@ export const QUOTE_PRICING_ENTRANCE_APPLY_FLAG = 'quote.pricingEntranceApply';
 export function isQuotePricingEntranceApplyEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_ENTRANCE_APPLY');
 }
+
+// ── Transport pricing PREVIEW scope (separate, default OFF) ──────────────────
+//
+// Transport items (route transfer / airport transfer / point-to-point / full-day
+// / package / touring-route) are a NEW preview scope. The dry-run preview path is
+// already pure (resolveQuoteItemValues → transportPricingService.resolvePricingRule
+// /findMatchingRate are read-only; computeItemPreview never writes or recalculates),
+// but because the global QUOTE_PRICING_PREVIEW flag is already ON in production,
+// transport preview MUST gate on its OWN flag so it is not exposed automatically.
+// When OFF (the default), a transport item preview is blocked as out-of-scope and
+// no value is computed and no token is issued. There is intentionally NO transport
+// APPLY flag — transport stays preview-only and the apply guard independently
+// rejects transport items as out of scope.
+export const QUOTE_PRICING_TRANSPORT_PREVIEW_FLAG = 'quote.pricingTransportPreview';
+
+export function isQuotePricingTransportPreviewEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_TRANSPORT_PREVIEW');
+}

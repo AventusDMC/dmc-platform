@@ -27,12 +27,15 @@ function ServiceRow({
   onUpdateDisplayText,
   classicHref,
   onPreviewItem,
+  transportPreviewEnabled,
 }: {
   svc: TransportService
   currency: string
   onUpdateDisplayText?: UpdateDisplayText
   classicHref?: string
   onPreviewItem?: PreviewItemHandler
+  /** Transport pricing preview is behind a separate flag (default OFF). */
+  transportPreviewEnabled?: boolean
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const unassigned = svc.supplier.toLowerCase() === "unassigned"
@@ -40,8 +43,11 @@ function ServiceRow({
   // Adding/removing transport, supplier/rate assignment and priced changes stay
   // in Classic; offer a contextual deep link to the same item. Pure navigation.
   const classicItemHref = buildClassicItemHref(classicHref, "transport", svc.quoteItemId)
-  // Read-only pricing preview — real items only, role/status-gated handler.
-  const canPreview = Boolean(onPreviewItem && svc.quoteItemId)
+  // Read-only pricing preview — real items only, role/status-gated handler, AND
+  // behind the separate transport-preview flag (default OFF). When the flag is OFF
+  // transport rows stay fully Classic/read-only (no preview affordance). This is
+  // preview-ONLY: there is no apply control for transport.
+  const canPreview = Boolean(onPreviewItem && svc.quoteItemId && transportPreviewEnabled)
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -73,10 +79,10 @@ function ServiceRow({
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               onClick={() => setPreviewOpen(true)}
-              title="Preview projected pricing — no changes will be saved"
+              title="Preview projected transport pricing — read-only, nothing is saved"
             >
               <Calculator className="size-3.5" aria-hidden="true" />
-              Preview pricing
+              Preview transport pricing
             </Button>
           ) : null}
           {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
@@ -119,32 +125,47 @@ export interface TransportStepProps {
   classicHref?: string
   /** When provided (role/status-gated), rows expose a read-only pricing preview. */
   onPreviewItem?: PreviewItemHandler
+  /**
+   * Transport pricing PREVIEW scope (separate flag, default OFF). When false,
+   * transport rows stay fully Classic/read-only with no preview affordance.
+   * Preview-ONLY — there is never an apply/confirm control for transport.
+   */
+  transportPreviewEnabled?: boolean
 }
 
-export function TransportStep({ services, currency, onUpdateDisplayText, classicHref, onPreviewItem }: TransportStepProps) {
+export function TransportStep({ services, currency, onUpdateDisplayText, classicHref, onPreviewItem, transportPreviewEnabled }: TransportStepProps) {
   const priced = services
     .filter((s) => s.amount != null)
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
   const anyEditable = Boolean(
     onUpdateDisplayText && services.some((s) => s.editableText && s.quoteItemId),
   )
+  // Read-only preview affordance is active only when the handler is present AND the
+  // transport-preview flag is ON. Default OFF → transport stays Classic/read-only.
+  const previewActive = Boolean(onPreviewItem && transportPreviewEnabled)
 
   return (
     <div>
       <StepHeader
         title="Transport & Transfers"
         description="Vehicles, transfers and touring days with assigned ground suppliers and rates."
-        statusLabel={anyEditable ? "Limited editing" : "View only"}
-        statusTone="view"
+        statusLabel={previewActive ? "Preview only" : anyEditable ? "Limited editing" : "View only"}
+        statusTone={previewActive ? "preview" : "view"}
         helper={
-          anyEditable
-            ? "Transport services are shown for review. Each route's client label can be edited; pricing is unchanged."
-            : "Transport services are shown for review. Editing will come later."
+          previewActive
+            ? "Transport rows expose a read-only pricing preview (no changes are saved and there is no apply). Adding, removing and priced transport edits remain in Classic."
+            : anyEditable
+              ? "Transport services are shown for review. Each route's client label can be edited; pricing is unchanged."
+              : "Transport services are shown for review. Editing will come later."
         }
       />
 
       <ClassicGuidance
-        message="Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. V2 currently supports limited client text editing only where available."
+        message={
+          previewActive
+            ? "Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. V2 transport pricing is preview-only (read-only) — there is no apply."
+            : "Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. Transport remains Classic/read-only unless the transport pricing-preview flag is enabled."
+        }
         classicHref={classicHref}
       />
 
@@ -176,6 +197,7 @@ export function TransportStep({ services, currency, onUpdateDisplayText, classic
                 onUpdateDisplayText={onUpdateDisplayText}
                 classicHref={classicHref}
                 onPreviewItem={onPreviewItem}
+                transportPreviewEnabled={transportPreviewEnabled}
               />
             ))}
           </div>

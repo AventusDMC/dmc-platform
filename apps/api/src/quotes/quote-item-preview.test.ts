@@ -4,19 +4,21 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
-import { isQuotePricingPreviewEnabled } from './quote-pricing-preview-flags';
+import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled } from './quote-pricing-preview-flags';
 
 const ACTOR = { companyId: 'company-1' } as any;
 
 function enablePreview() {
   process.env.QUOTE_PRICING_PREVIEW = '1';
-  // Entrance preview is a separate scope (default OFF); reset it here so only the
-  // entrance test that opts in exercises the Jordan-Pass branch.
+  // Entrance + transport previews are separate scopes (default OFF); reset them
+  // here so only the tests that opt in exercise those branches.
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
+  delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
 }
 function disablePreview() {
   delete process.env.QUOTE_PRICING_PREVIEW;
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
+  delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
 }
 
 type Opts = {
@@ -131,6 +133,11 @@ test('flag default is OFF', () => {
   assert.equal(isQuotePricingPreviewEnabled(), false);
 });
 
+test('transport preview flag default is OFF', () => {
+  disablePreview();
+  assert.equal(isQuotePricingTransportPreviewEnabled(), false);
+});
+
 test('flag OFF → not available, no compute', async () => {
   disablePreview();
   const { service, writes } = makeService({ quote: baseQuote, item: baseItem });
@@ -178,12 +185,92 @@ test('invalid payload (quantity <= 0) returns a clear error', async () => {
 
 test('transport item without an effective serviceDate is rejected', async () => {
   enablePreview();
+  // Transport preview is behind its own flag (default OFF); opt in so the request
+  // reaches the serviceDate determinism guard rather than the out-of-scope gate.
+  process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
   const transportItem = { ...baseItem, routeId: 'r1' };
   const { service } = makeService({ quote: baseQuote, item: transportItem });
   await assert.rejects(
     () => service.previewUpdateQuoteItem('q1', 'i1', { quantity: 2 }, ACTOR),
     /serviceDate is required/,
   );
+});
+
+test('transport preview is BLOCKED out-of-scope when the transport flag is OFF (even with global preview ON)', async () => {
+  enablePreview(); // global QUOTE_PRICING_PREVIEW ON, transport flag left OFF
+  const transportItem = { ...baseItem, routeId: 'r1', serviceDate: new Date('2026-07-01T00:00:00.000Z') };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: transportItem,
+    // resolveStub would throw if reached — proves no compute happens when blocked.
+    resolveStub: async () => {
+      throw new Error('resolveQuoteItemValues must not run for a blocked transport preview');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+  assert.equal(res.blocked, true);
+  assert.equal(res.blockedReason, 'out_of_scope');
+  assert.equal(res.previewToken, undefined); // no token issued
+  assert.equal(writes.length, 0); // nothing written
+});
+
+test('transport preview WORKS when the transport flag is ON: pure projection, no writes, no apply token', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
+  const transportItem = {
+    ...baseItem,
+    routeId: 'r1',
+    transportServiceTypeId: 'tt1',
+    serviceDate: new Date('2026-07-01T00:00:00.000Z'),
+    totalCost: 200,
+    totalSell: 240,
+  };
+  const TRANSPORT_BASIS = 'Point To Point | Amman → Petra | Sedan | ROUTE_TRANSFER | Per vehicle | Supplier transport discount 25% applied';
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: transportItem,
+    // Pure resolve stub stands in for transportPricingService re-resolution.
+    resolveStub: async () => ({
+      data: { totalCost: 260, totalSell: 312, appliedVehicleRateId: 'vr-2', pricingDescription: TRANSPORT_BASIS },
+    }),
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, true);
+  assert.deepEqual(res.item.current, { totalCost: 200, totalSell: 240 });
+  assert.deepEqual(res.item.projected, { totalCost: 260, totalSell: 312 });
+  assert.deepEqual(res.item.delta, { totalCost: 60, totalSell: 72 });
+  // Pricing basis / reason is surfaced from the resolver's pricingDescription.
+  assert.equal(res.pricingBasis, TRANSPORT_BASIS);
+  // Pure dry-run: nothing persisted (no quote/item/totals mutation).
+  assert.equal(writes.length, 0);
+  // Transport is preview-ONLY. A token may be issued (same as any non-entrance
+  // item), but it is INERT: the apply path's supported-type gate rejects transport
+  // items as out of scope — proven by quote-item-apply-guard.test.ts.
+});
+
+test('transport preview is safe when pricing cannot be resolved: warnings, pricingResolvable=false, no basis, no write', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
+  const transportItem = { ...baseItem, routeId: 'r1', serviceDate: new Date('2026-07-01T00:00:00.000Z') };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: transportItem,
+    // Simulate an unresolvable rate — the resolver throws; preview must NOT throw.
+    resolveStub: async () => {
+      throw new Error('No matching transport rate');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, false);
+  assert.equal(res.item.projected, null);
+  assert.equal(res.pricingBasis, null);
+  assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
+  assert.equal(res.previewToken, undefined); // unresolvable → no token
+  assert.equal(writes.length, 0);
 });
 
 test('non-entrance edit: projects item + quote totals via delta, persists nothing', async () => {

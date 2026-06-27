@@ -55,6 +55,7 @@ import {
   isQuotePricingPreviewEnabled,
   isQuotePricingEntrancePreviewEnabled,
   isQuotePricingEntranceApplyEnabled,
+  isQuotePricingTransportPreviewEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -3488,6 +3489,9 @@ export class QuotesService {
       jordanPass: null as null | Record<string, unknown>,
       warnings: [] as string[],
       reResolved: { rates: false, fx: false },
+      // Human-readable pricing basis / reason (resolver pricingDescription).
+      // Display-only; populated for resolvable non-entrance items (e.g. transport).
+      pricingBasis: null as string | null,
     };
 
     // Flag gate — when OFF the endpoint is not available and computes nothing.
@@ -3569,6 +3573,24 @@ export class QuotesService {
       };
     }
 
+    // Transport PREVIEW scope gate (separate flag, default OFF). Transport items
+    // are detected by their persisted transport keys. When the transport preview
+    // flag is OFF, a transport item preview is blocked as out-of-scope (no compute,
+    // no token) even though the global QUOTE_PRICING_PREVIEW flag is ON — so merging
+    // this feature does not expose transport preview automatically. Meal/activity/
+    // guide/entrance are unaffected. Transport stays preview-ONLY: even when this
+    // flag is ON, no apply token is issued for transport (see the snapshot override
+    // at the return below) and the apply guard independently rejects transport.
+    const isTransportPreviewItem = Boolean(
+      existingItem.transportServiceTypeId || existingItem.routeId || existingItem.touringRouteId,
+    );
+    if (isTransportPreviewItem && !isQuotePricingTransportPreviewEnabled()) {
+      return {
+        response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
+        snapshot: null,
+      };
+    }
+
     // Option-scoped concurrency stamps for the preview token (detect sibling
     // add/delete/edit between preview and apply).
     const scopeAgg = await this.prisma.quoteItem.aggregate({
@@ -3639,6 +3661,8 @@ export class QuotesService {
     let itemSellDelta = 0;
     let jordanPass: Record<string, unknown> | null = null;
     let ratesReResolved = false;
+    // Human-readable pricing basis from the resolver (transport/meal/activity/guide).
+    let pricingBasis: string | null = null;
     let resolvedRateRefs: Record<string, string | null> = {};
     let snapFxRate: number | null = null;
     let snapFxRateDate: string | null = null;
@@ -3766,6 +3790,7 @@ export class QuotesService {
             jordanPass: null,
             warnings,
             reResolved: { rates: false, fx: false },
+            pricingBasis: null,
           },
           snapshot: null,
         };
@@ -3773,6 +3798,14 @@ export class QuotesService {
 
       projectedItemCost = Number(values.data.totalCost ?? 0);
       projectedItemSell = Number(values.data.totalSell ?? 0);
+      // Surface the resolver's pricing basis / reason (the persisted
+      // pricingDescription) for display — e.g. transport: service type | route |
+      // vehicle | classification | per-vehicle/capacity | supplier discount. Never
+      // used for pricing; display-only.
+      pricingBasis =
+        typeof values.data.pricingDescription === 'string' && values.data.pricingDescription.trim()
+          ? values.data.pricingDescription
+          : null;
       itemCostDelta = round(projectedItemCost - currentItemCost);
       itemSellDelta = round(projectedItemSell - currentItemSell);
       quoteCostDelta = affectsBaseTotals ? itemCostDelta : 0;
@@ -3815,6 +3848,7 @@ export class QuotesService {
       jordanPass,
       warnings,
       reResolved: { rates: ratesReResolved, fx: false },
+      pricingBasis,
     };
 
     const snapshot = {
@@ -3838,6 +3872,11 @@ export class QuotesService {
       quoteStatus: statusCode,
     };
 
+    // Transport is preview-ONLY. We do NOT special-case the token here: the apply
+    // path's supported-type gate (isMealActivityGuide || isEntranceApply) already
+    // rejects transport items as out of scope — the SAME guardrail that blocks
+    // hotel/external/entrance apply — so a transport preview token (if issued) is
+    // inert and apply scope is not expanded. See quote-item-apply-guard.test.ts.
     return { response, snapshot };
   }
 
