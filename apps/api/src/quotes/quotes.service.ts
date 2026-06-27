@@ -50,7 +50,12 @@ import {
   decideEntranceFeeCoverage,
   isPetraEntranceSite,
 } from './jordan-pass-coverage';
-import { isQuotePricingApplyEnabled, isQuotePricingPreviewEnabled } from './quote-pricing-preview-flags';
+import {
+  isQuotePricingApplyEnabled,
+  isQuotePricingPreviewEnabled,
+  isQuotePricingEntrancePreviewEnabled,
+  isQuotePricingEntranceApplyEnabled,
+} from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
   getPreviewTokenSecret,
@@ -3551,6 +3556,19 @@ export class QuotesService {
       throw new BadRequestException('quantity must be a positive number');
     }
 
+    // Entrance / Jordan-Pass scope gate (separate flag, default OFF). The
+    // entrance branch below is Jordan-Pass-aware and re-projects the whole
+    // option-scoped entrance set; it must only run when its own flag is ON, so
+    // merging this feature with the global preview flag already ON does not
+    // expose entrance preview automatically. When OFF, an entrance item is
+    // blocked as out-of-scope (no token issued) — meal/activity/guide unaffected.
+    if (Boolean(existingItem.entranceFeeId) && !isQuotePricingEntrancePreviewEnabled()) {
+      return {
+        response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
+        snapshot: null,
+      };
+    }
+
     // Option-scoped concurrency stamps for the preview token (detect sibling
     // add/delete/edit between preview and apply).
     const scopeAgg = await this.prisma.quoteItem.aggregate({
@@ -3919,13 +3937,26 @@ export class QuotesService {
     if (!supportedItem) {
       throw new BadRequestException('Quote item not found for this quote');
     }
-    const isSupportedApplyType =
+    const isMealActivityGuide =
       Boolean(supportedItem.service) &&
       (this.isMealService(supportedItem.service) ||
         this.isActivityService(supportedItem.service) ||
         this.isGuideService(supportedItem.service));
-    if (!isSupportedApplyType) {
-      throw new BadRequestException('Only meal, activity and guide items can be applied in this version (apply is out of scope for this item type).');
+    // Entrance / Jordan-Pass items are in scope ONLY behind the separate apply
+    // flag (default OFF). When ON, apply re-uses the EXISTING write path
+    // (updateItem → recalculateQuoteTotals → syncJordanPassEntranceFees), which
+    // re-syncs the whole option-scoped entrance set (sibling Petra-cap shifts)
+    // deterministically — the same path Classic uses. The preview/token already
+    // models the quote-level + sibling projection, so staleness is caught below.
+    const isEntranceApply = Boolean(supportedItem.entranceFeeId) && isQuotePricingEntranceApplyEnabled();
+    if (!isMealActivityGuide && !isEntranceApply) {
+      throw new BadRequestException('Only meal, activity, guide and (when enabled) entrance items can be applied in this version (apply is out of scope for this item type).');
+    }
+    // Changing the underlying service of an entrance item is not fully simulated
+    // by the preview, so it stays Classic-only — block it rather than apply a
+    // value the preview did not project.
+    if (isEntranceApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
+      throw new BadRequestException('Changing the underlying service of an entrance item is not supported by apply (manage it in Classic).');
     }
 
     // Re-run the dry-run at apply time and compare to the token (no write yet).
@@ -3976,9 +4007,17 @@ export class QuotesService {
     };
 
     // Integrity: the persisted item totals must match the previewed projection.
-    const integrityOk =
+    // For entrance/Jordan-Pass items the apply also re-syncs sibling coverage, so
+    // additionally require the persisted QUOTE totals to match the projection
+    // (the token already carries projQuoteCost/projQuoteSell). Meal/activity/guide
+    // keep the item-only check unchanged (their quote delta == item delta).
+    const itemIntegrityOk =
       after.item.totalCost === round(Number(tokenPayload.projItemCost)) &&
       after.item.totalSell === round(Number(tokenPayload.projItemSell));
+    const quoteIntegrityOk =
+      after.quote.totalCost === round(Number(tokenPayload.projQuoteCost)) &&
+      after.quote.totalSell === round(Number(tokenPayload.projQuoteSell));
+    const integrityOk = isEntranceApply ? itemIntegrityOk && quoteIntegrityOk : itemIntegrityOk;
     const warnings = integrityOk
       ? []
       : ['Applied totals differ from the previewed projection — please re-check pricing.'];

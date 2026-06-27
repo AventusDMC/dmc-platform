@@ -690,6 +690,12 @@ interface ApiQuoteItem {
   guideType?: string | null
   guideDuration?: string | null
   guideOvernight?: boolean | null
+  // Entrance / Jordan-Pass raw fields (PR #561). entranceFeeId marks the item as
+  // an entrance/JP item; jordanPassCovered + entranceFee.siteName are read-only
+  // display hints. ticketRateVariantId is already declared above.
+  entranceFeeId?: string | null
+  jordanPassCovered?: boolean | null
+  entranceFee?: { siteName?: string | null } | null
   excursionTemplateComponentOptional?: boolean | null
   // Client-facing display-text fields the proposal renders (returned by the
   // GET /quotes/:id `include`). Editable inertly via the display-text endpoint.
@@ -1059,6 +1065,10 @@ function mapErpQuoteToRaw(
     // are persisted columns (PR #554), so the payload rebuilds without parsing
     // pricingDescription.
     const isGuideItem = it.service?.serviceType?.code === "GUIDE"
+    // Entrance / Jordan-Pass items are identified by entranceFeeId (the JP coverage
+    // key, mirroring the backend). Apply re-prices + re-syncs JP coverage via the
+    // existing recalc path; it is gated by a separate frontend flag in the step.
+    const isEntranceItem = Boolean(it.entranceFeeId)
     experiences.push({
       id: it.id ?? `exp-${experiences.length + 1}`,
       name: it.activity?.name ?? it.service?.name ?? "—",
@@ -1088,12 +1098,19 @@ function mapErpQuoteToRaw(
       guideType: isGuideItem ? it.guideType ?? null : null,
       guideDuration: isGuideItem ? it.guideDuration ?? null : null,
       guideOvernight: isGuideItem ? it.guideOvernight ?? null : null,
-      // Shared raw fields surfaced for meal OR activity OR guide (payload inputs).
+      // Entrance / Jordan-Pass pricing apply (PR #561): raw fields only for real
+      // entrance items. ticketRateVariantId is carried verbatim (variant selection
+      // stays Classic); jordanPassCovered + site name are read-only display hints.
+      isEntrance: Boolean(it.id) && isEntranceItem,
+      ticketRateVariantId: isEntranceItem ? it.ticketRateVariantId ?? null : null,
+      jordanPassCovered: isEntranceItem ? it.jordanPassCovered ?? null : null,
+      entranceSiteName: isEntranceItem ? it.entranceFee?.siteName ?? null : null,
+      // Shared raw fields surfaced for meal OR activity OR guide OR entrance (payload inputs).
       unitCost: isMealItem ? it.costBaseAmount ?? null : null,
-      quantity: isMealItem || isActivityItem || isGuideItem ? it.quantity ?? null : null,
-      paxCount: isMealItem || isActivityItem || isGuideItem ? it.paxCount ?? null : null,
-      currency: isMealItem || isActivityItem || isGuideItem ? it.currency ?? null : null,
-      serviceDate: isMealItem || isActivityItem || isGuideItem ? it.serviceDate ?? null : null,
+      quantity: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.quantity ?? null : null,
+      paxCount: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.paxCount ?? null : null,
+      currency: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.currency ?? null : null,
+      serviceDate: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.serviceDate ?? null : null,
       dayCount: isActivityItem || isGuideItem ? it.dayCount ?? null : null,
     })
   }

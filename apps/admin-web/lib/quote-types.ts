@@ -175,6 +175,17 @@ export interface Experience {
   guideType?: string | null
   guideDuration?: string | null
   guideOvernight?: boolean | null
+  /**
+   * Entrance / Jordan-Pass pricing apply (PR #561, behind a separate flag). `isEntrance`
+   * marks items with an entrance fee; the apply re-prices and re-syncs Jordan-Pass
+   * coverage via the existing recalc path. `ticketRateVariantId` is carried verbatim
+   * (variant selection stays Classic); `jordanPassCovered`/`entranceSiteName` are
+   * read-only display hints. Service date is the only editable cost input.
+   */
+  isEntrance?: boolean
+  ticketRateVariantId?: string | null
+  jordanPassCovered?: boolean | null
+  entranceSiteName?: string | null
 }
 
 /** A ground transport / transfer service. */

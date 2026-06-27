@@ -46,10 +46,10 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
       'guideDuration: isGuideItem ? it.guideDuration',
       'guideOvernight: isGuideItem ? it.guideOvernight',
       'isGuide: asBool(r.isGuide)',
-      // shared raw fields surfaced for meal OR activity OR guide
-      'quantity: isMealItem || isActivityItem || isGuideItem ? it.quantity',
-      'paxCount: isMealItem || isActivityItem || isGuideItem ? it.paxCount',
-      'serviceDate: isMealItem || isActivityItem || isGuideItem ? it.serviceDate',
+      // shared raw fields surfaced for meal OR activity OR guide OR entrance (PR #561)
+      'quantity: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.quantity',
+      'paxCount: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.paxCount',
+      'serviceDate: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.serviceDate',
       'dayCount: isActivityItem || isGuideItem ? it.dayCount',
     ]);
     // Required ids/values must come from columns, never parsed from text.
@@ -75,8 +75,8 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
     contains(modalSrc, [
       'Preview first. No changes are saved until you apply.',
       'I understand this will update the quote totals.',
-      // kind-aware gating on a successful preview token (meal/activity/guide)
-      'const kindMatches = isGuide ? Boolean(exp.isGuide) : isActivity ? Boolean(exp.isActivity) : Boolean(exp.isMeal)',
+      // kind-aware gating on a successful preview token (meal/activity/guide/entrance)
+      'const kindMatches = isEntrance',
       'const canApply = Boolean(kindMatches && exp.quoteItemId && token',
       // error-code mapping
       'Pricing apply is not enabled.',
@@ -164,7 +164,8 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
 
   it('Experiences step shows the V2 apply scope guidance banner, gated on apply being enabled', () => {
     contains(experiencesSrc, [
-      'V2 pricing apply is supported for Meals, Activities, and Guides only.',
+      'V2 pricing apply is supported for Meals, Activities, and Guides',
+      // entrance-fees line is the flag-OFF default copy (entrance flag adds it)
       'Hotels, transport, entrance fees, and external packages remain Classic/read-only.',
       'Activity pax/quantity changes remain Classic-only.',
       // gated on the apply handler (only shown to apply-capable staff)
@@ -274,5 +275,63 @@ describe('Quote Builder V2 — read-only pricing apply audit viewer', () => {
 
   it('client passes the audit gate prop through with a safe default', () => {
     contains(clientSrc, ['canViewPricingApplyAudit = false', 'canViewPricingApplyAudit?: boolean']);
+  });
+});
+
+describe('Quote Builder V2 — entrance / Jordan Pass pricing apply (separate flag)', () => {
+  it('adapter surfaces RAW entrance fields (no pricingDescription parsing); entrance keyed on entranceFeeId', () => {
+    contains(adapterSrc, [
+      'const isEntranceItem = Boolean(it.entranceFeeId)',
+      'isEntrance: Boolean(it.id) && isEntranceItem',
+      'ticketRateVariantId: isEntranceItem ? it.ticketRateVariantId',
+      'jordanPassCovered: isEntranceItem ? it.jordanPassCovered',
+      'entranceSiteName: isEntranceItem ? it.entranceFee?.siteName',
+      // shared raw inputs now also surfaced for entrance
+      'quantity: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.quantity',
+      'serviceDate: isMealItem || isActivityItem || isGuideItem || isEntranceItem ? it.serviceDate',
+    ]);
+    excludes(adapterSrc, ['pricingDescription.split', 'pricingDescription.match']);
+  });
+
+  it('modal supports the entrance kind: read-only site/pax/qty, editable service date, JP coverage; no fetch', () => {
+    contains(modalSrc, [
+      'const isEntrance = kind === "entrance"',
+      'Preview & apply entrance pricing',
+      // entrance payload carries the ticket variant verbatim (variant stays Classic)
+      'ticketRateVariantId: exp.ticketRateVariantId ?? undefined',
+      // entrance display + helper
+      'Jordan Pass',
+      'Entrance pricing re-prices at the current ticket rate variant and re-syncs Jordan Pass coverage',
+      'kindMatches = isEntrance',
+    ]);
+    excludes(modalSrc, ['fetch(']);
+  });
+
+  it('Experiences step gates entrance apply on the separate flag; entrance stays read-only when OFF', () => {
+    contains(experiencesSrc, [
+      'const canApplyEntrance = Boolean(',
+      'exp.isEntrance && exp.quoteItemId && entrancePricingEnabled',
+      'canApply = canApplyMeal || canApplyActivity || canApplyGuide || canApplyEntrance',
+      // entrance rows never show the read-only preview affordance
+      '&& !exp.isEntrance',
+      'Preview & apply entrance pricing',
+      // banner mentions Entrance/Jordan Pass only when the flag is ON
+      'entrancePricingEnabled ? ", and Entrance / Jordan Pass" : ""',
+    ]);
+  });
+
+  it('builder threads entrancePricingEnabled to the Experiences step', () => {
+    contains(builderSrc, ['entrancePricingEnabled', 'entrancePricingEnabled={entrancePricingEnabled}']);
+  });
+
+  it('client gates entrance on canPreviewPricing AND the flag; page reads the public env flag (default OFF)', () => {
+    contains(clientSrc, [
+      'entrancePricingEnabled = false', // safe default
+      'entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}',
+    ]);
+    contains(pageSrc, [
+      "process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_ENTRANCE_PRICING === 'true'",
+      'entrancePricingEnabled={entrancePricingEnabled}',
+    ]);
   });
 });

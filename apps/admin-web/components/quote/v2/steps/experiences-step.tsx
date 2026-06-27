@@ -38,6 +38,7 @@ function ExperienceRow({
   classicHref,
   onPreviewItem,
   onApplyItemPricing,
+  entrancePricingEnabled,
 }: {
   exp: Experience
   currency: string
@@ -45,6 +46,8 @@ function ExperienceRow({
   classicHref?: string
   onPreviewItem?: PreviewItemHandler
   onApplyItemPricing?: ApplyItemPricingHandler
+  /** Entrance/Jordan-Pass apply is behind a separate flag (PR #561); off by default. */
+  entrancePricingEnabled?: boolean
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
@@ -58,11 +61,23 @@ function ExperienceRow({
   const canApplyMeal = Boolean(onApplyItemPricing && onPreviewItem && exp.isMeal && exp.quoteItemId)
   const canApplyActivity = Boolean(onApplyItemPricing && onPreviewItem && exp.isActivity && exp.quoteItemId)
   const canApplyGuide = Boolean(onApplyItemPricing && onPreviewItem && exp.isGuide && exp.quoteItemId)
-  const canApply = canApplyMeal || canApplyActivity || canApplyGuide
-  const applyKind: "meal" | "activity" | "guide" = canApplyGuide ? "guide" : canApplyActivity ? "activity" : "meal"
+  // Entrance/Jordan-Pass apply additionally requires the separate entrance flag (PR #561).
+  const canApplyEntrance = Boolean(
+    onApplyItemPricing && onPreviewItem && exp.isEntrance && exp.quoteItemId && entrancePricingEnabled,
+  )
+  const canApply = canApplyMeal || canApplyActivity || canApplyGuide || canApplyEntrance
+  const applyKind: "meal" | "activity" | "guide" | "entrance" = canApplyEntrance
+    ? "entrance"
+    : canApplyGuide
+      ? "guide"
+      : canApplyActivity
+        ? "activity"
+        : "meal"
   // Read-only pricing preview for other real items (PR3). Meal/activity/guide rows
-  // use the apply modal instead, so they don't show the read-only preview link.
-  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApply
+  // use the apply modal instead. Entrance rows never show the read-only preview:
+  // when the entrance flag is ON they use the apply modal, and when OFF they stay
+  // fully read-only (entrance preview is gated behind the same flag, server-side).
+  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApply && !exp.isEntrance
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -102,11 +117,13 @@ function ExperienceRow({
               title="Preview and apply pricing — nothing is saved until you apply"
             >
               <Calculator className="size-3.5" aria-hidden="true" />
-              {applyKind === "guide"
-                ? "Preview & apply guide pricing"
-                : applyKind === "activity"
-                  ? "Preview & apply activity pricing"
-                  : "Preview & apply meal pricing"}
+              {applyKind === "entrance"
+                ? "Preview & apply entrance pricing"
+                : applyKind === "guide"
+                  ? "Preview & apply guide pricing"
+                  : applyKind === "activity"
+                    ? "Preview & apply activity pricing"
+                    : "Preview & apply meal pricing"}
             </Button>
           ) : canPreview ? (
             <Button
@@ -167,9 +184,14 @@ export interface ExperiencesStepProps {
   onApplyItemPricing?: ApplyItemPricingHandler
   /** When provided (role/status-gated), shows the read-only "Pricing Apply Audit" panel. */
   onLoadApplyAudit?: LoadApplyAuditHandler
+  /**
+   * Entrance/Jordan-Pass apply scope (PR #561), behind a separate frontend flag —
+   * default OFF. When false, entrance rows stay read-only even if apply is enabled.
+   */
+  entrancePricingEnabled?: boolean
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -199,9 +221,19 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
           <div className="flex items-start gap-2">
             <Calculator className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <div className="space-y-0.5">
-              <p>V2 pricing apply is supported for Meals, Activities, and Guides only.</p>
-              <p>Hotels, transport, entrance fees, and external packages remain Classic/read-only.</p>
+              <p>
+                V2 pricing apply is supported for Meals, Activities, and Guides
+                {entrancePricingEnabled ? ", and Entrance / Jordan Pass" : ""} only.
+              </p>
+              <p>
+                {entrancePricingEnabled
+                  ? "Hotels, transport, and external packages remain Classic/read-only."
+                  : "Hotels, transport, entrance fees, and external packages remain Classic/read-only."}
+              </p>
               <p>Activity pax/quantity changes remain Classic-only.</p>
+              {entrancePricingEnabled ? (
+                <p>Entrance applies re-sync Jordan Pass coverage; ticket variant + pax stay Classic-only.</p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -231,6 +263,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 classicHref={classicHref}
                 onPreviewItem={onPreviewItem}
                 onApplyItemPricing={onApplyItemPricing}
+                entrancePricingEnabled={entrancePricingEnabled}
               />
             ))}
           </div>
