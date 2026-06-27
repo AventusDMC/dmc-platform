@@ -86,7 +86,7 @@ export function buildHotelDiagnostics(input: HotelDiagnosticsInput): HotelDiagno
     if (line.contractLinked) {
       reasons.push(
         `Contracted — a supplier contract is linked in Classic${line.contractName ? ` ("${line.contractName}")` : ""}. ` +
-          "V2 still labels selected hotels as on request for review until contract status is confirmed inline.",
+          "Shown as contract-on-file and excluded from the review list.",
       )
     } else if (input.selected) {
       reasons.push(
