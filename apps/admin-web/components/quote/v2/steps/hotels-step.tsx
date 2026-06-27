@@ -248,13 +248,14 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref }: Hote
           <p>
             <span className="font-medium text-foreground">Hotels &ldquo;complete&rdquo;</span> in the cost summary means a hotel
             is selected for each overnight stop. <span className="font-medium text-foreground">&ldquo;Items to review&rdquo;</span>{" "}
-            in proposal readiness separately lists selected hotels V2 marks as on request — these are advisory and don&apos;t
-            block the cost summary.
+            in proposal readiness separately lists selected hotels that are still on request — these are advisory and
+            don&apos;t block the cost summary.
           </p>
           <p>
-            V2 can&apos;t confirm contract status inline yet, so selected hotels show as on request. Use{" "}
-            <span className="font-medium text-foreground">Why?</span> on a hotel to see the contract / rate on file, then
-            edit in Classic Builder.
+            Hotels whose priced line has a linked contract now show <span className="font-medium text-foreground">Contract
+            on file</span> and drop out of the review list. Remaining on-request hotels have no linked contract — use{" "}
+            <span className="font-medium text-foreground">Why?</span> to see the contract / rate detail, then{" "}
+            <span className="whitespace-nowrap">edit in Classic Builder</span>.
           </p>
         </div>
       </div>

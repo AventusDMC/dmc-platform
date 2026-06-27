@@ -967,16 +967,26 @@ function mapErpQuoteToRaw(
       if (!cityMap.has(city)) cityMap.set(city, { city, nights: ho.nights ?? 0, options: [] })
       const block = cityMap.get(city)!
       block.nights = Math.max(block.nights, ho.nights ?? 0)
+      // Prior default: a selected hotel maps to "on-request", an unselected one to
+      // "no-contract". We now PROMOTE to "contracted" when the matched priced hotel
+      // QuoteItem has a linked supplier contract (the only case the diagnostics
+      // promote) — otherwise keep the prior default. Uses data already in the GET.
+      const optDefaultContract = ho.isPrimary ? "on-request" : "no-contract"
+      const optDiagnostics = buildHotelDiagnostics({
+        selected: Boolean(ho.isPrimary),
+        editable: true,
+        hasOptionSet: true,
+        category,
+        roomingSummary: ho.roomType ?? "—",
+        contractStatus: optDefaultContract,
+        matchedLine: matchHotelLine(ho.hotelNameSnapshot ?? ""),
+      })
       block.options.push({
         id: ho.id ?? `${city}-opt-${block.options.length + 1}`,
         name: ho.hotelNameSnapshot ?? "—",
         city,
         category,
-        // The source carries no contract-status enum: a selected hotel maps to
-        // "on-request" (never assume "contracted"); an unselected one to
-        // "no-contract". We only ever claim "contracted" with proof — which we
-        // do not have here.
-        contractStatus: ho.isPrimary ? "on-request" : "no-contract",
+        contractStatus: optDiagnostics.contractState === "contracted" ? "contracted" : optDefaultContract,
         mealPlan: ho.mealPlan ?? "—",
         roomingSummary: ho.roomType ?? "—",
         ratePerNight: 0,
@@ -987,16 +997,7 @@ function mapErpQuoteToRaw(
         // so the V2 step can offer "Set as primary" (PATCH isPrimary).
         optionId: opt.id,
         editable: true,
-        // Read-only diagnostics (display-only; does not change contractStatus).
-        diagnostics: buildHotelDiagnostics({
-          selected: Boolean(ho.isPrimary),
-          editable: true,
-          hasOptionSet: true,
-          category,
-          roomingSummary: ho.roomType ?? "—",
-          contractStatus: ho.isPrimary ? "on-request" : "no-contract",
-          matchedLine: matchHotelLine(ho.hotelNameSnapshot ?? ""),
-        }),
+        diagnostics: optDiagnostics,
       })
     }
   }
@@ -1014,12 +1015,25 @@ function mapErpQuoteToRaw(
         block.nights += 1
         const existing = block.options as Array<{ name: string }>
         if (!existing.some((o) => o.name === h.name)) {
+          // Diagnostics from the matched priced hotel line (which DOES carry the
+          // linked contract / room category / rate). When a contract is linked we
+          // PROMOTE the row to "contracted" so it stops reading as on-request and
+          // drops out of the advisory review list; otherwise it stays "on-request".
+          const fbDiagnostics = buildHotelDiagnostics({
+            selected: true,
+            editable: false,
+            hasOptionSet: false,
+            category: "Unknown",
+            roomingSummary: "—",
+            contractStatus: "on-request",
+            matchedLine: matchHotelLine(h.name),
+          })
           block.options.push({
             id: `${city}-${h.name}`,
             name: h.name,
             city,
             category: "Unknown", // no category on the itinerary item → neutral
-            contractStatus: "on-request", // assigned hotel; never assume "contracted"
+            contractStatus: fbDiagnostics.contractState === "contracted" ? "contracted" : "on-request",
             mealPlan: "—",
             roomingSummary: "—",
             ratePerNight: 0, // no rate on the itinerary item → rendered as "—"
@@ -1028,18 +1042,7 @@ function mapErpQuoteToRaw(
             cityTax: 0,
             // Synthetic fallback row (no QuoteHotelOption) → always read-only.
             editable: false,
-            // Read-only diagnostics from the matched priced hotel line (which DOES
-            // carry the linked contract / room category / rate). Explains why the
-            // fallback row reads as on-request even though it may be contracted.
-            diagnostics: buildHotelDiagnostics({
-              selected: true,
-              editable: false,
-              hasOptionSet: false,
-              category: "Unknown",
-              roomingSummary: "—",
-              contractStatus: "on-request",
-              matchedLine: matchHotelLine(h.name),
-            }),
+            diagnostics: fbDiagnostics,
           })
         }
       }
