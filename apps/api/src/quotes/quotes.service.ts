@@ -12225,6 +12225,11 @@ export class QuotesService {
               activity: { include: { supplierCompany: true } },
               activityRateVariant: true,
               ticketRateVariant: true,
+              // Entrance/Jordan-Pass site name for display only (Quote Builder V2
+              // shows the actual site, e.g. "Bethany / Baptism Site", instead of a
+              // generic label). Minimal select — just siteName; no pricing/classification
+              // impact (entrance classification keys on the entranceFeeId scalar).
+              entranceFee: { select: { siteName: true } },
               itinerary: true,
               hotel: true,
               contract: true,

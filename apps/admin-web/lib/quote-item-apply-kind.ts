@@ -42,3 +42,18 @@ export function classifyItemApplyKind(it: ApplyKindItem): ApplyKind {
     isGuide: !isEntrance && it.service?.serviceType?.code === "GUIDE",
   }
 }
+
+/** Generic label shown for an entrance row when no specific site name is available. */
+export const ENTRANCE_FALLBACK_LABEL = "Entrance / Jordan Pass"
+
+/**
+ * Display label for an entrance row's kind chip / detail. Shows the actual
+ * entrance-fee site name (e.g. "Bethany / Baptism Site") when available, else
+ * the generic Entrance/Jordan-Pass fallback. Display-only — does NOT affect
+ * classification (which keys on entranceFeeId) or pricing. Treats blank/whitespace
+ * site names as absent so they fall back to the generic label.
+ */
+export function entranceDisplayLabel(siteName: string | null | undefined): string {
+  const trimmed = (siteName ?? "").trim()
+  return trimmed.length > 0 ? trimmed : ENTRANCE_FALLBACK_LABEL
+}
