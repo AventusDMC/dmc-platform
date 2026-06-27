@@ -11,7 +11,21 @@ import { ClassicGuidance } from "./classic-guidance"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { HotelSelection, HotelCityBlock } from "../../../../lib/quote-types"
-import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle } from "lucide-react"
+import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown } from "lucide-react"
+
+/** Short read-only label for the diagnostics contract state (distinct from the badge). */
+function contractStateLabel(state?: string): string | null {
+  switch (state) {
+    case "contracted":
+      return "Contract on file"
+    case "on-request":
+      return "On request"
+    case "no-contract":
+      return "No contract"
+    default:
+      return null
+  }
+}
 
 function CategoryMark({ category }: { category: HotelSelection["category"] }) {
   if (category === "Camp") {
@@ -53,7 +67,12 @@ function HotelOption({
   disabled: boolean
   onSetPrimary: () => void
 }) {
+  const [showWhy, setShowWhy] = useState(false)
+  const diagnostics = hotel.diagnostics
+  const reasons = diagnostics?.reasons ?? []
+  const stateLabel = contractStateLabel(diagnostics?.contractState)
   return (
+    <div>
     <div
       className={cn(
         "flex flex-col gap-3 rounded-lg border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
@@ -111,6 +130,37 @@ function HotelOption({
           </Button>
         ) : null}
       </div>
+    </div>
+
+      {/* Read-only diagnostics — explains why a hotel reads as on-request / needs
+          review. No edit/apply controls; hotel edits stay in Classic Builder. */}
+      {reasons.length > 0 ? (
+        <div className="mt-1 px-1">
+          <button
+            type="button"
+            onClick={() => setShowWhy((v) => !v)}
+            aria-expanded={showWhy}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Info className="size-3.5" aria-hidden="true" />
+            Why? {stateLabel ? `(${stateLabel})` : ""}
+            <ChevronDown
+              className={cn("size-3.5 transition-transform", showWhy && "rotate-180")}
+              aria-hidden="true"
+            />
+          </button>
+          {showWhy ? (
+            <ul className="mt-1.5 space-y-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              {reasons.map((reason, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -189,6 +239,25 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref }: Hote
         message="Full hotel editing, adding/removing options, room categories, contracts, and manual rates are managed in Classic Builder. V2 currently supports Set as primary only where available."
         classicHref={classicHref}
       />
+
+      {/* Clarify the two independent hotel signals (the screenshot confusion):
+          cost-summary "complete" vs proposal-readiness "items to review". */}
+      <div className="mb-4 flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <div className="space-y-0.5">
+          <p>
+            <span className="font-medium text-foreground">Hotels &ldquo;complete&rdquo;</span> in the cost summary means a hotel
+            is selected for each overnight stop. <span className="font-medium text-foreground">&ldquo;Items to review&rdquo;</span>{" "}
+            in proposal readiness separately lists selected hotels V2 marks as on request — these are advisory and don&apos;t
+            block the cost summary.
+          </p>
+          <p>
+            V2 can&apos;t confirm contract status inline yet, so selected hotels show as on request. Use{" "}
+            <span className="font-medium text-foreground">Why?</span> on a hotel to see the contract / rate on file, then
+            edit in Classic Builder.
+          </p>
+        </div>
+      </div>
 
       {cities.length === 0 ? (
         <StepEmptyState
