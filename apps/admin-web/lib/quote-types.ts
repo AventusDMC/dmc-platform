@@ -110,6 +110,12 @@ export interface HotelSelection {
    */
   editable: boolean
   /**
+   * The matched priced hotel `QuoteItem` id — the target for the read-only hotel
+   * pricing PREVIEW (flag-gated). Present only when a priced line matched this
+   * row. Read-only; never used for editing/apply/writes.
+   */
+  pricedQuoteItemId?: string
+  /**
    * Read-only diagnostics explaining why this hotel reads as on-request / needs
    * review (linked contract, rate, room category, source). Display-only — never
    * affects pricing, the contract badge, or proposal readiness. See

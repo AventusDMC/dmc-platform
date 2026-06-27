@@ -73,3 +73,20 @@ export const QUOTE_PRICING_TRANSPORT_PREVIEW_FLAG = 'quote.pricingTransportPrevi
 export function isQuotePricingTransportPreviewEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_TRANSPORT_PREVIEW');
 }
+
+// ── Hotel pricing PREVIEW scope (separate, default OFF) ──────────────────────
+//
+// Hotel items (contracted / on-request / fallback) are a NEW preview scope. The
+// dry-run preview path is already pure (resolveQuoteItemValues' hotel branch does
+// hotelRate.findMany reads + compute; computeItemPreview never writes or
+// recalculates), but because the global QUOTE_PRICING_PREVIEW flag is already ON
+// in production, hotel preview MUST gate on its OWN flag so it is not exposed
+// automatically. When OFF (the default), a hotel item preview is blocked as
+// out-of-scope and nothing is computed and no token is issued. There is
+// intentionally NO hotel APPLY flag — hotel stays preview-only and the apply
+// guard independently rejects hotel items as out of scope.
+export const QUOTE_PRICING_HOTEL_PREVIEW_FLAG = 'quote.pricingHotelPreview';
+
+export function isQuotePricingHotelPreviewEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_HOTEL_PREVIEW');
+}

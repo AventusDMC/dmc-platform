@@ -56,6 +56,7 @@ import {
   isQuotePricingEntrancePreviewEnabled,
   isQuotePricingEntranceApplyEnabled,
   isQuotePricingTransportPreviewEnabled,
+  isQuotePricingHotelPreviewEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -3585,6 +3586,22 @@ export class QuotesService {
       existingItem.transportServiceTypeId || existingItem.routeId || existingItem.touringRouteId,
     );
     if (isTransportPreviewItem && !isQuotePricingTransportPreviewEnabled()) {
+      return {
+        response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
+        snapshot: null,
+      };
+    }
+
+    // Hotel PREVIEW scope gate (separate flag, default OFF). Hotel items are
+    // detected by hotelId. When the hotel preview flag is OFF, a hotel item preview
+    // is blocked as out-of-scope (no compute, no token) even though the global
+    // QUOTE_PRICING_PREVIEW flag is ON — so merging this feature does not expose
+    // hotel preview automatically. Meal/activity/guide/entrance/transport are
+    // unaffected. Hotel stays preview-ONLY: the apply guard independently rejects
+    // hotel items as out of scope (see quote-item-apply-guard.test.ts), so a hotel
+    // preview token (if issued) is inert and apply scope is not expanded.
+    const isHotelPreviewItem = Boolean(existingItem.hotelId);
+    if (isHotelPreviewItem && !isQuotePricingHotelPreviewEnabled()) {
       return {
         response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
         snapshot: null,

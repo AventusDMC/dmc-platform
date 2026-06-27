@@ -10,6 +10,8 @@ import type { ContractStatus, HotelCategory } from "./quote-types"
 
 /** The priced hotel line (QuoteItem) matched to a hotel row, if any. */
 export interface MatchedHotelLine {
+  /** The priced hotel QuoteItem id (target for read-only hotel pricing preview). */
+  quoteItemId?: string | null
   /** True when a supplier Contract is linked to the priced hotel line. */
   contractLinked: boolean
   /** Linked contract display name (when contractLinked). */
