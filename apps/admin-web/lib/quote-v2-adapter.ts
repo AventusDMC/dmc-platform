@@ -443,6 +443,14 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       guideType: asTextOrNull(r.guideType),
       guideDuration: asTextOrNull(r.guideDuration),
       guideOvernight: typeof r.guideOvernight === "boolean" ? r.guideOvernight : null,
+      // Entrance / Jordan-Pass fields (PR #561/#564) — carried through the coercion
+      // so real (non-demo) entrance rows keep their apply/preview affordance and
+      // site-name display. Previously dropped here, leaving entrance rows with the
+      // "Entrance / Jordan Pass" chip but no entrance apply/preview control.
+      isEntrance: asBool(r.isEntrance),
+      ticketRateVariantId: asTextOrNull(r.ticketRateVariantId),
+      jordanPassCovered: typeof r.jordanPassCovered === "boolean" ? r.jordanPassCovered : null,
+      entranceSiteName: asTextOrNull(r.entranceSiteName),
     }
   })
 }
