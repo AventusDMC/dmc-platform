@@ -1,8 +1,7 @@
 "use client"
 
-import { Pencil, UserRound, Plane, SlidersHorizontal, Settings2 } from "lucide-react"
+import { ExternalLink, UserRound, Plane, SlidersHorizontal, Settings2 } from "lucide-react"
 import { Card } from "../../../ui/card"
-import { Button } from "../../../ui/button"
 import { StepHeader } from "../step-header"
 import { StepEmptyState } from "../states"
 import { ClassicGuidance } from "./classic-guidance"
@@ -20,23 +19,30 @@ const groups: {
 
 export interface SetupStepProps {
   fields: SetupField[]
-  onEdit?: () => void
-  /** Link to the classic builder for the Classic-only setup edits. */
+  /** Link to the classic builder — setup edits are Classic-only. */
   classicHref?: string
 }
 
-export function SetupStep({ fields, onEdit, classicHref }: SetupStepProps) {
+export function SetupStep({ fields, classicHref }: SetupStepProps) {
+  // Setup is read-only in V2; the only affordance is a link to Classic (where all
+  // setup edits live). Render it as a link rather than a dead button.
+  const editInClassic = classicHref ? (
+    <a
+      href={classicHref}
+      className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title="Edit quote setup in Classic Builder"
+    >
+      <ExternalLink className="size-4" aria-hidden="true" />
+      Edit in Classic
+    </a>
+  ) : undefined
+
   return (
     <div>
       <StepHeader
         title="Quote setup"
         description="Core details that flow into the itinerary, pricing and the final proposal."
-        action={
-          <Button variant="outline" size="sm" className="gap-2" onClick={onEdit}>
-            <Pencil className="size-4" aria-hidden="true" />
-            Edit details
-          </Button>
-        }
+        action={editInClassic}
       />
 
       <ClassicGuidance
@@ -48,12 +54,8 @@ export function SetupStep({ fields, onEdit, classicHref }: SetupStepProps) {
         <StepEmptyState
           icon={Settings2}
           title="No setup details yet"
-          description="Add the client, trip basics and configuration to start building this quote."
-          action={
-            <Button size="sm" onClick={onEdit}>
-              Add details
-            </Button>
-          }
+          description="Add the client, trip basics and configuration in Classic Builder to start building this quote."
+          action={editInClassic}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

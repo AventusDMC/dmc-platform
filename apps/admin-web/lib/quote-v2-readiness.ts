@@ -56,6 +56,29 @@ export interface V2ReadinessOptions {
 export function buildV2ReadinessAudit(quote: Quote, opts: V2ReadinessOptions = {}): V2ReadinessAudit {
   const rows: V2ReadinessRow[] = []
 
+  // ---- Setup ----
+  // Quote setup is read-only in V2 — all of it is managed in Classic Builder.
+  rows.push({
+    key: "setup",
+    section: "Setup",
+    label: "Client · trip basics · configuration",
+    level: "classic",
+    detail:
+      "Quote setup — client, travel dates, currency, pax/room counts, FOC and single supplement — is managed in Classic Builder.",
+  })
+
+  // ---- Itinerary ----
+  // Day title + narrative text are editable in V2; the day structure and any
+  // hotel/transport day-assignment stay in Classic.
+  rows.push({
+    key: "itinerary",
+    section: "Itinerary",
+    label: "Day titles & narrative · day structure",
+    level: "ready",
+    detail:
+      "Day titles and narrative text are editable in V2. Adding/removing days and hotel/transport day-assignment are managed in Classic Builder.",
+  })
+
   // ---- Hotels ----
   const selectedHotels = quote.hotelCities
     .map((c) => c.options.find((o) => o.selected))

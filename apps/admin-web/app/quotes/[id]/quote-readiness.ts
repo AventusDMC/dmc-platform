@@ -1,4 +1,10 @@
 import { getPlannerCategoryForService, normalizeServiceTaxonomyText } from '../../lib/service-taxonomy';
+import {
+  parseScopeCsv,
+  isV2ScopedConfigPresent,
+  resolveV2DefaultForQuote,
+  type V2DefaultScopeConfig,
+} from '../../../lib/quote-v2-default-scope';
 
 export type QuoteReadinessStep =
   | 'overview'
@@ -438,17 +444,57 @@ export function getAllQuoteServices(quote: Pick<QuoteReadinessQuote, 'quoteItems
 }
 
 /**
- * True when Quote Builder V2 is the default at `/quotes/[id]` (feature flag).
- * When on, the classic workspace is served at `/quotes/[id]/classic`, so the
- * classic page's self-navigation must target that base. Flag OFF → unchanged.
+ * True when Quote Builder V2 is the BLANKET default at `/quotes/[id]` for every
+ * quote and user (feature flag). Flag OFF → unchanged. This is the global switch;
+ * a scoped (status/role) rollout is handled separately below.
  */
 export function quoteBuilderV2IsDefault() {
   return process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT === 'true';
 }
 
-/** Base path for the CLASSIC workspace self-links (flag-aware). */
+/**
+ * Read the V2-default scope config from env. All inputs are build-time public
+ * flags and DEFAULT OFF/empty, so with nothing configured V2 is never the default
+ * (Classic stays). Statuses are matched against the raw backend status code
+ * (e.g. SENT/ACCEPTED/CONFIRMED); roles against the normalised session role
+ * (e.g. admin/operations).
+ *   NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT            = 'true' → blanket default
+ *   NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT_STATUSES   = CSV of statuses (optional)
+ *   NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT_ROLES      = CSV of roles (optional)
+ */
+function readV2DefaultScopeConfig(): V2DefaultScopeConfig {
+  return {
+    globalDefault: quoteBuilderV2IsDefault(),
+    statuses: parseScopeCsv(process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT_STATUSES, 'upper'),
+    roles: parseScopeCsv(process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT_ROLES, 'lower'),
+  };
+}
+
+/**
+ * True when V2-default is configured at all — either the blanket flag is ON or a
+ * scoped (status/role) list is set. Used to decide whether the CLASSIC workspace
+ * should self-link to `/quotes/[id]/classic` (so it never bounces back into V2).
+ */
+export function quoteBuilderV2ScopedConfigPresent() {
+  const cfg = readV2DefaultScopeConfig();
+  return cfg.globalDefault || isV2ScopedConfigPresent(cfg);
+}
+
+/**
+ * Decide whether a single quote/user should land on V2 by default. Pure logic
+ * lives in `lib/quote-v2-default-scope`. DEFAULT OFF when nothing is configured.
+ */
+export function quoteBuilderV2DefaultForQuote(input: { statusCode?: string | null; role?: string | null }) {
+  return resolveV2DefaultForQuote(readV2DefaultScopeConfig(), input);
+}
+
+/**
+ * Base path for the CLASSIC workspace self-links. When any V2-default (blanket or
+ * scoped) is configured, Classic lives at `/quotes/[id]/classic`, so its
+ * self-navigation must target that base. Nothing configured → unchanged.
+ */
 export function classicQuoteBasePath(quoteId: string) {
-  return `/quotes/${quoteId}${quoteBuilderV2IsDefault() ? '/classic' : ''}`;
+  return `/quotes/${quoteId}${quoteBuilderV2ScopedConfigPresent() ? '/classic' : ''}`;
 }
 
 export function buildQuoteWorkspaceHref(

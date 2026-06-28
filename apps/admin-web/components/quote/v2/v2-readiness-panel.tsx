@@ -71,9 +71,13 @@ export function V2ReadinessPanel({ audit }: { audit: V2ReadinessAudit }) {
         />
       </button>
       <p className="mt-1 text-xs text-muted-foreground">
-        Can this quote be handled in Quote Builder V2? Informational — Classic remains the default.
+        What this quote can do in Quote Builder V2 vs Classic. Informational only.
       </p>
       {summary ? <p className="mt-1 text-xs font-medium text-muted-foreground">{summary}</p> : null}
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Quote creation, pax counts, adding/removing services, hotel/transport rate assignment, and pricing setup
+        remain Classic-only.
+      </p>
 
       {open ? (
         <div className="mt-3 space-y-3">
