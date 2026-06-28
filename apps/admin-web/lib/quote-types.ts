@@ -199,6 +199,13 @@ export interface Experience {
   ticketRateVariantId?: string | null
   jordanPassCovered?: boolean | null
   entranceSiteName?: string | null
+  /**
+   * External (multi-country / partner) package item. `isExternal` gates the
+   * read-only "Preview external package pricing" affordance (behind a separate
+   * flag, default OFF) and the manual/bundled-pricing diagnostic note. Editing/
+   * apply stay Classic. Display-only — never used to write.
+   */
+  isExternal?: boolean
 }
 
 /** A ground transport / transfer service. */

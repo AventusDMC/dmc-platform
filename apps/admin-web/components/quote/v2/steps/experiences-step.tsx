@@ -39,6 +39,7 @@ function ExperienceRow({
   onPreviewItem,
   onApplyItemPricing,
   entrancePricingEnabled,
+  externalPackagePreviewEnabled,
 }: {
   exp: Experience
   currency: string
@@ -48,6 +49,8 @@ function ExperienceRow({
   onApplyItemPricing?: ApplyItemPricingHandler
   /** Entrance/Jordan-Pass apply is behind a separate flag (PR #561); off by default. */
   entrancePricingEnabled?: boolean
+  /** External-package read-only pricing preview is behind a separate flag; off by default. */
+  externalPackagePreviewEnabled?: boolean
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
@@ -73,11 +76,18 @@ function ExperienceRow({
       : canApplyActivity
         ? "activity"
         : "meal"
+  // External-package READ-ONLY pricing preview (PR #571), behind its own flag
+  // (default OFF). External packages otherwise stay Classic/read-only. Preview-only
+  // — never apply; the apply guard rejects external-package items server-side.
+  const canPreviewExternal = Boolean(
+    onPreviewItem && exp.quoteItemId && exp.isExternal && externalPackagePreviewEnabled,
+  )
   // Read-only pricing preview for other real items (PR3). Meal/activity/guide rows
-  // use the apply modal instead. Entrance rows never show the read-only preview:
-  // when the entrance flag is ON they use the apply modal, and when OFF they stay
-  // fully read-only (entrance preview is gated behind the same flag, server-side).
-  const canPreview = Boolean(onPreviewItem && exp.quoteItemId) && !canApply && !exp.isEntrance
+  // use the apply modal instead. Entrance rows never show the read-only preview
+  // (gated behind the entrance flag, server-side). External-package rows use their
+  // own flag-gated preview above, so they are excluded here.
+  const canPreview =
+    Boolean(onPreviewItem && exp.quoteItemId) && !canApply && !exp.isEntrance && !exp.isExternal
   return (
     <div className="px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -125,6 +135,17 @@ function ExperienceRow({
                     ? "Preview & apply activity pricing"
                     : "Preview & apply meal pricing"}
             </Button>
+          ) : canPreviewExternal ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setPreviewOpen(true)}
+              title="Preview projected external package pricing — read-only, nothing is saved"
+            >
+              <Calculator className="size-3.5" aria-hidden="true" />
+              Preview external package pricing
+            </Button>
           ) : canPreview ? (
             <Button
               variant="ghost"
@@ -140,13 +161,20 @@ function ExperienceRow({
           {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
+      {/* Read-only diagnostic for external (multi-country / partner) packages:
+          their pricing is manual/bundled and managed in Classic. No apply in V2. */}
+      {exp.isExternal ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          External package — pricing is manual/bundled (entered net cost or rate matrix) and is managed in Classic Builder.
+        </p>
+      ) : null}
       {canEdit ? (
         <DisplayTextEditor
           fields={externalPackageFields(exp)}
           onSave={(patch) => onUpdateDisplayText!(exp.quoteItemId!, patch)}
         />
       ) : null}
-      {canPreview ? (
+      {canPreview || canPreviewExternal ? (
         <PricingPreviewModal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
@@ -189,9 +217,15 @@ export interface ExperiencesStepProps {
    * default OFF. When false, entrance rows stay read-only even if apply is enabled.
    */
   entrancePricingEnabled?: boolean
+  /**
+   * External-package read-only pricing preview scope (PR #571), behind a separate
+   * frontend flag — default OFF. When false, external-package rows stay Classic/
+   * read-only (no preview affordance). Preview-only — never apply.
+   */
+  externalPackagePreviewEnabled?: boolean
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -271,6 +305,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 onPreviewItem={onPreviewItem}
                 onApplyItemPricing={onApplyItemPricing}
                 entrancePricingEnabled={entrancePricingEnabled}
+                externalPackagePreviewEnabled={externalPackagePreviewEnabled}
               />
             ))}
           </div>

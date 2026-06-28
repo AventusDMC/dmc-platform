@@ -25,6 +25,7 @@ export function BuilderV2Client({
   entrancePricingEnabled = false,
   transportPreviewEnabled = false,
   hotelPreviewEnabled = false,
+  externalPackagePreviewEnabled = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -74,6 +75,14 @@ export function BuilderV2Client({
    * a UI affordance gate only.
    */
   hotelPreviewEnabled?: boolean
+  /**
+   * External-package read-only pricing preview scope — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_PREVIEW flag, default OFF. When
+   * false, external-package rows stay Classic/read-only. Preview-ONLY (no apply).
+   * The backend independently enforces QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW +
+   * role + status, so this is a UI affordance gate only.
+   */
+  externalPackagePreviewEnabled?: boolean
 }) {
   const router = useRouter()
 
@@ -432,6 +441,7 @@ export function BuilderV2Client({
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
       transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
       hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
+      externalPackagePreviewEnabled={canPreviewPricing && externalPackagePreviewEnabled}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
       entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}

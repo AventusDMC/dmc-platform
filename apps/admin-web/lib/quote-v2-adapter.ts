@@ -420,6 +420,7 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       included: asBool(r.included),
       quoteItemId: typeof r.quoteItemId === "string" ? r.quoteItemId : undefined,
       editableText: asBool(r.editableText),
+      isExternal: asBool(r.isExternal),
       externalClientDescription: asTextOrNull(r.externalClientDescription),
       externalIncludes: asTextOrNull(r.externalIncludes),
       externalExcludes: asTextOrNull(r.externalExcludes),
@@ -1151,6 +1152,9 @@ function mapErpQuoteToRaw(
       // Inert display-text edit: ONLY external-package items expose editable text.
       quoteItemId: it.id ?? undefined,
       editableText: Boolean(it.id) && externalPackage,
+      // External-package flag — gates the read-only "Preview external package
+      // pricing" affordance + the manual/bundled diagnostic note. Display-only.
+      isExternal: Boolean(it.id) && externalPackage,
       externalClientDescription: externalPackage ? it.externalClientDescription ?? null : null,
       externalIncludes: externalPackage ? it.externalIncludes ?? null : null,
       externalExcludes: externalPackage ? it.externalExcludes ?? null : null,

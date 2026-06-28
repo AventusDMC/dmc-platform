@@ -90,3 +90,20 @@ export const QUOTE_PRICING_HOTEL_PREVIEW_FLAG = 'quote.pricingHotelPreview';
 export function isQuotePricingHotelPreviewEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_HOTEL_PREVIEW');
 }
+
+// ── External-package pricing PREVIEW scope (separate, default OFF) ────────────
+//
+// External (multi-country / partner) package items are a NEW preview scope. The
+// dry-run preview path is already pure (resolveQuoteItemValues' external-package
+// branch normalizes the persisted net cost / pricing matrix + compute; no writes;
+// computeItemPreview never recalculates). Because the global QUOTE_PRICING_PREVIEW
+// flag is already ON in production, external-package preview MUST gate on its OWN
+// flag so it is not exposed automatically. When OFF (the default), an external
+// package preview is blocked as out-of-scope (no compute, no token). There is
+// intentionally NO external-package APPLY flag — it stays preview-only and the
+// apply guard independently rejects external-package items as out of scope.
+export const QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW_FLAG = 'quote.pricingExternalPackagePreview';
+
+export function isQuotePricingExternalPackagePreviewEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW');
+}

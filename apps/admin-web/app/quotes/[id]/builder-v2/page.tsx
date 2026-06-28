@@ -78,6 +78,12 @@ export default async function QuoteBuilderV2Page({
   // out-of-scope when its flag is OFF, so this only controls the UI affordance.
   const hotelPreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_HOTEL_PREVIEW === 'true'
 
+  // External-package read-only pricing preview scope — a separate, build-time public
+  // flag, default OFF. When not 'true', external-package rows stay Classic/read-only.
+  // Preview-ONLY (no apply). The backend independently enforces its own
+  // QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW flag + role + status.
+  const externalPackagePreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_PREVIEW === 'true'
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -90,6 +96,7 @@ export default async function QuoteBuilderV2Page({
       entrancePricingEnabled={entrancePricingEnabled}
       transportPreviewEnabled={transportPreviewEnabled}
       hotelPreviewEnabled={hotelPreviewEnabled}
+      externalPackagePreviewEnabled={externalPackagePreviewEnabled}
     />
   )
 }
