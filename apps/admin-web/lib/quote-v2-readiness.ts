@@ -48,7 +48,12 @@ function tally(rows: V2ReadinessRow[]): Record<V2ReadinessLevel, number> {
  * Reuses getComponentStatuses / getReadiness / canSendQuote verbatim — no
  * readiness/send logic is changed here.
  */
-export function buildV2ReadinessAudit(quote: Quote): V2ReadinessAudit {
+export interface V2ReadinessOptions {
+  /** When true, external-package rows expose a read-only pricing preview (PR #571). */
+  externalPackagePreviewEnabled?: boolean
+}
+
+export function buildV2ReadinessAudit(quote: Quote, opts: V2ReadinessOptions = {}): V2ReadinessAudit {
   const rows: V2ReadinessRow[] = []
 
   // ---- Hotels ----
@@ -111,12 +116,28 @@ export function buildV2ReadinessAudit(quote: Quote): V2ReadinessAudit {
       (supportedExp > 0 ? ` (${supportedExp} item${supportedExp === 1 ? "" : "s"})` : "") +
       ". Entrance / Jordan Pass apply is behind its own flag.",
   })
-  const otherExp = exp.filter((e) => e.quoteItemId && !(e.isMeal || e.isActivity || e.isGuide || e.isEntrance)).length
+  const externalExp = exp.filter((e) => e.quoteItemId && e.isExternal).length
+  const otherExp = exp.filter(
+    (e) => e.quoteItemId && !(e.isMeal || e.isActivity || e.isGuide || e.isEntrance || e.isExternal),
+  ).length
+  if (externalExp > 0) {
+    // External packages: read-only pricing PREVIEW when the flag is ON (editing/apply
+    // always stay Classic); otherwise Classic/read-only.
+    rows.push({
+      key: "experiences-external",
+      section: "Experiences",
+      label: "External packages",
+      level: opts.externalPackagePreviewEnabled ? "preview" : "classic",
+      detail: opts.externalPackagePreviewEnabled
+        ? `${externalExp} package(s): read-only pricing preview in V2. Editing/apply remain Classic.`
+        : `${externalExp} package(s) are read-only in V2 — manage in Classic Builder.`,
+    })
+  }
   if (otherExp > 0) {
     rows.push({
       key: "experiences-other",
       section: "Experiences",
-      label: "External packages & other services",
+      label: "Other services",
       level: "classic",
       detail: `${otherExp} item(s) are read-only in V2 — manage in Classic Builder.`,
     })

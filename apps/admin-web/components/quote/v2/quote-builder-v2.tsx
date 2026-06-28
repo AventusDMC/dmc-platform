@@ -99,6 +99,13 @@ export interface QuoteBuilderV2Props {
    */
   hotelPreviewEnabled?: boolean
   /**
+   * External-package read-only pricing preview scope, behind a separate frontend
+   * flag (default OFF). When true (and onPreviewItem is provided), external-package
+   * rows expose a read-only "Preview external package pricing" affordance; when
+   * false they stay Classic/read-only. Preview-ONLY — there is no external apply.
+   */
+  externalPackagePreviewEnabled?: boolean
+  /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
    * read-only. When omitted, passengers are read-only.
@@ -147,6 +154,7 @@ export function QuoteBuilderV2({
   onLoadApplyAudit,
   entrancePricingEnabled,
   transportPreviewEnabled,
+  externalPackagePreviewEnabled,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -174,9 +182,9 @@ export function QuoteBuilderV2({
       componentStatuses: getComponentStatuses(quote),
       nextAction: getNextAction(quote),
       outstanding: getOutstandingItems(quote),
-      v2Readiness: buildV2ReadinessAudit(quote),
+      v2Readiness: buildV2ReadinessAudit(quote, { externalPackagePreviewEnabled }),
     }
-  }, [quote])
+  }, [quote, externalPackagePreviewEnabled])
 
   // ---- Non-happy states -------------------------------------------------
   if (isLoading) return <QuoteBuilderLoading />
@@ -285,6 +293,7 @@ export function QuoteBuilderV2({
             onApplyItemPricing={onApplyItemPricing}
             onLoadApplyAudit={onLoadApplyAudit}
             entrancePricingEnabled={entrancePricingEnabled}
+            externalPackagePreviewEnabled={externalPackagePreviewEnabled}
           />
         )
       case "transport":

@@ -420,6 +420,7 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       included: asBool(r.included),
       quoteItemId: typeof r.quoteItemId === "string" ? r.quoteItemId : undefined,
       editableText: asBool(r.editableText),
+      isExternal: asBool(r.isExternal),
       externalClientDescription: asTextOrNull(r.externalClientDescription),
       externalIncludes: asTextOrNull(r.externalIncludes),
       externalExcludes: asTextOrNull(r.externalExcludes),
@@ -442,6 +443,14 @@ function mapExperiences(raw: RawErpQuote): Experience[] {
       guideType: asTextOrNull(r.guideType),
       guideDuration: asTextOrNull(r.guideDuration),
       guideOvernight: typeof r.guideOvernight === "boolean" ? r.guideOvernight : null,
+      // Entrance / Jordan-Pass fields (PR #561/#564) — carried through the coercion
+      // so real (non-demo) entrance rows keep their apply/preview affordance and
+      // site-name display. Previously dropped here, leaving entrance rows with the
+      // "Entrance / Jordan Pass" chip but no entrance apply/preview control.
+      isEntrance: asBool(r.isEntrance),
+      ticketRateVariantId: asTextOrNull(r.ticketRateVariantId),
+      jordanPassCovered: typeof r.jordanPassCovered === "boolean" ? r.jordanPassCovered : null,
+      entranceSiteName: asTextOrNull(r.entranceSiteName),
     }
   })
 }
@@ -1151,6 +1160,9 @@ function mapErpQuoteToRaw(
       // Inert display-text edit: ONLY external-package items expose editable text.
       quoteItemId: it.id ?? undefined,
       editableText: Boolean(it.id) && externalPackage,
+      // External-package flag — gates the read-only "Preview external package
+      // pricing" affordance + the manual/bundled diagnostic note. Display-only.
+      isExternal: Boolean(it.id) && externalPackage,
       externalClientDescription: externalPackage ? it.externalClientDescription ?? null : null,
       externalIncludes: externalPackage ? it.externalIncludes ?? null : null,
       externalExcludes: externalPackage ? it.externalExcludes ?? null : null,

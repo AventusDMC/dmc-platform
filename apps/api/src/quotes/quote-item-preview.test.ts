@@ -4,23 +4,25 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
-import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled, isQuotePricingHotelPreviewEnabled } from './quote-pricing-preview-flags';
+import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled, isQuotePricingHotelPreviewEnabled, isQuotePricingExternalPackagePreviewEnabled } from './quote-pricing-preview-flags';
 
 const ACTOR = { companyId: 'company-1' } as any;
 
 function enablePreview() {
   process.env.QUOTE_PRICING_PREVIEW = '1';
-  // Entrance + transport + hotel previews are separate scopes (default OFF); reset
-  // them here so only the tests that opt in exercise those branches.
+  // Entrance + transport + hotel + external-package previews are separate scopes
+  // (default OFF); reset them so only the tests that opt in exercise those branches.
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
   delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
+  delete process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW;
 }
 function disablePreview() {
   delete process.env.QUOTE_PRICING_PREVIEW;
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
   delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
+  delete process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW;
 }
 
 type Opts = {
@@ -143,6 +145,11 @@ test('transport preview flag default is OFF', () => {
 test('hotel preview flag default is OFF', () => {
   disablePreview();
   assert.equal(isQuotePricingHotelPreviewEnabled(), false);
+});
+
+test('external-package preview flag default is OFF', () => {
+  disablePreview();
+  assert.equal(isQuotePricingExternalPackagePreviewEnabled(), false);
 });
 
 test('flag OFF → not available, no compute', async () => {
@@ -334,6 +341,62 @@ test('hotel preview is safe when pricing cannot be resolved (on-request/fallback
   assert.equal(res.item.projected, null);
   assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
   assert.equal(res.writes, undefined); // sanity
+  assert.equal(writes.length, 0);
+});
+
+test('external-package preview is BLOCKED out-of-scope when the flag is OFF (even with global preview ON)', async () => {
+  enablePreview(); // global ON, external flag left OFF
+  const extItem = { ...baseItem, externalPackageName: 'QA External Package' };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: extItem,
+    resolveStub: async () => {
+      throw new Error('resolveQuoteItemValues must not run for a blocked external-package preview');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+  assert.equal(res.blocked, true);
+  assert.equal(res.blockedReason, 'out_of_scope');
+  assert.equal(res.previewToken, undefined);
+  assert.equal(writes.length, 0);
+});
+
+test('external-package preview WORKS when the flag is ON: pure projection, no writes', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW = '1';
+  const extItem = { ...baseItem, externalPackageName: 'QA External Package', totalCost: 500, totalSell: 600 };
+  const EXT_BASIS = 'QA External Package | UAE external package | per person';
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: extItem,
+    resolveStub: async () => ({ data: { totalCost: 480, totalSell: 576, pricingDescription: EXT_BASIS } }),
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, true);
+  assert.deepEqual(res.item.current, { totalCost: 500, totalSell: 600 });
+  assert.deepEqual(res.item.projected, { totalCost: 480, totalSell: 576 });
+  assert.equal(res.pricingBasis, EXT_BASIS);
+  assert.equal(writes.length, 0);
+});
+
+test('external-package preview is safe when unresolvable (manual/fallback): warning, not a crash', async () => {
+  enablePreview();
+  process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW = '1';
+  const extItem = { ...baseItem, externalPackageName: 'QA External Package' };
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: extItem,
+    resolveStub: async () => {
+      throw new Error('External package netCost is required');
+    },
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', {}, ACTOR);
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, false);
+  assert.equal(res.item.projected, null);
+  assert.ok(res.warnings.some((w: string) => /Could not resolve pricing/.test(w)));
   assert.equal(writes.length, 0);
 });
 

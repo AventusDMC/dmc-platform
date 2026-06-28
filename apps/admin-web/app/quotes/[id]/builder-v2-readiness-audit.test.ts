@@ -118,7 +118,7 @@ describe('Quote Builder V2 — readiness audit (PR #568, read-only)', () => {
   it('panel is informational/read-only and the builder renders it in the sidebar', () => {
     contains(panelSrc, ['V2_READINESS_LABEL', 'V2 readiness', 'aria-expanded']);
     excludes(panelSrc, ['fetch(', 'onApply', "method: 'POST'", 'method: "POST"']);
-    contains(builderSrc, ['V2ReadinessPanel', 'buildV2ReadinessAudit(quote)', '<V2ReadinessPanel audit={insights.v2Readiness} />']);
+    contains(builderSrc, ['V2ReadinessPanel', 'buildV2ReadinessAudit(quote,', '<V2ReadinessPanel audit={insights.v2Readiness} />']);
   });
 
   // ---- 6. V2 default flag untouched ----

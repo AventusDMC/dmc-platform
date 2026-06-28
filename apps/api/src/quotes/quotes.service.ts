@@ -57,6 +57,7 @@ import {
   isQuotePricingEntranceApplyEnabled,
   isQuotePricingTransportPreviewEnabled,
   isQuotePricingHotelPreviewEnabled,
+  isQuotePricingExternalPackagePreviewEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -3602,6 +3603,21 @@ export class QuotesService {
     // preview token (if issued) is inert and apply scope is not expanded.
     const isHotelPreviewItem = Boolean(existingItem.hotelId);
     if (isHotelPreviewItem && !isQuotePricingHotelPreviewEnabled()) {
+      return {
+        response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
+        snapshot: null,
+      };
+    }
+
+    // External-package PREVIEW scope gate (separate flag, default OFF). External
+    // (multi-country / partner) package items are detected by the persisted
+    // externalPackageName column. When the external-package preview flag is OFF, an
+    // external package preview is blocked as out-of-scope (no compute, no token)
+    // even though the global QUOTE_PRICING_PREVIEW flag is ON. Meal/activity/guide/
+    // entrance/transport/hotel are unaffected. External package stays preview-ONLY:
+    // the apply guard independently rejects external-package items as out of scope.
+    const isExternalPackagePreviewItem = Boolean(existingItem.externalPackageName);
+    if (isExternalPackagePreviewItem && !isQuotePricingExternalPackagePreviewEnabled()) {
       return {
         response: { available: true, blocked: true, blockedReason: 'out_of_scope', statusCode, ...emptyBody },
         snapshot: null,
