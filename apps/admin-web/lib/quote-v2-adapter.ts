@@ -45,6 +45,7 @@ import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
 import { classifyItemApplyKind, entranceDisplayLabel } from "./quote-item-apply-kind"
 import { buildHotelDiagnostics, type MatchedHotelLine } from "./quote-hotel-diagnostics"
+import { resolveDayTransportAndVisits } from "./quote-v2-itinerary-transport"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
 /* ------------------------------------------------------------------ */
@@ -920,14 +921,10 @@ function mapErpQuoteToRaw(
   const itinerary = days.map((d) => {
     const items = d.dayItems ?? []
     const hotelItem = items.find((di) => di.quoteService?.hotel)
-    const transportRate = items.find((di) => di.quoteService?.appliedVehicleRate)?.quoteService?.appliedVehicleRate
-    const visits: string[] = []
-    for (const di of items) {
-      const s = di.quoteService
-      if (!s || s.hotel || s.appliedVehicleRate) continue
-      const label = s.activityName ?? s.service?.name ?? ""
-      if (label) visits.push(label)
-    }
+    // Transport for the day = any transport leg (vehicle-rate OR TRANSPORT taxonomy),
+    // not only vehicle-rate items, so airport transfers without a vehicle rate render
+    // and do not leak into visits. Pure logic lives in quote-v2-itinerary-transport.
+    const { transportAssigned, visits } = resolveDayTransportAndVisits(items.map((di) => di.quoteService))
     return {
       id: d.id ?? `day-${d.dayNumber ?? 0}`,
       day: d.dayNumber ?? 0,
@@ -937,7 +934,7 @@ function mapErpQuoteToRaw(
       visits,
       meals: [], // per-meal B/L/D not represented in source; rendered as missing
       hotelAssigned: hotelItem?.quoteService?.hotel?.name ?? null,
-      transportAssigned: transportRate ? transportRate.routeName ?? transportRate.vehicle?.name ?? null : null,
+      transportAssigned,
       warnings: [],
       notes: d.notes ?? null,
       notesLanguage:
