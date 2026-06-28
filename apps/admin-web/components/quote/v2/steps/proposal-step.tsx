@@ -19,7 +19,7 @@ import type {
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
-import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy } from "lucide-react"
+import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink } from "lucide-react"
 
 export interface ProposalStepProps {
   meta: QuoteMeta
@@ -55,6 +55,8 @@ export interface ProposalStepProps {
    * never mutated. Optional so the step still renders without itinerary data.
    */
   itineraryDays?: ItineraryDay[]
+  /** Link to the classic builder — for the Classic-only client email-send workflow. */
+  classicHref?: string
 }
 
 export function ProposalStep({
@@ -76,6 +78,7 @@ export function ProposalStep({
   onDisablePublicLink,
   onNavigate,
   itineraryDays = [],
+  classicHref,
 }: ProposalStepProps) {
   const sendDisabled = !canSend || saving
   const outstanding = readiness.filter((c) => !c.done)
@@ -220,6 +223,33 @@ export function ProposalStep({
           </div>
         }
       />
+
+      {/* Clarify what "Mark as Sent" does — it is a status-only change. READY
+          quotes now open V2 by default, so make explicit that emailing the client
+          is NOT part of this action and still lives in Classic Builder. Copy/link
+          only — no behavior change. */}
+      <div
+        className="mb-4 flex flex-col gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+        role="note"
+      >
+        <div className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="font-medium text-foreground">“Mark as Sent”</span> updates the quote status to Sent.
+            It does not email the client. Use Classic Builder if you need the email-send workflow.
+          </span>
+        </div>
+        {classicHref ? (
+          <a
+            href={classicHref}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Open the classic quote workspace to send the client email"
+          >
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+            Open Classic Builder to send email
+          </a>
+        ) : null}
+      </div>
 
       {notesWarning.warn ? (
         <p
