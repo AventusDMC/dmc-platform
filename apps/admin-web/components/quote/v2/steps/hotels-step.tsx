@@ -243,6 +243,10 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
   // badge never over-promises editability.
   const hasEditableAlternatives =
     canEdit && cities.some((b) => eligibleOptionSetIds(b).size > 0)
+  // Hotel rows expose a read-only pricing preview when the handler is present AND
+  // the hotel-preview flag is ON (default OFF). When active, the header reads
+  // "Preview only" (mirrors Transport) instead of "View only". Preview-only — no apply.
+  const previewActive = Boolean(onPreviewItem && hotelPreviewEnabled)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState<{ id: string; message: string } | null>(null)
 
@@ -268,12 +272,14 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
-        statusLabel={hasEditableAlternatives ? "Set primary only" : "View only"}
-        statusTone={hasEditableAlternatives ? "editable" : "view"}
+        statusLabel={hasEditableAlternatives ? "Set primary only" : previewActive ? "Preview only" : "View only"}
+        statusTone={hasEditableAlternatives ? "editable" : previewActive ? "preview" : "view"}
         helper={
           hasEditableAlternatives
             ? "Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
-            : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
+            : previewActive
+              ? "Hotel selections are shown for review with a read-only pricing preview (no changes are saved and there is no apply). Hotel edits remain in Classic."
+              : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
         }
       />
 
