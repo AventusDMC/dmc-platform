@@ -347,6 +347,7 @@ export function QuoteBuilderV2({
             publicEnabled={quote.meta.publicEnabled}
             onEnablePublicLink={onEnablePublicLink ? () => onEnablePublicLink(quote) : undefined}
             onDisablePublicLink={onDisablePublicLink ? () => onDisablePublicLink(quote) : undefined}
+            classicHref={`/quotes/${quote.id}/classic`}
           />
         )
       default:
