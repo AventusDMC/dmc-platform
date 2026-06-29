@@ -348,6 +348,8 @@ export interface QuoteMeta {
   publicEnabled?: boolean
   owner: string
   lastSaved: string
+  /** Client booking-contact email (recipient for the proposal email). Null = none on file. */
+  contactEmail?: string | null
 }
 
 /** The full aggregate the Quote Builder renders. */

@@ -77,6 +77,7 @@ export interface RawErpQuote {
   status?: unknown
   owner?: unknown
   lastSaved?: unknown
+  contactEmail?: unknown
   updatedAt?: unknown
   // relations
   client?: unknown
@@ -296,6 +297,7 @@ function mapMeta(raw: RawErpQuote, id: string): QuoteMeta {
     // Display string only. If your ERP returns a timestamp, format it in
     // Phase B (e.g. relative time) before passing it through.
     lastSaved: asString(raw.lastSaved ?? raw.updatedAt, "—"),
+    contactEmail: asTextOrNull(raw.contactEmail),
   }
 }
 
@@ -772,7 +774,7 @@ interface ApiQuote {
   publicEnabled?: boolean | null
   agent?: { firstName?: string | null; lastName?: string | null } | null
   company?: { id?: string | null; name?: string | null } | null
-  contact?: { id?: string | null; firstName?: string | null; lastName?: string | null } | null
+  contact?: { id?: string | null; firstName?: string | null; lastName?: string | null; email?: string | null } | null
   quoteItems?: ApiQuoteItem[] | null
   quoteOptions?: ApiQuoteOption[] | null
   // The main quote payload carries the itinerary days WITH their notesLanguage
@@ -1310,6 +1312,7 @@ function mapErpQuoteToRaw(
     publicEnabled: q.publicEnabled ?? false,
     owner: ownerName || "—",
     lastSaved: formatQuoteDate(q.sentAt),
+    contactEmail: q.contact?.email ?? null,
     client: {
       id: q.contact?.id ?? "client",
       contactName: contactName || "—",
