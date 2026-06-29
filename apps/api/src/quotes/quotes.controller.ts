@@ -530,6 +530,24 @@ export class QuotesController {
     return this.quotesService.regeneratePublicLink(id, actor);
   }
 
+  // Backend foundation for proposal email send (PR #575). Gated by
+  // QUOTE_PROPOSAL_EMAIL_SEND (default OFF) inside the service: when OFF it
+  // returns a safe blocked response and sends nothing. Dry-run when SMTP is not
+  // configured. Role-gated to admin/operations. Does NOT change quote status.
+  @Post(':id/send-proposal-email')
+  @Roles('admin', 'operations')
+  async sendProposalEmail(
+    @Param('id') id: string,
+    @Body() body: { attachPdf?: boolean; language?: string } | undefined,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.quotesService.sendProposalEmail(id, actor, {
+      attachPdf: body?.attachPdf === true,
+      language: typeof body?.language === 'string' ? body.language : undefined,
+      getPdf: (language?: string) => this.proposalV3Service.getProposalPdf(id, actor, language),
+    });
+  }
+
   @Post()
   @Roles('admin', 'viewer', 'finance')
   create(
