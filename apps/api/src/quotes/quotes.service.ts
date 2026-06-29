@@ -32,6 +32,18 @@ import {
 } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { isQuoteProposalEmailSendEnabled } from './quote-proposal-email-flags';
+import {
+  sendProposalEmailCore,
+  type ProposalEmailOptions,
+  type ProposalEmailResult,
+} from './proposal-email.core';
+import {
+  createMailTransport,
+  isSmtpConfigured,
+  resolveProposalMailFrom,
+  sendMailWithRetry,
+} from '../common/mailer';
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
 import { PackageEligibilityShadowService } from '../transport-pricing/package-eligibility-shadow.service';
@@ -738,6 +750,84 @@ export class QuotesService {
       ...result,
       publicUrl: result.publicToken ? this.buildPublicProposalUrl(result.publicToken) : null,
     }));
+  }
+
+  /**
+   * Send the proposal email to the quote's client contact (PR #575 foundation).
+   * Backend-only; gated by QUOTE_PROPOSAL_EMAIL_SEND (default OFF). Dry-run when
+   * SMTP is not configured (composes, delivers nothing). Never changes quote
+   * status (kept separate from Mark-as-Sent). Orchestration lives in the pure
+   * sendProposalEmailCore; here we just wire the real deps.
+   */
+  async sendProposalEmail(
+    id: string,
+    actor: CompanyScopedActor | undefined,
+    opts: ProposalEmailOptions & { getPdf?: (language?: string) => Promise<Buffer | null> } = {},
+  ): Promise<ProposalEmailResult> {
+    requireActorCompanyId(actor);
+    const auditActor = {
+      id: (actor as { id?: string } | undefined)?.id ?? null,
+      companyId: (actor as { companyId?: string } | undefined)?.companyId ?? null,
+    };
+
+    return sendProposalEmailCore(
+      id,
+      auditActor,
+      { attachPdf: opts.attachPdf === true, language: opts.language },
+      {
+        isFeatureEnabled: isQuoteProposalEmailSendEnabled,
+        isSmtpConfigured,
+        loadQuote: async (quoteId) => {
+          const row = await (this.prisma as any).quote.findFirst({
+            where: { id: quoteId },
+            select: {
+              id: true,
+              quoteNumber: true,
+              title: true,
+              status: true,
+              contact: { select: { email: true } },
+            },
+          });
+          if (!row) return null;
+          return {
+            id: row.id,
+            quoteNumber: row.quoteNumber ?? null,
+            title: row.title ?? null,
+            statusCode: String(row.status ?? '').trim().toUpperCase(),
+            contactEmail: row.contact?.email ?? null,
+          };
+        },
+        ensurePublicProposalUrl: async (quoteId) => {
+          const link = await this.enablePublicLink(quoteId, actor);
+          return (link as { publicUrl?: string | null } | null)?.publicUrl ?? null;
+        },
+        getPdf: opts.getPdf,
+        resolveFrom: resolveProposalMailFrom,
+        sendMail: (mailOptions) =>
+          sendMailWithRetry(createMailTransport(), mailOptions, { quoteId: id, action: 'quote.proposal.email' }),
+        audit: async (entry) => {
+          // Non-secret, flat metadata. No tokens/secrets — only booleans + recipient.
+          await this.auditService?.log?.({
+            actor: auditActor,
+            action: entry.action,
+            entity: 'quote',
+            entityId: entry.quoteId,
+            metadata: {
+              quoteId: entry.quoteId,
+              recipient: entry.recipient,
+              statusCode: entry.statusCode,
+              dryRun: entry.dryRun,
+              delivered: entry.delivered,
+              success: entry.success,
+              messageId: entry.messageId,
+              publicLinkIncluded: entry.publicLinkIncluded,
+              attachedPdf: entry.attachedPdf,
+              reason: entry.reason,
+            },
+          });
+        },
+      },
+    );
   }
 
   async findPublicProposalQuote(token: string) {
