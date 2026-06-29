@@ -39,10 +39,9 @@ import {
   type ProposalEmailResult,
 } from './proposal-email.core';
 import {
-  createMailTransport,
-  isSmtpConfigured,
+  isRealMailConfigured,
   resolveProposalMailFrom,
-  sendMailWithRetry,
+  sendConfiguredEmail,
 } from '../common/mailer';
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
@@ -776,7 +775,10 @@ export class QuotesService {
       { attachPdf: opts.attachPdf === true, language: opts.language },
       {
         isFeatureEnabled: isQuoteProposalEmailSendEnabled,
-        isSmtpConfigured,
+        // dryRun is reported when NO real transport (HTTP provider or SMTP) is
+        // configured. The core's dep is named isSmtpConfigured for back-compat,
+        // but the real meaning is "a real transport exists" (Resend or SMTP).
+        isSmtpConfigured: isRealMailConfigured,
         loadQuote: async (quoteId) => {
           const row = await (this.prisma as any).quote.findFirst({
             where: { id: quoteId },
@@ -803,8 +805,10 @@ export class QuotesService {
         },
         getPdf: opts.getPdf,
         resolveFrom: resolveProposalMailFrom,
+        // Transport selection (Resend HTTP → SMTP → dry-run) lives in the shared
+        // mailer; failures throw a safe error → core writes a failure audit.
         sendMail: (mailOptions) =>
-          sendMailWithRetry(createMailTransport(), mailOptions, { quoteId: id, action: 'quote.proposal.email' }),
+          sendConfiguredEmail(mailOptions, { quoteId: id, action: 'quote.proposal.email' }),
         audit: async (entry) => {
           // Non-secret, flat metadata. No tokens/secrets — only booleans + recipient.
           await this.auditService?.log?.({
