@@ -19,7 +19,7 @@ import type {
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
-import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink } from "lucide-react"
+import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail } from "lucide-react"
 
 export interface ProposalStepProps {
   meta: QuoteMeta
@@ -57,6 +57,26 @@ export interface ProposalStepProps {
   itineraryDays?: ItineraryDay[]
   /** Link to the classic builder — for the Classic-only client email-send workflow. */
   classicHref?: string
+  /**
+   * Whether the "Send to client" affordance is available (flag + role + status
+   * eligible). When false the button is not shown. Separate from Mark as Sent.
+   */
+  canSendProposalEmail?: boolean
+  /** Client contact email (recipient). Null/empty => button disabled with a message. */
+  proposalEmailRecipient?: string | null
+  /**
+   * Send the proposal email. Returns the backend result (blocked/dryRun/
+   * delivered) so the modal can message it. Does NOT change quote status.
+   */
+  onSendProposalEmail?: (opts?: { attachPdf?: boolean }) => Promise<{
+    sent?: boolean
+    dryRun?: boolean
+    delivered?: boolean
+    blocked?: boolean
+    blockedReason?: string | null
+    recipient?: string | null
+    messageId?: string | null
+  }>
 }
 
 export function ProposalStep({
@@ -79,6 +99,9 @@ export function ProposalStep({
   onNavigate,
   itineraryDays = [],
   classicHref,
+  canSendProposalEmail = false,
+  proposalEmailRecipient = null,
+  onSendProposalEmail,
 }: ProposalStepProps) {
   const sendDisabled = !canSend || saving
   const outstanding = readiness.filter((c) => !c.done)
@@ -94,6 +117,49 @@ export function ProposalStep({
 
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  // ---- Send to client (proposal email) — separate from Mark as Sent ----
+  const recipient = (proposalEmailRecipient || "").trim()
+  const hasRecipient = recipient.length > 0
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailAttachPdf, setEmailAttachPdf] = useState(false)
+  const [emailResult, setEmailResult] = useState<
+    { tone: "success" | "info" | "error"; text: string } | null
+  >(null)
+
+  const handleSendProposalEmailClick = async () => {
+    if (!onSendProposalEmail || emailSending) return
+    setEmailSending(true)
+    setEmailResult(null)
+    try {
+      const res = await onSendProposalEmail({ attachPdf: emailAttachPdf })
+      if (res?.blocked) {
+        if (res.blockedReason === "feature_disabled") {
+          setEmailResult({ tone: "info", text: "Proposal email sending is not enabled." })
+        } else if (res.blockedReason === "missing_contact_email") {
+          setEmailResult({ tone: "error", text: "No client email on file — add one in Classic Builder." })
+        } else if (res.blockedReason === "status") {
+          setEmailResult({ tone: "info", text: "This quote's status does not allow sending the proposal email." })
+        } else {
+          setEmailResult({ tone: "info", text: "Sending the proposal email is currently blocked." })
+        }
+      } else if (res?.dryRun) {
+        setEmailResult({ tone: "info", text: "Email composed in dry-run mode; no real email was sent." })
+      } else if (res?.delivered) {
+        setEmailResult({ tone: "success", text: `Proposal email sent to ${res.recipient || recipient}.` })
+      } else {
+        setEmailResult({ tone: "error", text: "Could not send the proposal email. Please try again." })
+      }
+    } catch (err) {
+      setEmailResult({
+        tone: "error",
+        text: err instanceof Error ? err.message.slice(0, 300) : "Could not send the proposal email.",
+      })
+    } finally {
+      setEmailSending(false)
+    }
+  }
 
   // ---- Share / public proposal link (separate from Mark as Sent) ----
   // Local state seeded from the quote; updated from the enable/disable response
@@ -220,6 +286,25 @@ export function ProposalStep({
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {saving ? "Marking…" : "Mark as Sent"}
             </Button>
+            {/* Send to client — emails the proposal (separate from Mark as Sent).
+                Only shown when the flag/role/status allow it. Disabled (with a
+                reason) when no client email is on file. */}
+            {canSendProposalEmail && onSendProposalEmail ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEmailResult(null)
+                  setEmailModalOpen(true)
+                }}
+                disabled={!hasRecipient}
+                aria-disabled={!hasRecipient}
+                title={hasRecipient ? undefined : "No client email on file — add one in Classic Builder."}
+              >
+                <Mail className="h-4 w-4" />
+                Send to client
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -250,6 +335,103 @@ export function ProposalStep({
           </a>
         ) : null}
       </div>
+
+      {/* Result banner for the last "Send to client" attempt (persists after the
+          modal closes). feature_disabled / dry-run / delivered / error. */}
+      {emailResult ? (
+        <p
+          className={
+            emailResult.tone === "error"
+              ? "mb-3 flex items-start gap-1.5 text-xs text-destructive"
+              : emailResult.tone === "success"
+                ? "mb-3 flex items-start gap-1.5 text-xs text-success"
+                : "mb-3 flex items-start gap-1.5 text-xs text-muted-foreground"
+          }
+          role={emailResult.tone === "error" ? "alert" : "status"}
+        >
+          {emailResult.tone === "error" ? (
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          ) : emailResult.tone === "success" ? (
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          ) : (
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          )}
+          <span>{emailResult.text}</span>
+        </p>
+      ) : null}
+
+      {/* Confirmation modal for "Send to client". Shows the recipient, explains
+          it sends the proposal email (status-only "Mark as Sent" is separate),
+          and offers an optional PDF attachment. Backend remains the source of
+          truth (flag/role/status + dry-run). */}
+      {emailModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Send proposal to client"
+        >
+          <div className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-heading text-sm font-semibold text-foreground">Send proposal to client</h3>
+              <button
+                type="button"
+                onClick={() => setEmailModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close"
+                disabled={emailSending}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              This emails the proposal to the client contact below. It is separate from
+              {" "}
+              <span className="font-medium text-foreground">“Mark as Sent”</span>, which only changes the quote status.
+            </p>
+
+            <div className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Recipient</div>
+              <div className="font-medium text-foreground">{recipient || "—"}</div>
+            </div>
+
+            <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={emailAttachPdf}
+                onChange={(e) => setEmailAttachPdf(e.target.checked)}
+                disabled={emailSending}
+              />
+              Attach the proposal PDF
+            </label>
+
+            {emailResult ? (
+              <p
+                className={
+                  emailResult.tone === "error"
+                    ? "mt-3 text-xs text-destructive"
+                    : emailResult.tone === "success"
+                      ? "mt-3 text-xs text-success"
+                      : "mt-3 text-xs text-muted-foreground"
+                }
+              >
+                {emailResult.text}
+              </p>
+            ) : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setEmailModalOpen(false)} disabled={emailSending}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSendProposalEmailClick} disabled={emailSending || !hasRecipient}>
+                {emailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                {emailSending ? "Sending…" : "Send email"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {notesWarning.warn ? (
         <p

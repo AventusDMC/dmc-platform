@@ -26,6 +26,7 @@ export function BuilderV2Client({
   transportPreviewEnabled = false,
   hotelPreviewEnabled = false,
   externalPackagePreviewEnabled = false,
+  proposalEmailSendEnabled = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -83,6 +84,14 @@ export function BuilderV2Client({
    * role + status, so this is a UI affordance gate only.
    */
   externalPackagePreviewEnabled?: boolean
+  /**
+   * Proposal email-send affordance — a build-time
+   * NEXT_PUBLIC_QUOTE_PROPOSAL_EMAIL_SEND flag, default OFF. When false, the
+   * "Send to client" button is hidden. The backend independently enforces
+   * QUOTE_PROPOSAL_EMAIL_SEND + role + status (and dry-runs when SMTP is unset),
+   * so this is a UI affordance gate only.
+   */
+  proposalEmailSendEnabled?: boolean
 }) {
   const router = useRouter()
 
@@ -118,6 +127,35 @@ export function BuilderV2Client({
       throw new Error(message?.slice(0, 300) || `Could not mark the quote as sent (${res.status}).`)
     }
     router.refresh()
+  }
+
+  // Send the proposal email to the client (PR #576 UI → PR #575 backend).
+  // POSTs the proxy; returns the backend result verbatim so the modal can show
+  // feature_disabled / dry-run / delivered / failure. Status-only "Mark as Sent"
+  // is unchanged and separate. The backend enforces flag + role + status and
+  // dry-runs when SMTP is unset — nothing here assumes real delivery.
+  const handleSendProposalEmail = async (
+    q: Quote,
+    opts?: { attachPdf?: boolean },
+  ): Promise<{
+    sent?: boolean
+    dryRun?: boolean
+    delivered?: boolean
+    blocked?: boolean
+    blockedReason?: string | null
+    recipient?: string | null
+    messageId?: string | null
+  }> => {
+    const res = await fetch(`/api/quotes/${q.id}/send-proposal-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachPdf: opts?.attachPdf === true }),
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok && !body) {
+      throw new Error(`Could not send the proposal email (${res.status}).`)
+    }
+    return body ?? {}
   }
 
   // Set the primary hotel for an option-set via the EXISTING endpoint:
@@ -451,6 +489,12 @@ export function BuilderV2Client({
       onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}
       onEnablePublicLink={handleEnablePublicLink}
       onDisablePublicLink={handleDisablePublicLink}
+      proposalEmailSendEnabled={proposalEmailSendEnabled}
+      onSendProposalEmail={
+        proposalEmailSendEnabled && canViewPricingApplyAudit
+          ? (opts?: { attachPdf?: boolean }) => handleSendProposalEmail(quote!, opts)
+          : undefined
+      }
       initialStep="hotels"
     />
   )

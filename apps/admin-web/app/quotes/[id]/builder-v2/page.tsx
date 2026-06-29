@@ -84,6 +84,12 @@ export default async function QuoteBuilderV2Page({
   // QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW flag + role + status.
   const externalPackagePreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_PREVIEW === 'true'
 
+  // Proposal email-send affordance — a separate, build-time public flag, default
+  // OFF. When not 'true', the "Send to client" button is hidden. The backend
+  // independently enforces QUOTE_PROPOSAL_EMAIL_SEND + role + status and returns a
+  // blocked response otherwise, so this only controls the UI affordance.
+  const proposalEmailSendEnabled = process.env.NEXT_PUBLIC_QUOTE_PROPOSAL_EMAIL_SEND === 'true'
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -97,6 +103,7 @@ export default async function QuoteBuilderV2Page({
       transportPreviewEnabled={transportPreviewEnabled}
       hotelPreviewEnabled={hotelPreviewEnabled}
       externalPackagePreviewEnabled={externalPackagePreviewEnabled}
+      proposalEmailSendEnabled={proposalEmailSendEnabled}
     />
   )
 }

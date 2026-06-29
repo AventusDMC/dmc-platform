@@ -133,6 +133,23 @@ export interface QuoteBuilderV2Props {
   onEnablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
   /** Disable the public proposal link; resolves to the new public state. */
   onDisablePublicLink?: (quote: Quote) => Promise<{ publicEnabled: boolean; publicToken: string | null }>
+  /** Proposal email-send affordance flag (NEXT_PUBLIC_QUOTE_PROPOSAL_EMAIL_SEND). */
+  proposalEmailSendEnabled?: boolean
+  /**
+   * Send the proposal email to the client contact. Returns the backend result
+   * (blocked/dryRun/delivered). Present only when the flag + role allow it;
+   * status eligibility is enforced here and by the backend. Separate from
+   * onSend (Mark as Sent), which only changes status.
+   */
+  onSendProposalEmail?: (opts?: { attachPdf?: boolean }) => Promise<{
+    sent?: boolean
+    dryRun?: boolean
+    delivered?: boolean
+    blocked?: boolean
+    blockedReason?: string | null
+    recipient?: string | null
+    messageId?: string | null
+  }>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -162,6 +179,8 @@ export function QuoteBuilderV2({
   onUnassignRoom,
   onEnablePublicLink,
   onDisablePublicLink,
+  proposalEmailSendEnabled = false,
+  onSendProposalEmail,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -237,6 +256,13 @@ export function QuoteBuilderV2({
   // EXPIRED/CONVERTED) AND any unknown/empty status hides Delete.
   const PASSENGER_DELETE_EDITABLE_STATUSES = new Set(["DRAFT", "READY", "REVISION_REQUESTED"])
   const passengerDeleteStatusOk = PASSENGER_DELETE_EDITABLE_STATUSES.has(statusCode)
+
+  // Proposal email send: status policy mirrors the backend (READY first send +
+  // SENT resend). The button shows only when the flag/role provided a handler AND
+  // the status is eligible; missing recipient disables it (handled in the step).
+  const PROPOSAL_EMAIL_STATUSES = new Set(["READY", "SENT"])
+  const proposalEmailStatusOk = PROPOSAL_EMAIL_STATUSES.has(statusCode)
+  const canSendProposalEmail = Boolean(onSendProposalEmail) && proposalEmailSendEnabled && proposalEmailStatusOk
 
   const sendDisabledReason = lifecycleLocked
     ? `Quote is already ${statusCode.toLowerCase()} — it can no longer be marked as sent here.`
@@ -348,6 +374,9 @@ export function QuoteBuilderV2({
             onEnablePublicLink={onEnablePublicLink ? () => onEnablePublicLink(quote) : undefined}
             onDisablePublicLink={onDisablePublicLink ? () => onDisablePublicLink(quote) : undefined}
             classicHref={`/quotes/${quote.id}/classic`}
+            canSendProposalEmail={canSendProposalEmail}
+            proposalEmailRecipient={quote.meta.contactEmail ?? null}
+            onSendProposalEmail={canSendProposalEmail ? onSendProposalEmail : undefined}
           />
         )
       default:
