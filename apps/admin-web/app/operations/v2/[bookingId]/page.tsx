@@ -184,49 +184,52 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
         classicHref={classicHref}
         classicLabel="Open in Classic"
         statusSlot={statusSlot}
+        innerClassName="mx-auto w-full max-w-[1200px]"
       />
       <OpsWorkspaceTabs bookingId={bookingId} active={activeTab} />
 
       <main className="px-4 py-6 md:px-6">
-        {activeTab === 'operations' ? (
-          opsError || !vm ? (
-            <OpsErrorCard classicHref={classicHref} />
-          ) : (
-            <OpsBoard vm={vm} />
-          )
-        ) : null}
+        <div className="mx-auto w-full max-w-[1200px]">
+          {activeTab === 'operations' ? (
+            opsError || !vm ? (
+              <OpsErrorCard classicHref={classicHref} />
+            ) : (
+              <OpsBoard vm={vm} />
+            )
+          ) : null}
 
-        {activeTab === 'passengers' ? (
-          paxError || !paxVm ? (
-            <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=passengers`} />
-          ) : (
-            <PaxRoomingTab vm={paxVm} bookingId={bookingId} />
-          )
-        ) : null}
+          {activeTab === 'passengers' ? (
+            paxError || !paxVm ? (
+              <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=passengers`} />
+            ) : (
+              <PaxRoomingTab vm={paxVm} bookingId={bookingId} />
+            )
+          ) : null}
 
-        {activeTab === 'finance' ? (
-          financeError || !financeVm ? (
-            <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=financials`} />
-          ) : (
-            <FinanceTab vm={financeVm} bookingId={bookingId} />
-          )
-        ) : null}
+          {activeTab === 'finance' ? (
+            financeError || !financeVm ? (
+              <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=financials`} />
+            ) : (
+              <FinanceTab vm={financeVm} bookingId={bookingId} />
+            )
+          ) : null}
 
-        {activeTab === 'documents' ? (
-          documentsError || !documentsVm ? (
-            <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=documents`} />
-          ) : (
-            <DocumentsTab vm={documentsVm} bookingId={bookingId} />
-          )
-        ) : null}
+          {activeTab === 'documents' ? (
+            documentsError || !documentsVm ? (
+              <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=documents`} />
+            ) : (
+              <DocumentsTab vm={documentsVm} bookingId={bookingId} />
+            )
+          ) : null}
 
-        {activeTab === 'activity' ? (
-          activityError || !activityVm ? (
-            <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=audit-log`} />
-          ) : (
-            <ActivityTab vm={activityVm} bookingId={bookingId} />
-          )
-        ) : null}
+          {activeTab === 'activity' ? (
+            activityError || !activityVm ? (
+              <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=audit-log`} />
+            ) : (
+              <ActivityTab vm={activityVm} bookingId={bookingId} />
+            )
+          ) : null}
+        </div>
       </main>
     </div>
   );
