@@ -78,6 +78,14 @@ export default async function QuoteBuilderV2Page({
   // out-of-scope when its flag is OFF, so this only controls the UI affordance.
   const hotelPreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_HOTEL_PREVIEW === 'true'
 
+  // Hotel pricing APPLY scope — a separate, build-time public flag, default OFF.
+  // When not 'true', hotel rows stay preview-only (no apply control). Apply also
+  // requires the hotel PREVIEW flag (the apply UI needs a preview token). The
+  // backend independently enforces its own QUOTE_PRICING_HOTEL_APPLY flag (in
+  // addition to the hotel preview flag) + role + status and rejects hotel apply
+  // as out-of-scope when its flag is OFF, so this only controls the UI affordance.
+  const hotelApplyEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_HOTEL_APPLY === 'true'
+
   // External-package read-only pricing preview scope — a separate, build-time public
   // flag, default OFF. When not 'true', external-package rows stay Classic/read-only.
   // Preview-ONLY (no apply). The backend independently enforces its own
@@ -102,6 +110,7 @@ export default async function QuoteBuilderV2Page({
       entrancePricingEnabled={entrancePricingEnabled}
       transportPreviewEnabled={transportPreviewEnabled}
       hotelPreviewEnabled={hotelPreviewEnabled}
+      hotelApplyEnabled={hotelApplyEnabled}
       externalPackagePreviewEnabled={externalPackagePreviewEnabled}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
     />

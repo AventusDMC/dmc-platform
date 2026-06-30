@@ -95,9 +95,16 @@ export interface QuoteBuilderV2Props {
    * Hotel pricing PREVIEW scope, behind a separate frontend flag (default OFF).
    * When true (and onPreviewItem is provided), hotel rows with a matched priced
    * line expose a read-only "Preview hotel pricing" affordance; when false hotel
-   * rows stay diagnostics/read-only. Preview-ONLY — there is no hotel apply.
+   * rows stay diagnostics/read-only.
    */
   hotelPreviewEnabled?: boolean
+  /**
+   * Hotel pricing APPLY scope, behind a separate frontend flag (default OFF). When
+   * true (and onApplyItemPricing + hotelPreviewEnabled are provided), eligible
+   * matched hotel rows expose an "Apply hotel price" action that re-prices the
+   * selected hotel in place. When false, hotels stay preview-only.
+   */
+  hotelApplyEnabled?: boolean
   /**
    * External-package read-only pricing preview scope, behind a separate frontend
    * flag (default OFF). When true (and onPreviewItem is provided), external-package
@@ -165,6 +172,7 @@ export function QuoteBuilderV2({
   onPreview,
   onSetPrimaryHotel,
   hotelPreviewEnabled,
+  hotelApplyEnabled,
   onUpdateDisplayText,
   onPreviewItem,
   onApplyItemPricing,
@@ -306,6 +314,8 @@ export function QuoteBuilderV2({
             classicHref={`/quotes/${quote.id}/classic`}
             onPreviewItem={onPreviewItem}
             hotelPreviewEnabled={hotelPreviewEnabled}
+            onApplyItemPricing={onApplyItemPricing}
+            hotelApplyEnabled={hotelApplyEnabled}
           />
         )
       case "experiences":

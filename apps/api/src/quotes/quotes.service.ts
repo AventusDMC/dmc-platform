@@ -68,6 +68,7 @@ import {
   isQuotePricingEntranceApplyEnabled,
   isQuotePricingTransportPreviewEnabled,
   isQuotePricingHotelPreviewEnabled,
+  isQuotePricingHotelApplyEnabled,
   isQuotePricingExternalPackagePreviewEnabled,
 } from './quote-pricing-preview-flags';
 import {
@@ -4115,14 +4116,26 @@ export class QuotesService {
     // deterministically — the same path Classic uses. The preview/token already
     // models the quote-level + sibling projection, so staleness is caught below.
     const isEntranceApply = Boolean(supportedItem.entranceFeeId) && isQuotePricingEntranceApplyEnabled();
-    if (!isMealActivityGuide && !isEntranceApply) {
-      throw new BadRequestException('Only meal, activity, guide and (when enabled) entrance items can be applied in this version (apply is out of scope for this item type).');
+    // Hotel items are in scope ONLY behind the separate hotel apply flag (default
+    // OFF). When ON, apply re-uses the EXISTING write path (updateItem →
+    // recalculateQuoteTotals) which re-resolves the rate for the already-selected
+    // hotel/contract/room/occupancy/dates from persisted columns — no selection,
+    // primary, rooming, or itinerary change. The preview/token already models the
+    // projection, so staleness/integrity are caught below.
+    const isHotelApply = Boolean(supportedItem.service && this.isHotelService(supportedItem.service)) && isQuotePricingHotelApplyEnabled();
+    if (!isMealActivityGuide && !isEntranceApply && !isHotelApply) {
+      throw new BadRequestException('Only meal, activity, guide, entrance and (when enabled) hotel items can be applied in this version (apply is out of scope for this item type).');
     }
     // Changing the underlying service of an entrance item is not fully simulated
     // by the preview, so it stays Classic-only — block it rather than apply a
     // value the preview did not project.
     if (isEntranceApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
       throw new BadRequestException('Changing the underlying service of an entrance item is not supported by apply (manage it in Classic).');
+    }
+    // Hotel apply re-prices the already-selected hotel only; changing the hotel
+    // service/selection via apply is not modeled by the preview — keep it Classic.
+    if (isHotelApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
+      throw new BadRequestException('Changing the underlying service of a hotel item is not supported by apply (manage it in Classic).');
     }
 
     // Re-run the dry-run at apply time and compare to the token (no write yet).

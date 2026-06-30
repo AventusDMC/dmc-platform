@@ -14,22 +14,24 @@ function excludes(src: string, fragments: string[]) {
 
 describe('Quote Builder V2 — hotels header badge polish (PR #570)', () => {
   // ---- 1 + 2. PREVIEW ONLY when hotel preview is enabled, VIEW ONLY when disabled ----
-  it('header badge reads "Preview only" when hotel preview is active, else "View only" (Set-primary unchanged)', () => {
+  it('header badge reads "Apply enabled" / "Preview only" / "View only" by scope (Set-primary unchanged)', () => {
     contains(hotelsSrc, [
       'const previewActive = Boolean(onPreviewItem && hotelPreviewEnabled)',
-      'statusLabel={hasEditableAlternatives ? "Set primary only" : previewActive ? "Preview only" : "View only"}',
-      'statusTone={hasEditableAlternatives ? "editable" : previewActive ? "preview" : "view"}',
+      // PR #578 adds the apply scope; the badge promotes to "Apply enabled" when on.
+      'const applyActive = Boolean(previewActive && onApplyItemPricing && hotelApplyEnabled)',
+      'statusLabel={applyActive ? "Apply enabled" : hasEditableAlternatives ? "Set primary only" : previewActive ? "Preview only" : "View only"}',
+      'statusTone={applyActive ? "editable" : hasEditableAlternatives ? "editable" : previewActive ? "preview" : "view"}',
     ]);
   });
 
-  it('helper text reflects the read-only preview state (no apply) when preview is active', () => {
+  it('helper text still reflects the read-only preview state (no apply) when preview-only', () => {
     contains(hotelsSrc, ['read-only pricing preview (no changes are saved and there is no apply)']);
   });
 
-  // ---- 3. no hotel apply controls introduced ----
-  it('no hotel apply/confirm control or write is introduced by this change', () => {
-    excludes(hotelsSrc, ['onApply', 'apply-preview', 'Apply', "method: 'POST'", 'method: "POST"', 'fetch(']);
-    // existing read-only preview affordance is retained
-    contains(hotelsSrc, ['Preview hotel pricing', 'PricingPreviewModal', 'hotelPreviewEnabled']);
+  // ---- 3. apply (PR #578) is delegated — the step itself never writes directly ----
+  it('hotel apply is delegated to onApplyItemPricing; the step performs no direct fetch/POST', () => {
+    excludes(hotelsSrc, ['apply-preview', "method: 'POST'", 'method: "POST"', 'fetch(']);
+    // read-only preview affordance + delegated apply handler are both present
+    contains(hotelsSrc, ['Preview hotel pricing', 'PricingPreviewModal', 'hotelPreviewEnabled', 'onApplyItemPricing', 'hotelApplyEnabled']);
   });
 });

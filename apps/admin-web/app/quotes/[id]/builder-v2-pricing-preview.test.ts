@@ -34,7 +34,7 @@ describe('Quote Builder V2 — read-only pricing preview modal', () => {
     excludes(proxySrc, ["method: 'PATCH'", "method: 'DELETE'", "method: 'PUT'"]);
   });
 
-  it('modal renders current/projected/delta + read-only labelling, with NO apply control', () => {
+  it('modal renders current/projected/delta + read-only labelling; apply is opt-in and delegated', () => {
     contains(modalSrc, [
       'Preview only — no changes will be saved',
       'Pricing preview is not enabled.',
@@ -44,11 +44,13 @@ describe('Quote Builder V2 — read-only pricing preview modal', () => {
       'This item',
       'Quote totals',
     ]);
-    // Strictly read-only: no apply/save affordance and no mutation fetch.
+    // Apply is OPT-IN: it shows only when applyEnabled + an onApply handler are
+    // passed (hotel apply, PR #578). When the caller omits them the modal is
+    // preview-only — the default for experiences/transport/external.
+    contains(modalSrc, ['applyEnabled', 'onApply', 'previewToken']);
+    // Even with apply on, the modal NEVER writes directly — it delegates to the
+    // onApply handler. No mutation fetch / verbs live in the modal itself.
     excludes(modalSrc, [
-      'Apply',
-      'Save pricing',
-      'onApply',
       'fetch(',
       "method: 'PATCH'",
       "method: 'POST'",

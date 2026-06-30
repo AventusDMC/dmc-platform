@@ -30,11 +30,12 @@ describe('Quote Builder V2 — hotel pricing preview (PR #569, preview-only)', (
     ]);
   });
 
-  it('hotels step keeps diagnostics + Why? and has NO apply/confirm control (preview-only)', () => {
+  it('hotels step keeps diagnostics + Why?; all mutations stay delegated (no direct fetch/POST in the step)', () => {
     // diagnostics retained
     contains(hotelsSrc, ['diagnostics?.reasons', 'Why?', 'Contract on file', 'onSetPrimary']);
-    // no apply/edit/write
-    excludes(hotelsSrc, ['onApply', 'apply-preview', 'Apply', "method: 'POST'", 'method: "POST"', 'fetch(']);
+    // The step never writes directly — apply (PR #578) is delegated to the
+    // onApplyItemPricing handler; there is no direct fetch / POST in the step.
+    excludes(hotelsSrc, ['apply-preview', "method: 'POST'", 'method: "POST"', 'fetch(']);
   });
 
   it('staff guidance still says hotel editing/contracts/rates are managed in Classic', () => {
@@ -62,13 +63,12 @@ describe('Quote Builder V2 — hotel pricing preview (PR #569, preview-only)', (
     contains(builderSrc, ['hotelPreviewEnabled={hotelPreviewEnabled}', 'onPreviewItem={onPreviewItem}']);
   });
 
-  it('backend exposes a dedicated hotel-preview flag (default OFF) and a scope gate; no hotel APPLY flag', () => {
+  it('backend exposes a dedicated hotel-preview flag (default OFF) and a scope gate', () => {
     contains(flagsSrc, [
       "export const QUOTE_PRICING_HOTEL_PREVIEW_FLAG = 'quote.pricingHotelPreview'",
       'export function isQuotePricingHotelPreviewEnabled()',
       "readBooleanEnv('QUOTE_PRICING_HOTEL_PREVIEW')",
     ]);
-    excludes(flagsSrc, ['HOTEL_APPLY', 'HotelApply']);
     contains(serviceSrc, [
       'isQuotePricingHotelPreviewEnabled',
       'const isHotelPreviewItem = Boolean(existingItem.hotelId)',

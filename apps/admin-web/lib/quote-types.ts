@@ -436,6 +436,13 @@ export interface PricingPreviewResult {
    * Display-only; null when not available. Never used for pricing/classification.
    */
   pricingBasis?: string | null
+  /**
+   * Stateless signed preview token returned by the backend preview endpoint. It
+   * binds this exact projection (quote/item/company/payload/snapshot) and is the
+   * only value the apply endpoint accepts. Display-never; passed straight back to
+   * the apply handler. Absent on blocked/out-of-scope previews (no apply possible).
+   */
+  previewToken?: string | null
 }
 
 /** Requests a pricing preview for an existing item edit. Read-only (no apply). */
