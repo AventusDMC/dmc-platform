@@ -13,7 +13,7 @@ import { OpsKpiGrid } from './ops-kpi-grid';
 export function CommandCenter({ vm, activeRange }: { vm: CommandCenterVM; activeRange: string }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         {vm.kpisAvailable ? (
           <OpsKpiGrid kpis={vm.kpis} />
         ) : (

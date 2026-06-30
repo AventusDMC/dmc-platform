@@ -36,6 +36,18 @@ describe('CommandCenter render — regions', () => {
     assert.ok(html.includes('Open in Classic'));
   });
 
+  it('Needs attention table uses the combined Trip/Finance columns with no-wrap labels', () => {
+    // Combined columns (Dates+Pax → Trip, Invoice+Supplier → Finance) keep the
+    // table from squeezing beside the 320px sidebar.
+    assert.ok(html.includes('>Trip<'), 'missing combined Trip column header');
+    assert.ok(html.includes('>Finance<'), 'missing combined Finance column header');
+    // Finance cell stacks invoice + supplier with axis prefixes.
+    assert.ok(html.includes('Invoice:'), 'missing Invoice axis prefix in Finance cell');
+    assert.ok(html.includes('Supplier:'), 'missing Supplier axis prefix in Finance cell');
+    // Key labels/badges must not break mid-word (PA X / Confirm ed / Unbill ed).
+    assert.ok(html.includes('whitespace-nowrap'), 'expected no-wrap treatment on labels/badges');
+  });
+
   it('renders the right sidebar', () => {
     assert.ok(html.includes('Dispatch summary'));
     assert.ok(html.includes('Fleet readiness'));

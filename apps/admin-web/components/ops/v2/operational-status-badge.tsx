@@ -25,7 +25,7 @@ export function OperationalStatusBadge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${VARIANT_CLASS[variant]}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${VARIANT_CLASS[variant]}`}
     >
       {prefix ? <span className="opacity-70">{prefix}:</span> : null}
       {label}
