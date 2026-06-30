@@ -5,6 +5,7 @@ import { globalCssSource } from './lib/global-css-source';
 import path = require('node:path');
 import { fileURLToPath } from 'node:url';
 import { NAV_GROUPS, getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
+import { isOpsV2Authorized, OPS_V2_ALLOWED_ROLES } from './operations/v2/ops-access';
 
 const templateSource = readFileSync(new URL('./template.tsx', import.meta.url), 'utf8');
 const loginPageSource = readFileSync(new URL('./login/page.tsx', import.meta.url), 'utf8');
@@ -426,4 +427,56 @@ test('active nav group for /operations/v2 remains Operations (flag ON and OFF)',
   withOpsV2Flag(undefined, () => {
     assert.equal(getActiveNavGroup('/operations/v2', 'admin').label, 'Operations');
   });
+});
+
+// --- Operations V2 route-level role scoping (#operations-v2-role-scoping) ---
+
+const opsV2CommandCenterSource = readFileSync(new URL('operations/v2/page.tsx', appDir), 'utf8');
+const opsV2WorkspaceSource = readFileSync(new URL('operations/v2/[bookingId]/page.tsx', appDir), 'utf8');
+
+test('isOpsV2Authorized allows the Operations nav audience', () => {
+  for (const role of ['admin', 'operations', 'super_admin', 'agent_admin'] as const) {
+    assert.equal(isOpsV2Authorized(role), true, `${role} should be allowed`);
+  }
+});
+
+test('isOpsV2Authorized rejects everyone else', () => {
+  for (const role of ['finance', 'viewer', 'agent'] as const) {
+    assert.equal(isOpsV2Authorized(role), false, `${role} should be rejected`);
+  }
+  assert.equal(isOpsV2Authorized(null), false);
+  assert.equal(isOpsV2Authorized(undefined), false);
+});
+
+test('OPS_V2_ALLOWED_ROLES matches the Operations nav group roles', () => {
+  const operationsGroup = NAV_GROUPS.find((group) => group.label === 'Operations');
+  assert.ok(operationsGroup);
+  assert.deepEqual(OPS_V2_ALLOWED_ROLES, operationsGroup.roles);
+});
+
+for (const [label, source] of [
+  ['Command Center', opsV2CommandCenterSource],
+  ['Booking Workspace', opsV2WorkspaceSource],
+] as const) {
+  test(`Operations V2 ${label} page enforces a route-level role gate`, () => {
+    assert.match(source, /readSessionActor/); // reads session role server-side
+    assert.match(source, /isOpsV2Authorized/); // role check via the V2 access helper
+    assert.match(source, /AdminForbiddenState/); // forbids unauthorized roles
+
+    const flagIndex = source.indexOf('isOpsV2Enabled()');
+    const notFoundIndex = source.indexOf('notFound()');
+    const roleIndex = source.indexOf('isOpsV2Authorized(');
+    const forbiddenIndex = source.indexOf('<AdminForbiddenState'); // JSX usage, not the import
+    assert.ok(flagIndex >= 0 && notFoundIndex >= 0 && roleIndex >= 0 && forbiddenIndex >= 0);
+    assert.ok(flagIndex < roleIndex, 'flag check must precede the role check');
+    assert.ok(notFoundIndex < roleIndex, 'notFound() must precede the role check');
+    assert.ok(roleIndex < forbiddenIndex, 'role check must precede AdminForbiddenState');
+  });
+}
+
+test('Operations V2 pages gate role before fetching any V2 data', () => {
+  // Command Center: role gate precedes the Promise.all of loaders.
+  assert.ok(opsV2CommandCenterSource.indexOf('isOpsV2Authorized(') < opsV2CommandCenterSource.indexOf('Promise.all(['));
+  // Workspace: role gate precedes the per-tab data loading.
+  assert.ok(opsV2WorkspaceSource.indexOf('isOpsV2Authorized(') < opsV2WorkspaceSource.indexOf("activeTab === 'operations'"));
 });

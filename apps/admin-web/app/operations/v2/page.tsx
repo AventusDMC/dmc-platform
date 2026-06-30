@@ -1,8 +1,12 @@
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson } from '../../lib/admin-server';
+import { readSessionActor } from '../../lib/auth-session';
+import { AdminForbiddenState } from '../../components/AdminForbiddenState';
 import { OpsBetaHeader } from '../../../components/ops/v2/ops-beta-header';
 import { CommandCenter } from '../../../components/ops/v2/command-center';
 import { isOpsV2Enabled } from './ops-flag';
+import { isOpsV2Authorized } from './ops-access';
 import {
   buildCommandCenterVM,
   type RawBookingListItem,
@@ -49,8 +53,22 @@ async function loadBookings(): Promise<RawBookingListItem[] | null> {
 }
 
 export default async function OperationsV2CommandCenterPage({ searchParams }: PageProps) {
+  // 1) Flag gate first — when OFF the route does not exist (no role/info leak).
   if (!isOpsV2Enabled()) {
     notFound();
+  }
+
+  // 2) Role gate (flag ON only) — read the session role server-side and forbid
+  // unauthorized roles BEFORE fetching any V2 data. Allowed set matches the
+  // Operations nav visibility (admin / operations / super_admin / agent_admin).
+  const role = readSessionActor((await cookies()).get('dmc_session')?.value || '')?.role ?? null;
+  if (!isOpsV2Authorized(role)) {
+    return (
+      <AdminForbiddenState
+        title="Operations V2 access restricted"
+        description="Your account does not have permission to view the Operations V2 workspace for this company."
+      />
+    );
   }
 
   const resolved = searchParams ? await searchParams : undefined;
