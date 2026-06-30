@@ -17,8 +17,10 @@ export type SessionTokenPayload = {
   sub: string;
   email: string;
   role: DmcRole;
-  firstName: string;
-  lastName: string;
+  // Optional: a (validly-signed) token may omit names, or a user may have a
+  // null/empty name. toActor guards against this so auth never 500s.
+  firstName?: string | null;
+  lastName?: string | null;
   companyId?: string | null;
   exp: number;
 };

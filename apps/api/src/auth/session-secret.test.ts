@@ -10,7 +10,7 @@ function createService() {
   return new AuthService({} as any);
 }
 
-function forgeToken(secret: string) {
+function forgeToken(secret: string, overrides: Record<string, unknown> = {}) {
   const payload = {
     sub: 'user-1',
     email: 'admin@example.com',
@@ -18,6 +18,7 @@ function forgeToken(secret: string) {
     firstName: 'A',
     lastName: 'B',
     exp: Math.floor(Date.now() / 1000) + 3600,
+    ...overrides,
   };
   const segment = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = createHmac('sha256', secret).update(segment).digest('hex');
@@ -60,6 +61,33 @@ sessionSecretTest.test('uses the dev fallback secret outside production (local/t
     const actor = service.verifySessionToken(tokenForgedWithDevSecret);
     sessionSecretAssert.equal(actor.email, 'admin@example.com');
     sessionSecretAssert.equal(actor.role, 'admin');
+  });
+});
+
+sessionSecretTest.test('does not 500 on a validly-signed token missing firstName/lastName (auth-guard hardening)', () => {
+  withEnv('test', undefined, () => {
+    const service = createService();
+    // A token that omits name fields entirely (undefined -> dropped by JSON).
+    const tokenNoNames = forgeToken(DEV_FALLBACK_SECRET, { firstName: undefined, lastName: undefined });
+    const actor = service.verifySessionToken(tokenNoNames);
+    // Resolves cleanly instead of throwing "Cannot read properties of undefined (reading 'trim')".
+    sessionSecretAssert.equal(actor.email, 'admin@example.com');
+    sessionSecretAssert.equal(actor.role, 'admin');
+    sessionSecretAssert.equal(actor.firstName, '');
+    sessionSecretAssert.equal(actor.lastName, '');
+    // Display name falls back to the email when there is no name.
+    sessionSecretAssert.equal(actor.name, 'admin@example.com');
+  });
+});
+
+sessionSecretTest.test('also tolerates explicitly null name fields', () => {
+  withEnv('test', undefined, () => {
+    const service = createService();
+    const tokenNullNames = forgeToken(DEV_FALLBACK_SECRET, { firstName: null, lastName: null });
+    const actor = service.verifySessionToken(tokenNullNames);
+    sessionSecretAssert.equal(actor.firstName, '');
+    sessionSecretAssert.equal(actor.lastName, '');
+    sessionSecretAssert.equal(actor.name, 'admin@example.com');
   });
 });
 

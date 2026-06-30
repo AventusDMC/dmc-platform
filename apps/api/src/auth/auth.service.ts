@@ -397,8 +397,8 @@ export class AuthService {
   private toActor(values: {
     id: string;
     email: string;
-    firstName: string;
-    lastName: string;
+    firstName?: string | null;
+    lastName?: string | null;
     role: string;
     companyId?: string | null;
   }): AuthenticatedActor {
@@ -408,8 +408,12 @@ export class AuthService {
       throw new UnauthorizedException('Unsupported user role');
     }
 
-    const firstName = values.firstName.trim();
-    const lastName = values.lastName.trim();
+    // Names are optional in a (validly-signed) session token: a token may omit
+    // firstName/lastName, or a user may have a null/empty name. Guard against
+    // undefined so authentication never 500s on a name-less token — fall back to
+    // the email as the display name (matches the existing empty-name fallback).
+    const firstName = (values.firstName ?? '').trim();
+    const lastName = (values.lastName ?? '').trim();
     const name = [firstName, lastName].filter(Boolean).join(' ').trim() || values.email.trim().toLowerCase();
 
     return {
