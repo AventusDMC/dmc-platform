@@ -332,3 +332,98 @@ test('public proposal page uses AXIS branding and avoids beige proposal styling'
   assert.match(cssSource, /\.public-proposal-page \.primary-button\s*\{[\s\S]*background:\s*#1F9ACF/);
   assert.doesNotMatch(proposalPageSource + cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|beige|cream|public-proposal-logo-wrapper\s*\{[\s\S]*#061B33/i);
 });
+
+// --- Operations V2 (Beta) flag-gated nav entry (#operations-v2-nav-enablement) ---
+
+type OpsNavRole = NonNullable<Parameters<typeof getVisibleNavGroups>[0]>;
+
+// Toggle NEXT_PUBLIC_OPS_V2_DEFAULT for a single assertion and ALWAYS restore it
+// (the test process is shared, so flag state must not leak across tests).
+function withOpsV2Flag<T>(value: string | undefined, run: () => T): T {
+  const previous = process.env.NEXT_PUBLIC_OPS_V2_DEFAULT;
+  if (value === undefined) {
+    delete process.env.NEXT_PUBLIC_OPS_V2_DEFAULT;
+  } else {
+    process.env.NEXT_PUBLIC_OPS_V2_DEFAULT = value;
+  }
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.NEXT_PUBLIC_OPS_V2_DEFAULT;
+    } else {
+      process.env.NEXT_PUBLIC_OPS_V2_DEFAULT = previous;
+    }
+  }
+}
+
+function operationsChildren(role: OpsNavRole) {
+  return getVisibleNavGroups(role).find((group) => group.label === 'Operations')?.children ?? [];
+}
+
+function findOpsV2Entry(role: OpsNavRole) {
+  return operationsChildren(role).find((child) => child.label === 'Operations V2 (Beta)');
+}
+
+test('Operations V2 nav entry is hidden when the flag is OFF/default', () => {
+  withOpsV2Flag(undefined, () => {
+    assert.equal(findOpsV2Entry('admin'), undefined);
+  });
+  withOpsV2Flag('false', () => {
+    assert.equal(findOpsV2Entry('admin'), undefined);
+  });
+});
+
+test('Operations V2 nav entry appears for admin when the flag is ON', () => {
+  withOpsV2Flag('true', () => {
+    const entry = findOpsV2Entry('admin');
+    assert.ok(entry, 'expected Operations V2 (Beta) nav entry when the flag is ON');
+    assert.equal(entry.href, '/operations/v2');
+    assert.equal(entry.section, 'Coordination');
+  });
+});
+
+test('Operations V2 nav entry sits immediately after Dispatch in Coordination', () => {
+  withOpsV2Flag('true', () => {
+    const children = operationsChildren('admin');
+    const dispatchIndex = children.findIndex((child) => child.href === '/operations/dispatch');
+    const v2Index = children.findIndex((child) => child.label === 'Operations V2 (Beta)');
+    assert.ok(dispatchIndex >= 0, 'Dispatch entry should exist');
+    assert.equal(v2Index, dispatchIndex + 1);
+    assert.equal(children[v2Index].section, 'Coordination');
+  });
+});
+
+test('Operations V2 nav entry inherits Operations group role visibility', () => {
+  withOpsV2Flag('true', () => {
+    // Visible to the Operations-group audience.
+    assert.ok(findOpsV2Entry('operations'));
+    assert.ok(findOpsV2Entry('admin'));
+    assert.ok(findOpsV2Entry('super_admin'));
+    assert.ok(findOpsV2Entry('agent_admin'));
+    // Not surfaced through nav to roles that cannot see the Operations group.
+    assert.equal(findOpsV2Entry('finance'), undefined);
+    assert.equal(findOpsV2Entry('viewer'), undefined);
+    assert.equal(findOpsV2Entry('agent'), undefined);
+  });
+});
+
+test('Operations V2 nav entry resolves to an existing app page', () => {
+  withOpsV2Flag('true', () => {
+    const entry = findOpsV2Entry('admin');
+    assert.ok(entry);
+    const pathname = entry.href.split('?')[0];
+    const segments = pathname.split('/').filter(Boolean);
+    const pageFile = new URL(`${segments.join('/')}/page.tsx`, appDir);
+    assert.equal(existsSync(pageFile), true, `Operations V2 (Beta) should resolve ${entry.href}`);
+  });
+});
+
+test('active nav group for /operations/v2 remains Operations (flag ON and OFF)', () => {
+  withOpsV2Flag('true', () => {
+    assert.equal(getActiveNavGroup('/operations/v2', 'admin').label, 'Operations');
+  });
+  withOpsV2Flag(undefined, () => {
+    assert.equal(getActiveNavGroup('/operations/v2', 'admin').label, 'Operations');
+  });
+});

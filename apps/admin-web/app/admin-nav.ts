@@ -1,4 +1,14 @@
 import type { SessionRole } from './lib/auth-session';
+import { isOpsV2Enabled } from './operations/v2/ops-flag';
+
+// Booking Operations V2 nav child. Injected (not placed in the static NAV_GROUPS
+// literal) so the flag is read at call time and tests can toggle it. Discovery
+// only — the route itself is gated by the same NEXT_PUBLIC_OPS_V2_DEFAULT flag.
+const OPERATIONS_V2_NAV_CHILD = {
+  label: 'Operations V2 (Beta)',
+  href: '/operations/v2',
+  section: 'Coordination',
+};
 
 export type AdminNavGroup = {
   label: string;
@@ -144,7 +154,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
 ];
 
 export function getVisibleNavGroups(role?: SessionRole | null) {
-  return NAV_GROUPS.filter((group) => {
+  const visible = NAV_GROUPS.filter((group) => {
     if (!group.roles?.length) {
       return true;
     }
@@ -154,6 +164,26 @@ export function getVisibleNavGroups(role?: SessionRole | null) {
     }
 
     return group.roles.includes(role) || role === 'super_admin' || (role === 'agent_admin' && group.roles.includes('admin'));
+  });
+
+  // Operations V2 (Beta) is discoverable only when the flag is built ON. It is
+  // injected into the already role-filtered Operations group, so it inherits
+  // that group's role visibility (admin/operations/super_admin/agent_admin) and
+  // never appears for roles that can't see Operations. Default OFF → absent.
+  if (!isOpsV2Enabled()) {
+    return visible;
+  }
+
+  return visible.map((group) => {
+    if (group.label !== 'Operations') {
+      return group;
+    }
+
+    const children = [...group.children];
+    const dispatchIndex = children.findIndex((child) => child.href === '/operations/dispatch');
+    const insertAt = dispatchIndex >= 0 ? dispatchIndex + 1 : children.length;
+    children.splice(insertAt, 0, OPERATIONS_V2_NAV_CHILD);
+    return { ...group, children };
   });
 }
 
