@@ -109,10 +109,10 @@ describe('Quote Builder V2 — hotel diagnostics (PR #566, read-only)', () => {
     ]);
   });
 
-  // ---- 6. no hotel apply/edit controls introduced (only the pre-existing Set-as-primary) ----
-  it('hotels step introduces no apply/edit controls and performs no fetch', () => {
-    excludes(hotelsSrc, ['onApply', 'apply-preview', 'Apply', "method: 'POST'", 'fetch(']);
-    // the only mutation handler remains the pre-existing Set-as-primary (PATCH isPrimary).
+  // ---- 6. mutations stay delegated — the step performs no direct fetch/POST ----
+  it('hotels step performs no direct fetch/POST (apply delegated to onApplyItemPricing, PR #578)', () => {
+    excludes(hotelsSrc, ['apply-preview', "method: 'POST'", 'fetch(']);
+    // Set-as-primary (PATCH isPrimary) and hotel apply both delegate to handlers.
     contains(hotelsSrc, ['onSetPrimary']);
   });
 

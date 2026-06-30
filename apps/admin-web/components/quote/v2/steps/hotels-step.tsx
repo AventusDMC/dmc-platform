@@ -11,7 +11,7 @@ import { ClassicGuidance } from "./classic-guidance"
 import { PricingPreviewModal } from "./pricing-preview-modal"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { HotelSelection, HotelCityBlock, PreviewItemHandler } from "../../../../lib/quote-types"
+import type { ApplyItemPricingHandler, HotelSelection, HotelCityBlock, PreviewItemHandler } from "../../../../lib/quote-types"
 import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown, Calculator } from "lucide-react"
 
 /** Short read-only label for the diagnostics contract state (distinct from the badge). */
@@ -59,6 +59,8 @@ function HotelOption({
   onSetPrimary,
   onPreviewItem,
   hotelPreviewEnabled,
+  onApplyItemPricing,
+  hotelApplyEnabled,
 }: {
   hotel: HotelSelection
   currency: string
@@ -73,6 +75,10 @@ function HotelOption({
   onPreviewItem?: PreviewItemHandler
   /** Hotel pricing preview is behind a separate flag (default OFF). */
   hotelPreviewEnabled?: boolean
+  /** Pricing apply handler (role/status-gated by the caller). */
+  onApplyItemPricing?: ApplyItemPricingHandler
+  /** Hotel pricing apply is behind a separate flag (default OFF). */
+  hotelApplyEnabled?: boolean
 }) {
   const [showWhy, setShowWhy] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -80,8 +86,13 @@ function HotelOption({
   const reasons = diagnostics?.reasons ?? []
   const stateLabel = contractStateLabel(diagnostics?.contractState)
   // Read-only pricing preview — only when the handler is present, the row has a
-  // matched priced hotel QuoteItem, AND the hotel-preview flag is ON. No apply.
+  // matched priced hotel QuoteItem, AND the hotel-preview flag is ON.
   const canPreview = Boolean(onPreviewItem && hotel.pricedQuoteItemId && hotelPreviewEnabled)
+  // Apply is eligible ONLY for a real, matched priced hotel row (stable
+  // pricedQuoteItemId) when BOTH the apply handler and the hotel-apply flag are
+  // present. Itinerary-fallback / unmatched / no-contract rows lack a
+  // pricedQuoteItemId, so they stay preview-only and never offer apply.
+  const canApply = Boolean(canPreview && onApplyItemPricing && hotelApplyEnabled && hotel.pricedQuoteItemId)
   return (
     <div>
     <div
@@ -125,10 +136,14 @@ function HotelOption({
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
             onClick={() => setPreviewOpen(true)}
-            title="Preview projected hotel pricing — read-only, nothing is saved"
+            title={
+              canApply
+                ? "Preview and apply hotel pricing — nothing is saved until you apply"
+                : "Preview projected hotel pricing — read-only, nothing is saved"
+            }
           >
             <Calculator className="size-3.5" aria-hidden="true" />
-            Preview hotel pricing
+            {canApply ? "Preview & apply hotel pricing" : "Preview hotel pricing"}
           </Button>
         ) : null}
         {hotel.selected ? (
@@ -163,6 +178,9 @@ function HotelOption({
           currency={currency}
           quoteItemId={hotel.pricedQuoteItemId!}
           onPreview={onPreviewItem!}
+          onApply={canApply ? onApplyItemPricing : undefined}
+          applyEnabled={canApply}
+          applyLabel="Apply hotel price"
         />
       ) : null}
 
@@ -214,10 +232,18 @@ export interface HotelsStepProps {
   onPreviewItem?: PreviewItemHandler
   /**
    * Hotel pricing PREVIEW scope (separate flag, default OFF). When false, hotel
-   * rows stay diagnostics/read-only with no preview affordance. Preview-ONLY —
-   * there is never an apply/confirm control for hotels.
+   * rows stay diagnostics/read-only with no preview affordance.
    */
   hotelPreviewEnabled?: boolean
+  /** Pricing apply handler. When omitted (or flag off), hotels stay preview-only. */
+  onApplyItemPricing?: ApplyItemPricingHandler
+  /**
+   * Hotel pricing APPLY scope (separate flag, default OFF). When true (and the
+   * apply handler + preview flag are present), eligible matched hotel rows expose
+   * an "Apply hotel price" action that re-prices the selected hotel in place.
+   * When false, hotels stay preview-only — no apply control is ever shown.
+   */
+  hotelApplyEnabled?: boolean
 }
 
 /**
@@ -235,7 +261,7 @@ function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
   return eligible
 }
 
-export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPreviewItem, hotelPreviewEnabled }: HotelsStepProps) {
+export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPreviewItem, hotelPreviewEnabled, onApplyItemPricing, hotelApplyEnabled }: HotelsStepProps) {
   const canEdit = Boolean(onSetPrimary)
   // Only claim "Set primary only" when at least one city actually exposes a
   // "Set as primary" action (2+ editable real options in the same set). Fallback
@@ -245,8 +271,11 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
     canEdit && cities.some((b) => eligibleOptionSetIds(b).size > 0)
   // Hotel rows expose a read-only pricing preview when the handler is present AND
   // the hotel-preview flag is ON (default OFF). When active, the header reads
-  // "Preview only" (mirrors Transport) instead of "View only". Preview-only — no apply.
+  // "Preview only" (mirrors Transport) instead of "View only".
   const previewActive = Boolean(onPreviewItem && hotelPreviewEnabled)
+  // Apply is active only when preview is active AND the apply handler + apply flag
+  // are present (default OFF). When active the header reads "Apply enabled".
+  const applyActive = Boolean(previewActive && onApplyItemPricing && hotelApplyEnabled)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState<{ id: string; message: string } | null>(null)
 
@@ -272,14 +301,16 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
       <StepHeader
         title="Hotels & Accommodation"
         description="Choose one property per overnight stop. On-request and no-contract hotels must be confirmed before the quote can be sent."
-        statusLabel={hasEditableAlternatives ? "Set primary only" : previewActive ? "Preview only" : "View only"}
-        statusTone={hasEditableAlternatives ? "editable" : previewActive ? "preview" : "view"}
+        statusLabel={applyActive ? "Apply enabled" : hasEditableAlternatives ? "Set primary only" : previewActive ? "Preview only" : "View only"}
+        statusTone={applyActive ? "editable" : hasEditableAlternatives ? "editable" : previewActive ? "preview" : "view"}
         helper={
-          hasEditableAlternatives
-            ? "Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
-            : previewActive
-              ? "Hotel selections are shown for review with a read-only pricing preview (no changes are saved and there is no apply). Hotel edits remain in Classic."
-              : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
+          applyActive
+            ? "Eligible hotels (matched priced lines) can be re-priced in place: preview the projected pricing, then apply. Apply only updates that hotel line's pricing — it does not change the hotel, primary, rooming, meal plan, or itinerary. Other hotel edits remain in Classic."
+            : hasEditableAlternatives
+              ? "Where a city has alternative hotels, you can change which one is marked primary for the proposal. This is a display choice and does not change pricing. All other hotel details (rates, rooming, meal plan, nights) are view-only."
+              : previewActive
+                ? "Hotel selections are shown for review with a read-only pricing preview (no changes are saved and there is no apply). Hotel edits remain in Classic."
+                : "Hotel selections are shown for review. Pricing, rooming, meal plan and nights are view-only."
         }
       />
 
@@ -353,6 +384,8 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
                           onSetPrimary={() => handleSetPrimary(hotel)}
                           onPreviewItem={onPreviewItem}
                           hotelPreviewEnabled={hotelPreviewEnabled}
+                          onApplyItemPricing={onApplyItemPricing}
+                          hotelApplyEnabled={hotelApplyEnabled}
                         />
                         {error && error.id === hotel.id ? (
                           <p

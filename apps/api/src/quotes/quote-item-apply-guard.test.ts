@@ -23,6 +23,11 @@ function enable(preview: boolean, apply: boolean) {
   // and out-of-scope tests independent of entrance-flag state / test order.
   delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   delete process.env.QUOTE_PRICING_ENTRANCE_APPLY;
+  // Likewise default the hotel scope OFF for every test; hotel tests opt in via
+  // enableHotel() AFTER calling enable() so out-of-scope / meal tests are
+  // independent of hotel-flag state and test order.
+  delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
+  delete process.env.QUOTE_PRICING_HOTEL_APPLY;
 }
 
 function enableEntrance(preview: boolean, apply: boolean) {
@@ -30,6 +35,16 @@ function enableEntrance(preview: boolean, apply: boolean) {
   else delete process.env.QUOTE_PRICING_ENTRANCE_PREVIEW;
   if (apply) process.env.QUOTE_PRICING_ENTRANCE_APPLY = '1';
   else delete process.env.QUOTE_PRICING_ENTRANCE_APPLY;
+}
+
+// Hotel preview/apply gate on their OWN flags (PR #569 preview, PR #578 apply),
+// both default OFF. Hotel preview must be ON to mint a token; hotel apply must be
+// ON for the apply guard to accept a hotel item — either OFF → out of scope.
+function enableHotel(preview: boolean, apply: boolean) {
+  if (preview) process.env.QUOTE_PRICING_HOTEL_PREVIEW = '1';
+  else delete process.env.QUOTE_PRICING_HOTEL_PREVIEW;
+  if (apply) process.env.QUOTE_PRICING_HOTEL_APPLY = '1';
+  else delete process.env.QUOTE_PRICING_HOTEL_APPLY;
 }
 
 type Opts = {
@@ -40,6 +55,7 @@ type Opts = {
   auditRows?: any[];
   users?: any[];
   entrance?: boolean;
+  hotel?: boolean;
 };
 
 function makeService(opts: Opts = {}) {
@@ -48,7 +64,9 @@ function makeService(opts: Opts = {}) {
     opts.service ??
     (opts.entrance
       ? { category: 'ticketing', serviceType: { code: 'ENTRANCE_TICKET', name: 'Entrance' } }
-      : { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } });
+      : opts.hotel
+        ? { category: 'hotel', serviceType: { code: 'HOTEL', name: 'Hotel' } }
+        : { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } });
   const entranceFeeId = opts.entranceFeeId ?? (opts.entrance ? 'ef1' : null);
   const db: any = {
     quote: {
@@ -59,6 +77,7 @@ function makeService(opts: Opts = {}) {
     },
     item: {
       id: ITEM_ID, quoteId: QUOTE_ID, optionId: null, entranceFeeId,
+      hotelId: opts.hotel ? 'h1' : null,
       serviceDate: new Date('2026-07-01T00:00:00.000Z'),
       transportServiceTypeId: opts.transport ? 'tt1' : null, routeId: null, touringRouteId: null,
       serviceId: 's1', quantity: 1, totalCost: 100, totalSell: 120,
@@ -374,6 +393,90 @@ test('entrance item apply remains blocked (out of scope)', async () => {
   await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
   assert.equal(calls.updateItem, 0);
   assert.equal(calls.writes, 0);
+});
+
+// ── Hotel apply scope (PR #578, separate flag, default OFF) ──────────────────
+
+test('hotel apply OFF (preview ON, apply flag OFF) → 400 out-of-scope, no write', async () => {
+  enable(true, true);
+  // Hotel PREVIEW is behind its own flag — turn it ON so the preview mints a
+  // token, then prove apply still rejects hotel at the supported-type gate when
+  // the hotel APPLY flag is OFF (hotel stays preview-only).
+  enableHotel(true, false);
+  const { svc, calls } = makeService({ hotel: true });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('hotel apply ON → applies via existing updateItem write path (zero delta)', async () => {
+  enable(true, true);
+  enableHotel(true, true);
+  const { svc, calls } = makeService({ hotel: true, resolved: { cost: 100, sell: 120 } }); // no-op
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(out.matchedPreview, true);
+  assert.equal(out.integrityOk, true);
+  assert.deepEqual(out.item.after, { totalCost: 100, totalSell: 120 });
+  assert.equal(calls.updateItem, 1); // delegates to the existing updateItem write path
+  assert.equal(calls.writes, 0); // never writes via direct quoteItem.update
+});
+
+test('hotel apply ON + non-zero delta requires acknowledgedDelta, then applies (target only)', async () => {
+  enable(true, true);
+  enableHotel(true, true);
+  const { svc, calls } = makeService({ hotel: true, resolved: { cost: 150, sell: 180 } });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR), 409, 'confirmation_required');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.deepEqual(out.item.after, { totalCost: 150, totalSell: 180 });
+  assert.equal(out.quote.after.totalCost, 1050); // 1000 + (150 - 100)
+  assert.equal(calls.updateItem, 1);
+  assert.equal(calls.writes, 0);
+});
+
+test('hotel apply ON: changing the underlying serviceId is rejected (Classic-only)', async () => {
+  enable(true, true);
+  enableHotel(true, true);
+  const { svc, calls } = makeService({ hotel: true });
+  // Mint the token WITH the new serviceId so the payload-hash check passes and we
+  // reach the hotel serviceId-change guard (item's persisted serviceId is 's1').
+  const swapData = { ...MEAL_DATA, serviceId: 's2' } as any;
+  const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, swapData, ACTOR);
+  const token = res.previewToken as string;
+  await expectHttp(
+    () => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, swapData, token, true, ACTOR),
+    400,
+    'not supported by apply',
+  );
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('hotel apply audit: serviceType HOTEL, sanitized metadata (no token/secret)', async () => {
+  enable(true, true);
+  enableHotel(true, true);
+  const { svc, auditCalls } = makeService({ hotel: true, resolved: { cost: 150, sell: 180 } });
+  const token = await mintToken(svc);
+  await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  const row = auditCalls.find((c: any) => c.action === 'quote.pricing.apply');
+  assert.ok(row, 'expected a pricing-apply audit row');
+  assert.equal(row.entity, 'quoteItem');
+  assert.equal(row.entityId, ITEM_ID);
+  assert.equal(row.metadata.serviceType, 'HOTEL');
+  assert.equal(row.metadata.quoteId, QUOTE_ID);
+  assert.equal(row.metadata.quoteItemId, ITEM_ID);
+  assert.equal(row.metadata.newItemTotalCost, 150);
+  assert.equal(row.metadata.newItemTotalSell, 180);
+  // Metadata must never carry the preview token or any secret-shaped value.
+  const serialized = JSON.stringify(row.metadata);
+  assert.ok(!serialized.includes(token), 'audit metadata must not contain the preview token');
+  assert.ok(!serialized.includes('v1.'), 'audit metadata must not contain a token prefix');
 });
 
 test('external-package item apply remains blocked (out of scope)', async () => {

@@ -90,9 +90,9 @@ describe('Quote Builder V2 — hotel fallback contract-status cleanup (PR #567)'
     contains(helpersSrc, ['quote.steps.find((s) => s.id === step)?.status']);
   });
 
-  // ---- 7. no hotel edit/apply controls introduced ----
-  it('hotels step still introduces no apply/edit controls and no fetch', () => {
-    excludes(hotelsSrc, ['onApply', 'apply-preview', 'Apply', "method: 'POST'", 'fetch(']);
+  // ---- 7. mutations stay delegated — the step performs no direct fetch/POST ----
+  it('hotels step performs no direct fetch/POST (apply delegated, PR #578)', () => {
+    excludes(hotelsSrc, ['apply-preview', "method: 'POST'", 'fetch(']);
     contains(hotelsSrc, ['onSetPrimary', 'Contract on file']);
   });
 

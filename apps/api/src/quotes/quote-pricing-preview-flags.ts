@@ -82,13 +82,24 @@ export function isQuotePricingTransportPreviewEnabled(): boolean {
 // recalculates), but because the global QUOTE_PRICING_PREVIEW flag is already ON
 // in production, hotel preview MUST gate on its OWN flag so it is not exposed
 // automatically. When OFF (the default), a hotel item preview is blocked as
-// out-of-scope and nothing is computed and no token is issued. There is
-// intentionally NO hotel APPLY flag — hotel stays preview-only and the apply
-// guard independently rejects hotel items as out of scope.
+// out-of-scope and nothing is computed and no token is issued.
 export const QUOTE_PRICING_HOTEL_PREVIEW_FLAG = 'quote.pricingHotelPreview';
 
 export function isQuotePricingHotelPreviewEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_HOTEL_PREVIEW');
+}
+
+// Hotel pricing APPLY scope (separate, default OFF). STRICTER than preview —
+// apply writes via the EXISTING updateItem → recalculateQuoteTotals path (the
+// same write Classic uses), so it requires BOTH the hotel preview flag (to
+// compute + issue the token) AND this apply flag. When OFF (the default), the
+// apply guard rejects hotel items as out of scope, so hotel stays preview-only.
+// No schema/formula change — apply just re-persists the freshly-resolved hotel
+// price for the already-selected hotel/contract/room/occupancy/dates.
+export const QUOTE_PRICING_HOTEL_APPLY_FLAG = 'quote.pricingHotelApply';
+
+export function isQuotePricingHotelApplyEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_HOTEL_APPLY');
 }
 
 // ── External-package pricing PREVIEW scope (separate, default OFF) ────────────
