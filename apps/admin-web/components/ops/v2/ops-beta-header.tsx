@@ -17,6 +17,7 @@ export function OpsBetaHeader({
   statusSlot,
   rightSlot,
   helper,
+  innerClassName,
 }: {
   /** Breadcrumb trail segments, last one is emphasized. */
   breadcrumb: string[];
@@ -30,36 +31,48 @@ export function OpsBetaHeader({
   rightSlot?: ReactNode;
   /** Optional helper copy rendered under the title row. */
   helper?: string;
+  /**
+   * Optional class applied to the header's inner row so callers can align it to
+   * the same contained content column (e.g. the Booking Workspace max-width
+   * wrapper). The bar itself stays full-bleed; defaults to full width.
+   */
+  innerClassName?: string;
 }) {
   return (
-    <header className="flex flex-col gap-4 border-b border-border bg-card px-4 py-4 md:px-6 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0">
-        <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-          {breadcrumb.map((seg, i) => {
-            const last = i === breadcrumb.length - 1;
-            return (
-              <span key={`${seg}-${i}`} className="flex items-center gap-1.5">
-                <span className={last ? 'font-medium text-foreground' : undefined}>{seg}</span>
-                {!last ? <ChevronRight className="size-3.5" aria-hidden="true" /> : null}
-              </span>
-            );
-          })}
-        </nav>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-            {title}
-          </h1>
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground">
-            Read-only V2 Beta
-          </span>
-          {statusSlot}
+    <header className="border-b border-border bg-card px-4 py-4 md:px-6">
+      <div
+        className={`flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between${
+          innerClassName ? ` ${innerClassName}` : ''
+        }`}
+      >
+        <div className="min-w-0">
+          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+            {breadcrumb.map((seg, i) => {
+              const last = i === breadcrumb.length - 1;
+              return (
+                <span key={`${seg}-${i}`} className="flex items-center gap-1.5">
+                  <span className={last ? 'font-medium text-foreground' : undefined}>{seg}</span>
+                  {!last ? <ChevronRight className="size-3.5" aria-hidden="true" /> : null}
+                </span>
+              );
+            })}
+          </nav>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+              {title}
+            </h1>
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground">
+              Read-only V2 Beta
+            </span>
+            {statusSlot}
+          </div>
+          {helper ? <p className="mt-1 text-sm text-muted-foreground">{helper}</p> : null}
         </div>
-        {helper ? <p className="mt-1 text-sm text-muted-foreground">{helper}</p> : null}
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-        {rightSlot}
-        <OpenInClassicButton href={classicHref} label={classicLabel} />
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          {rightSlot}
+          <OpenInClassicButton href={classicHref} label={classicLabel} />
+        </div>
       </div>
     </header>
   );
