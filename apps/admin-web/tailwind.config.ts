@@ -27,6 +27,9 @@ const config: Config = {
     "./app/quotes/\\[id\\]/builder-v2/**/*.{ts,tsx}",
     "./components/quote/v2/**/*.{ts,tsx}",
     "./components/ui/**/*.{ts,tsx}",
+    // Booking Operations V2 — route-scoped (see app/operations/v2/ops-v2.css).
+    "./app/operations/v2/**/*.{ts,tsx}",
+    "./components/ops/v2/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
