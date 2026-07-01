@@ -45,6 +45,7 @@ import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
 import { classifyItemApplyKind, entranceDisplayLabel } from "./quote-item-apply-kind"
 import { buildHotelDiagnostics, type MatchedHotelLine } from "./quote-hotel-diagnostics"
+import { matchPricedHotelLine, type PricedHotelLine } from "./quote-hotel-line-match"
 import { resolveDayTransportAndVisits } from "./quote-v2-itinerary-transport"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
@@ -392,6 +393,8 @@ function mapHotelCities(raw: RawErpQuote): HotelCityBlock[] {
         // Matched priced hotel QuoteItem id (target for the read-only hotel pricing
         // preview). Present only for rows matched to a priced line. Read-only.
         pricedQuoteItemId: typeof ro.pricedQuoteItemId === "string" ? ro.pricedQuoteItemId : undefined,
+        // True when the row matched multiple priced lines and apply must be hidden.
+        pricingMatchAmbiguous: typeof ro.pricingMatchAmbiguous === "boolean" ? ro.pricingMatchAmbiguous : undefined,
         // Read-only diagnostics object — passed through verbatim (built FE-side by
         // mapErpQuoteToRaw via buildHotelDiagnostics). Absent for demo/fallback data.
         diagnostics: isRecord(ro.diagnostics) ? (ro.diagnostics as unknown as HotelSelection["diagnostics"]) : undefined,
@@ -694,6 +697,7 @@ interface ApiQuoteItem {
   // Hotel-line diagnostics inputs (already returned by the GET include: contract,
   // roomCategory; totalCost/nightCount are scalars). Read-only — never written.
   contract?: { id?: string | null; name?: string | null } | null
+  roomCategoryId?: string | null
   roomCategory?: { name?: string | null } | null
   // Raw meal fields (persisted columns, serialized by the GET item spread) used
   // to rebuild a meal edit payload WITHOUT parsing pricingDescription.
@@ -741,6 +745,11 @@ interface ApiHotelOption {
   id?: string | null
   city?: string | null
   hotelNameSnapshot?: string | null
+  // Stable identifiers (QuoteHotelOption scalars, already returned by the GET
+  // include) used to match this row to the authoritative priced hotel QuoteItem
+  // WITHOUT relying on the (possibly duplicated) hotel name.
+  hotelId?: string | null
+  roomCategoryId?: string | null
   roomType?: string | null
   mealPlan?: string | null
   nights?: number | null
@@ -952,14 +961,19 @@ function mapErpQuoteToRaw(
   // fallback) do not. Match by hotel name (case-insensitive) so V2 can EXPLAIN
   // why a selected hotel reads as on-request without changing pricing/readiness.
   // Read-only; the GET already returns these fields (contract, roomCategory).
-  const hotelLineByName = new Map<string, MatchedHotelLine>()
+  // Build the full list of priced hotel lines (one per hotel QuoteItem) WITHOUT
+  // collapsing by name — duplicates are kept so matchPricedHotelLine can resolve
+  // by stable id (hotelId / roomCategoryId) and detect genuine ambiguity instead
+  // of silently picking the first same-named item (the prior bug).
+  const pricedHotelLines: PricedHotelLine[] = []
   for (const it of q.quoteItems ?? []) {
-    if (!it.hotelId || !it.hotel?.name) continue
-    const key = it.hotel.name.trim().toLowerCase()
-    if (hotelLineByName.has(key)) continue
+    if (!it.hotelId || !it.id) continue
     const cost = it.totalCost ?? it.totalSell ?? it.sellPrice ?? 0
-    hotelLineByName.set(key, {
-      quoteItemId: it.id ?? null,
+    pricedHotelLines.push({
+      quoteItemId: it.id,
+      hotelId: it.hotelId ?? null,
+      roomCategoryId: it.roomCategoryId ?? null,
+      name: it.hotel?.name ?? null,
       contractLinked: Boolean(it.contract),
       contractName: it.contract?.name ?? null,
       roomCategory: it.roomCategory?.name ?? null,
@@ -967,8 +981,14 @@ function mapErpQuoteToRaw(
       pricingSummary: it.pricingDescription ?? null,
     })
   }
-  const matchHotelLine = (name: string): MatchedHotelLine | null =>
-    hotelLineByName.get((name || "").trim().toLowerCase()) ?? null
+  // Resolve a Hotels-step row to its priced line by stable id (name only as a
+  // unique fallback). Returns { line, ambiguous } — ambiguous rows MUST NOT
+  // preview/apply (the UI hides apply + shows helper text).
+  const matchHotelRow = (key: { hotelId?: string | null; roomCategoryId?: string | null; name?: string | null }) => {
+    const res = matchPricedHotelLine(key, pricedHotelLines)
+    if (res.status === "matched") return { line: res.line as MatchedHotelLine, ambiguous: false }
+    return { line: null as MatchedHotelLine | null, ambiguous: res.status === "ambiguous" }
+  }
 
   // ---- hotels (from quoteOptions.hotelOptions, grouped by city) ----
   const cityMap = new Map<string, { city: string; nights: number; options: unknown[] }>()
@@ -984,7 +1004,8 @@ function mapErpQuoteToRaw(
       // QuoteItem has a linked supplier contract (the only case the diagnostics
       // promote) — otherwise keep the prior default. Uses data already in the GET.
       const optDefaultContract = ho.isPrimary ? "on-request" : "no-contract"
-      const optMatched = matchHotelLine(ho.hotelNameSnapshot ?? "")
+      const optMatch = matchHotelRow({ hotelId: ho.hotelId, roomCategoryId: ho.roomCategoryId, name: ho.hotelNameSnapshot })
+      const optMatched = optMatch.line
       const optDiagnostics = buildHotelDiagnostics({
         selected: Boolean(ho.isPrimary),
         editable: true,
@@ -1010,9 +1031,13 @@ function mapErpQuoteToRaw(
         // so the V2 step can offer "Set as primary" (PATCH isPrimary).
         optionId: opt.id,
         editable: true,
-        // Matched priced hotel QuoteItem id — target for the read-only hotel
-        // pricing preview (flag-gated). Read-only; never written.
-        pricedQuoteItemId: optMatched?.quoteItemId ?? undefined,
+        // Matched priced hotel QuoteItem id — target for the hotel pricing
+        // preview/apply (flag-gated). Set ONLY on an unambiguous stable-id match;
+        // absent when ambiguous so the UI hides apply. Read-only; never written.
+        pricedQuoteItemId: optMatch.ambiguous ? undefined : optMatched?.quoteItemId ?? undefined,
+        // True when multiple priced lines matched this row and we could not pick
+        // one safely → the UI shows helper text and offers no preview/apply.
+        pricingMatchAmbiguous: optMatch.ambiguous,
         diagnostics: optDiagnostics,
       })
     }
@@ -1035,7 +1060,8 @@ function mapErpQuoteToRaw(
           // linked contract / room category / rate). When a contract is linked we
           // PROMOTE the row to "contracted" so it stops reading as on-request and
           // drops out of the advisory review list; otherwise it stays "on-request".
-          const fbMatched = matchHotelLine(h.name)
+          const fbMatch = matchHotelRow({ name: h.name })
+          const fbMatched = fbMatch.line
           const fbDiagnostics = buildHotelDiagnostics({
             selected: true,
             editable: false,
@@ -1059,9 +1085,11 @@ function mapErpQuoteToRaw(
             cityTax: 0,
             // Synthetic fallback row (no QuoteHotelOption) → always read-only.
             editable: false,
-            // Matched priced hotel QuoteItem id — target for the read-only hotel
-            // pricing preview (flag-gated). Read-only; never written.
-            pricedQuoteItemId: fbMatched?.quoteItemId ?? undefined,
+            // Matched priced hotel QuoteItem id — target for the hotel pricing
+            // preview/apply (flag-gated). Absent when ambiguous (duplicate names
+            // with no stable discriminator) so the UI hides apply. Read-only.
+            pricedQuoteItemId: fbMatch.ambiguous ? undefined : fbMatched?.quoteItemId ?? undefined,
+            pricingMatchAmbiguous: fbMatch.ambiguous,
             diagnostics: fbDiagnostics,
           })
         }

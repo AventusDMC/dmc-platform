@@ -44,9 +44,9 @@ describe('Quote Builder V2 — hotel pricing preview (PR #569, preview-only)', (
 
   it('adapter carries the matched priced hotel QuoteItem id (both paths) for the preview target', () => {
     contains(adapterSrc, [
-      'quoteItemId: it.id ?? null',
-      'pricedQuoteItemId: optMatched?.quoteItemId ?? undefined',
-      'pricedQuoteItemId: fbMatched?.quoteItemId ?? undefined',
+      'quoteItemId: it.id,',
+      'pricedQuoteItemId: optMatch.ambiguous ? undefined : optMatched?.quoteItemId ?? undefined',
+      'pricedQuoteItemId: fbMatch.ambiguous ? undefined : fbMatched?.quoteItemId ?? undefined',
     ]);
     contains(typesSrc, ['pricedQuoteItemId?: string']);
   });

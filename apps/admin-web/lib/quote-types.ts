@@ -116,6 +116,13 @@ export interface HotelSelection {
    */
   pricedQuoteItemId?: string
   /**
+   * True when this row matched MORE THAN ONE priced hotel line and a single
+   * target could not be resolved from stable ids (e.g. duplicate hotel names).
+   * When true, `pricedQuoteItemId` is intentionally absent so the row offers no
+   * preview/apply, and the UI shows safe helper text instead of guessing.
+   */
+  pricingMatchAmbiguous?: boolean
+  /**
    * Read-only diagnostics explaining why this hotel reads as on-request / needs
    * review (linked contract, rate, room category, source). Display-only — never
    * affects pricing, the contract badge, or proposal readiness. See

@@ -86,11 +86,13 @@ describe('Quote Builder V2 — hotel diagnostics (PR #566, read-only)', () => {
   it('adapter builds diagnostics from the priced hotel line in both hotel paths', () => {
     contains(adapterSrc, [
       'buildHotelDiagnostics({',
-      'const hotelLineByName = new Map<string, MatchedHotelLine>()',
+      // Priced lines are collected per-item (no name-collapsing) and matched by
+      // stable id via matchPricedHotelLine (PR #583) — see quote-hotel-line-match.
+      'const pricedHotelLines: PricedHotelLine[] = []',
       'contractLinked: Boolean(it.contract)',
       // matched line is extracted (also reused for the hotel-preview target id)
-      'const optMatched = matchHotelLine(ho.hotelNameSnapshot ?? "")',
-      'const fbMatched = matchHotelLine(h.name)',
+      'const optMatch = matchHotelRow({ hotelId: ho.hotelId, roomCategoryId: ho.roomCategoryId, name: ho.hotelNameSnapshot })',
+      'const fbMatch = matchHotelRow({ name: h.name })',
       'matchedLine: optMatched',
       'matchedLine: fbMatched',
     ]);

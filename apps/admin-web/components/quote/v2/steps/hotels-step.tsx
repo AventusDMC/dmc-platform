@@ -93,6 +93,11 @@ function HotelOption({
   // present. Itinerary-fallback / unmatched / no-contract rows lack a
   // pricedQuoteItemId, so they stay preview-only and never offer apply.
   const canApply = Boolean(canPreview && onApplyItemPricing && hotelApplyEnabled && hotel.pricedQuoteItemId)
+  // The row matched multiple priced lines and apply must be hidden — surface a
+  // safe explanation, but only when the pricing scope is actually active.
+  const ambiguousMatch = Boolean(
+    hotel.pricingMatchAmbiguous && !hotel.pricedQuoteItemId && onPreviewItem && (hotelPreviewEnabled || hotelApplyEnabled),
+  )
   return (
     <div>
     <div
@@ -169,6 +174,19 @@ function HotelOption({
         ) : null}
       </div>
     </div>
+
+      {/* Ambiguous match: multiple priced hotel lines share this hotel and we
+          could not resolve a single target from stable ids. Offer no preview/
+          apply — show safe helper text instead of guessing the wrong line. */}
+      {ambiguousMatch ? (
+        <p className="mt-1 flex items-start gap-1.5 px-1 text-xs text-muted-foreground">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+          <span>
+            Multiple priced hotel lines match this hotel, so pricing preview/apply isn&apos;t available here. Resolve
+            the duplicate in Classic Builder.
+          </span>
+        </p>
+      ) : null}
 
       {canPreview ? (
         <PricingPreviewModal

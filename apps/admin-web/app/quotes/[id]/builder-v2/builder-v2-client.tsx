@@ -1,6 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
 import type { PricingApplyAuditEntry, Quote } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
@@ -103,6 +105,18 @@ export function BuilderV2Client({
   proposalEmailSendEnabled?: boolean
 }) {
   const router = useRouter()
+
+  // Pricing-apply success toast. Lives in this client component (NOT the modal),
+  // so it SURVIVES the router.refresh() the apply triggers — the modal can close/
+  // re-render and the confirmation is still shown. Visible even on a Δ0 apply.
+  const [applyToast, setApplyToast] = useState<{ text: string } | null>(null)
+  useEffect(() => {
+    if (!applyToast) return
+    const timer = setTimeout(() => setApplyToast(null), 6000)
+    return function cleanup() {
+      clearTimeout(timer)
+    }
+  }, [applyToast])
 
   // PHASE B: replace with your "save draft" server action / API call.
   const handleSave = async (q: Quote) => {
@@ -423,6 +437,16 @@ export function BuilderV2Client({
       throw new Error(code)
     }
     if (parsed?.applied) {
+      // Show a persistent success toast BEFORE refreshing. The toast state lives
+      // in this client component (survives router.refresh), so it stays visible
+      // even when the apply was a no-op (Δ0) and even after the modal closes.
+      const after = parsed?.quote?.after
+      setApplyToast({
+        text:
+          after && typeof after.totalCost === "number" && typeof after.totalSell === "number"
+            ? `Pricing applied. Quote total: ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
+            : "Pricing applied.",
+      })
       router.refresh()
     }
     return parsed
@@ -474,7 +498,26 @@ export function BuilderV2Client({
   }
 
   return (
-    <QuoteBuilderV2
+    <>
+      {applyToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-[60] flex max-w-sm items-start gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground shadow-lg"
+        >
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+          <span className="min-w-0 flex-1">{applyToast.text}</span>
+          <button
+            type="button"
+            onClick={() => setApplyToast(null)}
+            aria-label="Dismiss"
+            className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      <QuoteBuilderV2
       quote={quote}
       error={error}
       onRetry={() => router.refresh()}
@@ -506,6 +549,7 @@ export function BuilderV2Client({
           : undefined
       }
       initialStep="hotels"
-    />
+      />
+    </>
   )
 }
