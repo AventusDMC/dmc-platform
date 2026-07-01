@@ -70,6 +70,12 @@ const DECIMAL_AMOUNT = /\d+[.,]\d{2}\b/;
 const LONG_NUMBER = /\d{5,}/; // account/reference-like
 const JSON_BLOB = /^\s*[[{]/;
 
+// Strict internal UUID (8-4-4-4-12 hex). Used to strip internal references from
+// display values while keeping human-readable names. Display-only.
+const UUID_SOURCE = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const UUID_PARENS = new RegExp(`\\(\\s*${UUID_SOURCE}\\s*\\)`, 'gi');
+const UUID_BARE = new RegExp(UUID_SOURCE, 'gi');
+
 /** True when a string should NOT be shown verbatim (financial / sensitive / JSON). */
 export function isSensitiveValue(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -89,21 +95,69 @@ function cap(value: string): string {
   return v.length > 80 ? `${v.slice(0, 77)}…` : v;
 }
 
-/** Safe old→new summary, or "Value updated" when anything looks sensitive. */
+/**
+ * Strip internal UUIDs from a display value, keeping human-readable text:
+ * "ASSIGNED: Almushtari Logistics Services (7f12…-…)" → "ASSIGNED: Almushtari Logistics Services".
+ * Returns null when nothing meaningful remains (the value was only an internal
+ * reference) so callers can fall back to "Internal reference updated".
+ * Display-only: never mutates stored audit data.
+ */
+export function humanizeAuditValue(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const stripped = String(value)
+    .replace(UUID_PARENS, '') // "Name (uuid)" → "Name"
+    .replace(UUID_BARE, '') // any bare uuid token
+    .replace(/\(\s*\)/g, ' ') // leftover empty parentheses
+    .replace(/\s{2,}/g, ' ') // collapse extra spaces
+    .trim()
+    .replace(/[:\-–—]\s*$/, '') // drop a dangling separator left by a name-only-uuid
+    .trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
+/**
+ * Safe old→new summary. Internal UUIDs are stripped (names kept); a value that
+ * was ONLY an internal reference → "Internal reference updated"; financial/JSON
+ * values still → "Value updated" (redaction behavior unchanged).
+ */
 export function changeSummary(
   action: string | null | undefined,
   oldValue: string | null | undefined,
   newValue: string | null | undefined,
 ): string | null {
-  const o = (oldValue ?? '').trim();
-  const n = (newValue ?? '').trim();
-  if (!o && !n) return null;
+  const rawO = (oldValue ?? '').trim();
+  const rawN = (newValue ?? '').trim();
+  if (!rawO && !rawN) return null;
+
+  // Strip internal UUIDs first so human-readable names stay visible.
+  const ho = rawO ? humanizeAuditValue(rawO) : '';
+  const hn = rawN ? humanizeAuditValue(rawN) : '';
+
+  // A side that had content but reduced to nothing was only an internal reference.
+  if ((rawO && ho === null) || (rawN && hn === null)) {
+    return 'Internal reference updated';
+  }
+
+  const o = ho ?? '';
+  const n = hn ?? '';
+
+  // Existing financial / JSON redaction (unchanged), on the sanitized values.
   if (isSensitiveValue(action) || isSensitiveValue(o) || isSensitiveValue(n)) {
     return 'Value updated';
   }
+
   if (o && n) return `${cap(o)} → ${cap(n)}`;
   if (n) return `Set to ${cap(n)}`;
   return `Cleared (was ${cap(o)})`;
+}
+
+/** Sanitized note/detail: strip UUIDs, redact financial, cap length. */
+function humanizeDetail(note: string | null | undefined): string | null {
+  if (note == null || note.trim() === '') return null;
+  const h = humanizeAuditValue(note);
+  if (h === null) return 'Internal reference updated'; // note was only a reference
+  if (isSensitiveValue(h)) return 'Note updated';
+  return cap(h);
 }
 
 function entityLabel(entityType: string | null | undefined): string | null {
@@ -136,8 +190,8 @@ function mapItem(log: RawAuditLog): ActivityItemVM {
     entityLabel: entityLabel(log.entityType),
     timestamp: log.createdAt ?? null,
     timestampLabel: formatTimestamp(log.createdAt),
-    // `note` is operator free-text; sanitize it like a value.
-    detail: log.note && !isSensitiveValue(log.note) ? cap(log.note) : log.note ? 'Note updated' : null,
+    // `note` is operator free-text; strip UUIDs + redact financial.
+    detail: humanizeDetail(log.note),
     changeSummary: changeSummary(action, log.oldValue, log.newValue),
     severity: deriveSeverity(action),
   };

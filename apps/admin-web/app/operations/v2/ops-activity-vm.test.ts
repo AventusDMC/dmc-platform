@@ -4,9 +4,16 @@ import {
   buildActivityVM,
   changeSummary,
   deriveSeverity,
+  humanizeAuditValue,
   isSensitiveValue,
 } from './ops-activity-vm';
-import { EMPTY_ACTIVITY, REDACTED_RAW, SAMPLE_ACTIVITY } from './ops-activity.fixtures';
+import {
+  EMPTY_ACTIVITY,
+  REDACTED_RAW,
+  SAMPLE_ACTIVITY,
+  SUPPLIER_ASSIGN_ACTIVITY,
+  SUPPLIER_ASSIGN_UUID,
+} from './ops-activity.fixtures';
 
 describe('ops-activity-vm — mapping', () => {
   const vm = buildActivityVM(SAMPLE_ACTIVITY);
@@ -91,6 +98,47 @@ describe('ops-activity-vm — unit helpers', () => {
     assert.equal(deriveSeverity('booking_cancelled'), 'critical');
     assert.equal(deriveSeverity('guide_assigned'), 'success');
     assert.equal(deriveSeverity('pickup_time_updated'), 'info');
+  });
+});
+
+describe('ops-activity-vm — UUID sanitization (Activity display)', () => {
+  const vm = buildActivityVM(SUPPLIER_ASSIGN_ACTIVITY);
+  const byId = Object.fromEntries(vm.items.map((i) => [i.id, i]));
+
+  it('1) named supplier value: keeps the name, strips the UUID', () => {
+    const s = byId['sa-named'].changeSummary!;
+    assert.equal(s, 'ASSIGNED: Almushtari Logistics Services → UNASSIGNED: unassigned');
+    assert.ok(s.includes('Almushtari Logistics Services'), 'name must remain');
+    assert.ok(!s.includes(SUPPLIER_ASSIGN_UUID), 'UUID must be gone');
+  });
+
+  it('2) bare UUID-only value → "Internal reference updated"', () => {
+    assert.equal(byId['sa-bare'].changeSummary, 'Internal reference updated');
+  });
+
+  it('3) note containing a UUID: UUID gone, safe text remains', () => {
+    assert.equal(byId['sa-note'].detail, 'Assigned via portal request');
+    assert.ok(!String(byId['sa-note'].detail).includes(SUPPLIER_ASSIGN_UUID));
+  });
+
+  it('4) financial / JSON redaction is unchanged', () => {
+    assert.equal(changeSummary('total_sell_updated', '1200.00', '1450.00'), 'Value updated');
+    assert.equal(changeSummary('snapshot_updated', null, '{"a":1}'), 'Value updated');
+  });
+
+  it('5) safe operational value stays readable', () => {
+    assert.equal(changeSummary('supplier_confirmation_updated', 'REQUESTED', 'CONFIRMED'), 'REQUESTED → CONFIRMED');
+  });
+
+  it('humanizeAuditValue: strips UUIDs, keeps text, null when only a reference', () => {
+    assert.equal(humanizeAuditValue(`Almushtari Logistics Services (${SUPPLIER_ASSIGN_UUID})`), 'Almushtari Logistics Services');
+    assert.equal(humanizeAuditValue(SUPPLIER_ASSIGN_UUID), null);
+    assert.equal(humanizeAuditValue('REQUESTED'), 'REQUESTED');
+    assert.equal(humanizeAuditValue(null), null);
+  });
+
+  it('the whole VM never serializes the raw UUID', () => {
+    assert.ok(!JSON.stringify(vm).includes(SUPPLIER_ASSIGN_UUID));
   });
 });
 
