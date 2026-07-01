@@ -116,6 +116,32 @@ export const CATALOG_SUPPLIER_GRID: RawOperationsGrid = {
   rows: [catalogSupplierOnlyRow],
 };
 
+/**
+ * Voucher-eligible in every respect EXCEPT the operational date — assigned +
+ * CONFIRMED + no voucher yet, but no operationalDate. Proves the Phase 2C gate
+ * blocks generation with "Set operational date in Classic."
+ */
+export const voucherNoDateRow: RawGridRow = {
+  id: 'row-voucher-no-date',
+  serviceType: 'ACTIVITY',
+  description: 'Confirmed activity, no operational date',
+  dayNumber: 4,
+  dayTitle: 'Aqaba',
+  assignedSupplierId: 'sup-9',
+  assignedSupplierName: 'Red Sea Excursions',
+  assignmentStatus: 'ASSIGNED',
+  supplierConfirmationStatus: 'CONFIRMED',
+  voucherStatus: 'NOT_GENERATED',
+  status: 'OPERATIONAL_READY',
+  operationalDate: null,
+  operationalTime: null,
+};
+
+export const VOUCHER_NO_DATE_GRID: RawOperationsGrid = {
+  booking: { id: 'bk-3', bookingRef: 'BK-2026-0010', title: 'No operational date case' },
+  rows: [voucherNoDateRow],
+};
+
 export const SAMPLE_GRID: RawOperationsGrid = {
   booking: { id: 'bk-1', bookingRef: 'BK-2026-0004', title: 'Jordan Explorer' },
   passengerManifest: {

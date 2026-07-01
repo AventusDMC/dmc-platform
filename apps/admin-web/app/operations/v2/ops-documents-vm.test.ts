@@ -41,6 +41,39 @@ describe('ops-documents-vm — vouchers from services[].vouchers', () => {
   });
 });
 
+describe('ops-documents-vm — a GENERATED voucher (Phase 2C) appears as a document', () => {
+  // After a V2 voucher generation, the new record arrives via services[].vouchers
+  // with status GENERATED and must render as a Vouchers-group row.
+  const vm = buildDocumentsVM({
+    services: [
+      {
+        description: 'Jerash entrance',
+        vouchers: [
+          {
+            id: 'gen-1',
+            type: 'ACTIVITY',
+            status: 'GENERATED',
+            issuedAt: null,
+            notes: null,
+            supplier: { name: 'Almushtari Logistics' },
+            bookingService: { description: 'Jerash entrance', serviceType: 'ACTIVITY' },
+          },
+        ],
+      },
+    ],
+    passengers: [],
+  });
+  const vouchers = vm.groups.find((g) => g.title === 'Vouchers')!.documents;
+
+  it('the generated voucher is listed with a Generated badge', () => {
+    assert.equal(vouchers.length, 1);
+    assert.equal(vouchers[0].id, 'gen-1');
+    assert.equal(vouchers[0].status, 'Generated');
+    assert.equal(vouchers[0].statusVariant, 'info');
+    assert.equal(vouchers[0].sourceService, 'Jerash entrance');
+  });
+});
+
 describe('ops-documents-vm — manifest + groups', () => {
   it('derives passenger-manifest readiness (1 of 2 with passport → Pending)', () => {
     const vm = buildDocumentsVM(SAMPLE_DOCS_DETAIL);

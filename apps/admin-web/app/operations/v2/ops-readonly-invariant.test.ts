@@ -33,7 +33,8 @@ const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.css']);
 // supplier-assignment PATCH at that.
 const ASSIGN_ALLOWLIST = new Set(['supplier-assignment-control.tsx', 'ops-supplier-assign-request.ts']);
 const CONFIRM_ALLOWLIST = new Set(['supplier-confirmation-control.tsx', 'ops-supplier-confirm-request.ts']);
-const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST]);
+const VOUCHER_GENERATE_ALLOWLIST = new Set(['voucher-generate-control.tsx', 'ops-voucher-generate-request.ts']);
+const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST, ...VOUCHER_GENERATE_ALLOWLIST]);
 
 function isExcluded(file: string): boolean {
   return (
@@ -154,6 +155,45 @@ const CONFIRMATION_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: 'CANCELLED', why: 'out-of-scope confirmation status' },
 ];
 
+// Narrower ban for the Phase 2C voucher-generate surface: a Generate button + the
+// sanctioned generate PATCH are allowed; download/pdf/export/print, preview, send/
+// email, voucher status transitions, finance, dispatch, and the other mutation
+// surfaces stay forbidden. (Patterns are specific mechanics — the control copy may
+// legitimately contain the plain words "download"/"print"/"export".)
+const VOUCHER_GENERATE_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<input', why: 'no free-text input (no notes/reference in Phase 2C)' },
+  { pattern: '<select', why: 'no select (generate has no options)' },
+  { pattern: '<textarea', why: 'no free-text input' },
+  { pattern: 'method="POST"', why: 'no POST form' },
+  { pattern: "method: 'POST'", why: 'the V2 control issues PATCH only' },
+  { pattern: "method: 'PUT'", why: 'PATCH only' },
+  { pattern: "method: 'DELETE'", why: 'PATCH only' },
+  { pattern: 'method:"POST"', why: 'no POST fetch' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob download' },
+  { pattern: 'download=', why: 'no download attribute' },
+  { pattern: '.pdf', why: 'no PDF' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: '/vouchers/', why: 'no voucher pdf/preview/status routes (those live under /vouchers/:id/...)' },
+  { pattern: '/status', why: 'no voucher status transition endpoint' },
+  { pattern: '/preview', why: 'no preview in Phase 2C' },
+  { pattern: '/send', why: 'no send/email' },
+  { pattern: 'send-document-email', why: 'no document email' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send/preview/pdf' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+  { pattern: 'notes', why: 'no notes/free-text in Phase 2C' },
+];
+
 function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
   const violations: string[] = [];
   for (const file of files) {
@@ -171,6 +211,7 @@ describe('Booking Operations V2 — read-only invariant', () => {
   const all = [...collectSourceFiles(V2_APP_DIR), ...collectSourceFiles(V2_COMPONENTS_DIR)];
   const assignFiles = all.filter((f) => ASSIGN_ALLOWLIST.has(path.basename(f)));
   const confirmFiles = all.filter((f) => CONFIRM_ALLOWLIST.has(path.basename(f)));
+  const voucherFiles = all.filter((f) => VOUCHER_GENERATE_ALLOWLIST.has(path.basename(f)));
   const readOnly = all.filter((f) => !MUTATION_ALLOWLIST.has(path.basename(f)));
 
   it('scans a non-empty set of V2 source files', () => {
@@ -194,5 +235,14 @@ describe('Booking Operations V2 — read-only invariant', () => {
     assert.ok(combined.includes('/confirmation'), 'confirmation surface must target the confirmation endpoint');
     assert.ok(!combined.includes('assign-supplier'), 'confirmation surface must not touch assignment');
     assert.deepEqual(scan(confirmFiles, CONFIRMATION_FORBIDDEN), [], 'confirmation surface exceeded its scope');
+  });
+
+  it('the voucher-generate surface (Phase 2C) is limited to the sanctioned PATCH', () => {
+    assert.equal(voucherFiles.length, VOUCHER_GENERATE_ALLOWLIST.size, 'allowlisted voucher files not found');
+    const combined = voucherFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('/voucher/generate'), 'voucher surface must target the voucher-generate endpoint');
+    assert.ok(!combined.includes('assign-supplier'), 'voucher surface must not touch assignment');
+    assert.ok(!combined.includes('/confirmation'), 'voucher surface must not touch confirmation');
+    assert.deepEqual(scan(voucherFiles, VOUCHER_GENERATE_FORBIDDEN), [], 'voucher surface exceeded its scope');
   });
 });

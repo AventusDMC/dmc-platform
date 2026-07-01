@@ -1,11 +1,13 @@
 import type { OpsRowVM } from '../../../app/operations/v2/ops-view-model';
 import { isOpsV2SupplierAssignEnabled } from '../../../app/operations/v2/ops-supplier-assign-flag';
 import { isOpsV2SupplierConfirmEnabled } from '../../../app/operations/v2/ops-supplier-confirm-flag';
+import { isOpsV2VoucherGenerateEnabled } from '../../../app/operations/v2/ops-voucher-generate-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
 import { SupplierAssignmentControl } from './supplier-assignment-control';
 import { SupplierConfirmationControl } from './supplier-confirmation-control';
+import { VoucherGenerateControl } from './voucher-generate-control';
 
 /**
  * One operations service row. Read-only by default: status badges + reason chips
@@ -21,6 +23,7 @@ import { SupplierConfirmationControl } from './supplier-confirmation-control';
 export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: string }) {
   const supplierAssignEnabled = isOpsV2SupplierAssignEnabled();
   const supplierConfirmEnabled = isOpsV2SupplierConfirmEnabled();
+  const voucherGenerateEnabled = isOpsV2VoucherGenerateEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -75,7 +78,16 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
         ) : (
           <DisabledAction label="Request confirmation" />
         )}
-        <DisabledAction label="Generate voucher" />
+        {voucherGenerateEnabled ? (
+          <VoucherGenerateControl
+            bookingId={bookingId}
+            operationId={row.id}
+            canGenerate={row.canGenerateVoucher}
+            ineligibleReason={row.voucherIneligibleReason}
+          />
+        ) : (
+          <DisabledAction label="Generate voucher" />
+        )}
       </div>
     </li>
   );
