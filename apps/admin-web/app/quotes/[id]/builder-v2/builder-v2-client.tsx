@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
@@ -109,14 +109,10 @@ export function BuilderV2Client({
   // Pricing-apply success toast. Lives in this client component (NOT the modal),
   // so it SURVIVES the router.refresh() the apply triggers — the modal can close/
   // re-render and the confirmation is still shown. Visible even on a Δ0 apply.
+  // Dismiss-only (no auto-timeout): the confirmation stays until the user closes
+  // it, so a successful apply is unmistakable — including a Δ0 apply where nothing
+  // else on screen changes.
   const [applyToast, setApplyToast] = useState<{ text: string } | null>(null)
-  useEffect(() => {
-    if (!applyToast) return
-    const timer = setTimeout(() => setApplyToast(null), 6000)
-    return function cleanup() {
-      clearTimeout(timer)
-    }
-  }, [applyToast])
 
   // PHASE B: replace with your "save draft" server action / API call.
   const handleSave = async (q: Quote) => {
@@ -437,15 +433,16 @@ export function BuilderV2Client({
       throw new Error(code)
     }
     if (parsed?.applied) {
-      // Show a persistent success toast BEFORE refreshing. The toast state lives
-      // in this client component (survives router.refresh), so it stays visible
-      // even when the apply was a no-op (Δ0) and even after the modal closes.
+      // Show a persistent (dismiss-only) success toast BEFORE refreshing. The
+      // toast state lives in this client component (survives router.refresh), so
+      // it stays visible even when the apply was a no-op (Δ0) and even after the
+      // modal closes — making a successful apply unmistakable.
       const after = parsed?.quote?.after
       setApplyToast({
         text:
           after && typeof after.totalCost === "number" && typeof after.totalSell === "number"
-            ? `Pricing applied. Quote total: ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
-            : "Pricing applied.",
+            ? `Pricing applied successfully. Quote total is now ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
+            : "Pricing applied successfully.",
       })
       router.refresh()
     }
