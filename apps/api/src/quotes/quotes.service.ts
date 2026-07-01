@@ -70,6 +70,7 @@ import {
   isQuotePricingHotelPreviewEnabled,
   isQuotePricingHotelApplyEnabled,
   isQuotePricingExternalPackagePreviewEnabled,
+  isQuotePricingExternalPackageApplyEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -4123,8 +4124,17 @@ export class QuotesService {
     // primary, rooming, or itinerary change. The preview/token already models the
     // projection, so staleness/integrity are caught below.
     const isHotelApply = Boolean(supportedItem.service && this.isHotelService(supportedItem.service)) && isQuotePricingHotelApplyEnabled();
-    if (!isMealActivityGuide && !isEntranceApply && !isHotelApply) {
-      throw new BadRequestException('Only meal, activity, guide, entrance and (when enabled) hotel items can be applied in this version (apply is out of scope for this item type).');
+    // External (multi-country / partner) package items are in scope ONLY behind the
+    // separate external-package apply flag (default OFF). Detected by the persisted
+    // externalPackageName column (same signal the preview gate uses). When ON, apply
+    // re-uses the EXISTING write path (updateItem → recalculateQuoteTotals) which
+    // re-resolves the price from the already-persisted external fields (net cost /
+    // rate matrix / basis / pax / dates) via patch semantics — no itinerary text,
+    // bundled/included content, selection, or other item is changed. The preview/
+    // token already models the projection, so staleness/integrity are caught below.
+    const isExternalPackageApply = Boolean(supportedItem.externalPackageName) && isQuotePricingExternalPackageApplyEnabled();
+    if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply) {
+      throw new BadRequestException('Only meal, activity, guide, entrance, hotel and (when enabled) external-package items can be applied in this version (apply is out of scope for this item type).');
     }
     // Changing the underlying service of an entrance item is not fully simulated
     // by the preview, so it stays Classic-only — block it rather than apply a
@@ -4136,6 +4146,11 @@ export class QuotesService {
     // service/selection via apply is not modeled by the preview — keep it Classic.
     if (isHotelApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
       throw new BadRequestException('Changing the underlying service of a hotel item is not supported by apply (manage it in Classic).');
+    }
+    // External-package apply re-prices the already-entered package in place only;
+    // swapping the underlying service via apply is not modeled by the preview.
+    if (isExternalPackageApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
+      throw new BadRequestException('Changing the underlying service of an external-package item is not supported by apply (manage it in Classic).');
     }
 
     // Re-run the dry-run at apply time and compare to the token (no write yet).
@@ -4216,7 +4231,11 @@ export class QuotesService {
         metadata: {
           quoteId,
           quoteItemId: itemId,
-          serviceType: supportedItem?.service?.serviceType?.code ?? null,
+          // External-package items are frequently one-off (synthetic/absent service),
+          // so record the taxonomy explicitly; every other in-scope type resolves
+          // its serviceType code from the linked service.
+          serviceType: isExternalPackageApply ? 'EXTERNAL_PACKAGE' : supportedItem?.service?.serviceType?.code ?? null,
+          currency: (supportedItem as { currency?: string | null })?.currency ?? null,
           previousItemTotalCost: before.item.totalCost,
           previousItemTotalSell: before.item.totalSell,
           newItemTotalCost: after.item.totalCost,
