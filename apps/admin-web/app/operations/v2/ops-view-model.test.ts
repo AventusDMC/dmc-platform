@@ -51,6 +51,20 @@ describe('ops-view-model — board mapping', () => {
     assert.equal(vm.booking.bookingRef, 'BK-2026-0004');
   });
 
+  it('carries assignedSupplierId + assignmentStatus (identifiers only) for Phase 2A', () => {
+    const byId = Object.fromEntries(vm.phases.flatMap((p) => p.rows).map((r) => [r.id, r]));
+    assert.equal(byId['row-critical'].assignedSupplierId, 'sup-2');
+    assert.equal(byId['row-critical'].assignmentStatus, 'ASSIGNED');
+    assert.equal(byId['row-unassigned'].assignedSupplierId, null);
+    assert.equal(byId['row-unassigned'].assignmentStatus, 'UNASSIGNED');
+    // The added fields are identifiers/status only — no cost/sell/payable keys.
+    for (const r of vm.phases.flatMap((p) => p.rows)) {
+      for (const k of ['cost', 'sell', 'payable', 'price', 'margin', 'amount', 'rate']) {
+        assert.ok(!(k in r), `row leaked a financial key "${k}"`);
+      }
+    }
+  });
+
   it('NEVER carries cost/sell/payable into the VM (allowlist mapping)', () => {
     const serialized = JSON.stringify(vm);
     for (const v of COST_LEAK_VALUES) {

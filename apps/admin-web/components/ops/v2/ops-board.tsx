@@ -8,14 +8,14 @@ import { PhaseSection } from './phase-section';
  * a sticky booking-scoped readiness/action sidebar. Fully read-only and
  * server-rendered — no client boundary, no data beyond the lean board VM.
  */
-export function OpsBoard({ vm }: { vm: OperationsBoardVM }) {
+export function OpsBoard({ vm, bookingId }: { vm: OperationsBoardVM; bookingId: string }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <ManifestSummaryCard manifest={vm.manifest} />
         <div className="space-y-6">
           {vm.phases.map((section) => (
-            <PhaseSection key={section.phase} section={section} />
+            <PhaseSection key={section.phase} section={section} bookingId={bookingId} />
           ))}
         </div>
       </div>

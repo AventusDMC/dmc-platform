@@ -7,7 +7,7 @@ import { VARIANT_CLASS } from './operational-status-badge';
  * Empty phases still render their header so the fixed 5-phase structure is
  * always visible and scannable.
  */
-export function PhaseSection({ section }: { section: PhaseSectionVM }) {
+export function PhaseSection({ section, bookingId }: { section: PhaseSectionVM; bookingId: string }) {
   return (
     <section aria-label={section.phase} className="space-y-2">
       <div className="flex items-center justify-between">
@@ -21,7 +21,7 @@ export function PhaseSection({ section }: { section: PhaseSectionVM }) {
       {section.rows.length > 0 ? (
         <ul className="space-y-2">
           {section.rows.map((row) => (
-            <ServiceRow key={row.id} row={row} />
+            <ServiceRow key={row.id} row={row} bookingId={bookingId} />
           ))}
         </ul>
       ) : (
