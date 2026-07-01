@@ -28,7 +28,7 @@ describe('Hotel Apply UX + row-mapping hardening (PR #583)', () => {
       'role="status"',
       'aria-live="polite"',
       'fixed bottom-4 right-4', // rendered outside the modal so refresh/close can't clobber it
-      'Pricing applied.',
+      'Pricing applied successfully.',
     ]);
     // The toast is set on applied===true with NO delta condition → visible on Δ0.
     const applyIdx = clientSrc.indexOf('if (parsed?.applied) {');

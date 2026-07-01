@@ -189,6 +189,10 @@ export function PricingPreviewModal({
           item: res.item?.after ?? { totalCost: 0, totalSell: 0 },
           quote: res.quote?.after ?? { totalCost: 0, totalSell: 0 },
         })
+        // Close the modal on success so the persistent, dismiss-only client-level
+        // success toast is clearly visible (unobstructed). The apply already ran +
+        // refreshed the quote data; the toast is the confirmation (works on Δ0).
+        onClose()
       } else if (res?.available === false || res?.blockedReason === "feature_disabled") {
         setApplyError("Pricing apply is not enabled.")
       } else {
