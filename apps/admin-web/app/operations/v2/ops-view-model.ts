@@ -70,6 +70,12 @@ export type OpsRowVM = {
    */
   assignedSupplierId: string | null;
   assignmentStatus: string | null;
+  /**
+   * Raw supplier confirmation status (e.g. NOT_SENT / CONFIRMED / REJECTED) —
+   * STATUS ONLY, carried to pre-select the Phase 2B manual confirmation control.
+   * Never any cost/sell/payable value.
+   */
+  supplierConfirmationStatus: string | null;
   /** Display-only context for rejected rows (named supplier). */
   isRejected: boolean;
   confirmation: BadgeVM;
@@ -130,6 +136,7 @@ function mapRow(row: RawGridRow): OpsRowVM {
     supplierLabel: row.assignedSupplierName || row.supplierName || null,
     assignedSupplierId: row.assignedSupplierId || row.supplierId || null,
     assignmentStatus: row.assignmentStatus || null,
+    supplierConfirmationStatus: String(confirmation),
     isRejected: String(confirmation).toUpperCase() === 'REJECTED',
     confirmation: { label: humanizeStatus(confirmation), variant: confirmationVariant(confirmation) },
     voucher: { label: humanizeStatus(voucher), variant: voucherVariant(voucher) },

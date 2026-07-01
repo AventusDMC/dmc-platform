@@ -1,21 +1,26 @@
 import type { OpsRowVM } from '../../../app/operations/v2/ops-view-model';
 import { isOpsV2SupplierAssignEnabled } from '../../../app/operations/v2/ops-supplier-assign-flag';
+import { isOpsV2SupplierConfirmEnabled } from '../../../app/operations/v2/ops-supplier-confirm-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
 import { SupplierAssignmentControl } from './supplier-assignment-control';
+import { SupplierConfirmationControl } from './supplier-confirmation-control';
 
 /**
  * One operations service row. Read-only by default: status badges + reason chips
  * + a disabled action cluster ("Coming later"). Renders only display-safe fields
  * from the lean OpsRowVM — no cost/sell/payable is ever passed in.
  *
- * Phase 2A: when NEXT_PUBLIC_OPS_V2_SUPPLIER_ASSIGN is ON, the "Assign supplier"
- * affordance becomes the live (supplier-only) assignment control. Every other
- * action stays a disabled "Coming later" placeholder.
+ * Phase 2A: when NEXT_PUBLIC_OPS_V2_SUPPLIER_ASSIGN is ON, "Assign supplier"
+ * becomes the live (supplier-only) assignment control.
+ * Phase 2B: when NEXT_PUBLIC_OPS_V2_SUPPLIER_CONFIRM_STATUS is ON, the
+ * "Request confirmation" affordance becomes the manual confirmation-status
+ * control. Every other action stays a disabled "Coming later" placeholder.
  */
 export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: string }) {
   const supplierAssignEnabled = isOpsV2SupplierAssignEnabled();
+  const supplierConfirmEnabled = isOpsV2SupplierConfirmEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -60,7 +65,16 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
         ) : (
           <DisabledAction label="Assign supplier" />
         )}
-        <DisabledAction label="Request confirmation" />
+        {supplierConfirmEnabled ? (
+          <SupplierConfirmationControl
+            bookingId={bookingId}
+            operationId={row.id}
+            currentStatus={row.supplierConfirmationStatus}
+            hasSupplier={Boolean(row.assignedSupplierId)}
+          />
+        ) : (
+          <DisabledAction label="Request confirmation" />
+        )}
         <DisabledAction label="Generate voucher" />
       </div>
     </li>
