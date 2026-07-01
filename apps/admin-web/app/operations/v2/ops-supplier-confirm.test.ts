@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { ServiceRow } from '../../../components/ops/v2/service-row';
+import { SupplierConfirmationControl } from '../../../components/ops/v2/supplier-confirmation-control';
 import { buildOperationsBoardVM } from './ops-view-model';
 import { SAMPLE_GRID, SAMPLE_READINESS } from './ops-view-model.fixtures';
 import {
@@ -52,6 +53,26 @@ function renderRow(flagOn: boolean): string {
   }
 }
 
+// Render the confirmation control with its panel forced open (defaultOpen) so the
+// status <select> + helper are present in the static markup and their
+// enabled/disabled state can be asserted.
+function renderControlOpen(hasSupplier: boolean): string {
+  const stub = { back() {}, forward() {}, push() {}, replace() {}, refresh() {}, prefetch() {} };
+  return renderToStaticMarkup(
+    createElement(
+      AppRouterContext.Provider as never,
+      { value: stub } as never,
+      createElement(SupplierConfirmationControl, {
+        bookingId: 'bk-1',
+        operationId: 'op-1',
+        currentStatus: null,
+        hasSupplier,
+        defaultOpen: true,
+      } as never),
+    ),
+  );
+}
+
 describe('Phase 2B — confirmation request (pure)', () => {
   it('builds PATCH …/confirmation with only supplierConfirmationStatus', () => {
     const req = buildSupplierConfirmRequest('bk-1', 'op-9', SUPPLIER_CONFIRM_STATUS.CONFIRMED);
@@ -93,6 +114,23 @@ describe('Phase 2B — flag gating (service row render)', () => {
   });
 });
 
+describe('Phase 2B — operational-supplier gating (the staging-QA fix)', () => {
+  it('operationally-unassigned row: Confirmed + Rejected disabled, helper shown', () => {
+    const html = renderControlOpen(false);
+    assert.ok(html.includes('Assign a supplier before recording confirmation.'), 'helper must appear');
+    assert.ok(html.includes('value="CONFIRMED" disabled=""'), 'Confirmed must be disabled');
+    assert.ok(html.includes('value="REJECTED" disabled=""'), 'Rejected must be disabled');
+  });
+
+  it('operationally-assigned row: Confirmed + Rejected enabled, no helper', () => {
+    const html = renderControlOpen(true);
+    assert.ok(!html.includes('Assign a supplier before recording confirmation.'), 'no helper when assigned');
+    assert.ok(html.includes('value="CONFIRMED"'), 'Confirmed option present');
+    assert.ok(!html.includes('value="CONFIRMED" disabled=""'), 'Confirmed must be enabled');
+    assert.ok(!html.includes('value="REJECTED" disabled=""'), 'Rejected must be enabled');
+  });
+});
+
 describe('Phase 2B — safety (only the sanctioned confirmation PATCH)', () => {
   it('control targets only the confirmation endpoint, refreshes, gates unassigned rows', () => {
     assert.ok(controlSrc.includes('buildSupplierConfirmRequest'));
@@ -126,6 +164,17 @@ describe('Phase 2B — safety (only the sanctioned confirmation PATCH)', () => {
     assert.ok(serviceRowSrc.includes('isOpsV2SupplierConfirmEnabled'));
     assert.ok(serviceRowSrc.includes('SupplierConfirmationControl'));
     assert.ok(serviceRowSrc.includes('label="Request confirmation"'), 'keeps the disabled fallback');
+  });
+
+  it('service row gates confirmation on the OPERATIONAL supplier signal, not the catalog fallback', () => {
+    assert.ok(
+      serviceRowSrc.includes('hasSupplier={row.hasOperationalSupplierAssignment}'),
+      'confirmation hasSupplier must use the raw operational assignment',
+    );
+    assert.ok(
+      !serviceRowSrc.includes('hasSupplier={Boolean(row.assignedSupplierId)}'),
+      'must not gate on the catalog/fallback assignedSupplierId',
+    );
   });
 
   it('the V2 confirmation PATCH proxy is status-only: no send/preview/voucher/finance', () => {

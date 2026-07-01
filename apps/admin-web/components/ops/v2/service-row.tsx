@@ -70,7 +70,7 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
             bookingId={bookingId}
             operationId={row.id}
             currentStatus={row.supplierConfirmationStatus}
-            hasSupplier={Boolean(row.assignedSupplierId)}
+            hasSupplier={row.hasOperationalSupplierAssignment}
           />
         ) : (
           <DisabledAction label="Request confirmation" />
