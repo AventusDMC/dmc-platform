@@ -57,6 +57,9 @@ describe('ops-view-model — board mapping', () => {
     assert.equal(byId['row-critical'].assignmentStatus, 'ASSIGNED');
     assert.equal(byId['row-unassigned'].assignedSupplierId, null);
     assert.equal(byId['row-unassigned'].assignmentStatus, 'UNASSIGNED');
+    // Phase 2B: raw confirmation status (identifier only) for the manual control.
+    assert.equal(byId['row-critical'].supplierConfirmationStatus, 'REJECTED');
+    assert.equal(byId['row-unassigned'].supplierConfirmationStatus, 'NOT_SENT');
     // The added fields are identifiers/status only — no cost/sell/payable keys.
     for (const r of vm.phases.flatMap((p) => p.rows)) {
       for (const k of ['cost', 'sell', 'payable', 'price', 'margin', 'amount', 'rate']) {

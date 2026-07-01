@@ -52,3 +52,54 @@ export async function POST(
   redirectUrl.searchParams.set('success', 'Supplier confirmation updated.');
   return NextResponse.redirect(redirectUrl, { status: 303 });
 }
+
+// ---------------------------------------------------------------------------
+// Operations V2 — Phase 2B: manual confirmation-STATUS only (JSON, no redirect).
+//
+// Records supplier confirmation status ONLY. It forwards a single field to the
+// confirmation endpoint and never touches email send, document preview, vouchers,
+// finance, or dispatch. Status is limited to the Phase 2B set
+// (CONFIRMED | REJECTED | NOT_SENT) so the email-implying statuses can never be
+// recorded here. The backend response is returned verbatim so the V2 control can
+// surface 400 validation errors (e.g. confirm-without-supplier) inline.
+// ---------------------------------------------------------------------------
+const V2_ALLOWED_CONFIRM_STATUSES = new Set(['CONFIRMED', 'REJECTED', 'NOT_SENT']);
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; operationId: string }> },
+) {
+  const { id, operationId } = await params;
+
+  let payload: { supplierConfirmationStatus?: unknown };
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 });
+  }
+
+  const supplierConfirmationStatus = String(payload.supplierConfirmationStatus || '');
+  if (!V2_ALLOWED_CONFIRM_STATUSES.has(supplierConfirmationStatus)) {
+    return NextResponse.json(
+      { message: 'Only CONFIRMED, REJECTED, or NOT_SENT is allowed.' },
+      { status: 400 },
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}/bookings/${id}/operations/${operationId}/confirmation`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify({ supplierConfirmationStatus }),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  const body = await response.text();
+  return new NextResponse(body, {
+    status: response.status,
+    headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+  });
+}

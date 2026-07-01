@@ -31,7 +31,9 @@ const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.css']);
 
 // Phase 2A: the ONLY files permitted to contain a mutation, and only the
 // supplier-assignment PATCH at that.
-const MUTATION_ALLOWLIST = new Set(['supplier-assignment-control.tsx', 'ops-supplier-assign-request.ts']);
+const ASSIGN_ALLOWLIST = new Set(['supplier-assignment-control.tsx', 'ops-supplier-assign-request.ts']);
+const CONFIRM_ALLOWLIST = new Set(['supplier-confirmation-control.tsx', 'ops-supplier-confirm-request.ts']);
+const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST]);
 
 function isExcluded(file: string): boolean {
   return (
@@ -110,6 +112,46 @@ const ASSIGNMENT_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: 'assignmentNotes', why: 'no assignment notes in Phase 2A' },
 ];
 
+// Narrower ban for the Phase 2B confirmation surface: a status <select> + the
+// sanctioned confirmation PATCH are allowed; the email/preview/voucher/finance/
+// document paths and the out-of-scope statuses stay forbidden.
+const CONFIRMATION_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<input', why: 'no text input (no reference/notes in Phase 2B)' },
+  { pattern: '<textarea', why: 'no free-text input (no notes in Phase 2B)' },
+  { pattern: 'method="POST"', why: 'no POST form' },
+  { pattern: "method: 'POST'", why: 'confirmation status is PATCH-only' },
+  { pattern: "method: 'PUT'", why: 'confirmation status is PATCH-only' },
+  { pattern: "method: 'DELETE'", why: 'confirmation status is PATCH-only' },
+  { pattern: 'method:"POST"', why: 'no POST fetch' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob download' },
+  { pattern: 'download=', why: 'no download' },
+  { pattern: '.pdf', why: 'no PDF' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: 'assign-transport', why: 'no transport-resource assignment' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send/preview/pdf' },
+  { pattern: '/send', why: 'no email send' },
+  { pattern: '/preview', why: 'no document preview' },
+  { pattern: '/voucher', why: 'no voucher endpoints' },
+  { pattern: '/operational', why: 'no operational-timing PATCH' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: 'request-confirmation', why: 'no request-confirmation action' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+  { pattern: 'confirmationReference', why: 'no confirmation reference in Phase 2B' },
+  { pattern: 'confirmationNotes', why: 'no confirmation notes in Phase 2B' },
+  { pattern: 'REQUESTED', why: 'out-of-scope status (implies a request was sent)' },
+  { pattern: 'ACKNOWLEDGED', why: 'out-of-scope confirmation status' },
+  { pattern: 'CANCELLED', why: 'out-of-scope confirmation status' },
+];
+
 function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
   const violations: string[] = [];
   for (const file of files) {
@@ -125,25 +167,30 @@ function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
 
 describe('Booking Operations V2 — read-only invariant', () => {
   const all = [...collectSourceFiles(V2_APP_DIR), ...collectSourceFiles(V2_COMPONENTS_DIR)];
-  const allowlisted = all.filter((f) => MUTATION_ALLOWLIST.has(path.basename(f)));
+  const assignFiles = all.filter((f) => ASSIGN_ALLOWLIST.has(path.basename(f)));
+  const confirmFiles = all.filter((f) => CONFIRM_ALLOWLIST.has(path.basename(f)));
   const readOnly = all.filter((f) => !MUTATION_ALLOWLIST.has(path.basename(f)));
 
   it('scans a non-empty set of V2 source files', () => {
     assert.ok(all.length >= 5, `expected to scan V2 source files, found ${all.length}`);
   });
 
-  it('all non-assignment V2 source contains no mutation, form-submit, or download affordance', () => {
+  it('all non-mutation V2 source contains no mutation, form-submit, or download affordance', () => {
     assert.deepEqual(scan(readOnly, FORBIDDEN), [], 'read-only invariant violated');
   });
 
-  it('the supplier-assignment surface is present and limited to the sanctioned PATCH', () => {
-    // Both allowlisted files must actually exist (so the allowlist can't silently
-    // hide a renamed/abandoned mutation).
-    assert.equal(allowlisted.length, MUTATION_ALLOWLIST.size, 'allowlisted assignment files not found');
-    // It must reference the one sanctioned endpoint…
-    const combined = allowlisted.map((f) => readFileSync(f, 'utf8')).join('\n');
+  it('the supplier-assignment surface (Phase 2A) is limited to the sanctioned PATCH', () => {
+    assert.equal(assignFiles.length, ASSIGN_ALLOWLIST.size, 'allowlisted assignment files not found');
+    const combined = assignFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
     assert.ok(combined.includes('assign-supplier'), 'assignment surface must target assign-supplier');
-    // …and nothing else mutating / out of scope.
-    assert.deepEqual(scan(allowlisted, ASSIGNMENT_FORBIDDEN), [], 'assignment surface exceeded its scope');
+    assert.deepEqual(scan(assignFiles, ASSIGNMENT_FORBIDDEN), [], 'assignment surface exceeded its scope');
+  });
+
+  it('the confirmation-status surface (Phase 2B) is limited to the sanctioned PATCH', () => {
+    assert.equal(confirmFiles.length, CONFIRM_ALLOWLIST.size, 'allowlisted confirmation files not found');
+    const combined = confirmFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('/confirmation'), 'confirmation surface must target the confirmation endpoint');
+    assert.ok(!combined.includes('assign-supplier'), 'confirmation surface must not touch assignment');
+    assert.deepEqual(scan(confirmFiles, CONFIRMATION_FORBIDDEN), [], 'confirmation surface exceeded its scope');
   });
 });
