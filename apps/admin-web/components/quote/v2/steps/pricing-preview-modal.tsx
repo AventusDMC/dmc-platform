@@ -100,6 +100,7 @@ export function PricingPreviewModal({
   onApply,
   applyEnabled = false,
   applyLabel = "Apply hotel price",
+  applyDescription = "Nothing is saved until you apply. Apply re-prices the selected hotel in place — it does not change the hotel, primary, rooming, or itinerary.",
 }: {
   open: boolean
   onClose: () => void
@@ -107,12 +108,14 @@ export function PricingPreviewModal({
   currency: string
   quoteItemId: string
   onPreview: PreviewItemHandler
-  /** Apply handler (hotel apply). Optional — when absent the modal is preview-only. */
+  /** Apply handler (hotel/external-package apply). Optional — when absent the modal is preview-only. */
   onApply?: ApplyItemPricingHandler
-  /** Hotel apply scope (separate flag, default OFF). Apply UI shows only when true. */
+  /** Apply scope (separate flag, default OFF). Apply UI shows only when true. */
   applyEnabled?: boolean
   /** Copy for the apply button. */
   applyLabel?: string
+  /** Info-banner copy shown when apply is enabled (per item type). Defaults to hotel copy. */
+  applyDescription?: string
 }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<PricingPreviewResult | null>(null)
@@ -247,7 +250,7 @@ export function PricingPreviewModal({
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span>
               {applyEnabled && onApply
-                ? "Nothing is saved until you apply. Apply re-prices the selected hotel in place — it does not change the hotel, primary, rooming, or itinerary."
+                ? applyDescription
                 : "Preview only — no changes will be saved."}{" "}
               {title}
             </span>

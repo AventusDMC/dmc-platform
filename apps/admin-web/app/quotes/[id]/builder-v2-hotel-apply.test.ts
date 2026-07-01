@@ -36,7 +36,8 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
     contains(serviceSrc, [
       'isQuotePricingHotelApplyEnabled',
       'const isHotelApply = Boolean(supportedItem.service && this.isHotelService(supportedItem.service)) && isQuotePricingHotelApplyEnabled()',
-      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply)',
+      // gate now also carries the external-package scope (added by a later PR)
+      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply)',
     ]);
   });
 
@@ -58,7 +59,9 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
   it('successful apply writes a sanitized audit row (serviceType, before/after totals) and never the token', () => {
     contains(serviceSrc, [
       "action: 'quote.pricing.apply'",
-      'serviceType: supportedItem?.service?.serviceType?.code ?? null',
+      // hotel resolves its serviceType from the linked service (external-package is
+      // handled separately since it is often a one-off/synthetic service).
+      'supportedItem?.service?.serviceType?.code ?? null',
       'previousItemTotalCost: before.item.totalCost',
       'newItemTotalCost: after.item.totalCost',
     ]);
@@ -141,8 +144,10 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
   });
 
   // ---- scope guards: transport + external stay preview-only; default flag untouched ----
-  it('no transport or external-package APPLY flag is introduced (they stay preview-only)', () => {
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply', 'EXTERNAL_PACKAGE_APPLY', 'ExternalPackageApply']);
+  it('no transport APPLY flag is introduced (transport stays preview-only)', () => {
+    // External-package apply is now a real scope (see builder-v2-external-package-apply.test.ts);
+    // transport, however, must remain preview-only — no transport apply flag.
+    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
   });
 
   it('V2 default routing flag is untouched by this feature', () => {

@@ -92,6 +92,15 @@ export default async function QuoteBuilderV2Page({
   // QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW flag + role + status.
   const externalPackagePreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_PREVIEW === 'true'
 
+  // External-package pricing APPLY scope — a separate, build-time public flag,
+  // default OFF. When not 'true', external-package rows stay preview-only (no apply
+  // control). Apply also requires the external-package PREVIEW flag (the apply UI
+  // needs a preview token). The backend independently enforces its own
+  // QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY flag (in addition to the preview flag) +
+  // role + status and rejects external apply as out-of-scope when its flag is OFF,
+  // so this only controls the UI affordance.
+  const externalPackageApplyEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_APPLY === 'true'
+
   // Proposal email-send affordance — a separate, build-time public flag, default
   // OFF. When not 'true', the "Send to client" button is hidden. The backend
   // independently enforces QUOTE_PROPOSAL_EMAIL_SEND + role + status and returns a
@@ -112,6 +121,7 @@ export default async function QuoteBuilderV2Page({
       hotelPreviewEnabled={hotelPreviewEnabled}
       hotelApplyEnabled={hotelApplyEnabled}
       externalPackagePreviewEnabled={externalPackagePreviewEnabled}
+      externalPackageApplyEnabled={externalPackageApplyEnabled}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
     />
   )

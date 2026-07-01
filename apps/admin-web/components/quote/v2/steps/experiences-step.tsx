@@ -40,6 +40,7 @@ function ExperienceRow({
   onApplyItemPricing,
   entrancePricingEnabled,
   externalPackagePreviewEnabled,
+  externalPackageApplyEnabled,
 }: {
   exp: Experience
   currency: string
@@ -51,6 +52,8 @@ function ExperienceRow({
   entrancePricingEnabled?: boolean
   /** External-package read-only pricing preview is behind a separate flag; off by default. */
   externalPackagePreviewEnabled?: boolean
+  /** External-package pricing APPLY is behind its own flag (default OFF); requires preview too. */
+  externalPackageApplyEnabled?: boolean
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
@@ -81,6 +84,15 @@ function ExperienceRow({
   // — never apply; the apply guard rejects external-package items server-side.
   const canPreviewExternal = Boolean(
     onPreviewItem && exp.quoteItemId && exp.isExternal && externalPackagePreviewEnabled,
+  )
+  // External-package pricing APPLY, behind its OWN flag (default OFF) on top of the
+  // preview flag. Eligible only for a real external-package quote item with a stable
+  // id; the modal further requires a resolvable, token-bearing preview before apply,
+  // and the backend independently enforces role/status/flags + rejects ineligible
+  // items. Apply re-prices the entered package (net cost / matrix / basis / pax) in
+  // place — no itinerary text, bundled/included content, or other item is touched.
+  const canApplyExternal = Boolean(
+    onApplyItemPricing && canPreviewExternal && externalPackageApplyEnabled,
   )
   // Read-only pricing preview for other real items (PR3). Meal/activity/guide rows
   // use the apply modal instead. Entrance rows never show the read-only preview
@@ -141,10 +153,14 @@ function ExperienceRow({
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               onClick={() => setPreviewOpen(true)}
-              title="Preview projected external package pricing — read-only, nothing is saved"
+              title={
+                canApplyExternal
+                  ? "Preview and apply external package pricing — nothing is saved until you apply"
+                  : "Preview projected external package pricing — read-only, nothing is saved"
+              }
             >
               <Calculator className="size-3.5" aria-hidden="true" />
-              Preview external package pricing
+              {canApplyExternal ? "Apply external package price" : "Preview external package pricing"}
             </Button>
           ) : canPreview ? (
             <Button
@@ -161,11 +177,14 @@ function ExperienceRow({
           {classicItemHref ? <EditInClassicLink href={classicItemHref} /> : null}
         </div>
       </div>
-      {/* Read-only diagnostic for external (multi-country / partner) packages:
-          their pricing is manual/bundled and managed in Classic. No apply in V2. */}
+      {/* Diagnostic for external (multi-country / partner) packages. When apply is
+          NOT enabled the pricing is manual/bundled and managed in Classic. When apply
+          IS enabled, explain the narrow scope: only this package line's price changes. */}
       {exp.isExternal ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          External package — pricing is manual/bundled (entered net cost or rate matrix) and is managed in Classic Builder.
+          {canApplyExternal
+            ? "Applying updates only this external package line's price — it does not change the hotels, transport, or services inside the package, and sends nothing to the client."
+            : "External package — pricing is manual/bundled (entered net cost or rate matrix) and is managed in Classic Builder."}
         </p>
       ) : null}
       {canEdit ? (
@@ -182,6 +201,10 @@ function ExperienceRow({
           currency={currency}
           quoteItemId={exp.quoteItemId!}
           onPreview={onPreviewItem!}
+          onApply={canApplyExternal ? onApplyItemPricing : undefined}
+          applyEnabled={canApplyExternal}
+          applyLabel="Apply external package price"
+          applyDescription="Nothing is saved until you apply. Apply updates only this external package line's price — it does not change the hotels, transport, or services inside the package, the itinerary, or any other item, and sends nothing to the client."
         />
       ) : null}
       {canApply ? (
@@ -223,9 +246,17 @@ export interface ExperiencesStepProps {
    * read-only (no preview affordance). Preview-only — never apply.
    */
   externalPackagePreviewEnabled?: boolean
+  /**
+   * External-package pricing APPLY scope, behind its own frontend flag — default
+   * OFF. When true (and onApplyItemPricing + externalPackagePreviewEnabled are
+   * provided), eligible external-package rows expose an "Apply external package
+   * price" action that re-prices the entered package in place. When false, external
+   * packages stay preview-only.
+   */
+  externalPackageApplyEnabled?: boolean
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled }: ExperiencesStepProps) {
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -264,12 +295,17 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
             <div className="space-y-0.5">
               <p>
                 V2 pricing apply is supported for Meals, Activities, and Guides
-                {entrancePricingEnabled ? ", and Entrance / Jordan Pass" : ""} only.
+                {entrancePricingEnabled ? ", Entrance / Jordan Pass" : ""}
+                {externalPackageApplyEnabled ? ", and external packages" : ""} only.
               </p>
               <p>
-                {entrancePricingEnabled
-                  ? "Hotels, transport, and external packages remain Classic/read-only."
-                  : "Hotels, transport, entrance fees, and external packages remain Classic/read-only."}
+                {externalPackageApplyEnabled
+                  ? entrancePricingEnabled
+                    ? "Hotels and transport remain Classic/read-only. External-package apply re-prices only the package line."
+                    : "Hotels, transport, and entrance fees remain Classic/read-only. External-package apply re-prices only the package line."
+                  : entrancePricingEnabled
+                    ? "Hotels, transport, and external packages remain Classic/read-only."
+                    : "Hotels, transport, entrance fees, and external packages remain Classic/read-only."}
               </p>
               <p>Activity pax/quantity changes remain Classic-only.</p>
               {entrancePricingEnabled ? (
@@ -306,6 +342,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 onApplyItemPricing={onApplyItemPricing}
                 entrancePricingEnabled={entrancePricingEnabled}
                 externalPackagePreviewEnabled={externalPackagePreviewEnabled}
+                externalPackageApplyEnabled={externalPackageApplyEnabled}
               />
             ))}
           </div>

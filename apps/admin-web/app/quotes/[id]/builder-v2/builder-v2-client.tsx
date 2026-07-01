@@ -29,6 +29,7 @@ export function BuilderV2Client({
   hotelPreviewEnabled = false,
   hotelApplyEnabled = false,
   externalPackagePreviewEnabled = false,
+  externalPackageApplyEnabled = false,
   proposalEmailSendEnabled = false,
 }: {
   quote: Quote | null
@@ -95,6 +96,15 @@ export function BuilderV2Client({
    * role + status, so this is a UI affordance gate only.
    */
   externalPackagePreviewEnabled?: boolean
+  /**
+   * External-package pricing APPLY scope — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_EXTERNAL_PACKAGE_APPLY flag, default OFF. When
+   * false, external-package rows stay preview-only (no apply control). Apply also
+   * requires the external-package preview flag. The backend independently enforces
+   * QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY (in addition to the preview flag) + role +
+   * status, so this is a UI affordance gate only — apply is never frontend-trusted.
+   */
+  externalPackageApplyEnabled?: boolean
   /**
    * Proposal email-send affordance — a build-time
    * NEXT_PUBLIC_QUOTE_PROPOSAL_EMAIL_SEND flag, default OFF. When false, the
@@ -530,6 +540,7 @@ export function BuilderV2Client({
       hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
       hotelApplyEnabled={canPreviewPricing && hotelPreviewEnabled && hotelApplyEnabled}
       externalPackagePreviewEnabled={canPreviewPricing && externalPackagePreviewEnabled}
+      externalPackageApplyEnabled={canPreviewPricing && externalPackagePreviewEnabled && externalPackageApplyEnabled}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
       entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}

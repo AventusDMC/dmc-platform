@@ -41,10 +41,12 @@ describe('Quote Builder V2 — external package preview (PR #571, preview-only)'
     ]);
   });
 
-  it('external-package rows show a read-only manual/bundled diagnostic and NO apply control', () => {
+  it('external-package rows show the read-only manual/bundled diagnostic when apply is not enabled', () => {
+    // The preview-only diagnostic + external branch remain. (A flag-gated external
+    // APPLY affordance now also exists — covered by builder-v2-external-package-apply.test.ts.)
     contains(experiencesSrc, ['External package — pricing is manual/bundled', 'exp.isExternal ? (']);
-    // no external apply: only meal/activity/guide/entrance use the apply modal
-    excludes(experiencesSrc, ['Preview & apply external', 'apply external']);
+    // The old combined "Preview & apply" wording is not used.
+    excludes(experiencesSrc, ['Preview & apply external']);
   });
 
   it('adapter marks external-package experiences with isExternal (both layers)', () => {
@@ -64,13 +66,16 @@ describe('Quote Builder V2 — external package preview (PR #571, preview-only)'
     contains(builderSrc, ['externalPackagePreviewEnabled={externalPackagePreviewEnabled}']);
   });
 
-  it('backend exposes a dedicated external-package preview flag (default OFF) + scope gate; no external APPLY flag', () => {
+  it('backend exposes a dedicated external-package preview flag (default OFF) + scope gate', () => {
     contains(flagsSrc, [
       "export const QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW_FLAG = 'quote.pricingExternalPackagePreview'",
       'export function isQuotePricingExternalPackagePreviewEnabled()',
       "readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW')",
     ]);
-    excludes(flagsSrc, ['EXTERNAL_PACKAGE_APPLY', 'ExternalPackageApply']);
+    // Preview stays its own gate; a separate external-package APPLY flag now exists
+    // too (covered by builder-v2-external-package-apply.test.ts) — transport, however,
+    // is still preview-only.
+    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
     contains(serviceSrc, [
       'isQuotePricingExternalPackagePreviewEnabled',
       'const isExternalPackagePreviewItem = Boolean(existingItem.externalPackageName)',

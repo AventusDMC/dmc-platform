@@ -110,11 +110,26 @@ export function isQuotePricingHotelApplyEnabled(): boolean {
 // computeItemPreview never recalculates). Because the global QUOTE_PRICING_PREVIEW
 // flag is already ON in production, external-package preview MUST gate on its OWN
 // flag so it is not exposed automatically. When OFF (the default), an external
-// package preview is blocked as out-of-scope (no compute, no token). There is
-// intentionally NO external-package APPLY flag — it stays preview-only and the
-// apply guard independently rejects external-package items as out of scope.
+// package preview is blocked as out-of-scope (no compute, no token). Apply is a
+// SEPARATE, stricter scope behind its own flag below — external package stays
+// preview-only unless BOTH the preview and the apply flag are ON.
 export const QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW_FLAG = 'quote.pricingExternalPackagePreview';
 
 export function isQuotePricingExternalPackagePreviewEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW');
+}
+
+// External-package pricing APPLY scope (separate, default OFF). STRICTER than
+// preview — apply writes via the EXISTING updateItem → recalculateQuoteTotals path
+// (the same write Classic uses), so it requires BOTH the external-package preview
+// flag (to compute + issue the token) AND this apply flag. When OFF (the default),
+// the apply guard rejects external-package items as out of scope, so external
+// package stays preview-only. No schema/formula change — apply just re-persists the
+// freshly-resolved price for the already-entered external package (net cost / rate
+// matrix / basis / pax) in place; itinerary text and bundled/included content are
+// preserved by patch semantics and no other item is touched.
+export const QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY_FLAG = 'quote.pricingExternalPackageApply';
+
+export function isQuotePricingExternalPackageApplyEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY');
 }

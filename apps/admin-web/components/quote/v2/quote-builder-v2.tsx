@@ -109,9 +109,17 @@ export interface QuoteBuilderV2Props {
    * External-package read-only pricing preview scope, behind a separate frontend
    * flag (default OFF). When true (and onPreviewItem is provided), external-package
    * rows expose a read-only "Preview external package pricing" affordance; when
-   * false they stay Classic/read-only. Preview-ONLY — there is no external apply.
+   * false they stay Classic/read-only.
    */
   externalPackagePreviewEnabled?: boolean
+  /**
+   * External-package pricing APPLY scope, behind a separate frontend flag (default
+   * OFF). When true (and onApplyItemPricing + externalPackagePreviewEnabled are
+   * provided), eligible external-package rows expose an "Apply external package
+   * price" action that re-prices the entered package in place. When false, external
+   * packages stay preview-only.
+   */
+  externalPackageApplyEnabled?: boolean
   /**
    * Update an EXISTING passenger's PII (pricing-inert). When provided, the
    * Passengers step exposes per-passenger inline editing. Rooming stays
@@ -180,6 +188,7 @@ export function QuoteBuilderV2({
   entrancePricingEnabled,
   transportPreviewEnabled,
   externalPackagePreviewEnabled,
+  externalPackageApplyEnabled,
   onUpdatePassenger,
   onAddPassenger,
   onDeletePassenger,
@@ -330,6 +339,7 @@ export function QuoteBuilderV2({
             onLoadApplyAudit={onLoadApplyAudit}
             entrancePricingEnabled={entrancePricingEnabled}
             externalPackagePreviewEnabled={externalPackagePreviewEnabled}
+            externalPackageApplyEnabled={externalPackageApplyEnabled}
           />
         )
       case "transport":
