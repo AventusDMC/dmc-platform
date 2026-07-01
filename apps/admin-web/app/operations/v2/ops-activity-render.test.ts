@@ -4,7 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
 import { ActivityTab } from '../../../components/ops/v2/activity-tab';
 import { buildActivityVM } from './ops-activity-vm';
-import { EMPTY_ACTIVITY, REDACTED_RAW, SAMPLE_ACTIVITY } from './ops-activity.fixtures';
+import {
+  EMPTY_ACTIVITY,
+  REDACTED_RAW,
+  SAMPLE_ACTIVITY,
+  SUPPLIER_ASSIGN_ACTIVITY,
+  SUPPLIER_ASSIGN_UUID,
+} from './ops-activity.fixtures';
 
 // Components are authored for Next's automatic JSX runtime (no `import React`);
 // tsx transpiles with the classic runtime, so expose React for the render.
@@ -48,6 +54,17 @@ describe('ActivityTab render — data safety', () => {
     for (const forbidden of ['<form', '<input', '<select', '<textarea', '<button', 'Resend', 'Replay', 'Revert', 'Export', 'Download']) {
       assert.ok(!html.includes(forbidden), `activity tab must not render "${forbidden}"`);
     }
+  });
+});
+
+describe('ActivityTab render — supplier UUID hidden', () => {
+  const saHtml = renderToStaticMarkup(
+    createElement(ActivityTab, { vm: buildActivityVM(SUPPLIER_ASSIGN_ACTIVITY), bookingId: BK }),
+  );
+  it('shows the supplier name but not the internal UUID', () => {
+    assert.ok(saHtml.includes('Almushtari Logistics Services'), 'supplier name should be visible');
+    assert.ok(!saHtml.includes(SUPPLIER_ASSIGN_UUID), 'internal UUID must not render');
+    assert.ok(saHtml.includes('Internal reference updated'), 'bare-UUID value shows the fallback');
   });
 });
 

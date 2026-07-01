@@ -107,3 +107,47 @@ export const SAMPLE_ACTIVITY: RawBookingActivity = {
 };
 
 export const EMPTY_ACTIVITY: RawBookingActivity = { auditLogs: [] };
+
+/** A real internal supplier UUID that must never appear verbatim in Activity. */
+export const SUPPLIER_ASSIGN_UUID = '7f126af7-7982-4c02-a3d8-074c699f54ab';
+
+/**
+ * Supplier-assignment audit entries whose backend values embed internal UUIDs:
+ * a named assignment ("Name (uuid)"), a value that is ONLY a bare UUID, and a
+ * free-text note containing a UUID. Used to verify UUIDs are stripped while
+ * human-readable names/text stay visible.
+ */
+export const SUPPLIER_ASSIGN_ACTIVITY: RawBookingActivity = {
+  auditLogs: [
+    {
+      id: 'sa-named',
+      entityType: 'booking_service',
+      action: 'booking_service_supplier_assigned',
+      oldValue: `ASSIGNED: Almushtari Logistics Services (${SUPPLIER_ASSIGN_UUID})`,
+      newValue: 'UNASSIGNED: unassigned',
+      note: null,
+      actor: 'ops@dmc',
+      createdAt: '2026-06-28T12:00:00Z',
+    },
+    {
+      id: 'sa-bare',
+      entityType: 'booking_service',
+      action: 'booking_service_supplier_assigned',
+      oldValue: null,
+      newValue: SUPPLIER_ASSIGN_UUID, // only an internal reference
+      note: null,
+      actor: 'ops@dmc',
+      createdAt: '2026-06-28T11:00:00Z',
+    },
+    {
+      id: 'sa-note',
+      entityType: 'booking_service',
+      action: 'note_added',
+      oldValue: null,
+      newValue: null,
+      note: `Assigned via ${SUPPLIER_ASSIGN_UUID} portal request`,
+      actor: 'ops@dmc',
+      createdAt: '2026-06-28T10:00:00Z',
+    },
+  ],
+};
