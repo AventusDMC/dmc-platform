@@ -38,14 +38,17 @@ export function SupplierConfirmationControl({
   operationId,
   currentStatus,
   hasSupplier,
+  defaultOpen,
 }: {
   bookingId: string;
   operationId: string;
   currentStatus: string | null;
   hasSupplier: boolean;
+  /** Test-only: render with the panel already open (defaults closed in the app). */
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(defaultOpen));
   const initial = isSupplierConfirmStatus(currentStatus) ? currentStatus : '';
   const [selected, setSelected] = useState<string>(initial);
   const [submitting, setSubmitting] = useState(false);

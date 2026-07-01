@@ -89,6 +89,33 @@ const operationallyReady: RawGridRow = {
   ...timing,
 };
 
+/**
+ * Operationally UNASSIGNED, yet carries a catalog/source supplier (supplierId +
+ * supplierName). Proves the confirmation gate keys off the RAW operational
+ * assignment (assignedSupplierId), not the catalog fallback — while the Phase 2A
+ * picker can still pre-select/display the source supplier.
+ */
+export const catalogSupplierOnlyRow: RawGridRow = {
+  id: 'row-catalog-only',
+  serviceType: 'HOTEL',
+  description: 'Amman hotel (catalog supplier, not operationally assigned)',
+  dayNumber: 1,
+  dayTitle: 'Amman',
+  assignedSupplierId: null,
+  supplierId: 'cat-sup-9',
+  supplierName: 'Catalog Hotel Co',
+  assignmentStatus: 'UNASSIGNED',
+  supplierConfirmationStatus: 'NOT_SENT',
+  voucherStatus: 'NOT_GENERATED',
+  status: 'PENDING',
+  ...timing,
+};
+
+export const CATALOG_SUPPLIER_GRID: RawOperationsGrid = {
+  booking: { id: 'bk-2', bookingRef: 'BK-2026-0009', title: 'Catalog supplier case' },
+  rows: [catalogSupplierOnlyRow],
+};
+
 export const SAMPLE_GRID: RawOperationsGrid = {
   booking: { id: 'bk-1', bookingRef: 'BK-2026-0004', title: 'Jordan Explorer' },
   passengerManifest: {

@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PHASES } from './ops-phase';
 import { buildOperationsBoardVM } from './ops-view-model';
-import { COST_LEAK_VALUES, SAMPLE_GRID, SAMPLE_READINESS } from './ops-view-model.fixtures';
+import {
+  CATALOG_SUPPLIER_GRID,
+  COST_LEAK_VALUES,
+  SAMPLE_GRID,
+  SAMPLE_READINESS,
+} from './ops-view-model.fixtures';
 
 describe('ops-view-model — board mapping', () => {
   const vm = buildOperationsBoardVM(SAMPLE_GRID, SAMPLE_READINESS);
@@ -66,6 +71,29 @@ describe('ops-view-model — board mapping', () => {
         assert.ok(!(k in r), `row leaked a financial key "${k}"`);
       }
     }
+  });
+
+  it('separates the operational supplier assignment from the catalog/source supplier', () => {
+    const byId = Object.fromEntries(vm.phases.flatMap((p) => p.rows).map((r) => [r.id, r]));
+
+    // Operationally-assigned row: signal true, operational id = RAW assignedSupplierId.
+    assert.equal(byId['row-critical'].hasOperationalSupplierAssignment, true);
+    assert.equal(byId['row-critical'].operationalAssignedSupplierId, 'sup-2');
+
+    // Truly-unassigned row (no catalog supplier either): signal false, ids null.
+    assert.equal(byId['row-unassigned'].hasOperationalSupplierAssignment, false);
+    assert.equal(byId['row-unassigned'].operationalAssignedSupplierId, null);
+
+    // Catalog-only row: a source supplierId EXISTS but there is no operational
+    // assignment — it must read as operationally unassigned, while the
+    // display/pre-select fallback still surfaces the source supplier.
+    const catalog = buildOperationsBoardVM(CATALOG_SUPPLIER_GRID, undefined).phases
+      .flatMap((p) => p.rows)
+      .find((r) => r.id === 'row-catalog-only')!;
+    assert.equal(catalog.hasOperationalSupplierAssignment, false);
+    assert.equal(catalog.operationalAssignedSupplierId, null);
+    assert.equal(catalog.assignedSupplierId, 'cat-sup-9'); // display/pre-select fallback preserved
+    assert.equal(catalog.supplierLabel, 'Catalog Hotel Co'); // display supplier retained
   });
 
   it('NEVER carries cost/sell/payable into the VM (allowlist mapping)', () => {

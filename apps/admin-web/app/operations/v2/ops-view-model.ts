@@ -64,12 +64,21 @@ export type OpsRowVM = {
   dayLabel: string | null;
   supplierLabel: string | null;
   /**
-   * Current assigned supplier id + assignment status — IDENTIFIER/STATUS ONLY,
-   * carried to drive the Phase 2A supplier-assignment control (pre-select +
-   * assign/change/unassign). Never any cost/sell/payable value.
+   * DISPLAY / PRE-SELECT supplier id for the Phase 2A supplier-assignment control.
+   * Falls back to the catalog/source supplierId so the picker can pre-select the
+   * default supplier. This is NOT an operational-assignment signal — do NOT gate
+   * mutations on it. Never any cost/sell/payable value.
    */
   assignedSupplierId: string | null;
   assignmentStatus: string | null;
+  /**
+   * The RAW operational supplier assignment (no catalog fallback). This mirrors
+   * exactly what the backend checks before it will record a supplier
+   * confirmation, and is the ONLY supplier signal the Phase 2B confirmation
+   * control may gate on. Identifier only — never cost/sell/payable.
+   */
+  operationalAssignedSupplierId: string | null;
+  hasOperationalSupplierAssignment: boolean;
   /**
    * Raw supplier confirmation status (e.g. NOT_SENT / CONFIRMED / REJECTED) —
    * STATUS ONLY, carried to pre-select the Phase 2B manual confirmation control.
@@ -136,6 +145,8 @@ function mapRow(row: RawGridRow): OpsRowVM {
     supplierLabel: row.assignedSupplierName || row.supplierName || null,
     assignedSupplierId: row.assignedSupplierId || row.supplierId || null,
     assignmentStatus: row.assignmentStatus || null,
+    operationalAssignedSupplierId: row.assignedSupplierId || null,
+    hasOperationalSupplierAssignment: Boolean(row.assignedSupplierId),
     supplierConfirmationStatus: String(confirmation),
     isRejected: String(confirmation).toUpperCase() === 'REJECTED',
     confirmation: { label: humanizeStatus(confirmation), variant: confirmationVariant(confirmation) },
