@@ -57,3 +57,36 @@ export async function POST(
   redirectUrl.searchParams.set('success', 'Voucher generated.');
   return NextResponse.redirect(redirectUrl, { status: 303 });
 }
+
+// ---------------------------------------------------------------------------
+// Operations V2 — Phase 2C: generate a voucher RECORD only (JSON, no redirect).
+//
+// Forwards an EMPTY body to the backend generate endpoint (record only). It
+// never sends, downloads, previews, prints, exports, or changes voucher status,
+// and touches no finance, document-email, or dispatch action. The backend
+// response is returned verbatim so the V2 control can surface warnings + 400
+// validation errors (e.g. missing operational date) inline.
+// ---------------------------------------------------------------------------
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; operationId: string }> },
+) {
+  const { id, operationId } = await params;
+
+  const response = await fetch(`${API_BASE_URL}/bookings/${id}/operations/${operationId}/voucher/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify({}),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  const body = await response.text();
+  return new NextResponse(body, {
+    status: response.status,
+    headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+  });
+}

@@ -90,6 +90,15 @@ export type OpsRowVM = {
   confirmation: BadgeVM;
   voucher: BadgeVM;
   operation: BadgeVM;
+  /**
+   * Phase 2C voucher-generate ELIGIBILITY (display/gating only, no values). A row
+   * may generate its voucher record only when it has an operational supplier, a
+   * CONFIRMED supplier confirmation, an operational date, and no voucher yet.
+   * `voucherIneligibleReason` is the single plain-language reason when it cannot.
+   */
+  operationalDatePresent: boolean;
+  canGenerateVoucher: boolean;
+  voucherIneligibleReason: string | null;
   readiness: Readiness;
   severity: Severity;
   reasons: string[];
@@ -131,12 +140,39 @@ function dayLabel(row: RawGridRow): string | null {
   return t || null;
 }
 
+/**
+ * Phase 2C: derive whether a row may generate its voucher record, and the single
+ * plain-language reason when it cannot. All required (stricter than the backend):
+ * operational supplier assigned (raw, no catalog fallback) + confirmation
+ * CONFIRMED + operational date present + no voucher generated yet. Ordered so the
+ * most actionable blocker wins.
+ */
+function voucherEligibility(
+  row: RawGridRow,
+  confirmationU: string,
+  voucherU: string,
+): { canGenerateVoucher: boolean; voucherIneligibleReason: string | null } {
+  let reason: string | null = null;
+  if (!row.assignedSupplierId) reason = 'Assign a supplier first.';
+  else if (confirmationU === 'REJECTED') reason = 'Confirmation rejected — reassign or resolve in Classic.';
+  else if (confirmationU !== 'CONFIRMED') reason = 'Confirm supplier before generating voucher.';
+  else if (!row.operationalDate) reason = 'Set operational date in Classic.';
+  else if (voucherU === 'CANCELLED') reason = 'Use Classic for this voucher.';
+  else if (voucherU !== 'NOT_GENERATED') reason = 'Voucher already generated.';
+  return { canGenerateVoucher: reason === null, voucherIneligibleReason: reason };
+}
+
 function mapRow(row: RawGridRow): OpsRowVM {
   const { readiness, severity, reasons } = getRowReadiness(row);
   const confirmation = row.supplierConfirmationStatus || 'NOT_SENT';
   const voucher = row.voucherStatus || 'NOT_GENERATED';
   // grid row `status` is operationStatus.
   const operation = String(row.status || 'PENDING');
+  const { canGenerateVoucher, voucherIneligibleReason } = voucherEligibility(
+    row,
+    String(confirmation).toUpperCase(),
+    String(voucher).toUpperCase(),
+  );
   return {
     id: row.id,
     serviceType: String(row.serviceType || 'SERVICE'),
@@ -152,6 +188,9 @@ function mapRow(row: RawGridRow): OpsRowVM {
     confirmation: { label: humanizeStatus(confirmation), variant: confirmationVariant(confirmation) },
     voucher: { label: humanizeStatus(voucher), variant: voucherVariant(voucher) },
     operation: { label: humanizeStatus(operation), variant: operationStatusVariant(operation) },
+    operationalDatePresent: Boolean(row.operationalDate),
+    canGenerateVoucher,
+    voucherIneligibleReason,
     readiness,
     severity,
     reasons,
