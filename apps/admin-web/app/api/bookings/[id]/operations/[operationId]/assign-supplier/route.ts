@@ -139,3 +139,59 @@ export async function POST(
 
   return NextResponse.redirect(target, { status: 303 });
 }
+
+// ---------------------------------------------------------------------------
+// Operations V2 — Phase 2A: supplier-ONLY assignment (JSON, no redirect).
+//
+// Deliberately separate from the Classic POST above: it forwards ONLY the
+// supplier assignment and NEVER patches operational timing, confirmation,
+// vouchers, or finance. Body is restricted to { assignedSupplierId,
+// assignmentStatus } with assignmentStatus limited to ASSIGNED | UNASSIGNED so
+// supplier-confirmation status is left untouched. The backend response is
+// returned verbatim so the V2 control can surface 400 validation errors inline.
+// ---------------------------------------------------------------------------
+const V2_ALLOWED_ASSIGNMENT_STATUSES = new Set(['ASSIGNED', 'UNASSIGNED']);
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; operationId: string }> },
+) {
+  const { id, operationId } = await params;
+
+  let payload: { assignedSupplierId?: unknown; assignmentStatus?: unknown };
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 });
+  }
+
+  const assignedSupplierId =
+    payload.assignedSupplierId == null || payload.assignedSupplierId === ''
+      ? null
+      : String(payload.assignedSupplierId);
+  const assignmentStatus = String(payload.assignmentStatus || (assignedSupplierId ? 'ASSIGNED' : 'UNASSIGNED'));
+
+  if (!V2_ALLOWED_ASSIGNMENT_STATUSES.has(assignmentStatus)) {
+    return NextResponse.json(
+      { message: 'Only ASSIGNED or UNASSIGNED is allowed for supplier assignment.' },
+      { status: 400 },
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}/bookings/${id}/operations/${operationId}/assign-supplier`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify({ assignedSupplierId, assignmentStatus }),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  const body = await response.text();
+  return new NextResponse(body, {
+    status: response.status,
+    headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+  });
+}

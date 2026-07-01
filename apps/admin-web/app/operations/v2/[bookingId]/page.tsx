@@ -194,7 +194,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
             opsError || !vm ? (
               <OpsErrorCard classicHref={classicHref} />
             ) : (
-              <OpsBoard vm={vm} />
+              <OpsBoard vm={vm} bookingId={bookingId} />
             )
           ) : null}
 

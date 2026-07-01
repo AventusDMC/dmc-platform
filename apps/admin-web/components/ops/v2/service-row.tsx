@@ -1,14 +1,21 @@
 import type { OpsRowVM } from '../../../app/operations/v2/ops-view-model';
+import { isOpsV2SupplierAssignEnabled } from '../../../app/operations/v2/ops-supplier-assign-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
+import { SupplierAssignmentControl } from './supplier-assignment-control';
 
 /**
- * One operations service row. Read-only: status badges + reason chips + a
- * disabled action cluster ("Coming later"). Renders only display-safe fields
+ * One operations service row. Read-only by default: status badges + reason chips
+ * + a disabled action cluster ("Coming later"). Renders only display-safe fields
  * from the lean OpsRowVM — no cost/sell/payable is ever passed in.
+ *
+ * Phase 2A: when NEXT_PUBLIC_OPS_V2_SUPPLIER_ASSIGN is ON, the "Assign supplier"
+ * affordance becomes the live (supplier-only) assignment control. Every other
+ * action stays a disabled "Coming later" placeholder.
  */
-export function ServiceRow({ row }: { row: OpsRowVM }) {
+export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: string }) {
+  const supplierAssignEnabled = isOpsV2SupplierAssignEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -43,7 +50,16 @@ export function ServiceRow({ row }: { row: OpsRowVM }) {
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <DisabledAction label="Assign supplier" />
+        {supplierAssignEnabled ? (
+          <SupplierAssignmentControl
+            bookingId={bookingId}
+            operationId={row.id}
+            currentSupplierId={row.assignedSupplierId}
+            currentSupplierLabel={row.supplierLabel}
+          />
+        ) : (
+          <DisabledAction label="Assign supplier" />
+        )}
         <DisabledAction label="Request confirmation" />
         <DisabledAction label="Generate voucher" />
       </div>

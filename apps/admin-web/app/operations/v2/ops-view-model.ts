@@ -63,6 +63,13 @@ export type OpsRowVM = {
   description: string;
   dayLabel: string | null;
   supplierLabel: string | null;
+  /**
+   * Current assigned supplier id + assignment status — IDENTIFIER/STATUS ONLY,
+   * carried to drive the Phase 2A supplier-assignment control (pre-select +
+   * assign/change/unassign). Never any cost/sell/payable value.
+   */
+  assignedSupplierId: string | null;
+  assignmentStatus: string | null;
   /** Display-only context for rejected rows (named supplier). */
   isRejected: boolean;
   confirmation: BadgeVM;
@@ -121,6 +128,8 @@ function mapRow(row: RawGridRow): OpsRowVM {
     description: row.description || humanizeStatus(row.serviceType) || 'Service',
     dayLabel: dayLabel(row),
     supplierLabel: row.assignedSupplierName || row.supplierName || null,
+    assignedSupplierId: row.assignedSupplierId || row.supplierId || null,
+    assignmentStatus: row.assignmentStatus || null,
     isRejected: String(confirmation).toUpperCase() === 'REJECTED',
     confirmation: { label: humanizeStatus(confirmation), variant: confirmationVariant(confirmation) },
     voucher: { label: humanizeStatus(voucher), variant: voucherVariant(voucher) },

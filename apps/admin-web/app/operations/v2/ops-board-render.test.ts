@@ -15,7 +15,8 @@ import { COST_LEAK_VALUES, SAMPLE_GRID, SAMPLE_READINESS } from './ops-view-mode
 (globalThis as unknown as { React?: unknown }).React = React;
 
 const vm = buildOperationsBoardVM(SAMPLE_GRID, SAMPLE_READINESS);
-const html = renderToStaticMarkup(createElement(OpsBoard, { vm }));
+// Flag OFF by default → rows render the disabled "Assign supplier — Coming later".
+const html = renderToStaticMarkup(createElement(OpsBoard, { vm, bookingId: 'bk-1' }));
 
 /** HTML of one phase <section aria-label="..."> up to its closing tag. */
 function sectionOf(phase: string): string {
