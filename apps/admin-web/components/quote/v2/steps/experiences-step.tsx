@@ -87,12 +87,17 @@ function ExperienceRow({
   )
   // External-package pricing APPLY, behind its OWN flag (default OFF) on top of the
   // preview flag. Eligible only for a real external-package quote item with a stable
-  // id; the modal further requires a resolvable, token-bearing preview before apply,
-  // and the backend independently enforces role/status/flags + rejects ineligible
-  // items. Apply re-prices the entered package (net cost / matrix / basis / pax) in
-  // place — no itinerary text, bundled/included content, or other item is touched.
+  // id AND a concrete, resolvable price. "Quote on request" / "net cost TBC" packages
+  // have no priced amount (amount <= 0) and are NOT applyable — offering an apply
+  // control on them misleads staff (the modal + backend still reject them since the
+  // preview yields no token). Such rows stay preview-only. The modal further requires
+  // a resolvable, token-bearing preview before apply, and the backend independently
+  // enforces role/status/flags + rejects ineligible items. Apply re-prices the entered
+  // package (net cost / matrix / basis / pax) in place — no itinerary text,
+  // bundled/included content, or other item is touched.
+  const externalHasResolvablePrice = exp.amount > 0
   const canApplyExternal = Boolean(
-    onApplyItemPricing && canPreviewExternal && externalPackageApplyEnabled,
+    onApplyItemPricing && canPreviewExternal && externalPackageApplyEnabled && externalHasResolvablePrice,
   )
   // Read-only pricing preview for other real items (PR3). Meal/activity/guide rows
   // use the apply modal instead. Entrance rows never show the read-only preview

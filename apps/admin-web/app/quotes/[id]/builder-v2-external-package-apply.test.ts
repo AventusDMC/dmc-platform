@@ -78,7 +78,8 @@ describe('Quote Builder V2 — external-package pricing APPLY (gated, default OF
   it('external apply is offered ONLY for eligible external rows behind the apply flag (eligibility)', () => {
     contains(experiencesSrc, [
       'const canApplyExternal = Boolean(',
-      'onApplyItemPricing && canPreviewExternal && externalPackageApplyEnabled',
+      // apply also requires a concrete resolvable price (not on-request / TBC)
+      'onApplyItemPricing && canPreviewExternal && externalPackageApplyEnabled && externalHasResolvablePrice',
       // canPreviewExternal itself already requires a real external item + stable id + preview flag
       'onPreviewItem && exp.quoteItemId && exp.isExternal && externalPackagePreviewEnabled',
       // the modal receives the apply handler ONLY when the row is apply-eligible
@@ -86,6 +87,17 @@ describe('Quote Builder V2 — external-package pricing APPLY (gated, default OF
       'applyEnabled={canApplyExternal}',
       'applyLabel="Apply external package price"',
       'Apply external package price',
+    ]);
+  });
+
+  // ---- unpriced / on-request external rows must NOT offer apply (bug fix) ----
+  it('on-request / TBC external rows (no priced amount) stay preview-only, no apply button', () => {
+    contains(experiencesSrc, [
+      // priced signal: only rows with a concrete amount are apply-eligible
+      'const externalHasResolvablePrice = exp.amount > 0',
+      '&& externalHasResolvablePrice',
+      // when not apply-eligible the external row shows the preview-only label
+      'Preview external package pricing',
     ]);
   });
 
