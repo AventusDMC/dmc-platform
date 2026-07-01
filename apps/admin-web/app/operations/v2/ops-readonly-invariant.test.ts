@@ -147,6 +147,8 @@ const CONFIRMATION_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: '/issue', why: 'no issue action' },
   { pattern: 'confirmationReference', why: 'no confirmation reference in Phase 2B' },
   { pattern: 'confirmationNotes', why: 'no confirmation notes in Phase 2B' },
+  { pattern: 'NOT_SENT', why: 'reset-to-not-sent removed — not a true operational reset' },
+  { pattern: 'SENT', why: 'out-of-scope status (also catches a reset-to-not-sent)' },
   { pattern: 'REQUESTED', why: 'out-of-scope status (implies a request was sent)' },
   { pattern: 'ACKNOWLEDGED', why: 'out-of-scope confirmation status' },
   { pattern: 'CANCELLED', why: 'out-of-scope confirmation status' },

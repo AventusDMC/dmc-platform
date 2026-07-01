@@ -14,9 +14,9 @@ import {
  * Booking Operations V2 — Phase 2B manual supplier confirmation control.
  *
  * A sanctioned mutating control (allowlisted by the read-only invariant).
- * Strictly RECORDS supplier confirmation status manually:
- *  - status picker limited to Confirmed / Rejected / Not Sent,
- *  - Confirmed/Rejected require an assigned supplier (else disabled + helper),
+ * Strictly RECORDS the supplier confirmation outcome manually:
+ *  - status picker limited to Confirmed / Rejected,
+ *  - both require an assigned supplier (else disabled + helper),
  *  - PATCH .../confirmation with supplierConfirmationStatus ONLY,
  *  - never sends emails or requests, and touches no voucher, document, finance,
  *    or dispatch action,
@@ -31,7 +31,6 @@ type Choice = { value: SupplierConfirmStatus; label: string };
 const CHOICES: Choice[] = [
   { value: SUPPLIER_CONFIRM_STATUS.CONFIRMED, label: 'Confirmed' },
   { value: SUPPLIER_CONFIRM_STATUS.REJECTED, label: 'Rejected' },
-  { value: SUPPLIER_CONFIRM_STATUS.NOT_SENT, label: 'Not Sent' },
 ];
 
 export function SupplierConfirmationControl({
@@ -109,7 +108,7 @@ export function SupplierConfirmationControl({
 
       {open ? (
         <div className="absolute left-0 top-9 z-20 w-72 rounded-lg border border-border bg-card p-3 text-left shadow-md">
-          <p className="text-xs font-semibold text-foreground">Record supplier confirmation status manually</p>
+          <p className="text-xs font-semibold text-foreground">Record supplier confirmation outcome manually</p>
           <p className="mt-1 text-[11px] text-muted-foreground">Records status only — no email or request is sent.</p>
 
           <select

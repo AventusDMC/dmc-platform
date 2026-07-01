@@ -58,12 +58,12 @@ export async function POST(
 //
 // Records supplier confirmation status ONLY. It forwards a single field to the
 // confirmation endpoint and never touches email send, document preview, vouchers,
-// finance, or dispatch. Status is limited to the Phase 2B set
-// (CONFIRMED | REJECTED | NOT_SENT) so the email-implying statuses can never be
+// finance, or dispatch. Status is limited to the Phase 2B set (CONFIRMED |
+// REJECTED) so the email-implying statuses and a NOT_SENT reset can never be
 // recorded here. The backend response is returned verbatim so the V2 control can
 // surface 400 validation errors (e.g. confirm-without-supplier) inline.
 // ---------------------------------------------------------------------------
-const V2_ALLOWED_CONFIRM_STATUSES = new Set(['CONFIRMED', 'REJECTED', 'NOT_SENT']);
+const V2_ALLOWED_CONFIRM_STATUSES = new Set(['CONFIRMED', 'REJECTED']);
 
 export async function PATCH(
   request: NextRequest,
@@ -81,7 +81,7 @@ export async function PATCH(
   const supplierConfirmationStatus = String(payload.supplierConfirmationStatus || '');
   if (!V2_ALLOWED_CONFIRM_STATUSES.has(supplierConfirmationStatus)) {
     return NextResponse.json(
-      { message: 'Only CONFIRMED, REJECTED, or NOT_SENT is allowed.' },
+      { message: 'Only CONFIRMED or REJECTED is allowed.' },
       { status: 400 },
     );
   }

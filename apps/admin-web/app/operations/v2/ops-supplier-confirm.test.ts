@@ -62,17 +62,16 @@ describe('Phase 2B — confirmation request (pure)', () => {
     assert.equal(supplierConfirmPath('b', 'o'), '/api/bookings/b/operations/o/confirmation');
   });
 
-  it('allowed statuses are exactly CONFIRMED, REJECTED, NOT_SENT (no email-implying statuses)', () => {
-    assert.deepEqual([...SUPPLIER_CONFIRM_STATUSES].sort(), ['CONFIRMED', 'NOT_SENT', 'REJECTED']);
-    for (const bad of ['REQUESTED', 'SENT', 'ACKNOWLEDGED', 'CANCELLED']) {
+  it('allowed statuses are exactly CONFIRMED, REJECTED (no NOT_SENT, no email-implying statuses)', () => {
+    assert.deepEqual([...SUPPLIER_CONFIRM_STATUSES].sort(), ['CONFIRMED', 'REJECTED']);
+    for (const bad of ['NOT_SENT', 'REQUESTED', 'SENT', 'ACKNOWLEDGED', 'CANCELLED']) {
       assert.equal(isSupplierConfirmStatus(bad), false, `${bad} must not be allowed`);
     }
   });
 
-  it('Confirmed/Rejected require an assigned supplier; Not Sent does not', () => {
+  it('both outcomes (Confirmed / Rejected) require an assigned supplier', () => {
     assert.equal(requiresAssignedSupplier(SUPPLIER_CONFIRM_STATUS.CONFIRMED), true);
     assert.equal(requiresAssignedSupplier(SUPPLIER_CONFIRM_STATUS.REJECTED), true);
-    assert.equal(requiresAssignedSupplier(SUPPLIER_CONFIRM_STATUS.NOT_SENT), false);
   });
 });
 
@@ -100,12 +99,12 @@ describe('Phase 2B — safety (only the sanctioned confirmation PATCH)', () => {
     assert.ok(controlSrc.includes('router.refresh'));
     assert.ok(controlSrc.includes('requiresAssignedSupplier'));
     assert.ok(controlSrc.includes('Assign a supplier before recording confirmation.'));
-    assert.ok(controlSrc.includes('Record supplier confirmation status manually'));
+    assert.ok(controlSrc.includes('Record supplier confirmation outcome manually'));
     for (const bad of [
       'supplier-confirmation', '/send', '/preview', '/voucher', '/operational', '/invoices', '/payments',
       '/dispatch', '/start', '/complete', '/issue',
       'assign-supplier', 'assign-transport', 'confirmationReference', 'confirmationNotes',
-      'REQUESTED', 'ACKNOWLEDGED', 'CANCELLED',
+      'NOT_SENT', 'REQUESTED', 'ACKNOWLEDGED', 'CANCELLED',
       '.pdf', '/export', 'download=', 'window.print', "method: 'POST'",
     ]) {
       assert.ok(!controlSrc.includes(bad), `control must not reference "${bad}"`);
@@ -116,7 +115,7 @@ describe('Phase 2B — safety (only the sanctioned confirmation PATCH)', () => {
     assert.ok(requestSrc.includes('/confirmation'));
     assert.ok(requestSrc.includes("method: 'PATCH'"));
     for (const bad of [
-      'REQUESTED', 'ACKNOWLEDGED', 'CANCELLED', 'confirmationReference', 'confirmationNotes',
+      'NOT_SENT', 'REQUESTED', 'ACKNOWLEDGED', 'CANCELLED', 'confirmationReference', 'confirmationNotes',
       'supplier-confirmation', '/send', '/preview', "method: 'POST'",
     ]) {
       assert.ok(!requestSrc.includes(bad), `request builder must not reference "${bad}"`);
@@ -135,7 +134,8 @@ describe('Phase 2B — safety (only the sanctioned confirmation PATCH)', () => {
     const patch = proxySrc.slice(start);
     assert.ok(patch.includes('/confirmation'));
     assert.ok(patch.includes("method: 'PATCH'"));
-    assert.ok(patch.includes('CONFIRMED') && patch.includes('REJECTED') && patch.includes('NOT_SENT'));
+    assert.ok(patch.includes('CONFIRMED') && patch.includes('REJECTED'));
+    assert.ok(!patch.includes('NOT_SENT'), 'V2 PATCH must not allow NOT_SENT');
     for (const bad of [
       'supplier-confirmation', '/send', '/preview', '/pdf', '/voucher', '/operational',
       '/invoices', '/payments', '/dispatch', '/start', '/complete', '/issue',

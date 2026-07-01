@@ -1,31 +1,29 @@
 /**
  * Booking Operations V2 — Phase 2B manual supplier confirmation request (pure).
  *
- * The single sanctioned mutation added in V2 Phase 2B: manually RECORD supplier
- * confirmation status. Kept as a pure, React/Next-free module so the exact
- * endpoint, method, and body can be unit-tested and so the read-only invariant
- * can allowlist exactly this surface.
+ * The single sanctioned mutation added in V2 Phase 2B: manually RECORD the
+ * supplier confirmation OUTCOME. Kept as a pure, React/Next-free module so the
+ * exact endpoint, method, and body can be unit-tested and so the read-only
+ * invariant can allowlist exactly this surface.
  *
  * Scope guardrails baked in:
  *  - method is ALWAYS PATCH, to the confirmation endpoint only.
- *  - status is ONLY 'CONFIRMED' | 'REJECTED' | 'NOT_SENT'. The email-implying
- *    statuses (the request/acknowledge/cancel family) are intentionally absent —
- *    Phase 2B records status manually and sends no email or request.
+ *  - status is ONLY 'CONFIRMED' | 'REJECTED'. The email-implying statuses and a
+ *    reset-to-not-sent are intentionally absent — a reset does not fully clear
+ *    the downstream operational state, so it is not a safe undo for this cut.
  *  - body carries ONLY supplierConfirmationStatus: no reference, no notes.
  */
 export const SUPPLIER_CONFIRM_STATUS = {
   CONFIRMED: 'CONFIRMED',
   REJECTED: 'REJECTED',
-  NOT_SENT: 'NOT_SENT',
 } as const;
 
 export type SupplierConfirmStatus = (typeof SUPPLIER_CONFIRM_STATUS)[keyof typeof SUPPLIER_CONFIRM_STATUS];
 
-/** The exact, ordered set of statuses this phase may record. */
+/** The exact, ordered set of outcomes this phase may record. */
 export const SUPPLIER_CONFIRM_STATUSES: SupplierConfirmStatus[] = [
   SUPPLIER_CONFIRM_STATUS.CONFIRMED,
   SUPPLIER_CONFIRM_STATUS.REJECTED,
-  SUPPLIER_CONFIRM_STATUS.NOT_SENT,
 ];
 
 export function isSupplierConfirmStatus(value: unknown): value is SupplierConfirmStatus {
@@ -33,9 +31,10 @@ export function isSupplierConfirmStatus(value: unknown): value is SupplierConfir
 }
 
 /**
- * UI rule: recording an outcome (Confirmed / Rejected) requires an assigned
- * supplier; Not Sent (reset) does not. The backend additionally 400s on
- * CONFIRMED without a supplier; the UI disables both outcomes for clarity.
+ * UI rule: recording an outcome requires an assigned supplier. Both Phase 2B
+ * statuses (Confirmed / Rejected) are outcomes, so both are disabled until a
+ * supplier is assigned. (The backend additionally 400s on CONFIRMED without a
+ * supplier.)
  */
 export function requiresAssignedSupplier(status: SupplierConfirmStatus): boolean {
   return status === SUPPLIER_CONFIRM_STATUS.CONFIRMED || status === SUPPLIER_CONFIRM_STATUS.REJECTED;
@@ -51,7 +50,7 @@ export type SupplierConfirmRequest = {
   body: { supplierConfirmationStatus: SupplierConfirmStatus };
 };
 
-/** Build the request to record one operations row's confirmation status. */
+/** Build the request to record one operations row's confirmation outcome. */
 export function buildSupplierConfirmRequest(
   bookingId: string,
   operationId: string,
