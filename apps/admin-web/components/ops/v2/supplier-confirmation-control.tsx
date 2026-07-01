@@ -63,6 +63,10 @@ export function SupplierConfirmationControl({
   }
 
   async function submit() {
+    // No confirmation PATCH is possible without an operational supplier — even if
+    // currentStatus pre-seeded a valid selection (e.g. a supplier that later fell
+    // through). The Confirm button is also disabled in this case.
+    if (!hasSupplier) return;
     if (!isSupplierConfirmStatus(selected)) return;
     const req = buildSupplierConfirmRequest(bookingId, operationId, selected);
     setSubmitting(true);
@@ -140,7 +144,7 @@ export function SupplierConfirmationControl({
           <div className="mt-3 flex items-center justify-between gap-2">
             <button
               type="button"
-              disabled={submitting || !isSupplierConfirmStatus(selected)}
+              disabled={submitting || !hasSupplier || !isSupplierConfirmStatus(selected)}
               onClick={submit}
               className="inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-60"
             >

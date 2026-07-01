@@ -56,7 +56,7 @@ function renderRow(flagOn: boolean): string {
 // Render the confirmation control with its panel forced open (defaultOpen) so the
 // status <select> + helper are present in the static markup and their
 // enabled/disabled state can be asserted.
-function renderControlOpen(hasSupplier: boolean): string {
+function renderControlOpen(hasSupplier: boolean, currentStatus: string | null = null): string {
   const stub = { back() {}, forward() {}, push() {}, replace() {}, refresh() {}, prefetch() {} };
   return renderToStaticMarkup(
     createElement(
@@ -65,12 +65,21 @@ function renderControlOpen(hasSupplier: boolean): string {
       createElement(SupplierConfirmationControl, {
         bookingId: 'bk-1',
         operationId: 'op-1',
-        currentStatus: null,
+        currentStatus,
         hasSupplier,
         defaultOpen: true,
       } as never),
     ),
   );
+}
+
+// The Confirm button is the only bg-primary button in the control; report whether
+// it renders with a disabled attribute.
+function confirmDisabled(html: string): boolean {
+  const marker = 'class="inline-flex h-7 items-center rounded-md bg-primary';
+  const idx = html.indexOf(marker);
+  assert.notEqual(idx, -1, 'Confirm button not found in markup');
+  return html.slice(Math.max(0, idx - 40), idx).includes('disabled=""');
 }
 
 describe('Phase 2B — confirmation request (pure)', () => {
@@ -114,20 +123,33 @@ describe('Phase 2B — flag gating (service row render)', () => {
   });
 });
 
-describe('Phase 2B — operational-supplier gating (the staging-QA fix)', () => {
-  it('operationally-unassigned row: Confirmed + Rejected disabled, helper shown', () => {
-    const html = renderControlOpen(false);
-    assert.ok(html.includes('Assign a supplier before recording confirmation.'), 'helper must appear');
-    assert.ok(html.includes('value="CONFIRMED" disabled=""'), 'Confirmed must be disabled');
-    assert.ok(html.includes('value="REJECTED" disabled=""'), 'Rejected must be disabled');
-  });
+describe('Phase 2B — operational-supplier gating (the staging-QA fixes)', () => {
+  // Unassigned in EVERY currentStatus (incl. a pre-seeded CONFIRMED/REJECTED, the
+  // staging-re-QA edge): options disabled, helper shown, AND the Confirm button
+  // disabled so no confirmation PATCH is possible while unassigned.
+  for (const currentStatus of [null, 'NOT_SENT', 'CONFIRMED', 'REJECTED']) {
+    it(`unassigned (currentStatus=${currentStatus ?? 'null'}): options + Confirm disabled, helper shown`, () => {
+      const html = renderControlOpen(false, currentStatus);
+      assert.ok(html.includes('Assign a supplier before recording confirmation.'), 'helper must appear');
+      assert.ok(html.includes('value="CONFIRMED" disabled=""'), 'Confirmed option disabled');
+      assert.ok(html.includes('value="REJECTED" disabled=""'), 'Rejected option disabled');
+      assert.ok(confirmDisabled(html), 'Confirm button must be disabled while unassigned');
+    });
+  }
 
-  it('operationally-assigned row: Confirmed + Rejected enabled, no helper', () => {
-    const html = renderControlOpen(true);
+  it('assigned row with a valid pre-seeded status: options + Confirm enabled, no helper', () => {
+    const html = renderControlOpen(true, 'CONFIRMED');
     assert.ok(!html.includes('Assign a supplier before recording confirmation.'), 'no helper when assigned');
     assert.ok(html.includes('value="CONFIRMED"'), 'Confirmed option present');
-    assert.ok(!html.includes('value="CONFIRMED" disabled=""'), 'Confirmed must be enabled');
-    assert.ok(!html.includes('value="REJECTED" disabled=""'), 'Rejected must be enabled');
+    assert.ok(!html.includes('value="CONFIRMED" disabled=""'), 'Confirmed option enabled');
+    assert.ok(!html.includes('value="REJECTED" disabled=""'), 'Rejected option enabled');
+    assert.ok(!confirmDisabled(html), 'Confirm enabled once a valid status is selected');
+  });
+
+  it('assigned row with no selection yet: Confirm disabled until a valid status is chosen', () => {
+    const html = renderControlOpen(true, null);
+    assert.ok(!html.includes('Assign a supplier before recording confirmation.'), 'no helper when assigned');
+    assert.ok(confirmDisabled(html), 'Confirm disabled until a status is selected');
   });
 });
 
