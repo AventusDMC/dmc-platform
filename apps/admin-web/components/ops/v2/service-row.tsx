@@ -2,12 +2,14 @@ import type { OpsRowVM } from '../../../app/operations/v2/ops-view-model';
 import { isOpsV2SupplierAssignEnabled } from '../../../app/operations/v2/ops-supplier-assign-flag';
 import { isOpsV2SupplierConfirmEnabled } from '../../../app/operations/v2/ops-supplier-confirm-flag';
 import { isOpsV2VoucherGenerateEnabled } from '../../../app/operations/v2/ops-voucher-generate-flag';
+import { isOpsV2VoucherPreviewEnabled } from '../../../app/operations/v2/ops-voucher-preview-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
 import { SupplierAssignmentControl } from './supplier-assignment-control';
 import { SupplierConfirmationControl } from './supplier-confirmation-control';
 import { VoucherGenerateControl } from './voucher-generate-control';
+import { VoucherPreviewControl } from './voucher-preview-control';
 
 /**
  * One operations service row. Read-only by default: status badges + reason chips
@@ -24,6 +26,7 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
   const supplierAssignEnabled = isOpsV2SupplierAssignEnabled();
   const supplierConfirmEnabled = isOpsV2SupplierConfirmEnabled();
   const voucherGenerateEnabled = isOpsV2VoucherGenerateEnabled();
+  const voucherPreviewEnabled = isOpsV2VoucherPreviewEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -87,6 +90,11 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
           />
         ) : (
           <DisabledAction label="Generate voucher" />
+        )}
+        {voucherPreviewEnabled && row.canPreviewVoucher ? (
+          <VoucherPreviewControl bookingId={bookingId} operationId={row.id} />
+        ) : (
+          <DisabledAction label="Preview" />
         )}
       </div>
     </li>
