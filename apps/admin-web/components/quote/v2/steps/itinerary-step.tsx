@@ -30,6 +30,8 @@ import {
   X,
   Loader2,
   Wand2,
+  Trash2,
+  Plus,
 } from "lucide-react"
 
 const MEAL_LABEL: Record<Meal, string> = { B: "Breakfast", L: "Lunch", D: "Dinner" }
@@ -57,7 +59,20 @@ function MealChips({ meals }: { meals: Meal[] }) {
   )
 }
 
-function DayCard({ day }: { day: ItineraryDay }) {
+function DayCard({
+  day,
+  editEnabled = false,
+  onEditDay,
+  onDeleteDay,
+}: {
+  day: ItineraryDay
+  // Phase B, Slice 1: when true AND onEditDay is provided, the day-meta save routes
+  // through the audited V2 endpoint; when false/omitted the existing shared-route
+  // text edit is used (unchanged). onDeleteDay adds a delete-empty control.
+  editEnabled?: boolean
+  onEditDay?: (dayId: string, patch: Record<string, string | null>) => void | Promise<void>
+  onDeleteDay?: (dayId: string) => void | Promise<void>
+}) {
   const router = useRouter()
   const hasWarnings = day.warnings.length > 0
 
@@ -72,6 +87,13 @@ function DayCard({ day }: { day: ItineraryDay }) {
   const [draftLocale, setDraftLocale] = useState<NarrativeLocale>("en")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // The V2 edit surface is active only when the flag is on AND an edit handler was
+  // provided (role/status-gated by the caller). Otherwise fall back to the existing
+  // shared-route text edit — shipped behavior is preserved unchanged.
+  const useV2Edit = editEnabled && Boolean(onEditDay)
+  const canDelete = editEnabled && Boolean(onDeleteDay)
 
   const startEdit = () => {
     // Re-seed drafts from the current (possibly refreshed) day values.
@@ -118,26 +140,53 @@ function DayCard({ day }: { day: ItineraryDay }) {
     setSaving(true)
     setError(null)
     try {
-      // Existing read-only-safe save path: PATCH /api/itinerary/day/:dayId
-      // (proxy → backend updateDay). Descriptive text only — no pricing/services.
-      const res = await fetch(`/api/itinerary/day/${day.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        // notesLanguage tags the language of `notes` so the proposal advisory
-        // stays accurate; null when the text was typed/edited manually.
-        body: JSON.stringify({ title: titleDraft.trim(), notes: notesDraft, notesLanguage }),
-      })
-      if (!res.ok) {
-        const body = await res.text()
-        throw new Error(body?.slice(0, 200) || `Save failed (${res.status})`)
+      // Day-meta save — title + narrative text only (no pricing/services). When the
+      // V2 edit surface is active, route through the audited V2 endpoint via the
+      // handler; otherwise use the existing shared-route PATCH (unchanged behavior).
+      // notesLanguage tags the language of `notes` so the proposal advisory stays
+      // accurate; null when the text was typed/edited manually.
+      const patch = { title: titleDraft.trim(), notes: notesDraft, notesLanguage }
+      if (useV2Edit && onEditDay) {
+        await onEditDay(day.id, patch)
+      } else {
+        const res = await fetch(`/api/itinerary/day/${day.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        })
+        if (!res.ok) {
+          const body = await res.text()
+          throw new Error(body?.slice(0, 200) || `Save failed (${res.status})`)
+        }
+        // The V2 handler refreshes the route itself; the legacy path refreshes here.
+        router.refresh()
       }
       setEditing(false)
-      // Refresh server data so read mode shows the persisted title/notes.
-      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save itinerary text.")
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Delete an EMPTY day (Phase B, Slice 1). The backend rejects non-empty days with
+  // a safe "Move or remove items before deleting this day." message, surfaced here.
+  const handleDelete = async () => {
+    if (!onDeleteDay) return
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Delete Day ${day.day}? Only days with no assigned items can be deleted.`)
+    ) {
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    try {
+      await onDeleteDay(day.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this day.")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -170,15 +219,35 @@ function DayCard({ day }: { day: ItineraryDay }) {
             <div className="flex items-center gap-2">
               <MealChips meals={day.meals} />
               {!editing ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1.5 px-2"
-                  onClick={startEdit}
-                >
-                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  Edit
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2"
+                    onClick={startEdit}
+                    disabled={deleting}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    Edit
+                  </Button>
+                  {canDelete ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-destructive hover:text-destructive"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      title="Delete this day (only when it has no assigned items)"
+                    >
+                      {deleting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                      Delete
+                    </Button>
+                  ) : null}
+                </div>
               ) : (
                 <GripVertical className="h-4 w-4 text-muted-foreground/40" aria-hidden="true" />
               )}
@@ -291,6 +360,13 @@ function DayCard({ day }: { day: ItineraryDay }) {
             </div>
           )}
 
+          {!editing && error ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-destructive" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          ) : null}
+
           <ul className="mt-3 flex flex-wrap gap-1.5">
             {day.visits.map((v) => (
               <li key={v}>
@@ -344,30 +420,110 @@ function DayCard({ day }: { day: ItineraryDay }) {
 
 export interface ItineraryStepProps {
   days: ItineraryDay[]
+  /**
+   * Phase B, Slice 1: when true AND the edit handlers are provided, the step
+   * exposes "Add day", delete-empty, and routes day-meta edits through the audited
+   * V2 endpoints. When false, the step keeps the existing inline text edit via the
+   * shared route (unchanged) with no Add/Delete affordance.
+   */
+  editEnabled?: boolean
+  onAddDay?: (patch: Record<string, string | null>) => void | Promise<void>
+  onEditDay?: (dayId: string, patch: Record<string, string | null>) => void | Promise<void>
+  onDeleteDay?: (dayId: string) => void | Promise<void>
+  /** Classic builder link for anything out of this slice (reorder, move items). */
+  classicHref?: string
 }
 
-export function ItineraryStep({ days }: ItineraryStepProps) {
+export function ItineraryStep({
+  days,
+  editEnabled = false,
+  onAddDay,
+  onEditDay,
+  onDeleteDay,
+  classicHref,
+}: ItineraryStepProps) {
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+
+  const canAdd = editEnabled && Boolean(onAddDay)
+  const canEditMeta = editEnabled && Boolean(onEditDay)
+
+  const handleAdd = async () => {
+    if (!onAddDay) return
+    setAdding(true)
+    setAddError(null)
+    try {
+      // Create a blank auto-numbered day (server assigns the next dayNumber + a
+      // default "Day N" title); the planner then edits its title/notes inline.
+      await onAddDay({})
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Could not add a day.")
+    } finally {
+      setAdding(false)
+    }
+  }
+
   return (
     <div>
-      {/* No "Add day" action: V2 only edits descriptive title/notes, not
-          operational day creation (that lives in the classic builder). */}
       <StepHeader
         title="Itinerary"
         description="Edit the client-facing day title and descriptive narrative. Hotels, transport and services are managed elsewhere."
-        statusLabel="Editable text"
+        statusLabel={canEditMeta ? "Editable" : "Editable text"}
         statusTone="editable"
-        helper="You can edit the client-facing day title and narrative text here."
+        helper={
+          canAdd
+            ? "You can add days, edit the client-facing day title and narrative, and delete empty days here. Reordering days and moving items between days stay in the classic builder."
+            : "You can edit the client-facing day title and narrative text here."
+        }
       />
+
+      {canAdd ? (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <Button size="sm" className="gap-1.5" onClick={handleAdd} disabled={adding}>
+            {adding ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            )}
+            {adding ? "Adding…" : "Add day"}
+          </Button>
+          {classicHref ? (
+            <a
+              href={`${classicHref}?tab=itinerary`}
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              Reorder days or move items in the classic builder
+            </a>
+          ) : null}
+          {addError ? (
+            <span className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {addError}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       {days.length === 0 ? (
         <StepEmptyState
           icon={CalendarRange}
           title="No itinerary days yet"
-          description="Day-by-day program will appear here once the quote has itinerary days."
+          description={
+            canAdd
+              ? "Use “Add day” to start building the day-by-day program."
+              : "Day-by-day program will appear here once the quote has itinerary days."
+          }
         />
       ) : (
         <div className="space-y-3">
           {days.map((day) => (
-            <DayCard key={day.id} day={day} />
+            <DayCard
+              key={day.id}
+              day={day}
+              editEnabled={editEnabled}
+              onEditDay={onEditDay}
+              onDeleteDay={onDeleteDay}
+            />
           ))}
         </div>
       )}

@@ -172,6 +172,23 @@ export interface QuoteBuilderV2Props {
     recipient?: string | null
     messageId?: string | null
   }>
+  /**
+   * Itinerary day management (Phase B, Slice 1) flag. When true AND the edit
+   * handlers are provided, the Itinerary step exposes "Add day", delete-empty, and
+   * routes day-meta edits through the V2 endpoints. When false, the step keeps the
+   * existing inline text edit via the shared route (unchanged) with no Add/Delete.
+   */
+  itineraryEditEnabled?: boolean
+  /** Add a new itinerary day (pricing-inert; V2 route). Omitted → no Add affordance. */
+  onAddDay?: (patch: Record<string, string | null>) => void | Promise<void>
+  /**
+   * Edit an itinerary day's meta (title/notes; V2 route, pricing-inert). When
+   * provided, day edits route through the audited V2 endpoint; when omitted the step
+   * falls back to the existing shared-route text edit.
+   */
+  onEditDay?: (dayId: string, patch: Record<string, string | null>) => void | Promise<void>
+  /** Delete an EMPTY itinerary day (V2 route; the backend rejects non-empty days). */
+  onDeleteDay?: (dayId: string) => void | Promise<void>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -206,6 +223,10 @@ export function QuoteBuilderV2({
   onDisablePublicLink,
   proposalEmailSendEnabled = false,
   onSendProposalEmail,
+  itineraryEditEnabled = false,
+  onAddDay,
+  onEditDay,
+  onDeleteDay,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -321,7 +342,16 @@ export function QuoteBuilderV2({
       case "setup":
         return <SetupStep fields={quote.setupFields} classicHref={`/quotes/${quote.id}/classic`} />
       case "itinerary":
-        return <ItineraryStep days={quote.itinerary} />
+        return (
+          <ItineraryStep
+            days={quote.itinerary}
+            editEnabled={itineraryEditEnabled}
+            onAddDay={onAddDay}
+            onEditDay={onEditDay}
+            onDeleteDay={onDeleteDay}
+            classicHref={`/quotes/${quote.id}/classic`}
+          />
+        )
       case "hotels":
         return (
           <HotelsStep

@@ -32,6 +32,8 @@ export function BuilderV2Client({
   externalPackagePreviewEnabled = false,
   externalPackageApplyEnabled = false,
   proposalEmailSendEnabled = false,
+  itineraryEditEnabled = false,
+  canEditItinerary = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -123,6 +125,21 @@ export function BuilderV2Client({
    * so this is a UI affordance gate only.
    */
   proposalEmailSendEnabled?: boolean
+  /**
+   * Itinerary day management (Phase B, Slice 1) — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_ITINERARY_EDIT flag, default OFF. When false, the
+   * itinerary step behaves exactly as before (inline text edit via the shared
+   * route; no Add/Delete day). The backend independently enforces QUOTE_ITINERARY_EDIT
+   * + role + company + the delete-empty guard, so this is a UI affordance gate only.
+   */
+  itineraryEditEnabled?: boolean
+  /**
+   * Whether the current user's role/status may use the V2 itinerary edit surface
+   * (admin/operations on an editable status). When false, the Add/Delete/V2-edit
+   * handlers are withheld and the step falls back to the existing shared-route text
+   * edit. Mirrors the backend V2 routes' @Roles; the backend stays source of truth.
+   */
+  canEditItinerary?: boolean
 }) {
   const router = useRouter()
 
@@ -362,6 +379,57 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // ── Itinerary day management (Phase B, Slice 1) — V2-scoped, pricing-inert ────
+  // These call the NEW V2 routes under /api/quotes/:id/v2/itinerary/day[...], which
+  // the backend gates behind QUOTE_ITINERARY_EDIT (fail-closed) + admin/operations +
+  // the delete-empty rule. They NEVER recalculate the quote total and never touch
+  // item pricing. Errors are surfaced with a safe message (feature_disabled /
+  // day_not_empty are mapped to friendly text); the route is refreshed on success.
+  const readEditError = async (res: Response, fallback: string) => {
+    const body = await res.text().catch(() => "")
+    let code: string | null = null
+    let message = body
+    try {
+      const parsed = JSON.parse(body)
+      code = typeof parsed?.code === "string" ? parsed.code : null
+      message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || body
+    } catch {
+      // non-JSON body — use raw text
+    }
+    if (code === "day_not_empty") return "Move or remove items before deleting this day."
+    if (code === "feature_disabled") return "Itinerary editing is not available."
+    return message?.slice(0, 300) || fallback
+  }
+
+  const handleAddDay = async (patch: Record<string, string | null>) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/itinerary/day`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch ?? {}),
+    })
+    if (!res.ok) throw new Error(await readEditError(res, `Could not add a day (${res.status}).`))
+    router.refresh()
+  }
+
+  const handleEditDay = async (dayId: string, patch: Record<string, string | null>) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/itinerary/day/${dayId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) throw new Error(await readEditError(res, `Could not save the day (${res.status}).`))
+    router.refresh()
+  }
+
+  const handleDeleteDay = async (dayId: string) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/itinerary/day/${dayId}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(await readEditError(res, `Could not delete the day (${res.status}).`))
+    router.refresh()
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -561,6 +629,10 @@ export function BuilderV2Client({
       onUnassignRoom={canEditRooming ? handleUnassignRoom : undefined}
       onEnablePublicLink={handleEnablePublicLink}
       onDisablePublicLink={handleDisablePublicLink}
+      itineraryEditEnabled={canEditItinerary && itineraryEditEnabled}
+      onAddDay={canEditItinerary ? handleAddDay : undefined}
+      onEditDay={canEditItinerary ? handleEditDay : undefined}
+      onDeleteDay={canEditItinerary ? handleDeleteDay : undefined}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       onSendProposalEmail={
         proposalEmailSendEnabled && canViewPricingApplyAudit
