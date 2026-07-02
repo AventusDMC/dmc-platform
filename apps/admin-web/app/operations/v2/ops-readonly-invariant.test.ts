@@ -36,6 +36,11 @@ const CONFIRM_ALLOWLIST = new Set(['supplier-confirmation-control.tsx', 'ops-sup
 const VOUCHER_GENERATE_ALLOWLIST = new Set(['voucher-generate-control.tsx', 'ops-voucher-generate-request.ts']);
 const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST, ...VOUCHER_GENERATE_ALLOWLIST]);
 
+// Phase 2D voucher preview is READ-ONLY (a GET). It is NOT a mutation — it stays
+// OUT of MUTATION_ALLOWLIST and is verified to contain no mutation/download
+// affordance by the blanket scan below (a plain GET fetch, no forms, no PDF).
+const VOUCHER_PREVIEW_FILES = new Set(['voucher-preview-control.tsx', 'ops-voucher-preview-vm.ts']);
+
 function isExcluded(file: string): boolean {
   return (
     file.endsWith('.test.ts') ||
@@ -235,6 +240,30 @@ describe('Booking Operations V2 — read-only invariant', () => {
     assert.ok(combined.includes('/confirmation'), 'confirmation surface must target the confirmation endpoint');
     assert.ok(!combined.includes('assign-supplier'), 'confirmation surface must not touch assignment');
     assert.deepEqual(scan(confirmFiles, CONFIRMATION_FORBIDDEN), [], 'confirmation surface exceeded its scope');
+  });
+
+  it('the voucher-preview surface (Phase 2D) is read-only (GET only, no mutation/download)', () => {
+    const previewFiles = all.filter((f) => VOUCHER_PREVIEW_FILES.has(path.basename(f)));
+    assert.equal(previewFiles.length, VOUCHER_PREVIEW_FILES.size, 'preview files not found');
+    // Preview is NOT a sanctioned mutation — it must stay out of the mutation allowlist.
+    for (const f of previewFiles) {
+      assert.ok(!MUTATION_ALLOWLIST.has(path.basename(f)), 'preview must not be a sanctioned mutation surface');
+    }
+    // Read-only: it passes the SAME blanket mutation/download ban as every other
+    // non-mutation V2 file (a plain GET fetch, no forms, no PDF/download/print/export).
+    assert.deepEqual(scan(previewFiles, FORBIDDEN), [], 'preview surface must contain no mutation/download affordance');
+    const control = readFileSync(
+      previewFiles.find((f) => f.endsWith('voucher-preview-control.tsx'))!,
+      'utf8',
+    );
+    assert.ok(control.includes('voucher-preview'), 'preview control targets the voucher-preview proxy');
+    for (const bad of [
+      '/vouchers/', '/status', '/send', 'send-document-email', 'supplier-confirmation',
+      'assign-supplier', '/confirmation', 'voucher/generate',
+      '/invoices', '/payments', '/reconciliation', '/dispatch', '/start', '/complete', '/issue',
+    ]) {
+      assert.ok(!control.includes(bad), `preview control must not reference "${bad}"`);
+    }
   });
 
   it('the voucher-generate surface (Phase 2C) is limited to the sanctioned PATCH', () => {
