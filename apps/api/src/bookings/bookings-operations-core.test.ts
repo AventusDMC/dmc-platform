@@ -4128,6 +4128,77 @@ test('operational voucher PDF (Phase 2E) never surfaces hotel service.notes cost
   assert.doesNotMatch(text, /110\.00/);
 });
 
+test('operational voucher PDF (Phase 2E) injects explicit cost/finance markers into bookingService.notes AND confirmationNotes and proves none reach the PDF bytes', async () => {
+  const bookingId = '44444444-4444-4444-8444-444444444444';
+  // Obvious cost-like / internal-finance markers seeded into BOTH note fields.
+  const NOTE_MARKERS = ['unitCost', 'totalCost', 'supplierPayable', 'margin', 'CONTRACT_COST_MARKER'];
+  const CONFIRMATION_MARKERS = ['supplierPayable', 'INTERNAL_FINANCE_MARKER', 'margin', 'unitCost'];
+  const service = createService({
+    route: { findUnique: async () => null },
+    bookingService: { findFirst: async () => ({ id: 'service-4' }) },
+    voucher: {
+      findUnique: async () => ({
+        id: 'voucher-4',
+        type: 'HOTEL',
+        status: 'GENERATED',
+        notes: null, // operator typed nothing → renderer would otherwise fall back to service.notes
+        supplier: { name: 'Amman Hotel' },
+        booking: {
+          id: bookingId,
+          bookingRef: 'BK-004',
+          pax: 2,
+          adults: 2,
+          children: 0,
+          roomCount: 1,
+          startDate: new Date('2026-12-01T00:00:00.000Z'),
+          endDate: new Date('2026-12-03T00:00:00.000Z'),
+          snapshotJson: { title: 'Marker Group' },
+          brandSnapshotJson: { name: 'DMC Jordan' },
+          clientSnapshotJson: { name: 'Client Co' },
+          quote: {
+            clientCompany: { name: 'Client Co' },
+            brandCompany: { name: 'DMC Jordan', branding: null },
+            contact: {},
+          },
+          passengers: [],
+          days: [],
+        },
+        bookingService: {
+          id: 'service-4',
+          referenceId: null,
+          description: 'Amman Hotel — Marker Suite',
+          pickupTime: null,
+          startTime: null,
+          pickupLocation: null,
+          meetingPoint: null,
+          assignedTo: null,
+          guidePhone: null,
+          vehicle: null,
+          touringRoute: null,
+          touringRoutePricing: null,
+          confirmationNumber: 'CNF-99',
+          supplierReference: null,
+          // Explicit cost/internal markers that MUST NOT surface in the PDF:
+          notes: `Contract cost metadata | unitCost USD 45.00 | totalCost USD 90.00 | supplierPayable USD 110.00 | margin 22% | CONTRACT_COST_MARKER`,
+          confirmationNotes: `INTERNAL_FINANCE_MARKER | supplierPayable USD 110.00 | margin 22% | unitCost USD 45.00`,
+        },
+      }),
+    },
+  });
+  capturePdfText(service as any);
+
+  const buffer = await service.generateOperationalVoucherPdf(bookingId, 'service-4', { companyId: 'dmc-company' });
+  const text = buffer.toString('utf8');
+
+  // Renders the safe operational content…
+  assert.match(text, /Hotel Voucher/);
+  assert.match(text, /CNF-99/);
+  // …and every injected cost/finance marker is absent from the PDF bytes.
+  for (const marker of [...NOTE_MARKERS, ...CONFIRMATION_MARKERS]) {
+    assert.ok(!text.includes(marker), `PDF must not contain the injected note marker "${marker}"`);
+  }
+});
+
 test('operational voucher PDF (Phase 2E) 404s when the operation or the voucher is missing', async () => {
   const bookingId = '33333333-3333-4333-8333-333333333333';
 
