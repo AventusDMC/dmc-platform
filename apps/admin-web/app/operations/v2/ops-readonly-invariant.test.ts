@@ -41,6 +41,14 @@ const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST, .
 // affordance by the blanket scan below (a plain GET fetch, no forms, no PDF).
 const VOUCHER_PREVIEW_FILES = new Set(['voucher-preview-control.tsx', 'ops-voucher-preview-vm.ts']);
 
+// Phase 2E voucher PDF download is READ-ONLY (a GET) but necessarily contains the
+// download mechanic (createObjectURL / .pdf / download=) that the blanket ban
+// below forbids. It is the ONLY file exempt from those download-mechanic
+// patterns, held to a NARROWER ban (still no mutation/status/send/email/finance/
+// dispatch, and must use the sanctioned voucher-download proxy). It is NOT a
+// mutation — it stays OUT of MUTATION_ALLOWLIST.
+const VOUCHER_DOWNLOAD_ALLOWLIST = new Set(['voucher-download-control.tsx']);
+
 function isExcluded(file: string): boolean {
   return (
     file.endsWith('.test.ts') ||
@@ -199,6 +207,44 @@ const VOUCHER_GENERATE_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: 'notes', why: 'no notes/free-text in Phase 2C' },
 ];
 
+// Narrower ban for the Phase 2E voucher-DOWNLOAD surface. The download mechanic
+// (createObjectURL / .pdf / download=) IS permitted here (and only here); the
+// download must go through the sanctioned voucher-download proxy and must NOT
+// mutate, send, email, print, export, change status, or touch finance/dispatch.
+const VOUCHER_DOWNLOAD_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated GET fetch only)' },
+  { pattern: '<input', why: 'no form input' },
+  { pattern: '<select', why: 'no select' },
+  { pattern: '<textarea', why: 'no free-text input' },
+  { pattern: "method: 'POST'", why: 'download is a GET (read), never POST' },
+  { pattern: "method: 'PATCH'", why: 'GET only' },
+  { pattern: "method: 'PUT'", why: 'GET only' },
+  { pattern: "method: 'DELETE'", why: 'GET only' },
+  { pattern: 'method="POST"', why: 'no POST form' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: '/export', why: 'no export bundle' },
+  { pattern: '/voucher/pdf', why: 'no raw booking voucher PDF endpoint (use the proxy)' },
+  { pattern: '/vouchers/', why: 'no direct /vouchers/:id routes (proxy resolves server-side)' },
+  { pattern: 'portal-voucher', why: 'no unauthenticated portal PDF' },
+  { pattern: '/agent/', why: 'no agent PDF route' },
+  { pattern: '/status', why: 'no voucher status transition' },
+  { pattern: '/send', why: 'no send/email' },
+  { pattern: 'send-document-email', why: 'no document email' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: 'voucher/generate', why: 'Phase 2C endpoint — not this surface' },
+  { pattern: '/preview', why: 'Phase 2D endpoint — not this surface' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+];
+
 function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
   const violations: string[] = [];
   for (const file of files) {
@@ -217,7 +263,12 @@ describe('Booking Operations V2 — read-only invariant', () => {
   const assignFiles = all.filter((f) => ASSIGN_ALLOWLIST.has(path.basename(f)));
   const confirmFiles = all.filter((f) => CONFIRM_ALLOWLIST.has(path.basename(f)));
   const voucherFiles = all.filter((f) => VOUCHER_GENERATE_ALLOWLIST.has(path.basename(f)));
-  const readOnly = all.filter((f) => !MUTATION_ALLOWLIST.has(path.basename(f)));
+  const downloadFiles = all.filter((f) => VOUCHER_DOWNLOAD_ALLOWLIST.has(path.basename(f)));
+  // The download control is EXEMPT from the blanket scan (it legitimately uses the
+  // download mechanic); it is held to VOUCHER_DOWNLOAD_FORBIDDEN instead.
+  const readOnly = all.filter(
+    (f) => !MUTATION_ALLOWLIST.has(path.basename(f)) && !VOUCHER_DOWNLOAD_ALLOWLIST.has(path.basename(f)),
+  );
 
   it('scans a non-empty set of V2 source files', () => {
     assert.ok(all.length >= 5, `expected to scan V2 source files, found ${all.length}`);
@@ -273,5 +324,27 @@ describe('Booking Operations V2 — read-only invariant', () => {
     assert.ok(!combined.includes('assign-supplier'), 'voucher surface must not touch assignment');
     assert.ok(!combined.includes('/confirmation'), 'voucher surface must not touch confirmation');
     assert.deepEqual(scan(voucherFiles, VOUCHER_GENERATE_FORBIDDEN), [], 'voucher surface exceeded its scope');
+  });
+
+  it('the voucher-download surface (Phase 2E) is a narrowly-scoped read-only GET download', () => {
+    assert.equal(downloadFiles.length, VOUCHER_DOWNLOAD_ALLOWLIST.size, 'download files not found');
+    // A download is a GET (read), NOT a mutation — it must stay out of the mutation allowlist.
+    for (const f of downloadFiles) {
+      assert.ok(!MUTATION_ALLOWLIST.has(path.basename(f)), 'download must not be a sanctioned mutation surface');
+    }
+    const control = downloadFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(control.includes('voucher-download'), 'download control targets the voucher-download proxy');
+    // The download mechanic IS permitted here (and would trip the blanket ban):
+    assert.ok(control.includes('createObjectURL'), 'download control uses the exempted blob mechanic');
+    assert.ok(scan(downloadFiles, FORBIDDEN).length > 0, 'download control is legitimately exempt from the blanket ban');
+    // …but it must still pass the NARROWER download ban (no mutation/status/send/finance/dispatch, proxy only).
+    assert.deepEqual(scan(downloadFiles, VOUCHER_DOWNLOAD_FORBIDDEN), [], 'download surface exceeded its scope');
+  });
+
+  it('the mutation allowlist is exactly the three sanctioned mutations (preview + download excluded)', () => {
+    assert.equal(MUTATION_ALLOWLIST.size, 6, 'exactly three mutation surfaces × 2 files');
+    for (const name of ['voucher-preview-control.tsx', 'voucher-download-control.tsx']) {
+      assert.ok(!MUTATION_ALLOWLIST.has(name), `${name} (read-only) must not be a mutation`);
+    }
   });
 });
