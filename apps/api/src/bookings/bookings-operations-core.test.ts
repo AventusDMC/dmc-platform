@@ -4235,6 +4235,117 @@ test('operational voucher PDF endpoint is a GET, scoped to the operation, role-g
   assert.deepEqual(roles, ['admin', 'operations']);
 });
 
+test('operational voucher SEND PREVIEW (Phase 2F-A) resolves via loose scope, no mutation, assigned-supplier recipient, no finance leak', async () => {
+  const bookingId = '55555555-5555-4555-8555-555555555555';
+  let bookingWhere: any;
+  let mutated = false;
+  const service = createService({
+    bookingService: {
+      findFirst: async ({ where }: any) => {
+        bookingWhere = where;
+        return {
+          id: 'service-1',
+          assignedSupplierId: 'sup-1',
+          assignedSupplier: { id: 'sup-1', name: 'TEST Hotel Supplier A', email: 'ops@supplier.example' },
+          booking: { bookingRef: 'BK-2026-0001' },
+        };
+      },
+      update: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+    voucher: {
+      findUnique: async () => ({ type: 'HOTEL', status: 'GENERATED' }),
+      update: async () => {
+        mutated = true;
+        return {};
+      },
+      create: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+    $transaction: async () => {
+      mutated = true;
+    },
+    bookingAuditLog: {
+      create: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+  });
+
+  const preview = await service.getOperationalVoucherSendPreview(bookingId, 'service-1', { companyId: 'dmc-company' });
+
+  // Loose scope: NO clientCompanyId filter on the booking where clause.
+  assert.deepEqual(bookingWhere.booking, {});
+  assert.equal(bookingWhere.id, 'service-1');
+  assert.equal(bookingWhere.bookingId, bookingId);
+  // Pure read — nothing mutated (no update/create/$transaction/audit).
+  assert.equal(mutated, false);
+  // Recipient = ASSIGNED operational supplier; READY.
+  assert.equal(preview.recipient.recipientSource, 'assignedOperationalSupplier');
+  assert.equal(preview.recipient.supplierId, 'sup-1');
+  assert.equal(preview.recipient.email, 'ops@supplier.example');
+  assert.equal(preview.readiness, 'READY');
+  assert.equal(preview.attachmentName, 'voucher-service-1.pdf');
+  assert.equal(preview.note, 'Preview only. No email is sent.');
+  // No finance/token/snapshot leakage.
+  const json = JSON.stringify(preview).toLowerCase();
+  for (const bad of ['unitcost', 'totalcost', 'payable', 'margin', 'snapshot', 'token', 'iban', 'invoice', 'discount']) {
+    assert.ok(!json.includes(bad), `send-preview leaked "${bad}"`);
+  }
+});
+
+test('operational voucher SEND PREVIEW returns NO_VOUCHER when no voucher exists (still no mutation)', async () => {
+  let mutated = false;
+  const service = createService({
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-2',
+        assignedSupplierId: 'sup-2',
+        assignedSupplier: { id: 'sup-2', name: 'S', email: 'ops@x.co' },
+        booking: { bookingRef: 'BK-2026-0002' },
+      }),
+    },
+    voucher: {
+      findUnique: async () => null,
+      update: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+  });
+  const preview = await service.getOperationalVoucherSendPreview('bk', 'service-2', { companyId: 'dmc-company' });
+  assert.equal(preview.readiness, 'NO_VOUCHER');
+  assert.equal(preview.attachmentName, null);
+  assert.equal(mutated, false);
+});
+
+test('operational voucher SEND PREVIEW 404s when the operation is missing', async () => {
+  const service = createService({
+    bookingService: { findFirst: async () => null },
+    voucher: {
+      findUnique: async () => {
+        throw new Error('voucher lookup must not run when the operation is missing');
+      },
+    },
+  });
+  await assert.rejects(
+    () => service.getOperationalVoucherSendPreview('bk', 'nope', { companyId: 'dmc-company' }),
+    /Booking service not found/,
+  );
+});
+
+test('operational voucher SEND PREVIEW endpoint is a GET, scoped to the operation, role-gated admin/operations', () => {
+  const h = BookingsController.prototype.getOperationalVoucherSendPreview;
+  assert.equal((Reflect as any).getMetadata(PATH_METADATA, h), ':id/operations/:operationId/voucher/send-preview');
+  assert.equal((Reflect as any).getMetadata(METHOD_METADATA, h), RequestMethod.GET);
+  assert.deepEqual((Reflect as any).getMetadata('roles', h), ['admin', 'operations']);
+});
+
 test('voucher status transitions draft to ready to sent and blocks cross-company access', async () => {
   const updatedRows: any[] = [];
   const service = createService({

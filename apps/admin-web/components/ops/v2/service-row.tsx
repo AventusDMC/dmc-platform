@@ -4,6 +4,7 @@ import { isOpsV2SupplierConfirmEnabled } from '../../../app/operations/v2/ops-su
 import { isOpsV2VoucherGenerateEnabled } from '../../../app/operations/v2/ops-voucher-generate-flag';
 import { isOpsV2VoucherPreviewEnabled } from '../../../app/operations/v2/ops-voucher-preview-flag';
 import { isOpsV2VoucherDownloadEnabled } from '../../../app/operations/v2/ops-voucher-download-flag';
+import { isOpsV2VoucherSendPreviewEnabled } from '../../../app/operations/v2/ops-voucher-send-preview-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
@@ -12,6 +13,7 @@ import { SupplierConfirmationControl } from './supplier-confirmation-control';
 import { VoucherGenerateControl } from './voucher-generate-control';
 import { VoucherPreviewControl } from './voucher-preview-control';
 import { VoucherDownloadControl } from './voucher-download-control';
+import { VoucherSendPreviewControl } from './voucher-send-preview-control';
 
 /**
  * One operations service row. Read-only by default: status badges + reason chips
@@ -30,6 +32,7 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
   const voucherGenerateEnabled = isOpsV2VoucherGenerateEnabled();
   const voucherPreviewEnabled = isOpsV2VoucherPreviewEnabled();
   const voucherDownloadEnabled = isOpsV2VoucherDownloadEnabled();
+  const voucherSendPreviewEnabled = isOpsV2VoucherSendPreviewEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -103,6 +106,11 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
           <VoucherDownloadControl bookingId={bookingId} operationId={row.id} />
         ) : (
           <DisabledAction label="Download" />
+        )}
+        {voucherSendPreviewEnabled && row.canPreviewVoucher ? (
+          <VoucherSendPreviewControl bookingId={bookingId} operationId={row.id} />
+        ) : (
+          <DisabledAction label="Send preview" />
         )}
       </div>
     </li>

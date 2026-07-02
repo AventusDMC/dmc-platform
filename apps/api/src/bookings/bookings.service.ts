@@ -32,6 +32,7 @@ import {
   type SupplierConfirmationPreviewOptions,
 } from './supplier-confirmation-preview';
 import { planSupplierConfirmationSend } from './supplier-confirmation-send';
+import { buildVoucherSendPreview, type VoucherSendPreview } from './voucher-send-preview';
 
 type BookingPdfQuoteItem = {
   id?: string;
@@ -11674,6 +11675,57 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('No voucher has been generated for this operation row yet.');
     }
     return voucher;
+  }
+
+  /**
+   * Operations V2 (Phase 2F-A) — PURE, read-only voucher SEND-PREVIEW / readiness.
+   * Describes what a voucher email WOULD contain (recipient resolved from the
+   * ASSIGNED operational supplier only, subject/body summary, attachment name,
+   * readiness). It sends nothing, mutates nothing, writes no audit, changes no
+   * status/sentAt/issuedAt, and generates NO PDF. Loose operational scoping
+   * (mirror getOperationalVoucher) so DMC staff can preview vouchers for bookings
+   * they manage on behalf of another client company.
+   */
+  async getOperationalVoucherSendPreview(
+    bookingId: string,
+    operationId: string,
+    actor?: CompanyScopedActor,
+  ): Promise<VoucherSendPreview> {
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: operationId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(actor),
+      },
+      select: {
+        id: true,
+        assignedSupplierId: true,
+        assignedSupplier: { select: { id: true, name: true, email: true } },
+        booking: { select: { bookingRef: true } },
+      },
+    });
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    // Read-only: only type/status (never snapshotJson/cost) are needed to describe
+    // the readiness. No mail, no PDF, no audit, no mutation.
+    const voucher = await (this.prisma.voucher as any).findUnique({
+      where: { bookingServiceId: operationId },
+      select: { type: true, status: true },
+    });
+
+    const assigned = bookingService.assignedSupplier || null;
+    return buildVoucherSendPreview({
+      bookingId,
+      operationId,
+      bookingRef: bookingService.booking?.bookingRef ?? null,
+      voucher: voucher ? { type: voucher.type ?? null, status: voucher.status ?? null } : null,
+      assignedSupplierId: bookingService.assignedSupplierId ?? null,
+      assignedSupplier: assigned
+        ? { id: assigned.id, name: assigned.name ?? null, email: assigned.email ?? null }
+        : null,
+    });
   }
 
   async getSupplierConfirmationQueues(input: {
