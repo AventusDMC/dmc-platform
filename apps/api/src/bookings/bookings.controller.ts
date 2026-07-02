@@ -1506,6 +1506,21 @@ export class BookingsController {
     return new StreamableFile(pdfBuffer);
   }
 
+  // Operations V2 (Phase 2F-A) — read-only voucher SEND PREVIEW / readiness.
+  // Pure GET: resolves the assigned operational supplier + voucher server-side and
+  // returns a safe readiness DTO describing what a voucher email WOULD contain. It
+  // sends nothing, mutates nothing, writes no audit, changes no status/sentAt, and
+  // generates no PDF. NOT a send — the actual send is a later phase.
+  @Get(':id/operations/:operationId/voucher/send-preview')
+  @Roles('admin', 'operations')
+  getOperationalVoucherSendPreview(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.getOperationalVoucherSendPreview(id, operationId, actor);
+  }
+
   @Post('services/bulk-actions')
   @Roles('admin', 'operations')
   bulkUpdateServiceStatuses(
