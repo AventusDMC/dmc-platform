@@ -30,6 +30,7 @@ import {
   voucherVariant,
   type StatusVariant,
 } from './ops-status-map';
+import { isPreviewableVoucherStatus } from './ops-voucher-preview-vm';
 
 /** Raw operations-grid response (structural subset we read). */
 export type RawOperationsGrid = {
@@ -99,6 +100,11 @@ export type OpsRowVM = {
   operationalDatePresent: boolean;
   canGenerateVoucher: boolean;
   voucherIneligibleReason: string | null;
+  /**
+   * Phase 2D: whether this row has an existing voucher that may be previewed
+   * read-only (status GENERATED/READY/ISSUED/SENT). Display/gating only.
+   */
+  canPreviewVoucher: boolean;
   readiness: Readiness;
   severity: Severity;
   reasons: string[];
@@ -191,6 +197,7 @@ function mapRow(row: RawGridRow): OpsRowVM {
     operationalDatePresent: Boolean(row.operationalDate),
     canGenerateVoucher,
     voucherIneligibleReason,
+    canPreviewVoucher: isPreviewableVoucherStatus(voucher),
     readiness,
     severity,
     reasons,
