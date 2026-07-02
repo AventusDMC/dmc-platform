@@ -105,6 +105,11 @@ export type OpsRowVM = {
    * read-only (status GENERATED/READY/ISSUED/SENT). Display/gating only.
    */
   canPreviewVoucher: boolean;
+  /**
+   * Phase 2E: whether this row has an existing voucher whose PDF may be
+   * downloaded (same GENERATED/READY/ISSUED/SENT set). Display/gating only.
+   */
+  canDownloadVoucher: boolean;
   readiness: Readiness;
   severity: Severity;
   reasons: string[];
@@ -198,6 +203,7 @@ function mapRow(row: RawGridRow): OpsRowVM {
     canGenerateVoucher,
     voucherIneligibleReason,
     canPreviewVoucher: isPreviewableVoucherStatus(voucher),
+    canDownloadVoucher: isPreviewableVoucherStatus(voucher),
     readiness,
     severity,
     reasons,

@@ -3,6 +3,7 @@ import { isOpsV2SupplierAssignEnabled } from '../../../app/operations/v2/ops-sup
 import { isOpsV2SupplierConfirmEnabled } from '../../../app/operations/v2/ops-supplier-confirm-flag';
 import { isOpsV2VoucherGenerateEnabled } from '../../../app/operations/v2/ops-voucher-generate-flag';
 import { isOpsV2VoucherPreviewEnabled } from '../../../app/operations/v2/ops-voucher-preview-flag';
+import { isOpsV2VoucherDownloadEnabled } from '../../../app/operations/v2/ops-voucher-download-flag';
 import { DisabledAction } from './disabled-action';
 import { OperationalStatusBadge } from './operational-status-badge';
 import { ServiceTypeIcon } from './service-type-icon';
@@ -10,6 +11,7 @@ import { SupplierAssignmentControl } from './supplier-assignment-control';
 import { SupplierConfirmationControl } from './supplier-confirmation-control';
 import { VoucherGenerateControl } from './voucher-generate-control';
 import { VoucherPreviewControl } from './voucher-preview-control';
+import { VoucherDownloadControl } from './voucher-download-control';
 
 /**
  * One operations service row. Read-only by default: status badges + reason chips
@@ -27,6 +29,7 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
   const supplierConfirmEnabled = isOpsV2SupplierConfirmEnabled();
   const voucherGenerateEnabled = isOpsV2VoucherGenerateEnabled();
   const voucherPreviewEnabled = isOpsV2VoucherPreviewEnabled();
+  const voucherDownloadEnabled = isOpsV2VoucherDownloadEnabled();
   return (
     <li id={`operation-${row.id}`} className="rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -95,6 +98,11 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
           <VoucherPreviewControl bookingId={bookingId} operationId={row.id} />
         ) : (
           <DisabledAction label="Preview" />
+        )}
+        {voucherDownloadEnabled && row.canDownloadVoucher ? (
+          <VoucherDownloadControl bookingId={bookingId} operationId={row.id} />
+        ) : (
+          <DisabledAction label="Download" />
         )}
       </div>
     </li>
