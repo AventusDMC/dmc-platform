@@ -11,13 +11,13 @@ if (!API_BASE_URL) {
 // ---------------------------------------------------------------------------
 // Operations V2 — Phase 2E: read-only voucher PDF DOWNLOAD (streamed).
 //
-// GET only. Two safe reads, no mutation:
-//   1. resolve the operation's voucher id (GET .../operations/:operationId/voucher)
-//   2. stream the SAFE operational voucher PDF (GET /vouchers/:voucherId/pdf →
-//      generateServiceVoucherPdf: pure render, no status change / sentAt /
-//      audit / email, and the PDF renders NO cost/finance data).
-// The voucher id is resolved server-side and never exposed to the browser. No
-// portal, agent, or public PDF route; no status transition; no send or email.
+// GET only. A single safe read to the operations-scoped backend endpoint:
+//   GET /bookings/:id/operations/:operationId/voucher/pdf
+// (generateOperationalVoucherPdf — loose operational scoping + pure render: no
+// status change, no sentAt, no audit, no email, and the PDF renders NO
+// cost/finance data). No portal, agent, or public PDF route; no status
+// transition; no send or email. The operationId is the primary key, so the
+// browser never sees an internal voucher id and there is no second lookup.
 // ---------------------------------------------------------------------------
 export async function GET(
   request: NextRequest,
@@ -25,30 +25,20 @@ export async function GET(
 ) {
   const { bookingId, operationId } = await params;
 
-  // 1. Resolve the voucher for this operation (JSON read — no mutation).
-  const readResponse = await fetch(`${API_BASE_URL}/bookings/${bookingId}/operations/${operationId}/voucher`, {
-    headers: buildActorHeaders(request),
-    cache: 'no-store',
-  });
+  const pdfResponse = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/operations/${operationId}/voucher/pdf`,
+    {
+      headers: buildActorHeaders(request),
+      cache: 'no-store',
+    },
+  );
 
-  if (!readResponse.ok) {
+  if (!pdfResponse.ok) {
     return NextResponse.json(
       { message: 'Voucher is unavailable. Open in Classic.' },
-      { status: readResponse.status === 404 ? 404 : 502 },
+      { status: pdfResponse.status === 404 ? 404 : 502 },
     );
   }
-
-  const voucher = await readResponse.json().catch(() => null);
-  const voucherId = voucher && typeof voucher === 'object' ? String((voucher as { id?: unknown }).id || '') : '';
-  if (!voucherId) {
-    return NextResponse.json({ message: 'No voucher to download. Open in Classic.' }, { status: 404 });
-  }
-
-  // 2. Stream the safe operational voucher PDF verbatim (incl. Content-Disposition).
-  const pdfResponse = await fetch(`${API_BASE_URL}/vouchers/${voucherId}/pdf`, {
-    headers: buildActorHeaders(request),
-    cache: 'no-store',
-  });
 
   return forwardProxyContentResponse(pdfResponse);
 }

@@ -3,7 +3,8 @@ import assert = require('node:assert/strict');
 import fs = require('node:fs');
 import path = require('node:path');
 import * as XLSX from 'xlsx';
-import { PATH_METADATA } from '@nestjs/common/constants';
+import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import { RequestMethod } from '@nestjs/common';
 import { mapQuoteToProposalV3 } from '../quotes/proposal-v3.mapper';
 const { BookingsService } = require('./bookings.service');
 const { BookingsController } = require('./bookings.controller');
@@ -3942,6 +3943,225 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
   assert.doesNotMatch(text, /totalCost/);
   assert.doesNotMatch(text, /totalSell/);
   assert.doesNotMatch(text, /margin/i);
+});
+
+test('operational voucher PDF (Phase 2E) renders via loose operational scope with no mutation or pricing leakage', async () => {
+  const bookingId = '11111111-1111-4111-8111-111111111111';
+  let bookingWhere: any;
+  let voucherWhere: any;
+  let mutated = false;
+  const service = createService({
+    route: { findUnique: async () => ({ name: 'QAIA to Dead Sea' }) },
+    bookingService: {
+      findFirst: async ({ where }: any) => {
+        bookingWhere = where;
+        return { id: 'service-1' };
+      },
+      update: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+    voucher: {
+      findUnique: async ({ where }: any) => {
+        voucherWhere = where;
+        return {
+          id: 'voucher-1',
+          type: 'TRANSPORT',
+          status: 'GENERATED',
+          notes: 'Meet at arrivals',
+          supplier: { name: 'Desert Transport' },
+          booking: {
+            id: bookingId,
+            bookingRef: 'BK-001',
+            pax: 3,
+            adults: 2,
+            children: 1,
+            roomCount: 1,
+            startDate: new Date('2026-10-01T00:00:00.000Z'),
+            endDate: new Date('2026-10-03T00:00:00.000Z'),
+            snapshotJson: { title: 'Client Group' },
+            brandSnapshotJson: { name: 'DMC Jordan' },
+            clientSnapshotJson: { name: 'Client Co' },
+            quote: {
+              clientCompany: { name: 'Client Co' },
+              brandCompany: { name: 'DMC Jordan', branding: null },
+              contact: {},
+            },
+            passengers: [],
+            days: [],
+          },
+          bookingService: {
+            id: 'service-1',
+            referenceId: 'route-1',
+            description: 'Airport transfer',
+            pickupTime: '09:00',
+            startTime: null,
+            pickupLocation: 'QAIA arrivals',
+            meetingPoint: null,
+            assignedTo: 'Driver Ali',
+            guidePhone: '+962799999999',
+            vehicle: { name: 'Van' },
+            touringRoute: null,
+            touringRoutePricing: null,
+            notes: null,
+            confirmationNotes: null,
+            totalCost: 500,
+            totalSell: 700,
+          },
+        };
+      },
+      update: async () => {
+        mutated = true;
+        return {};
+      },
+      create: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+    $transaction: async () => {
+      mutated = true;
+    },
+    bookingAuditLog: {
+      create: async () => {
+        mutated = true;
+        return {};
+      },
+    },
+  });
+  capturePdfText(service as any);
+
+  // Actor's company deliberately differs from the booking's client company —
+  // the loose operational scope must still resolve it (the exact case the strict
+  // GET /vouchers/:id/pdf endpoint 404s).
+  const buffer = await service.generateOperationalVoucherPdf(bookingId, 'service-1', { companyId: 'dmc-company' });
+  const text = buffer.toString('utf8');
+
+  // Loose scope: NO clientCompanyId filter on the booking where clause.
+  assert.deepEqual(bookingWhere.booking, {});
+  assert.equal(bookingWhere.id, 'service-1');
+  assert.equal(bookingWhere.bookingId, bookingId);
+  assert.equal(voucherWhere.bookingServiceId, 'service-1');
+
+  // Pure read — nothing mutated (no status change, no audit, no $transaction).
+  assert.equal(mutated, false);
+
+  // Renders the safe supplier-facing content…
+  assert.match(text, /Transport Voucher/);
+  assert.match(text, /Client Group/);
+  assert.match(text, /QAIA to Dead Sea/);
+  assert.match(text, /Driver Ali/);
+  assert.match(text, /Van/);
+  // …and leaks no cost/finance/reference-token data.
+  for (const bad of [/totalCost/, /totalSell/i, /margin/i, /payable/i, /\bIBAN\b/, /invoice/i, /proposal/i, /\btoken\b/i, /\$\s*\d/, /USD\s*\d/]) {
+    assert.doesNotMatch(text, bad);
+  }
+});
+
+test('operational voucher PDF (Phase 2E) never surfaces hotel service.notes cost metadata', async () => {
+  const bookingId = '22222222-2222-4222-8222-222222222222';
+  const service = createService({
+    route: { findUnique: async () => null },
+    bookingService: { findFirst: async () => ({ id: 'service-2' }) },
+    voucher: {
+      findUnique: async () => ({
+        id: 'voucher-2',
+        type: 'HOTEL',
+        status: 'GENERATED',
+        notes: null, // operator typed nothing → the shared renderer would fall back to service.notes
+        supplier: { name: 'Amman Hotel' },
+        booking: {
+          id: bookingId,
+          bookingRef: 'BK-002',
+          pax: 2,
+          adults: 2,
+          children: 0,
+          roomCount: 1,
+          startDate: new Date('2026-11-01T00:00:00.000Z'),
+          endDate: new Date('2026-11-03T00:00:00.000Z'),
+          snapshotJson: { title: 'Hotel Group' },
+          brandSnapshotJson: { name: 'DMC Jordan' },
+          clientSnapshotJson: { name: 'Client Co' },
+          quote: {
+            clientCompany: { name: 'Client Co' },
+            brandCompany: { name: 'DMC Jordan', branding: null },
+            contact: {},
+          },
+          passengers: [],
+          days: [],
+        },
+        bookingService: {
+          id: 'service-2',
+          referenceId: null,
+          description: 'Amman Hotel — Deluxe',
+          pickupTime: null,
+          startTime: null,
+          pickupLocation: null,
+          meetingPoint: null,
+          assignedTo: null,
+          guidePhone: null,
+          vehicle: null,
+          touringRoute: null,
+          touringRoutePricing: null,
+          confirmationNumber: 'CNF-77',
+          supplierReference: null,
+          // Cost-bearing contract metadata that MUST NOT reach the PDF:
+          notes: 'Corp Amman Hotel Agreement 2026 | Rate USD 45.00 x 2 pax x 1 night | Supplements USD 20.00',
+          confirmationNotes: 'Payable to supplier USD 110.00',
+        },
+      }),
+    },
+  });
+  capturePdfText(service as any);
+
+  const buffer = await service.generateOperationalVoucherPdf(bookingId, 'service-2', { companyId: 'dmc-company' });
+  const text = buffer.toString('utf8');
+
+  assert.match(text, /Hotel Voucher/);
+  assert.match(text, /CNF-77/);
+  // The finance-safety belt nulled the note fallbacks → no supplier cost leaks.
+  assert.doesNotMatch(text, /Rate USD/);
+  assert.doesNotMatch(text, /Supplements/);
+  assert.doesNotMatch(text, /Payable/i);
+  assert.doesNotMatch(text, /45\.00/);
+  assert.doesNotMatch(text, /110\.00/);
+});
+
+test('operational voucher PDF (Phase 2E) 404s when the operation or the voucher is missing', async () => {
+  const bookingId = '33333333-3333-4333-8333-333333333333';
+
+  const missingOperation = createService({
+    bookingService: { findFirst: async () => null },
+    voucher: {
+      findUnique: async () => {
+        throw new Error('voucher lookup must not run when the operation is missing');
+      },
+    },
+  });
+  await assert.rejects(
+    () => missingOperation.generateOperationalVoucherPdf(bookingId, 'nope', { companyId: 'dmc-company' }),
+    /Booking service not found/,
+  );
+
+  const missingVoucher = createService({
+    bookingService: { findFirst: async () => ({ id: 'service-3' }) },
+    voucher: { findUnique: async () => null },
+  });
+  await assert.rejects(
+    () => missingVoucher.generateOperationalVoucherPdf(bookingId, 'service-3', { companyId: 'dmc-company' }),
+    /No voucher has been generated/,
+  );
+});
+
+test('operational voucher PDF endpoint is a GET, scoped to the operation, role-gated admin/operations', () => {
+  const handler = BookingsController.prototype.downloadOperationalVoucherPdf;
+  const routePath = (Reflect as any).getMetadata(PATH_METADATA, handler);
+  assert.equal(routePath, ':id/operations/:operationId/voucher/pdf');
+  const method = (Reflect as any).getMetadata(METHOD_METADATA, handler);
+  assert.equal(method, RequestMethod.GET);
+  const roles = (Reflect as any).getMetadata('roles', handler);
+  assert.deepEqual(roles, ['admin', 'operations']);
 });
 
 test('voucher status transitions draft to ready to sent and blocks cross-company access', async () => {

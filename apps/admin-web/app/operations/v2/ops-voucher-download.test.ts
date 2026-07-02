@@ -120,18 +120,21 @@ describe('Phase 2E — safety (read-only GET download, no send/status/finance)',
     }
   });
 
-  it('proxy is GET-only: resolves the operation voucher, then streams the PDF', () => {
+  it('proxy is GET-only: streams the operational voucher PDF via one direct read', () => {
     // GET handler present; no mutating verbs exported.
     assert.ok(proxySrc.includes('export async function GET'));
     for (const verb of ['export async function POST', 'export async function PATCH', 'export async function PUT', 'export async function DELETE']) {
       assert.ok(!proxySrc.includes(verb), `proxy must not export ${verb}`);
     }
-    assert.ok(proxySrc.includes('/operations/'), 'proxy resolves the operation voucher');
+    // Single direct call to the operations-scoped operational voucher PDF endpoint
+    // (operationId is the primary key — no client-visible voucher id, no 2nd lookup).
+    assert.ok(proxySrc.includes('/operations/'), 'proxy targets the operation');
+    assert.ok(proxySrc.includes('/voucher/pdf'), 'proxy calls the operational voucher PDF endpoint');
     assert.ok(proxySrc.includes('forwardProxyContentResponse'), 'proxy streams the PDF verbatim');
-    // The proxy legitimately calls /vouchers/:id/pdf server-side, but must never
-    // touch status/send/email/finance/dispatch or the public/agent PDF routes.
+    // It must NOT resolve through /vouchers/:id/pdf, and must never touch status/
+    // send/email/finance/dispatch or the public/agent PDF routes.
     for (const bad of [
-      '/status', '/send', 'send-document-email', 'supplier-confirmation', 'voucher/generate',
+      '/vouchers/', '/status', '/send', 'send-document-email', 'supplier-confirmation', 'voucher/generate',
       'portal-voucher', '/agent/', '/invoices', '/payments', '/dispatch', '/start', '/complete', '/issue',
     ]) {
       assert.ok(!proxySrc.includes(bad), `proxy must not reference "${bad}"`);
