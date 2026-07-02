@@ -71,6 +71,14 @@ export default async function QuoteBuilderV2Page({
   // preview as out-of-scope when its flag is OFF, so this only controls the UI.
   const transportPreviewEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_TRANSPORT_PREVIEW === 'true'
 
+  // Transport pricing APPLY scope — Phase T-A (standalone single-leg transfers), a
+  // separate, build-time public flag, default OFF. When not 'true', transport rows
+  // stay preview-only (no apply control). Apply also requires the transport PREVIEW
+  // flag. The backend independently enforces QUOTE_PRICING_TRANSPORT_APPLY (+ preview
+  // flag) + role + status + per-item single-leg eligibility and rejects everything
+  // else out-of-scope, so this only controls the UI affordance.
+  const transportApplyEnabled = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_TRANSPORT_APPLY === 'true'
+
   // Hotel pricing PREVIEW scope — a separate, build-time public flag, default OFF.
   // When not 'true', hotel rows stay diagnostics/read-only (no preview affordance).
   // Preview-ONLY (no apply). The backend independently enforces its own
@@ -118,6 +126,7 @@ export default async function QuoteBuilderV2Page({
       canViewPricingApplyAudit={canViewPricingApplyAudit}
       entrancePricingEnabled={entrancePricingEnabled}
       transportPreviewEnabled={transportPreviewEnabled}
+      transportApplyEnabled={transportApplyEnabled}
       hotelPreviewEnabled={hotelPreviewEnabled}
       hotelApplyEnabled={hotelApplyEnabled}
       externalPackagePreviewEnabled={externalPackagePreviewEnabled}

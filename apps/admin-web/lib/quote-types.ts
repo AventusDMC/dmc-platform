@@ -233,6 +233,15 @@ export interface TransportService {
   editableText?: boolean
   /** Client-facing transport route label (rendered by the proposal). Edited inertly. */
   transportLabel?: string | null
+  /**
+   * Transport Apply Phase T-A eligibility — true only for standalone single-leg
+   * transfers (airport / point-to-point / route-transfer) with a serviceDate, no
+   * manual override, not touring, and a resolvable price. Conservative UI affordance
+   * gate; the backend independently enforces the full rule set.
+   */
+  transportApplyEligible?: boolean
+  /** The applied vehicle rate's transport service-type code (e.g. AIRPORT_TRANSFER). */
+  transportServiceTypeCode?: string | null
 }
 
 /**

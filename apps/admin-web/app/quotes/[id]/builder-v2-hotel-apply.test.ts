@@ -36,8 +36,8 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
     contains(serviceSrc, [
       'isQuotePricingHotelApplyEnabled',
       'const isHotelApply = Boolean(supportedItem.service && this.isHotelService(supportedItem.service)) && isQuotePricingHotelApplyEnabled()',
-      // gate now also carries the external-package scope (added by a later PR)
-      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply)',
+      // gate now also carries the external-package + transport scopes (added by later PRs)
+      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply && !isTransportApply)',
     ]);
   });
 
@@ -50,7 +50,7 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
 
   it('hotel apply uses item-only integrity (no sibling re-sync like entrance) and delegates to updateItem', () => {
     contains(serviceSrc, [
-      'const integrityOk = isEntranceApply ? itemIntegrityOk && quoteIntegrityOk : itemIntegrityOk',
+      'const integrityOk = isEntranceApply || isTransportApply ? itemIntegrityOk && quoteIntegrityOk : itemIntegrityOk',
       'await this.updateItem(itemId, data, actor)',
     ]);
   });
@@ -143,11 +143,11 @@ describe('Quote Builder V2 — hotel pricing APPLY (PR #578, gated, default OFF)
     ]);
   });
 
-  // ---- scope guards: transport + external stay preview-only; default flag untouched ----
-  it('no transport APPLY flag is introduced (transport stays preview-only)', () => {
-    // External-package apply is now a real scope (see builder-v2-external-package-apply.test.ts);
-    // transport, however, must remain preview-only — no transport apply flag.
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
+  // ---- scope guards: hotel apply is its own gate; default flag untouched ----
+  it('hotel apply flag is its own gate (external-package + transport apply are separate scopes)', () => {
+    // Hotel apply is unaffected by the later external-package (#590) and transport
+    // Phase T-A apply scopes, which land behind their own flags.
+    contains(flagsSrc, ["export const QUOTE_PRICING_HOTEL_APPLY_FLAG = 'quote.pricingHotelApply'"]);
   });
 
   it('V2 default routing flag is untouched by this feature', () => {

@@ -88,9 +88,16 @@ export interface QuoteBuilderV2Props {
    * Transport pricing PREVIEW scope, behind a separate frontend flag (default OFF).
    * When true (and onPreviewItem is provided), transport rows expose a read-only
    * "Preview transport pricing" affordance; when false transport rows stay fully
-   * Classic/read-only. Preview-ONLY — there is no transport apply.
+   * Classic/read-only.
    */
   transportPreviewEnabled?: boolean
+  /**
+   * Transport pricing APPLY scope — Phase T-A (separate frontend flag, default OFF).
+   * When true (and onApplyItemPricing + transportPreviewEnabled are provided),
+   * eligible standalone single-leg transfer rows expose an "Apply transport price"
+   * action; when false, transport stays preview-only.
+   */
+  transportApplyEnabled?: boolean
   /**
    * Hotel pricing PREVIEW scope, behind a separate frontend flag (default OFF).
    * When true (and onPreviewItem is provided), hotel rows with a matched priced
@@ -187,6 +194,7 @@ export function QuoteBuilderV2({
   onLoadApplyAudit,
   entrancePricingEnabled,
   transportPreviewEnabled,
+  transportApplyEnabled,
   externalPackagePreviewEnabled,
   externalPackageApplyEnabled,
   onUpdatePassenger,
@@ -350,7 +358,9 @@ export function QuoteBuilderV2({
             onUpdateDisplayText={onUpdateDisplayText}
             classicHref={`/quotes/${quote.id}/classic`}
             onPreviewItem={onPreviewItem}
+            onApplyItemPricing={onApplyItemPricing}
             transportPreviewEnabled={transportPreviewEnabled}
+            transportApplyEnabled={transportApplyEnabled}
           />
         )
       case "passengers":

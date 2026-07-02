@@ -71,6 +71,7 @@ import {
   isQuotePricingHotelApplyEnabled,
   isQuotePricingExternalPackagePreviewEnabled,
   isQuotePricingExternalPackageApplyEnabled,
+  isQuotePricingTransportApplyEnabled,
 } from './quote-pricing-preview-flags';
 import {
   buildPreviewToken,
@@ -4044,6 +4045,50 @@ export class QuotesService {
   }
 
   /**
+   * Transport Apply — Phase T-A eligibility. Deliberately NARROW: only standalone
+   * single-leg transfers are safe to re-price in place. Returns { eligible,
+   * classification, code, routeId, appliedVehicleRateId } for the audit; eligible
+   * is true ONLY when ALL hold:
+   *  - the item is a transport item with a persisted transportServiceTypeId or routeId,
+   *  - NOT a touring route (touringRouteId null),
+   *  - the linked TransportServiceType.classification === 'ROUTE_TRANSFER'
+   *    (i.e. AIRPORT_TRANSFER / POINT_TO_POINT — excludes FULL_DAY/HALF_DAY/
+   *    DAILY_PACKAGE/ADD_ON),
+   *  - an explicit serviceDate exists (transport rate selection is date-dependent),
+   *  - no manual override (useOverride false AND overrideCost null),
+   *  - the transport-regime live-apply engines are OFF
+   *    (isPackagePricingLiveApplyEnabled / isOvernightStationaryLiveApplyEnabled) so
+   *    recalculateQuoteTotals adds NO total-level package/overnight delta and the
+   *    quote total moves by exactly this item's delta (item-only integrity holds).
+   * Everything else (full-day, daily-package, touring, add-on, override, missing
+   * date, live-apply active) → not eligible → the caller rejects it out of scope.
+   */
+  private async resolveTransportApplyEligibility(
+    item: any,
+  ): Promise<{ eligible: boolean; classification: string | null; code: string | null; routeId: string | null; appliedVehicleRateId: string | null }> {
+    const none = { eligible: false, classification: null as string | null, code: null as string | null, routeId: null as string | null, appliedVehicleRateId: null as string | null };
+    if (item.touringRouteId) return none;
+    if (!item.transportServiceTypeId && !item.routeId) return none;
+    if (item.serviceDate == null) return none;
+    if (item.useOverride === true || item.overrideCost != null) return none;
+    // Total-level package/overnight-stationary live-apply would make the quote delta
+    // diverge from the item delta — out of scope for the in-place T-A re-price.
+    if (isPackagePricingLiveApplyEnabled() || isOvernightStationaryLiveApplyEnabled()) return none;
+    const tType = item.transportServiceTypeId
+      ? await this.prisma.transportServiceType.findUnique({
+          where: { id: item.transportServiceTypeId },
+          select: { code: true, classification: true },
+        })
+      : null;
+    const classification = (tType?.classification as string | undefined) ?? null;
+    const code = (tType?.code as string | undefined) ?? null;
+    // Single-leg transfers only: ROUTE_TRANSFER classification (AIRPORT_TRANSFER /
+    // POINT_TO_POINT). No classification / any other classification → not eligible.
+    const eligible = classification === 'ROUTE_TRANSFER';
+    return { eligible, classification, code, routeId: item.routeId ?? null, appliedVehicleRateId: item.appliedVehicleRateId ?? null };
+  }
+
+  /**
    * Apply a previously-previewed edit to a MEAL item (PR4). Validates the
    * stateless preview token, re-derives the snapshot, and only on a full match
    * delegates to the existing updateItem (the single pricing write path —
@@ -4133,8 +4178,32 @@ export class QuotesService {
     // bundled/included content, selection, or other item is changed. The preview/
     // token already models the projection, so staleness/integrity are caught below.
     const isExternalPackageApply = Boolean(supportedItem.externalPackageName) && isQuotePricingExternalPackageApplyEnabled();
-    if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply) {
-      throw new BadRequestException('Only meal, activity, guide, entrance, hotel and (when enabled) external-package items can be applied in this version (apply is out of scope for this item type).');
+    // Transport — Phase T-A: standalone SINGLE-LEG transfers ONLY, behind the
+    // transport apply flag (default OFF) on top of the transport preview flag.
+    // resolveTransportApplyEligibility requires ROUTE_TRANSFER classification
+    // (AIRPORT_TRANSFER / POINT_TO_POINT), an explicit serviceDate, no manual
+    // override, no touring route, AND the transport-regime live-apply engines OFF
+    // (so the quote total moves by exactly this item's delta — no total-level
+    // package/overnight deltas). Full-day, daily-package, touring, add-on, override
+    // and missing-date rows are out of scope in T-A. When ON + eligible, apply
+    // re-uses the EXISTING updateItem → recalculateQuoteTotals path to re-persist the
+    // freshly-resolved transfer price in place — no route/vehicle/driver/serviceDate/
+    // pickup/supplier/itinerary change; the preview/token models the projection so
+    // staleness/integrity are caught below.
+    // Detect transport items STRUCTURALLY (the same signal computeItemPreview uses:
+    // persisted transportServiceTypeId / routeId / touringRouteId), not via the
+    // generic service-taxonomy text — a single-leg service-type code like
+    // POINT_TO_POINT does not contain "transport"/"transfer" and would be missed.
+    const isTransportItem = Boolean(
+      supportedItem.transportServiceTypeId || supportedItem.routeId || supportedItem.touringRouteId,
+    );
+    const transportApplyEligibility =
+      isTransportItem && isQuotePricingTransportApplyEnabled()
+        ? await this.resolveTransportApplyEligibility(supportedItem)
+        : null;
+    const isTransportApply = Boolean(transportApplyEligibility?.eligible);
+    if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply && !isTransportApply) {
+      throw new BadRequestException('Only meal, activity, guide, entrance, hotel, external-package and (when enabled) single-leg transport transfer items can be applied in this version (apply is out of scope for this item type).');
     }
     // Changing the underlying service of an entrance item is not fully simulated
     // by the preview, so it stays Classic-only — block it rather than apply a
@@ -4151,6 +4220,12 @@ export class QuotesService {
     // swapping the underlying service via apply is not modeled by the preview.
     if (isExternalPackageApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
       throw new BadRequestException('Changing the underlying service of an external-package item is not supported by apply (manage it in Classic).');
+    }
+    // Transport (T-A) apply re-prices the already-selected single-leg transfer in
+    // place only; swapping the underlying service via apply is not modeled by the
+    // preview and would also change vehicle/route assignment — keep it Classic.
+    if (isTransportApply && data?.serviceId !== undefined && data.serviceId !== supportedItem.serviceId) {
+      throw new BadRequestException('Changing the underlying service of a transport item is not supported by apply (manage it in Classic).');
     }
 
     // Re-run the dry-run at apply time and compare to the token (no write yet).
@@ -4211,7 +4286,11 @@ export class QuotesService {
     const quoteIntegrityOk =
       after.quote.totalCost === round(Number(tokenPayload.projQuoteCost)) &&
       after.quote.totalSell === round(Number(tokenPayload.projQuoteSell));
-    const integrityOk = isEntranceApply ? itemIntegrityOk && quoteIntegrityOk : itemIntegrityOk;
+    // Entrance re-syncs siblings; transport (T-A) additionally verifies the QUOTE
+    // total to catch any unexpected total-level movement (e.g. a transport-regime
+    // live-apply delta) — eligibility already requires those engines OFF, so this is
+    // belt-and-suspenders. Meal/activity/guide/hotel/external keep the item-only check.
+    const integrityOk = isEntranceApply || isTransportApply ? itemIntegrityOk && quoteIntegrityOk : itemIntegrityOk;
     const warnings = integrityOk
       ? []
       : ['Applied totals differ from the previewed projection — please re-check pricing.'];
@@ -4236,6 +4315,13 @@ export class QuotesService {
           // its serviceType code from the linked service.
           serviceType: isExternalPackageApply ? 'EXTERNAL_PACKAGE' : supportedItem?.service?.serviceType?.code ?? null,
           currency: (supportedItem as { currency?: string | null })?.currency ?? null,
+          // Transport (T-A) traceability: the transport service-type code +
+          // classification + safe rate identifiers. Omitted (undefined → dropped from
+          // JSON) for non-transport applies. No secrets — ids/codes only.
+          transportServiceTypeCode: isTransportApply ? transportApplyEligibility?.code ?? null : undefined,
+          transportClassification: isTransportApply ? transportApplyEligibility?.classification ?? null : undefined,
+          routeId: isTransportApply ? transportApplyEligibility?.routeId ?? null : undefined,
+          appliedVehicleRateId: isTransportApply ? transportApplyEligibility?.appliedVehicleRateId ?? null : undefined,
           previousItemTotalCost: before.item.totalCost,
           previousItemTotalSell: before.item.totalSell,
           newItemTotalCost: after.item.totalCost,

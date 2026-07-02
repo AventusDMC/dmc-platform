@@ -73,9 +73,7 @@ describe('Quote Builder V2 — external package preview (PR #571, preview-only)'
       "readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW')",
     ]);
     // Preview stays its own gate; a separate external-package APPLY flag now exists
-    // too (covered by builder-v2-external-package-apply.test.ts) — transport, however,
-    // is still preview-only.
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
+    // too (covered by builder-v2-external-package-apply.test.ts).
     contains(serviceSrc, [
       'isQuotePricingExternalPackagePreviewEnabled',
       'const isExternalPackagePreviewItem = Boolean(existingItem.externalPackageName)',

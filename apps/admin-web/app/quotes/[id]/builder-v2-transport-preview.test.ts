@@ -30,12 +30,14 @@ describe('Quote Builder V2 — transport pricing preview (PR #565, preview-only)
     ]);
   });
 
-  it('transport step has NO apply/confirm control (preview-only)', () => {
+  it('transport step still reuses the shared PricingPreviewModal (not the meal ItemPricingApplyModal), and never writes directly', () => {
+    // Transport Apply Phase T-A (single-leg transfers) reuses PricingPreviewModal's
+    // opt-in apply (see builder-v2-transport-apply.test.ts); it must NOT pull in the
+    // meal ItemPricingApplyModal and must NOT post apply-preview from the step itself
+    // (the client owns the apply request).
     excludes(transportSrc, [
-      'onApplyItemPricing',
       'ItemPricingApplyModal',
       'apply-preview',
-      'Apply',
     ]);
   });
 
@@ -101,7 +103,10 @@ describe('Quote Builder V2 — transport preview backend gate (PR #565)', () => 
     ]);
   });
 
-  it('there is NO transport APPLY flag (apply scope is not expanded)', () => {
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
+  it('transport preview flag is its own gate, separate from the Phase T-A apply flag', () => {
+    // Transport Apply Phase T-A adds a SEPARATE apply flag (see
+    // builder-v2-transport-apply.test.ts); preview remains its own independent gate.
+    contains(flagsSrc, ["readBooleanEnv('QUOTE_PRICING_TRANSPORT_PREVIEW')"]);
+    contains(flagsSrc, ["export const QUOTE_PRICING_TRANSPORT_APPLY_FLAG = 'quote.pricingTransportApply'"]);
   });
 });

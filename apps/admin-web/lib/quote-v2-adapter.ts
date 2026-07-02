@@ -478,6 +478,10 @@ function mapTransport(raw: RawErpQuote): TransportService[] {
       quoteItemId: typeof r.quoteItemId === "string" ? r.quoteItemId : undefined,
       editableText: asBool(r.editableText),
       transportLabel: asTextOrNull(r.transportLabel),
+      // Transport Apply Phase T-A eligibility (single-leg transfers only) — computed
+      // in mapErpQuoteToRaw from the API item; the backend independently enforces it.
+      transportApplyEligible: asBool(r.transportApplyEligible),
+      transportServiceTypeCode: asTextOrNull(r.transportServiceTypeCode),
     }
   })
 }
@@ -714,6 +718,11 @@ interface ApiQuoteItem {
   activityRateVariantId?: string | null
   serviceId?: string | null
   dayCount?: number | null
+  // Transport override scalars (persisted QuoteItem columns, serialized by the GET
+  // item spread). Used only to DISQUALIFY a transport row from Phase T-A apply
+  // (manual-override rows stay preview-only). Never written.
+  useOverride?: boolean | null
+  overrideCost?: number | null
   // Guide raw fields (persisted columns, PR #554) used to rebuild a guide edit
   // payload without parsing pricingDescription.
   guideType?: string | null
@@ -1135,6 +1144,26 @@ function mapErpQuoteToRaw(
         it.service?.name ??
         "—"
       const supplierName = vr?.supplier?.name ?? it.touringRoutePricing?.supplier?.name ?? null
+      // Transport Apply Phase T-A eligibility (single-leg transfers only). This is a
+      // conservative FE affordance gate; the backend independently re-validates every
+      // rule (classification, serviceDate, override, live-apply flags, resolvable).
+      // Eligible only when: not a touring route; the applied vehicle rate's service
+      // type code is a single-leg transfer (AIRPORT_TRANSFER / POINT_TO_POINT /
+      // ROUTE_TRANSFER); an explicit serviceDate exists; no manual override; and the
+      // row is priced (a resolvable rate). Full-day / daily-package / touring /
+      // override / missing-date / unpriced rows are NOT eligible → preview-only.
+      const transportServiceTypeCode = vr?.serviceType?.code ?? null
+      const SINGLE_LEG_TRANSFER_CODES = new Set(["AIRPORT_TRANSFER", "POINT_TO_POINT", "ROUTE_TRANSFER"])
+      const transportApplyEligible = Boolean(
+        !it.touringRouteId &&
+          !it.touringRoute &&
+          transportServiceTypeCode &&
+          SINGLE_LEG_TRANSFER_CODES.has(transportServiceTypeCode) &&
+          it.serviceDate &&
+          !it.useOverride &&
+          it.overrideCost == null &&
+          sell > 0,
+      )
       transport.push({
         id: it.id ?? `transport-${transport.length + 1}`,
         route,
@@ -1151,6 +1180,8 @@ function mapErpQuoteToRaw(
         quoteItemId: it.id ?? undefined,
         editableText: Boolean(it.id),
         transportLabel: it.transportLabel ?? null,
+        transportApplyEligible,
+        transportServiceTypeCode,
       })
       continue
     }

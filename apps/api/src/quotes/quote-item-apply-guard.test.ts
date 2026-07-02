@@ -33,6 +33,12 @@ function enable(preview: boolean, apply: boolean) {
   // independent of external-flag state and test order.
   delete process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_PREVIEW;
   delete process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY;
+  // Default the transport apply scope + transport-regime live-apply engines OFF for
+  // every test; transport tests opt in via enableTransport() AFTER calling enable().
+  delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
+  delete process.env.QUOTE_PRICING_TRANSPORT_APPLY;
+  delete process.env.TRANSPORT_PACKAGE_PRICING_LIVE_APPLY;
+  delete process.env.TRANSPORT_OVERNIGHT_STATIONARY_LIVE_APPLY;
 }
 
 function enableEntrance(preview: boolean, apply: boolean) {
@@ -62,6 +68,16 @@ function enableExternalPackage(preview: boolean, apply: boolean) {
   else delete process.env.QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY;
 }
 
+// Transport preview/apply gate on their OWN flags (PR #565 preview, Phase T-A apply),
+// both default OFF. Preview must be ON to mint a token; apply must be ON for the guard
+// to accept a transport item — and only then for eligible single-leg transfers.
+function enableTransport(preview: boolean, apply: boolean) {
+  if (preview) process.env.QUOTE_PRICING_TRANSPORT_PREVIEW = '1';
+  else delete process.env.QUOTE_PRICING_TRANSPORT_PREVIEW;
+  if (apply) process.env.QUOTE_PRICING_TRANSPORT_APPLY = '1';
+  else delete process.env.QUOTE_PRICING_TRANSPORT_APPLY;
+}
+
 type Opts = {
   resolved?: { cost: number; sell: number };
   service?: any;
@@ -72,6 +88,11 @@ type Opts = {
   entrance?: boolean;
   hotel?: boolean;
   externalPackage?: boolean;
+  transportClassification?: string;
+  transportCode?: string;
+  transportOverride?: boolean;
+  transportNoServiceDate?: boolean;
+  transportTouring?: boolean;
 };
 
 function makeService(opts: Opts = {}) {
@@ -84,7 +105,9 @@ function makeService(opts: Opts = {}) {
         ? { category: 'hotel', serviceType: { code: 'HOTEL', name: 'Hotel' } }
         : opts.externalPackage
           ? { category: 'external_package', serviceType: { code: 'EXTERNAL_PACKAGE', name: 'External package' } }
-          : { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } });
+          : opts.transport
+            ? { category: 'transport', serviceType: { code: opts.transportCode ?? 'POINT_TO_POINT', name: 'Transfer' } }
+            : { category: 'meal', serviceType: { code: 'MEAL', name: 'Meal' } });
   const entranceFeeId = opts.entranceFeeId ?? (opts.entrance ? 'ef1' : null);
   const db: any = {
     quote: {
@@ -98,8 +121,13 @@ function makeService(opts: Opts = {}) {
       hotelId: opts.hotel ? 'h1' : null,
       externalPackageName: opts.externalPackage ? 'Egypt Add-on' : null,
       currency: 'USD',
-      serviceDate: new Date('2026-07-01T00:00:00.000Z'),
-      transportServiceTypeId: opts.transport ? 'tt1' : null, routeId: null, touringRouteId: null,
+      serviceDate: opts.transport && opts.transportNoServiceDate ? null : new Date('2026-07-01T00:00:00.000Z'),
+      transportServiceTypeId: opts.transport ? 'tt1' : null,
+      routeId: opts.transport ? 'r1' : null,
+      touringRouteId: opts.transport && opts.transportTouring ? 'tr1' : null,
+      appliedVehicleRateId: opts.transport ? 'vr1' : null,
+      useOverride: opts.transport && opts.transportOverride ? true : false,
+      overrideCost: opts.transport && opts.transportOverride ? 90 : null,
       serviceId: 's1', quantity: 1, totalCost: 100, totalSell: 120,
       updatedAt: new Date('2026-06-01T00:00:00.000Z'), service,
       // Entrance relations the JP projection reads (stubbed projection ignores math).
@@ -133,6 +161,13 @@ function makeService(opts: Opts = {}) {
     },
     jordanPassProduct: { findUnique: async () => null },
     ticketRateVariant: { findUnique: async () => null },
+    // Transport apply eligibility reads the linked TransportServiceType classification.
+    transportServiceType: {
+      findUnique: async () => ({
+        code: opts.transportCode ?? 'POINT_TO_POINT',
+        classification: opts.transportClassification ?? 'ROUTE_TRANSFER',
+      }),
+    },
     auditLog: {
       // Mirror the Postgres JSON-path filter used by getPricingApplyAudit:
       // where action === X AND metadata->>quoteId === Y.
@@ -592,6 +627,146 @@ test('external-package apply audit: serviceType EXTERNAL_PACKAGE, sanitized meta
 
 test('external-package flags do NOT affect meal apply (existing scope unchanged when external flags OFF)', async () => {
   enable(true, true); // external flags OFF
+  const { svc, calls } = makeService({ resolved: { cost: 150, sell: 180 } }); // meal
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(calls.updateItem, 1);
+});
+
+// ── Transport apply scope — Phase T-A (single-leg transfers only, default OFF) ──
+
+test('transport apply OFF (preview ON, apply flag OFF) → 400 out-of-scope, no write', async () => {
+  enable(true, true);
+  enableTransport(true, false); // preview ON to mint; apply OFF → guard rejects
+  const { svc, calls } = makeService({ transport: true });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('transport apply ON + eligible single-leg transfer (ROUTE_TRANSFER) → applies via updateItem (zero delta)', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportClassification: 'ROUTE_TRANSFER', transportCode: 'AIRPORT_TRANSFER', resolved: { cost: 100, sell: 120 } });
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR);
+  assert.equal(out.applied, true);
+  assert.equal(out.integrityOk, true);
+  assert.deepEqual(out.item.after, { totalCost: 100, totalSell: 120 });
+  assert.equal(calls.updateItem, 1);
+  assert.equal(calls.writes, 0);
+});
+
+test('transport apply ON but FULL_DAY classification → blocked out of scope', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportClassification: 'FULL_DAY', transportCode: 'DAILY_FULL_DAY' });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+});
+
+test('transport apply ON but DAILY_PACKAGE classification → blocked out of scope', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportClassification: 'DAILY_PACKAGE', transportCode: 'DAILY_PACKAGE' });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+});
+
+test('transport apply ON but touring route → blocked out of scope', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportTouring: true });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+});
+
+test('transport apply ON but manual override → blocked out of scope', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportOverride: true });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+});
+
+test('transport apply ON but missing serviceDate → blocked out of scope, no write', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, db, calls } = makeService({ transport: true });
+  const token = await mintToken(svc); // mint while serviceDate present
+  db.item.serviceDate = null; // then it goes missing → not eligible
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('transport apply ON but transport-regime live-apply engine active → blocked out of scope', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  process.env.TRANSPORT_PACKAGE_PRICING_LIVE_APPLY = '1';
+  try {
+    const { svc, calls } = makeService({ transport: true });
+    const token = await mintToken(svc);
+    await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR), 400, 'out of scope');
+    assert.equal(calls.updateItem, 0);
+  } finally {
+    delete process.env.TRANSPORT_PACKAGE_PRICING_LIVE_APPLY;
+  }
+});
+
+test('transport apply ON: changing the underlying serviceId is rejected (Classic-only)', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true });
+  const swapData = { ...MEAL_DATA, serviceId: 's2' } as any;
+  const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, swapData, ACTOR);
+  const token = res.previewToken as string;
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, swapData, token, true, ACTOR), 400, 'not supported by apply');
+  assert.equal(calls.updateItem, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test('transport apply ON + non-zero delta requires acknowledgedDelta, then applies (target only)', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, calls } = makeService({ transport: true, transportClassification: 'ROUTE_TRANSFER', transportCode: 'POINT_TO_POINT', resolved: { cost: 150, sell: 180 } });
+  const token = await mintToken(svc);
+  await expectHttp(() => svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR), 409, 'confirmation_required');
+  assert.equal(calls.updateItem, 0);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
+  assert.equal(out.applied, true);
+  assert.deepEqual(out.item.after, { totalCost: 150, totalSell: 180 });
+  assert.equal(out.quote.after.totalCost, 1050);
+  assert.equal(calls.updateItem, 1);
+});
+
+test('transport apply audit: transport code + classification, sanitized (no token/secret)', async () => {
+  enable(true, true);
+  enableTransport(true, true);
+  const { svc, auditCalls } = makeService({ transport: true, transportCode: 'AIRPORT_TRANSFER', transportClassification: 'ROUTE_TRANSFER', resolved: { cost: 100, sell: 120 } });
+  const token = await mintToken(svc);
+  await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR);
+  const row = auditCalls.find((c: any) => c.action === 'quote.pricing.apply');
+  assert.ok(row, 'expected a pricing-apply audit row');
+  assert.equal(row.entityId, ITEM_ID);
+  assert.equal(row.metadata.transportServiceTypeCode, 'AIRPORT_TRANSFER');
+  assert.equal(row.metadata.transportClassification, 'ROUTE_TRANSFER');
+  assert.equal(row.metadata.routeId, 'r1');
+  assert.equal(row.metadata.appliedVehicleRateId, 'vr1');
+  assert.equal(row.metadata.integrityOk, true);
+  const serialized = JSON.stringify(row.metadata);
+  assert.ok(!serialized.includes(token), 'audit metadata must not contain the preview token');
+  assert.ok(!serialized.includes('v1.'), 'audit metadata must not contain a token prefix');
+});
+
+test('transport flags do NOT affect meal apply (existing scope unchanged when transport flags OFF)', async () => {
+  enable(true, true); // transport flags OFF
   const { svc, calls } = makeService({ resolved: { cost: 150, sell: 180 } }); // meal
   const token = await mintToken(svc);
   const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, ACTOR);
