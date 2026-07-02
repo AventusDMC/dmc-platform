@@ -115,6 +115,21 @@ export default async function QuoteBuilderV2Page({
   // blocked response otherwise, so this only controls the UI affordance.
   const proposalEmailSendEnabled = process.env.NEXT_PUBLIC_QUOTE_PROPOSAL_EMAIL_SEND === 'true'
 
+  // Itinerary day management (Phase B, Slice 1) — a separate, build-time public
+  // flag, default OFF. When not 'true', the itinerary step behaves exactly as
+  // before (inline title/notes text edit via the shared route; no Add/Delete day).
+  // When 'true' AND the role/status is eligible, the step exposes Add day, edit day
+  // meta, and delete-empty via the NEW V2-scoped routes. The backend independently
+  // enforces QUOTE_ITINERARY_EDIT + role + company + the delete-empty guard, so this
+  // only controls the UI affordance — structural edits are never frontend-trusted.
+  const itineraryEditFlag = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_ITINERARY_EDIT === 'true'
+  // The V2 itinerary-edit surface is admin/operations only (mirrors the backend V2
+  // routes' @Roles), gated to editable statuses (default-safe: finalized/unknown
+  // statuses hide it). A viewer/finance keeps the existing text edit via the shared
+  // route (unchanged) but gets no Add/Delete.
+  const canEditItinerary =
+    hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -132,6 +147,8 @@ export default async function QuoteBuilderV2Page({
       externalPackagePreviewEnabled={externalPackagePreviewEnabled}
       externalPackageApplyEnabled={externalPackageApplyEnabled}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
+      itineraryEditEnabled={itineraryEditFlag}
+      canEditItinerary={canEditItinerary}
     />
   )
 }
