@@ -1479,6 +1479,33 @@ export class BookingsController {
     return this.bookingsService.getOperationalVoucher(id, operationId, actor);
   }
 
+  // Operations V2 (Phase 2E) — read-only voucher PDF DOWNLOAD keyed by
+  // bookingId + operationId. Loose operational scoping (see
+  // generateOperationalVoucherPdf); pure render, no mutation/status/send/audit/
+  // email/finance. Distinct from the strict GET /vouchers/:id/pdf, which is
+  // intentionally left unchanged.
+  @Get(':id/operations/:operationId/voucher/pdf')
+  @Roles('admin', 'operations')
+  async downloadOperationalVoucherPdf(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const pdfBuffer = await this.bookingsService.generateOperationalVoucherPdf(id, operationId, actor);
+    const safeFileName =
+      `${operationId}-voucher`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'operational-voucher';
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${safeFileName}.pdf"`);
+
+    return new StreamableFile(pdfBuffer);
+  }
+
   @Post('services/bulk-actions')
   @Roles('admin', 'operations')
   bulkUpdateServiceStatuses(

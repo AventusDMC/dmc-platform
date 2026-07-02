@@ -13122,50 +13122,55 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         id: voucherId,
         ...this.buildVoucherCompanyWhere(actor),
       },
-      include: {
-        supplier: true,
-        booking: {
-          include: {
-            quote: {
-              include: {
-                clientCompany: true,
-                brandCompany: {
-                  include: { branding: true },
-                },
-                contact: true,
-              },
-            },
-            passengers: {
-              orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
-            },
-            days: {
-              orderBy: [{ dayNumber: 'asc' }],
-            },
-          },
-        },
-        bookingService: {
-          include: {
-            bookingDay: true,
-            vehicle: true,
-            supplier: true,
-            restaurant: true,
-            touringRoute: true,
-            touringRoutePricing: {
-              include: {
-                supplier: true,
-                vehicle: true,
-                touringRoute: true,
-              },
-            },
-          },
-        },
-      },
+      include: this.buildVoucherPdfInclude(),
     });
 
     if (!voucher) {
       throw new NotFoundException('Voucher not found');
     }
 
+    return this.renderVoucherPdf(voucher);
+  }
+
+  private buildVoucherPdfInclude() {
+    return {
+      supplier: true,
+      booking: {
+        include: {
+          quote: {
+            include: {
+              clientCompany: true,
+              brandCompany: { include: { branding: true } },
+              contact: true,
+            },
+          },
+          passengers: { orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }] },
+          days: { orderBy: [{ dayNumber: 'asc' }] },
+        },
+      },
+      bookingService: {
+        include: {
+          bookingDay: true,
+          vehicle: true,
+          supplier: true,
+          restaurant: true,
+          touringRoute: true,
+          touringRoutePricing: { include: { supplier: true, vehicle: true, touringRoute: true } },
+        },
+      },
+    };
+  }
+
+  /**
+   * Shared, finance-free voucher PDF renderer. Takes a fully-included Voucher
+   * (see buildVoucherPdfInclude) and produces the supplier-facing operational
+   * PDF. Used by BOTH the strict-scoped GET /vouchers/:id/pdf
+   * (generateServiceVoucherPdf) and the Operations V2 loose-scoped
+   * GET /bookings/:id/operations/:operationId/voucher/pdf
+   * (generateOperationalVoucherPdf), so both endpoints render identical,
+   * cost-free content. Pure render — no DB write, no status change, no audit.
+   */
+  private async renderVoucherPdf(voucher: any): Promise<Buffer> {
     const service = voucher.bookingService;
     const booking = voucher.booking;
     const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot & { title?: string | null; travelStartDate?: string | null };
@@ -13283,6 +13288,59 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       doc.moveDown(0.8);
       this.writeBodyLine(doc, 'Supplier-facing operational voucher for service delivery and confirmation.');
     });
+  }
+
+  /**
+   * Operations V2 (Phase 2E) — render the operational voucher PDF keyed by
+   * bookingId + operationId (bookingServiceId), using the SAME loose company
+   * scoping as getOperationalVoucher / generateOperationalVoucher. The strict
+   * buildVoucherCompanyWhere on GET /vouchers/:id/pdf 404s vouchers the
+   * operating DMC manages for another client company — the exact mismatch that
+   * broke the V2 download. Pure read: no mutation, no voucher status change, no
+   * sentAt/issuedAt, no audit log, no email. The strict /vouchers/:id/pdf
+   * lookup/scoping is intentionally left unchanged.
+   */
+  async generateOperationalVoucherPdf(
+    bookingId: string,
+    operationId: string,
+    actor?: CompanyScopedActor,
+  ): Promise<Buffer> {
+    // Loose operational scope (buildBookingCompanyWhere just asserts a company),
+    // mirroring getOperationalVoucher so DMC staff can render vouchers for
+    // bookings they manage on behalf of a different client company.
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: operationId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(actor),
+      },
+      select: { id: true },
+    });
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    const voucher = await (this.prisma.voucher as any).findUnique({
+      where: { bookingServiceId: operationId },
+      include: this.buildVoucherPdfInclude(),
+    });
+    if (!voucher) {
+      throw new NotFoundException('No voucher has been generated for this operation row yet.');
+    }
+
+    // Finance-safety belt (operational path only — Classic /vouchers/:id/pdf is
+    // untouched): the shared renderer falls back to bookingService.notes when
+    // voucher.notes is empty, and hotel service.notes carries contract COST
+    // metadata ("Rate USD 45.00 x 2 pax x 1 night"). The operational voucher
+    // deliberately keeps voucher.notes operator-typed (null when empty), so null
+    // the live-row note fallbacks here to guarantee the operational PDF can never
+    // surface supplier cost.
+    if (voucher.bookingService) {
+      voucher.bookingService.notes = null;
+      voucher.bookingService.confirmationNotes = null;
+    }
+
+    return this.renderVoucherPdf(voucher);
   }
 
   async generateInvoicePdf(id: string, mode: BookingInvoiceMode = 'ITEMIZED') {
