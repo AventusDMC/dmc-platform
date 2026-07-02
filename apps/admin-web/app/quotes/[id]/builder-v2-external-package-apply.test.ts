@@ -35,7 +35,7 @@ describe('Quote Builder V2 — external-package pricing APPLY (gated, default OF
     contains(serviceSrc, [
       'isQuotePricingExternalPackageApplyEnabled',
       'const isExternalPackageApply = Boolean(supportedItem.externalPackageName) && isQuotePricingExternalPackageApplyEnabled()',
-      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply)',
+      'if (!isMealActivityGuide && !isEntranceApply && !isHotelApply && !isExternalPackageApply && !isTransportApply)',
       // delegates to the same existing write path (no parallel pricing/recalc)
       'await this.updateItem(itemId, data, actor)',
     ]);
@@ -133,9 +133,8 @@ describe('Quote Builder V2 — external-package pricing APPLY (gated, default OF
     contains(builderSrc, ['externalPackageApplyEnabled={externalPackageApplyEnabled}']);
   });
 
-  // ---- scope guards: transport stays preview-only; hotel apply untouched; default flag untouched ----
-  it('transport stays preview-only and the V2 default routing flag is untouched', () => {
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
+  // ---- scope guards: hotel apply untouched; default flag untouched ----
+  it('the V2 default routing flag is untouched', () => {
     excludes(pageSrc, ['NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT']);
     excludes(experiencesSrc, ['NEXT_PUBLIC_QUOTE_BUILDER_V2_DEFAULT']);
     excludes(flagsSrc, ['QUOTE_BUILDER_V2_DEFAULT']);

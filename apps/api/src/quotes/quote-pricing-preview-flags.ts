@@ -133,3 +133,25 @@ export const QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY_FLAG = 'quote.pricingExternalP
 export function isQuotePricingExternalPackageApplyEnabled(): boolean {
   return readBooleanEnv('QUOTE_PRICING_EXTERNAL_PACKAGE_APPLY');
 }
+
+// ── Transport pricing APPLY scope — Phase T-A (separate, default OFF) ─────────
+//
+// Transport stays PREVIEW-only in general (QUOTE_PRICING_TRANSPORT_PREVIEW). This
+// flag opens a DELIBERATELY NARROW apply scope — Phase T-A: standalone single-leg
+// transfers only (TransportServiceType.classification === 'ROUTE_TRANSFER', i.e.
+// AIRPORT_TRANSFER / POINT_TO_POINT). Apply requires BOTH the transport preview
+// flag (to compute + issue the token) AND this apply flag. When OFF (the default),
+// the apply guard rejects transport items as out of scope, so transport stays
+// preview-only. The guard additionally requires per-item eligibility (see
+// resolveTransportApplyEligibility): explicit serviceDate, resolvable rate, no
+// manual override, no touring route, and — critically — that the transport-regime
+// live-apply engines (isPackagePricingLiveApplyEnabled / isOvernightStationaryLiveApplyEnabled)
+// are OFF, so the quote total moves by exactly this item's delta (no total-level
+// package/overnight deltas). Full-day, daily-package, touring, add-on, override,
+// and missing-date rows are all out of scope in Phase T-A. No schema/formula change
+// — apply just re-persists the freshly-resolved single-leg transfer price in place.
+export const QUOTE_PRICING_TRANSPORT_APPLY_FLAG = 'quote.pricingTransportApply';
+
+export function isQuotePricingTransportApplyEnabled(): boolean {
+  return readBooleanEnv('QUOTE_PRICING_TRANSPORT_APPLY');
+}

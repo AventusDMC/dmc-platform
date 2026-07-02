@@ -26,6 +26,7 @@ export function BuilderV2Client({
   canViewPricingApplyAudit = false,
   entrancePricingEnabled = false,
   transportPreviewEnabled = false,
+  transportApplyEnabled = false,
   hotelPreviewEnabled = false,
   hotelApplyEnabled = false,
   externalPackagePreviewEnabled = false,
@@ -72,6 +73,15 @@ export function BuilderV2Client({
    * so this is a UI affordance gate only.
    */
   transportPreviewEnabled?: boolean
+  /**
+   * Transport pricing APPLY scope — Phase T-A (single-leg transfers), a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_TRANSPORT_APPLY flag, default OFF. When false,
+   * transport stays preview-only (no apply control). Apply also requires the
+   * transport preview flag. The backend independently enforces
+   * QUOTE_PRICING_TRANSPORT_APPLY (+ preview flag) + role + status + single-leg
+   * eligibility, so this is a UI affordance gate only — apply is never frontend-trusted.
+   */
+  transportApplyEnabled?: boolean
   /**
    * Hotel pricing PREVIEW scope — a build-time
    * NEXT_PUBLIC_QUOTE_BUILDER_V2_HOTEL_PREVIEW flag, default OFF. When false,
@@ -537,6 +547,7 @@ export function BuilderV2Client({
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
       transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
+      transportApplyEnabled={canPreviewPricing && transportPreviewEnabled && transportApplyEnabled}
       hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
       hotelApplyEnabled={canPreviewPricing && hotelPreviewEnabled && hotelApplyEnabled}
       externalPackagePreviewEnabled={canPreviewPricing && externalPackagePreviewEnabled}

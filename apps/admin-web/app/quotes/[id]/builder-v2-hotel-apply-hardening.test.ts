@@ -88,10 +88,11 @@ describe('Hotel Apply UX + row-mapping hardening (PR #583)', () => {
     ]);
   });
 
-  // ---- 8+9. transport stays preview-only (no apply flag added by this PR) ----
-  it('no transport apply flag introduced by this hardening PR (transport stays preview-only)', () => {
-    // External-package apply landed later as its own scope; transport remains preview-only.
-    excludes(flagsSrc, ['TRANSPORT_APPLY', 'TransportApply']);
+  // ---- 8+9. this hardening PR did not add its own transport/external apply flag ----
+  it('hotel hardening did not weaken the hotel apply flag (later scopes are separate)', () => {
+    // External-package (#590) and transport Phase T-A apply landed later behind their
+    // own flags; the hotel hardening PR only touched hotel row-matching + toast.
+    contains(flagsSrc, ["export const QUOTE_PRICING_HOTEL_APPLY_FLAG = 'quote.pricingHotelApply'"]);
   });
 
   // ---- apply semantics unchanged: client still posts the same apply-preview ----
