@@ -109,6 +109,9 @@ function makeSnapshot(overrides: any = {}) {
         totalCost: 50,
         totalSell: 65,
         startTime: '09:00',
+        pickupTime: '08:45',
+        pickupLocation: 'Hotel reception',
+        meetingPoint: 'Visitor centre',
         service: { name: 'Licensed guide', category: 'Guide', supplierId: 'sup-guide', supplierName: 'Almushtari' },
       },
       {
@@ -173,9 +176,10 @@ test('serviceType is the RAW quote category and operationType is the normalized 
   assert.equal(byId['it-ticket'].operationType, 'TICKET');
   assert.equal(byId['it-external'].operationType, 'EXTERNAL_PACKAGE');
 
-  // RISK: a meal/dining item has NO dedicated operationType — the taxonomy 'meal' group
-  // falls through inferBookingOperationServiceType to ACTIVITY. Pinned as current behavior.
-  assert.equal(byId['it-meal'].operationType, 'ACTIVITY');
+  // FIXED (mapping-hardening): a meal/dining item now maps to the dedicated DINING
+  // operationType (restaurant assignment + meal confirmation live on DINING). Previously
+  // it fell through to ACTIVITY.
+  assert.equal(byId['it-meal'].operationType, 'DINING');
 });
 
 // --- Activity-only operational fields -------------------------------------------
@@ -195,12 +199,14 @@ test('activity-family rows carry pickup/meeting/participant fields; non-activity
   assert.equal(activity.reconfirmationRequired, true);
   assert.equal(activity.reconfirmationDueAt, '2026-07-20');
 
-  // RISK: GUIDE is not treated as an "activity service", so its startTime and all
-  // pickup/meeting/participant fields are dropped even when present on the quote item.
+  // FIXED (mapping-hardening): GUIDE now preserves its operational TIMING fields
+  // (start/pickup/meeting) from the quote item — Ops no longer re-enters them.
+  // Participant counts + reconfirmation remain activity-only by design.
   const guide = byId['it-guide'];
-  assert.equal(guide.startTime, null);
-  assert.equal(guide.pickupTime, null);
-  assert.equal(guide.meetingPoint, null);
+  assert.equal(guide.startTime, '09:00');
+  assert.equal(guide.pickupTime, '08:45');
+  assert.equal(guide.pickupLocation, 'Hotel reception');
+  assert.equal(guide.meetingPoint, 'Visitor centre');
   assert.equal(guide.participantCount, null);
   assert.equal(guide.adultCount, null);
   assert.equal(guide.childCount, null);
@@ -413,4 +419,92 @@ test('the mapper reads ONLY the passed accepted-version snapshot, never live quo
   // Descriptions/costs come straight from the snapshot values, not any live source.
   assert.equal(byId['it-hotel'].description, 'Mövenpick Petra');
   assert.equal(byId['it-hotel'].totalSell, 260);
+});
+
+// ================================================================================
+// MAPPING HARDENING (1C-Hardening) — resolved / documented risks
+// ================================================================================
+
+// Risk 1 (FIXED): meals map to the dedicated DINING operationType.
+test('hardening: a meal item maps to operationType DINING (not ACTIVITY)', async () => {
+  const service = makeService();
+  const { byId } = await mapRows(service, makeSnapshot());
+  assert.equal(byId['it-meal'].operationType, 'DINING');
+  assert.equal(byId['it-meal'].serviceType, 'Meal'); // raw category unchanged
+});
+
+// Risk 2 (FIXED): guides preserve their operational timing fields from the snapshot.
+test('hardening: a guide item preserves start/pickup/meeting timing from the snapshot', async () => {
+  const service = makeService();
+  const { byId } = await mapRows(service, makeSnapshot());
+  const guide = byId['it-guide'];
+  assert.equal(guide.operationType, 'GUIDE');
+  assert.equal(guide.startTime, '09:00');
+  assert.equal(guide.pickupTime, '08:45');
+  assert.equal(guide.pickupLocation, 'Hotel reception');
+  assert.equal(guide.meetingPoint, 'Visitor centre');
+  assert.equal(guide.operationalTime, '09:00'); // operationalTime also carries it
+  // Participant counts remain activity-only (guides don't carry them on the quote item).
+  assert.equal(guide.participantCount, null);
+});
+
+// Risk 3 (ACCEPTED, documented): an unresolved supplierId is NOT a conversion blocker.
+// The row still maps; it simply arrives unassigned, so Ops surfaces it as "Needs
+// Assignment". Fixing the underlying catalog data is a pilot-readiness (data-cleanup)
+// concern, not a conversion-time hard block.
+test('hardening: an unresolved supplier does NOT block mapping and leaves the row for Ops assignment', async () => {
+  const service = makeService([]); // nothing resolves in the catalog
+  const { rows, byId } = await mapRows(service, makeSnapshot());
+
+  // Every item still maps — conversion is not blocked by unresolved suppliers.
+  assert.equal(rows.length, 7);
+
+  const hotel = byId['it-hotel'];
+  assert.equal(hotel.supplierId, null); // catalog id dropped
+  assert.equal(hotel.supplierName, 'Mövenpick'); // quote name retained for Ops context
+  // The mapper never sets an operational assignment, so the schema defaults
+  // (assignmentStatus UNASSIGNED / assignedSupplierId null) apply ⇒ Ops "Needs Assignment".
+  assert.equal('assignedSupplierId' in hotel, false);
+  assert.equal('assignmentStatus' in hotel, false);
+});
+
+// Risk 4 (documented GAP): external-package classification is driven by the item's
+// service category/name. A quote item whose category maps to external_package/
+// partner_package classifies as EXTERNAL_PACKAGE; but an external item that arrives
+// with NO service taxonomy (only external* fields) falls through to SERVICE. Pinned so
+// the gap is visible before any real-snapshot verification.
+test('hardening: external-package classification — mapped category vs. bare external item', async () => {
+  const service = makeService(['sup-ext']);
+  const snap = makeSnapshot({
+    quoteItems: [
+      {
+        id: 'it-ext-typed',
+        itineraryId: 'day-2',
+        quantity: 1,
+        totalCost: 400,
+        totalSell: 500,
+        service: { name: 'Cairo package', category: 'External Package', supplierId: 'sup-ext', supplierName: 'Cairo DMC' },
+      },
+      {
+        // Realistic "bare" external item: no linked SupplierService, only external* fields.
+        id: 'it-ext-bare',
+        itineraryId: 'day-2',
+        quantity: 1,
+        totalCost: 300,
+        totalSell: 380,
+        externalPackageName: 'Luxor extension',
+        externalPackageCountry: 'EG',
+        externalSupplierName: 'Nile DMC',
+      },
+    ],
+  });
+  const { byId } = await mapRows(service, snap);
+
+  // With a mapped taxonomy → correct dedicated bucket.
+  assert.equal(byId['it-ext-typed'].operationType, 'EXTERNAL_PACKAGE');
+
+  // GAP: without any service taxonomy, the same commercial concept classifies as SERVICE
+  // and serviceType defaults to 'other'. Documented; not fixed in this slice.
+  assert.equal(byId['it-ext-bare'].operationType, 'SERVICE');
+  assert.equal(byId['it-ext-bare'].serviceType, 'other');
 });
