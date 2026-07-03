@@ -34,6 +34,8 @@ export function BuilderV2Client({
   proposalEmailSendEnabled = false,
   itineraryEditEnabled = false,
   canEditItinerary = false,
+  itemCreateEnabled = false,
+  canAddItem = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -140,6 +142,21 @@ export function BuilderV2Client({
    * edit. Mirrors the backend V2 routes' @Roles; the backend stays source of truth.
    */
   canEditItinerary?: boolean
+  /**
+   * Add Activity item (Phase B, Slice 2) — a build-time
+   * NEXT_PUBLIC_QUOTE_BUILDER_V2_ITEM_CREATE flag, default OFF. Activity ONLY. When
+   * false, the Experiences step is unchanged (no Add affordance). The backend
+   * independently enforces QUOTE_ITEM_CREATE + role + company + editable status +
+   * activity-only, so this is a UI affordance gate only — creation is never
+   * frontend-trusted.
+   */
+  itemCreateEnabled?: boolean
+  /**
+   * Whether the current user's role/status may use the V2 add-item surface
+   * (admin/operations on an editable status). When false, the add handler is
+   * withheld. Mirrors the backend V2 route @Roles; the backend stays source of truth.
+   */
+  canAddItem?: boolean
 }) {
   const router = useRouter()
 
@@ -430,6 +447,45 @@ export function BuilderV2Client({
     router.refresh()
   }
 
+  // ── Add Activity item (Phase B, Slice 2) — V2-scoped ─────────────────────────
+  // Creates ONE activity item via the NEW V2 route
+  // POST /api/quotes/:id/v2/experiences/item, which the backend gates behind
+  // QUOTE_ITEM_CREATE (fail-closed) + admin/operations + activity-only + editable
+  // status. It reuses the existing createItem + recalculation (pricing is never
+  // forked here). On success it shows the persistent toast (with the new quote
+  // total, if returned) and refreshes the route. Errors surface a safe message.
+  const handleAddItem = async (payload: Record<string, unknown>) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const code = parsed?.code
+      if (code === "feature_disabled") throw new Error("Adding items from V2 is not available.")
+      if (code === "out_of_scope") throw new Error("Only activities can be added from V2 in this version.")
+      const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+      throw new Error(message?.slice(0, 300) || `Could not add the activity (${res.status}).`)
+    }
+    const after = parsed?.quote
+    setApplyToast({
+      text:
+        after && typeof after.totalCost === "number" && typeof after.totalSell === "number"
+          ? `Activity added successfully. Quote total is now ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
+          : "Activity added successfully.",
+    })
+    router.refresh()
+    return parsed
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -633,6 +689,8 @@ export function BuilderV2Client({
       onAddDay={canEditItinerary ? handleAddDay : undefined}
       onEditDay={canEditItinerary ? handleEditDay : undefined}
       onDeleteDay={canEditItinerary ? handleDeleteDay : undefined}
+      itemCreateEnabled={canAddItem && itemCreateEnabled}
+      onAddItem={canAddItem ? handleAddItem : undefined}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       onSendProposalEmail={
         proposalEmailSendEnabled && canViewPricingApplyAudit

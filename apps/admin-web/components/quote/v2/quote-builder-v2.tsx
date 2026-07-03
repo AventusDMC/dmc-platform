@@ -189,6 +189,17 @@ export interface QuoteBuilderV2Props {
   onEditDay?: (dayId: string, patch: Record<string, string | null>) => void | Promise<void>
   /** Delete an EMPTY itinerary day (V2 route; the backend rejects non-empty days). */
   onDeleteDay?: (dayId: string) => void | Promise<void>
+  /**
+   * Add Activity item (Phase B, Slice 2) flag. When true AND onAddItem is provided,
+   * the Experiences step exposes an "Add activity" affordance. Activity only.
+   */
+  itemCreateEnabled?: boolean
+  /**
+   * Add ONE Activity item via the V2 route. Payload:
+   * { itemType:'activity', dayId, activityId, activityRateVariantId, serviceDate }.
+   * Omitted → no Add affordance. Resolves to the create result (with new quote total).
+   */
+  onAddItem?: (payload: Record<string, unknown>) => void | Promise<unknown>
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -227,6 +238,8 @@ export function QuoteBuilderV2({
   onAddDay,
   onEditDay,
   onDeleteDay,
+  itemCreateEnabled = false,
+  onAddItem,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -378,6 +391,9 @@ export function QuoteBuilderV2({
             entrancePricingEnabled={entrancePricingEnabled}
             externalPackagePreviewEnabled={externalPackagePreviewEnabled}
             externalPackageApplyEnabled={externalPackageApplyEnabled}
+            addItemEnabled={itemCreateEnabled}
+            onAddItem={onAddItem}
+            itineraryDays={quote.itinerary}
           />
         )
       case "transport":

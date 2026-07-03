@@ -130,6 +130,18 @@ export default async function QuoteBuilderV2Page({
   const canEditItinerary =
     hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
 
+  // Add Activity item (Phase B, Slice 2) — a separate, build-time public flag,
+  // default OFF. Activity ONLY in this slice. When not 'true', the Experiences step
+  // is unchanged (no Add affordance). When 'true' AND the role/status is eligible,
+  // the step exposes "Add activity" via the NEW V2-scoped route
+  // (POST /quotes/:id/v2/experiences/item). The backend independently enforces
+  // QUOTE_ITEM_CREATE + role + company + editable status + activity-only, so this
+  // only controls the UI affordance — creation is never frontend-trusted.
+  const itemCreateFlag = process.env.NEXT_PUBLIC_QUOTE_BUILDER_V2_ITEM_CREATE === 'true'
+  // Same admin/operations + editable-status gate as the other V2 edit surfaces.
+  const canAddItem =
+    hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -149,6 +161,8 @@ export default async function QuoteBuilderV2Page({
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       itineraryEditEnabled={itineraryEditFlag}
       canEditItinerary={canEditItinerary}
+      itemCreateEnabled={itemCreateFlag}
+      canAddItem={canAddItem}
     />
   )
 }
