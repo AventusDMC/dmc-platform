@@ -11395,6 +11395,12 @@ export class QuotesService {
         };
         const operationType = this.inferBookingOperationServiceType(serviceTaxonomy);
         const isActivityService = this.isActivityService(serviceTaxonomy);
+        // Guides also carry operational timing (start/pickup/meeting) on the quote item,
+        // and the BookingService model supports those columns. Preserve them for guides
+        // too so Ops does not have to re-enter them. Participant/reconfirmation stay
+        // activity-only.
+        const isGuideService = operationType === BookingOperationServiceType.GUIDE;
+        const carriesOperationalTiming = isActivityService || isGuideService;
         const hasResolvedOperationalData = Boolean(supplierId || supplierName) && (totalCost > 0 || totalSell > 0);
         const sourceMetadata = {
           sourceQuoteItemId: item.id ?? null,
@@ -11439,20 +11445,20 @@ export class QuotesService {
           operationType,
           operationStatus: BookingOperationServiceStatus.PENDING,
           operationalDate: serviceDate,
-          operationalTime: isActivityService ? item.startTime?.trim() || item.pickupTime?.trim() || null : item.startTime?.trim() || null,
+          operationalTime: carriesOperationalTiming ? item.startTime?.trim() || item.pickupTime?.trim() || null : item.startTime?.trim() || null,
           supplierConfirmationStatus: SupplierConfirmationStatus.NOT_SENT,
           supplierConfirmationCode: null,
           voucherStatus: 'NOT_GENERATED',
           voucherGeneratedAt: null,
           operationalNotes: null,
           serviceDate,
-          startTime: isActivityService ? item.startTime?.trim() || null : null,
-          pickupTime: isActivityService ? item.pickupTime?.trim() || null : null,
-          pickupLocation: isActivityService ? item.pickupLocation?.trim() || item.location?.trim() || null : null,
+          startTime: carriesOperationalTiming ? item.startTime?.trim() || null : null,
+          pickupTime: carriesOperationalTiming ? item.pickupTime?.trim() || null : null,
+          pickupLocation: carriesOperationalTiming ? item.pickupLocation?.trim() || item.location?.trim() || null : null,
           dropoffLocation: null,
           assignedVehicleId: null,
           assignedGuideId: null,
-          meetingPoint: isActivityService ? item.meetingPoint?.trim() || null : null,
+          meetingPoint: carriesOperationalTiming ? item.meetingPoint?.trim() || null : null,
           participantCount: isActivityService ? resolvedParticipantCount : null,
           adultCount: isActivityService ? resolvedAdultCount : null,
           childCount: isActivityService ? resolvedChildCount : null,
@@ -11740,6 +11746,13 @@ export class QuotesService {
 
     if (group === 'ticketing') {
       return BookingOperationServiceType.TICKET;
+    }
+
+    // Meals/dining have a dedicated operational bucket (restaurant assignment + meal
+    // confirmation live on DINING in bookings.service). Without this branch a meal
+    // falls through to ACTIVITY, mis-bucketing it on the Ops board.
+    if (group === 'meal') {
+      return BookingOperationServiceType.DINING;
     }
 
     if (group === 'operationalAssistance' || group === 'other') {
