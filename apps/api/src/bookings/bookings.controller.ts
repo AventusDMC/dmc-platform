@@ -1521,6 +1521,24 @@ export class BookingsController {
     return this.bookingsService.getOperationalVoucherSendPreview(id, operationId, actor);
   }
 
+  // Operations V2 (Phase 2F-B) — actual voucher SEND to the assigned operational
+  // supplier via Resend HTTP. Gated by OPS_V2_VOUCHER_SEND_ENABLED (backend
+  // kill-switch) + a required recipient allowlist + verified sender. Body is
+  // IGNORED — recipient/subject/body/attachment are 100% server-resolved. Audit
+  // only after a successful send; no voucher status change, no sentAt/issuedAt.
+  @Post(':id/operations/:operationId/voucher/send')
+  @Roles('admin', 'operations')
+  sendOperationalVoucherEmail(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.sendOperationalVoucherEmail(id, operationId, {
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Post('services/bulk-actions')
   @Roles('admin', 'operations')
   bulkUpdateServiceStatuses(
