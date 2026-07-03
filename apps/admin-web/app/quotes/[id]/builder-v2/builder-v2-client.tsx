@@ -36,6 +36,7 @@ export function BuilderV2Client({
   canEditItinerary = false,
   itemCreateEnabled = false,
   canAddItem = false,
+  canCreateBooking = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -157,6 +158,13 @@ export function BuilderV2Client({
    * withheld. Mirrors the backend V2 route @Roles; the backend stays source of truth.
    */
   canAddItem?: boolean
+  /**
+   * Booking Creation V2 (Slice 1D). Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE +
+   * admin/operations + convertible status (ACCEPTED/CONFIRMED). Controls whether the
+   * "Create booking" card renders. The backend V2 route re-enforces flag/role/status/
+   * accepted-version/duplicate — it stays the source of truth.
+   */
+  canCreateBooking?: boolean
 }) {
   const router = useRouter()
 
@@ -691,6 +699,7 @@ export function BuilderV2Client({
       onDeleteDay={canEditItinerary ? handleDeleteDay : undefined}
       itemCreateEnabled={canAddItem && itemCreateEnabled}
       onAddItem={canAddItem ? handleAddItem : undefined}
+      canCreateBooking={canCreateBooking}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       onSendProposalEmail={
         proposalEmailSendEnabled && canViewPricingApplyAudit
