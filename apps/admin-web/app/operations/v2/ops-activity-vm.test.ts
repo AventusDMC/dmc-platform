@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   buildActivityVM,
+  buildVoucherEmailedSummary,
   changeSummary,
   deriveSeverity,
   humanizeAuditValue,
@@ -139,6 +140,82 @@ describe('ops-activity-vm — UUID sanitization (Activity display)', () => {
 
   it('the whole VM never serializes the raw UUID', () => {
     assert.ok(!JSON.stringify(vm).includes(SUPPLIER_ASSIGN_UUID));
+  });
+});
+
+describe('ops-activity-vm — voucher-send audit display (Phase 2F-B)', () => {
+  const note = JSON.stringify({
+    supplierName: 'Almushtari Logistics Services',
+    recipientDomains: ['@axisdmc.com'],
+    recipientCount: 1,
+    messageId: '49a3999c-0ce1-4ea6-ab68-afcd095a396b',
+    attachedPdf: true,
+  });
+  const vm = buildActivityVM({
+    auditLogs: [
+      {
+        id: 've-1',
+        entityType: 'booking_service',
+        entityId: 'svc-1',
+        action: 'operational_voucher_emailed',
+        oldValue: null,
+        newValue: 'a1b2c3d4-0000-4000-8000-000000000000 → 1 recipient(s) [@axisdmc.com]',
+        note,
+        actor: 'ops@dmc',
+        createdAt: '2026-07-03T02:00:00Z',
+      },
+    ],
+  });
+  const item = vm.items[0];
+
+  it('maps operational_voucher_emailed to the friendly label', () => {
+    assert.equal(item.action, 'Voucher emailed to supplier');
+  });
+
+  it('shows a safe recipient summary (count + domain only), no redundant note', () => {
+    assert.equal(item.changeSummary, 'Emailed to 1 recipient · @axisdmc.com');
+    assert.equal(item.detail, null);
+  });
+
+  it('never exposes messageId / full email / PDF / raw JSON note / finance', () => {
+    const serialized = JSON.stringify(vm);
+    for (const bad of [
+      '49a3999c', 'messageId', 'attachedPdf', 'supplierName', 'recipientDomains',
+      'ziad@axisdmc.com', '%PDF', 'unitCost', 'totalCost', 'payable', 'margin', 'IBAN',
+    ]) {
+      assert.ok(!serialized.includes(bad), `voucher-send activity leaked "${bad}"`);
+    }
+  });
+
+  it('pluralizes and joins multiple recipient domains safely', () => {
+    const n = JSON.stringify({ recipientDomains: ['@axisdmc.com', '@ops.example'], recipientCount: 2, messageId: 'x' });
+    const v = buildActivityVM({
+      auditLogs: [{ id: 've-2', entityType: 'booking_service', action: 'operational_voucher_emailed', note: n, newValue: null }],
+    });
+    assert.equal(v.items[0].changeSummary, 'Emailed to 2 recipients · @axisdmc.com, @ops.example');
+  });
+
+  it('falls back safely (still friendly label) when the note is not the expected JSON', () => {
+    const v = buildActivityVM({
+      auditLogs: [{ id: 've-3', entityType: 'booking_service', action: 'operational_voucher_emailed', note: 'plain note', newValue: null }],
+    });
+    assert.equal(v.items[0].action, 'Voucher emailed to supplier');
+    assert.equal(v.items[0].detail, 'plain note'); // generic (non-financial) note passes through
+  });
+
+  it('buildVoucherEmailedSummary: only @domains + count; null on bad shapes', () => {
+    assert.equal(
+      buildVoucherEmailedSummary(JSON.stringify({ recipientCount: 1, recipientDomains: ['@x.co'] })),
+      'Emailed to 1 recipient · @x.co',
+    );
+    assert.equal(buildVoucherEmailedSummary(JSON.stringify({ recipientCount: 0, recipientDomains: [] })), null);
+    assert.equal(buildVoucherEmailedSummary('not json'), null);
+    assert.equal(buildVoucherEmailedSummary(null), null);
+    // A full address in recipientDomains (bad shape) is dropped — only @domains kept.
+    assert.equal(
+      buildVoucherEmailedSummary(JSON.stringify({ recipientCount: 1, recipientDomains: ['ziad@axisdmc.com'] })),
+      'Emailed to 1 recipient',
+    );
   });
 });
 
