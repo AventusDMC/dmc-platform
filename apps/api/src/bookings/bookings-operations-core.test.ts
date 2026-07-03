@@ -4346,6 +4346,44 @@ test('operational voucher SEND PREVIEW endpoint is a GET, scoped to the operatio
   assert.deepEqual((Reflect as any).getMetadata('roles', h), ['admin', 'operations']);
 });
 
+test('operational voucher SEND endpoint is a POST, scoped to the operation, role-gated admin/operations', () => {
+  const h = BookingsController.prototype.sendOperationalVoucherEmail;
+  assert.equal((Reflect as any).getMetadata(PATH_METADATA, h), ':id/operations/:operationId/voucher/send');
+  assert.equal((Reflect as any).getMetadata(METHOD_METADATA, h), RequestMethod.POST);
+  assert.deepEqual((Reflect as any).getMetadata('roles', h), ['admin', 'operations']);
+});
+
+test('operational voucher SEND (Phase 2F-B) is blocked feature_disabled when the backend flag is OFF — no readiness/pdf/mail/audit', async () => {
+  delete process.env.OPS_V2_VOUCHER_SEND_ENABLED;
+  const service = createService({
+    voucher: {
+      findUnique: async () => {
+        throw new Error('voucher must not be queried when the send flag is OFF');
+      },
+    },
+    bookingService: {
+      findFirst: async () => {
+        throw new Error('booking must not be resolved when the send flag is OFF');
+      },
+    },
+    bookingAuditLog: {
+      create: async () => {
+        throw new Error('must not write an audit when the send flag is OFF');
+      },
+      findFirst: async () => {
+        throw new Error('must not run a duplicate check when the send flag is OFF');
+      },
+    },
+  });
+  const r = await service.sendOperationalVoucherEmail('bk', 'op', { companyActor: { companyId: 'c1' } });
+  assert.equal(r.blocked, true);
+  assert.equal(r.blockedReason, 'feature_disabled');
+  assert.equal(r.sent, false);
+  // Loose operational scoping for the actual send path is exercised via
+  // getOperationalVoucherSendPreview (see the SEND PREVIEW loose-scope test above),
+  // which the send flow reuses server-side to re-resolve readiness + recipient.
+});
+
 test('voucher status transitions draft to ready to sent and blocks cross-company access', async () => {
   const updatedRows: any[] = [];
   const service = createService({
