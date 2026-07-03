@@ -2102,7 +2102,7 @@ test('GET /bookings returns list with post-migration-safe booking service select
             updatedAt: new Date('2026-04-27T00:00:00.000Z'),
             snapshotJson: { title: 'Recovered production booking', totalCost: 100, totalSell: 130 },
             clientSnapshotJson: { name: 'Client Co' },
-            pricingSnapshotJson: { totalCost: 100, totalSell: 130 },
+            pricingSnapshotJson: { totalCost: 100, totalSell: 130, currency: 'JOD' },
             roomCount: 1,
             passengers: [],
             roomingEntries: [],
@@ -2142,6 +2142,8 @@ test('GET /bookings returns list with post-migration-safe booking service select
   assert.equal(bookings[0].id, '11111111-1111-4111-8111-111111111111');
   assert.equal(bookings[0].sourceQuoteId, 'quote-1');
   assert.equal(bookings[0].finance.quotedTotalSell, 130);
+  // Currency-label hardening: the finance summary exposes the snapshot currency.
+  assert.equal(bookings[0].finance.currency, 'JOD');
   assert.equal(bookings[0].operations.badge.breakdown.pendingConfirmations, 1);
 });
 

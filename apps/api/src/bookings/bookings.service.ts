@@ -9455,14 +9455,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const pricingSnapshot = (values.pricingSnapshotJson || {}) as {
       totalCost?: number | null;
       totalSell?: number | null;
+      currency?: string | null;
     };
     const snapshot = (values.snapshotJson || {}) as {
       totalCost?: number | null;
       totalSell?: number | null;
+      quoteCurrency?: string | null;
       quoteItems?: Array<{
         totalCost?: number | null;
       }>;
     };
+    // Currency of the booking's frozen pricing. Prefer the pricing snapshot; fall back
+    // to the full accepted-version snapshot's quoteCurrency so bookings converted before
+    // currency was stored in pricingSnapshotJson still resolve correctly. Null when the
+    // snapshot carries no currency (the FE then applies its own USD fallback).
+    const currency = pricingSnapshot.currency ?? snapshot.quoteCurrency ?? null;
     const activeServices = values.services.filter((service) => service.status !== BookingServiceLifecycleStatus.cancelled);
     const quotedTotalCost = this.roundMoney(
       Number(pricingSnapshot.totalCost ?? snapshot.totalCost ?? this.sumSnapshotQuoteItemCosts(snapshot.quoteItems)),
@@ -9556,6 +9563,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const hasOverdueSupplierPayments = overdueSupplierPayments.length > 0;
 
     return {
+      currency,
       quotedTotalSell,
       quotedTotalCost,
       quotedMargin,
