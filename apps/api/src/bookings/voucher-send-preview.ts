@@ -63,6 +63,12 @@ const SENDABLE_VOUCHER_STATUSES = new Set(['GENERATED', 'READY', 'ISSUED', 'SENT
 // Lightweight format check (not RFC-exhaustive): one @, a dot in the domain, no spaces.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Lightweight email-format check (shared with Phase 2F-B send gating). Additive
+// export — the readiness builder's behaviour is unchanged.
+export function isValidEmail(email: string): boolean {
+  return EMAIL_RE.test(String(email || '').trim());
+}
+
 // Parse a stored Supplier.email into a clean list. Accepts comma- OR semicolon-
 // separated values, trims, drops empties/dupes. Read-only of master data.
 export function parseSupplierEmails(raw: string | null | undefined): string[] {

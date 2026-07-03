@@ -33,6 +33,9 @@ import {
 } from './supplier-confirmation-preview';
 import { planSupplierConfirmationSend } from './supplier-confirmation-send';
 import { buildVoucherSendPreview, type VoucherSendPreview } from './voucher-send-preview';
+import { sendOperationalVoucherEmailCore, type VoucherSendResult, type VoucherSendAuditEntry } from './voucher-send.core';
+import { isOpsV2VoucherSendEnabled, parseRecipientAllowlist, getVoucherEmailSender } from './ops-voucher-send-flags';
+import { getEmailProvider, sendViaResend } from '../common/mailer';
 
 type BookingPdfQuoteItem = {
   id?: string;
@@ -11726,6 +11729,86 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         ? { id: assigned.id, name: assigned.name ?? null, email: assigned.email ?? null }
         : null,
     });
+  }
+
+  /**
+   * Operations V2 (Phase 2F-B) — actual voucher SEND to the assigned operational
+   * supplier via Resend HTTP. Gated by OPS_V2_VOUCHER_SEND_ENABLED (independent
+   * backend kill-switch) + a required recipient allowlist + a verified Resend
+   * sender. Re-runs 2F-A readiness server-side, re-resolves the recipient, attaches
+   * the finance-free #598 PDF, sends, and writes an audit ONLY after a successful
+   * send. NO voucher status change, NO sentAt/issuedAt, NO SMTP, NO client-supplied
+   * recipient/subject/body/attachment. Pure decision logic lives in
+   * sendOperationalVoucherEmailCore; this wires the real dependencies.
+   */
+  async sendOperationalVoucherEmail(
+    bookingId: string,
+    operationId: string,
+    data: { actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ): Promise<VoucherSendResult> {
+    const actor = data.companyActor;
+    return sendOperationalVoucherEmailCore(
+      { bookingId, operationId },
+      {
+        isFeatureEnabled: () => isOpsV2VoucherSendEnabled(),
+        getAllowlist: () => parseRecipientAllowlist(),
+        getSender: () => getVoucherEmailSender(),
+        isResendConfigured: () => getEmailProvider() === 'resend',
+        loadReadiness: () => this.getOperationalVoucherSendPreview(bookingId, operationId, actor),
+        loadVoucherId: async () => {
+          const v = await (this.prisma.voucher as any).findUnique({
+            where: { bookingServiceId: operationId },
+            select: { id: true },
+          });
+          return v?.id ?? null;
+        },
+        getPdf: () => this.generateOperationalVoucherPdf(bookingId, operationId, actor),
+        recentDuplicateExists: async (key) => {
+          const since = new Date(Date.now() - 60_000);
+          const recent = await (this.prisma.bookingAuditLog as any).findFirst({
+            where: {
+              bookingServiceId: operationId,
+              action: 'operational_voucher_emailed',
+              createdAt: { gte: since },
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { note: true },
+          });
+          if (!recent?.note) return false;
+          try {
+            const prev = JSON.parse(recent.note);
+            const sameCount = Number(prev.recipientCount) === key.recipientCount;
+            const prevDomains = Array.isArray(prev.recipientDomains) ? [...prev.recipientDomains].sort() : [];
+            const nowDomains = [...key.recipientDomains].sort();
+            const sameDomains =
+              prevDomains.length === nowDomains.length && prevDomains.every((d: string, i: number) => d === nowDomains[i]);
+            return sameCount && sameDomains;
+          } catch {
+            return false;
+          }
+        },
+        sendMail: (opts) =>
+          sendViaResend(opts, { bookingId, bookingServiceId: operationId, action: 'operational_voucher_emailed' }),
+        audit: async (entry: VoucherSendAuditEntry) => {
+          await this.createAuditLog(this.prisma as any, {
+            bookingId: entry.bookingId,
+            bookingServiceId: entry.bookingServiceId,
+            entityType: BookingAuditEntityType.booking_service,
+            entityId: entry.bookingServiceId,
+            action: entry.action,
+            newValue: `${entry.voucherId ?? 'voucher'} → ${entry.recipientCount} recipient(s) [${entry.recipientDomains.join(', ')}]`,
+            note: JSON.stringify({
+              supplierName: entry.supplierName,
+              recipientDomains: entry.recipientDomains,
+              recipientCount: entry.recipientCount,
+              messageId: entry.messageId,
+              attachedPdf: true,
+            }),
+            actor: data.actor,
+          });
+        },
+      },
+    );
   }
 
   async getSupplierConfirmationQueues(input: {

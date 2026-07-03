@@ -34,7 +34,16 @@ const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.css']);
 const ASSIGN_ALLOWLIST = new Set(['supplier-assignment-control.tsx', 'ops-supplier-assign-request.ts']);
 const CONFIRM_ALLOWLIST = new Set(['supplier-confirmation-control.tsx', 'ops-supplier-confirm-request.ts']);
 const VOUCHER_GENERATE_ALLOWLIST = new Set(['voucher-generate-control.tsx', 'ops-voucher-generate-request.ts']);
-const MUTATION_ALLOWLIST = new Set([...ASSIGN_ALLOWLIST, ...CONFIRM_ALLOWLIST, ...VOUCHER_GENERATE_ALLOWLIST]);
+// Phase 2F-B: the actual voucher SEND (POST). The FOURTH (and only new) sanctioned
+// mutation. Its control legitimately contains the ONE typed-SEND <input> (the blanket
+// ban forbids <input>), so it is allowlisted and held to the narrower VOUCHER_SEND_FORBIDDEN.
+const VOUCHER_SEND_ALLOWLIST = new Set(['voucher-send-control.tsx', 'ops-voucher-send-request.ts']);
+const MUTATION_ALLOWLIST = new Set([
+  ...ASSIGN_ALLOWLIST,
+  ...CONFIRM_ALLOWLIST,
+  ...VOUCHER_GENERATE_ALLOWLIST,
+  ...VOUCHER_SEND_ALLOWLIST,
+]);
 
 // Phase 2D voucher preview is READ-ONLY (a GET). It is NOT a mutation — it stays
 // OUT of MUTATION_ALLOWLIST and is verified to contain no mutation/download
@@ -245,6 +254,50 @@ const VOUCHER_DOWNLOAD_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: '/issue', why: 'no issue action' },
 ];
 
+// Narrower ban for the Phase 2F-B voucher-SEND surface (the actual send). A POST +
+// the ONE typed-SEND <input> ARE permitted here (and only here); everything else
+// that could mutate, download, print, change status, touch finance/dispatch, or
+// accept a client recipient/subject/body stays forbidden. The send goes through the
+// sanctioned voucher-send proxy and re-uses the 2F-A voucher-send-preview (GET).
+const VOUCHER_SEND_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<select', why: 'no select' },
+  { pattern: '<textarea', why: 'no free-text body/notes input' },
+  { pattern: "method: 'PATCH'", why: 'send is POST-only' },
+  { pattern: "method: 'PUT'", why: 'send is POST-only' },
+  { pattern: "method: 'DELETE'", why: 'send is POST-only' },
+  { pattern: 'method="POST"', why: 'no POST form (use the gated fetch)' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob/download' },
+  { pattern: 'download=', why: 'no download' },
+  { pattern: '.pdf', why: 'no PDF download/export (server attaches it)' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: '/voucher/pdf', why: 'no raw voucher PDF endpoint' },
+  { pattern: '/vouchers/', why: 'no direct /vouchers/:id routes' },
+  { pattern: 'portal-voucher', why: 'no unauthenticated portal PDF' },
+  { pattern: '/agent/', why: 'no agent route' },
+  { pattern: '/status', why: 'no voucher status transition' },
+  { pattern: 'send-document-email', why: 'no legacy document email' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: 'voucher/generate', why: 'Phase 2C endpoint — not this surface' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+  // No client-supplied recipient/subject/body fields — the ONLY input is typed-SEND.
+  { pattern: 'name="email"', why: 'no client recipient input' },
+  { pattern: 'name="recipient"', why: 'no client recipient input' },
+  { pattern: 'name="subject"', why: 'no client subject input' },
+  { pattern: 'name="body"', why: 'no client body input' },
+  { pattern: 'name="to"', why: 'no client recipient input' },
+];
+
 function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
   const violations: string[] = [];
   for (const file of files) {
@@ -341,9 +394,20 @@ describe('Booking Operations V2 — read-only invariant', () => {
     assert.deepEqual(scan(downloadFiles, VOUCHER_DOWNLOAD_FORBIDDEN), [], 'download surface exceeded its scope');
   });
 
-  it('the mutation allowlist is exactly the three sanctioned mutations (preview + download excluded)', () => {
-    assert.equal(MUTATION_ALLOWLIST.size, 6, 'exactly three mutation surfaces × 2 files');
-    for (const name of ['voucher-preview-control.tsx', 'voucher-download-control.tsx']) {
+  it('the voucher-send surface (Phase 2F-B) is the fourth sanctioned mutation (POST + one typed-SEND input)', () => {
+    const sendFiles = all.filter((f) => VOUCHER_SEND_ALLOWLIST.has(path.basename(f)));
+    assert.equal(sendFiles.length, VOUCHER_SEND_ALLOWLIST.size, 'allowlisted send files not found');
+    const combined = sendFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('voucher-send'), 'send surface must target the voucher-send proxy');
+    // The control legitimately contains the ONE typed-SEND <input> and a POST (both
+    // tripped by the blanket ban) — it must instead pass the narrower send ban.
+    assert.ok(scan(sendFiles, FORBIDDEN).length > 0, 'send control is legitimately exempt from the blanket ban');
+    assert.deepEqual(scan(sendFiles, VOUCHER_SEND_FORBIDDEN), [], 'send surface exceeded its scope');
+  });
+
+  it('the mutation allowlist is exactly the four sanctioned mutations (preview + download excluded)', () => {
+    assert.equal(MUTATION_ALLOWLIST.size, 8, 'exactly four mutation surfaces × 2 files');
+    for (const name of ['voucher-preview-control.tsx', 'voucher-download-control.tsx', 'voucher-send-preview-control.tsx']) {
       assert.ok(!MUTATION_ALLOWLIST.has(name), `${name} (read-only) must not be a mutation`);
     }
   });
