@@ -54,8 +54,16 @@ export type ActivityVM = {
   hasItems: boolean;
 };
 
+// Friendly, specific labels for select actions (display-only). Everything else
+// falls back to the generic title-case below. Keyed by the RAW action string.
+const ACTION_LABEL_OVERRIDES: Record<string, string> = {
+  operational_voucher_emailed: 'Voucher emailed to supplier',
+};
+
 // --- ported action label (Classic page.tsx:867-872) ---
 function formatAuditAction(action: string): string {
+  const override = ACTION_LABEL_OVERRIDES[action.trim().toLowerCase()];
+  if (override) return override;
   return action
     .split('_')
     .filter(Boolean)
@@ -160,6 +168,34 @@ function humanizeDetail(note: string | null | undefined): string | null {
   return cap(h);
 }
 
+/**
+ * Safe recipient summary for the Phase 2F-B voucher-send audit. The audit note is
+ * a JSON blob { supplierName, recipientDomains, recipientCount, messageId, attachedPdf }.
+ * We surface ONLY the recipient count + email DOMAINS (e.g. "@axisdmc.com") — NEVER
+ * the full address, the Resend messageId, the email body, the PDF, or any raw JSON.
+ * Returns null when the note isn't the expected shape (callers fall back to the
+ * generic redaction, which is also safe). Display-only; never mutates audit data.
+ */
+export function buildVoucherEmailedSummary(note: string | null | undefined): string | null {
+  if (!note) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(note);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const record = parsed as Record<string, unknown>;
+  const count = Number(record.recipientCount);
+  if (!Number.isFinite(count) || count <= 0) return null;
+  // Keep only "@domain" tokens — never a full email address, and never the messageId.
+  const domains = Array.isArray(record.recipientDomains)
+    ? record.recipientDomains.filter((d): d is string => typeof d === 'string' && d.startsWith('@'))
+    : [];
+  const domainText = domains.length ? ` · ${domains.join(', ')}` : '';
+  return `Emailed to ${count} recipient${count === 1 ? '' : 's'}${domainText}`;
+}
+
 function entityLabel(entityType: string | null | undefined): string | null {
   const e = String(entityType || '').toLowerCase();
   if (e === 'booking') return 'Booking';
@@ -183,6 +219,10 @@ function formatTimestamp(iso: string | null | undefined): string {
 
 function mapItem(log: RawAuditLog): ActivityItemVM {
   const action = String(log.action || 'updated');
+  // Phase 2F-B voucher-send: surface a safe recipient summary (count + domains only)
+  // and suppress the raw JSON note + raw newValue — never the messageId/body/PDF.
+  const emailedSummary =
+    action.trim().toLowerCase() === 'operational_voucher_emailed' ? buildVoucherEmailedSummary(log.note) : null;
   return {
     id: log.id,
     actor: log.actor?.trim() || 'System',
@@ -190,9 +230,10 @@ function mapItem(log: RawAuditLog): ActivityItemVM {
     entityLabel: entityLabel(log.entityType),
     timestamp: log.createdAt ?? null,
     timestampLabel: formatTimestamp(log.createdAt),
-    // `note` is operator free-text; strip UUIDs + redact financial.
-    detail: humanizeDetail(log.note),
-    changeSummary: changeSummary(action, log.oldValue, log.newValue),
+    // `note` is operator free-text; strip UUIDs + redact financial. For the voucher-
+    // send audit the safe summary carries the recipient info, so no redundant note.
+    detail: emailedSummary ? null : humanizeDetail(log.note),
+    changeSummary: emailedSummary ?? changeSummary(action, log.oldValue, log.newValue),
     severity: deriveSeverity(action),
   };
 }
