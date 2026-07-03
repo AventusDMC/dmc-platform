@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId } from '../auth/company-scope';
-import { EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { isQuoteItemCreateEnabled } from './quote-item-create.flags';
 import { QuotesService } from './quotes.service';
@@ -15,31 +16,43 @@ export type QuoteItemCreateActor = {
   auditLabel: string;
 } | null;
 
-export type AddActivityItemInput = {
-  // Optional discriminator. Slice 2 is ACTIVITY ONLY — anything else is rejected
-  // out_of_scope. Absent is treated as 'activity' (the route is activity-scoped).
+// V2 item-create input. Slice 2 supports `activity`; Slice 3 adds `guide`. Absent
+// itemType is treated as `activity` (backward compatible). Each type uses its own
+// required fields; anything else is out_of_scope.
+export type AddItemInput = {
   itemType?: string | null;
   dayId?: string | null;
+  serviceDate?: string | null;
+  // Activity
   activityId?: string | null;
   activityRateVariantId?: string | null;
-  serviceDate?: string | null;
-  // Optional pax override; defaults from the quote when omitted.
   adultCount?: number | null;
   childCount?: number | null;
+  // Guide
+  serviceId?: string | null;
+  guideType?: string | null;
+  guideDuration?: string | null;
+  overnight?: boolean | null;
+  guideLanguage?: string | null;
 };
+
+// Back-compat alias (Slice 2 name).
+export type AddActivityItemInput = AddItemInput;
 
 // Statuses on which V2 item-create is allowed (default-safe: finalized/unknown
 // statuses are rejected). Mirrors the FE preview-editable allowlist.
 const EDITABLE_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
+const SUPPORTED_ITEM_TYPES = new Set(['activity', 'guide']);
+const GUIDE_TYPES = new Set(['local', 'escort']);
+const GUIDE_DURATIONS = new Set(['half_day', 'full_day']);
 
-// Quote Builder V2 — Phase B, Slice 2: add ONE Activity item from V2. This is the
-// first item-create path in V2. It is deliberately thin: it gates on the
-// QUOTE_ITEM_CREATE flag (fail-closed), restricts to ACTIVITY only, enforces access
-// + company isolation + editable status + day-belongs-to-quote + activity/variant
-// integrity, then DELEGATES to the EXISTING QuotesService.createItem (the same
-// pricing + recalculateQuoteTotals path Classic uses — pricing is never forked).
-// A sanitized generic AuditLog row is written on success; audit failure never blocks
-// the create.
+// Quote Builder V2 — Phase B item-create (Slice 2 activity + Slice 3 guide). This is
+// deliberately thin: it gates on the QUOTE_ITEM_CREATE flag (fail-closed), restricts
+// to the supported types, enforces access + company isolation + editable status +
+// day-belongs-to-quote + per-type integrity, then DELEGATES to the EXISTING
+// QuotesService.createItem (the same pricing + recalculateQuoteTotals path Classic
+// uses — pricing is never forked). A sanitized generic AuditLog row is written on
+// success; audit failure never blocks the create.
 @Injectable()
 export class QuoteExperiencesV2Service {
   constructor(
@@ -91,34 +104,53 @@ export class QuoteExperiencesV2Service {
     return quote;
   }
 
-  async addActivityItem(quoteId: string, input: AddActivityItemInput, actor: QuoteItemCreateActor) {
+  // Public dispatcher — activity + guide. Shared guards run once; per-type validation
+  // + createItem args are built in the branch. Exactly one item is created.
+  async addItem(quoteId: string, input: AddItemInput, actor: QuoteItemCreateActor) {
     this.assertEnabled();
 
-    // ACTIVITY only in this slice.
-    if (input.itemType != null && String(input.itemType).toLowerCase() !== 'activity') {
+    const itemType = String(input.itemType ?? 'activity').toLowerCase().trim() || 'activity';
+    if (!SUPPORTED_ITEM_TYPES.has(itemType)) {
       throw new BadRequestException({
         code: 'out_of_scope',
-        message: 'Only activity items can be added from V2 in this version.',
+        message: 'Only activity and guide items can be added from V2 in this version.',
       });
     }
 
-    // Required fields (explicit selection — no silent defaults for identity fields).
+    // Shared required fields.
     const dayId = (input.dayId ?? '').trim();
-    const activityId = (input.activityId ?? '').trim();
-    const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
     const serviceDateRaw = (input.serviceDate ?? '').trim();
-    const missing = [
-      ['dayId', dayId],
-      ['activityId', activityId],
-      ['activityRateVariantId', activityRateVariantId],
-      ['serviceDate', serviceDateRaw],
-    ].filter(([, v]) => !v).map(([k]) => k);
+    const missing: string[] = [];
+    if (!dayId) missing.push('dayId');
+    if (!serviceDateRaw) missing.push('serviceDate');
+    // Per-type required fields.
+    if (itemType === 'activity') {
+      if (!(input.activityId ?? '').trim()) missing.push('activityId');
+      if (!(input.activityRateVariantId ?? '').trim()) missing.push('activityRateVariantId');
+    } else {
+      if (!(input.serviceId ?? '').trim()) missing.push('serviceId');
+      if (!(input.guideType ?? '').trim()) missing.push('guideType');
+      if (!(input.guideDuration ?? '').trim()) missing.push('guideDuration');
+    }
     if (missing.length > 0) {
       throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
     }
+
     const serviceDate = new Date(serviceDateRaw);
     if (Number.isNaN(serviceDate.getTime())) {
       throw new BadRequestException({ code: 'invalid_service_date', message: 'serviceDate is not a valid date.' });
+    }
+
+    // Guide enum validation (cheap, before quote access).
+    if (itemType === 'guide') {
+      const gt = String(input.guideType).toLowerCase().trim();
+      const gd = String(input.guideDuration).toLowerCase().trim();
+      if (!GUIDE_TYPES.has(gt)) {
+        throw new BadRequestException({ code: 'invalid_guide_type', message: 'guideType must be local or escort.' });
+      }
+      if (!GUIDE_DURATIONS.has(gd)) {
+        throw new BadRequestException({ code: 'invalid_guide_duration', message: 'guideDuration must be half_day or full_day.' });
+      }
     }
 
     const requiredActor = this.requireActor(actor);
@@ -130,8 +162,53 @@ export class QuoteExperiencesV2Service {
       throw new BadRequestException({ code: 'day_not_found', message: 'Itinerary day not found for this quote.' });
     }
 
-    // Activity + rate-variant integrity (fail fast with clear codes; the delegated
-    // resolver also validates these defensively).
+    const built = itemType === 'activity' ? await this.buildActivity(input, quote) : await this.buildGuide(input);
+
+    // Delegate to the EXISTING createItem — same pricing + recalc path Classic uses.
+    const created = await this.quotes.createItem(
+      {
+        quoteId,
+        itineraryId: dayId,
+        serviceDate,
+        // quantity 1 = one item; markup is set per-type in the builder to the standard
+        // constant so the resolver prices it exactly as the Classic add path does.
+        quantity: 1,
+        ...built.createInput,
+      },
+      { companyId: requiredActor.companyId },
+    );
+
+    const itemId = (created as { id?: string })?.id ?? null;
+    const cost = (created as { totalCost?: number })?.totalCost ?? null;
+    const sell = (created as { totalSell?: number })?.totalSell ?? null;
+    const currency = (created as { currency?: string })?.currency ?? quote.quoteCurrency ?? null;
+
+    // Fresh quote totals after the delegated recalculation (for the FE toast).
+    const totals = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { totalCost: true, totalSell: true } });
+
+    await this.writeAudit(quoteId, itemId, { ...built.auditFields, dayId, cost, sell, currency }, requiredActor);
+
+    return {
+      itemId,
+      itemType,
+      dayId,
+      cost,
+      sell,
+      currency,
+      quote: { totalCost: totals?.totalCost ?? null, totalSell: totals?.totalSell ?? null },
+    };
+  }
+
+  // Back-compat entry (Slice 2). Forces the activity type and delegates.
+  async addActivityItem(quoteId: string, input: AddItemInput, actor: QuoteItemCreateActor) {
+    return this.addItem(quoteId, { ...input, itemType: input.itemType ?? 'activity' }, actor);
+  }
+
+  // ── Activity build: integrity checks + createItem args + audit fields ─────────
+  private async buildActivity(input: AddItemInput, quote: { adults?: number | null; children?: number | null }) {
+    const activityId = (input.activityId ?? '').trim();
+    const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
+
     const activity = await (this.prisma as any).activity.findUnique({ where: { id: activityId }, select: { id: true } });
     if (!activity) {
       throw new BadRequestException({ code: 'activity_not_found', message: 'Activity not found.' });
@@ -150,58 +227,61 @@ export class QuoteExperiencesV2Service {
       });
     }
 
-    // Delegate to the EXISTING createItem — same pricing + recalc path Classic uses.
-    // pax defaults from the quote when the client omits them.
-    const created = await this.quotes.createItem(
-      {
-        quoteId,
+    return {
+      createInput: {
         activityId,
         activityRateVariantId,
-        itineraryId: dayId,
-        serviceDate,
         adultCount: input.adultCount ?? quote.adults ?? undefined,
         childCount: input.childCount ?? quote.children ?? undefined,
-        // Required by createItem. quantity 1 = one activity booking; markup defaults
-        // to the standard experience markup (the resolver applies it exactly as the
-        // Classic add path does — pricing is never forked here).
-        quantity: 1,
         markupPercent: EXPERIENCE_DEFAULT_MARKUP,
       },
-      { companyId: requiredActor.companyId },
-    );
+      auditFields: { itemType: 'activity', activityId, activityRateVariantId } as Record<string, unknown>,
+    };
+  }
 
-    const itemId = (created as { id?: string })?.id ?? null;
-    const cost = (created as { totalCost?: number })?.totalCost ?? null;
-    const sell = (created as { totalSell?: number })?.totalSell ?? null;
-    const currency = (created as { currency?: string })?.currency ?? quote.quoteCurrency ?? null;
+  // ── Guide build: guide-compatible service check + createItem args + audit fields ─
+  // Uses a guide-type SERVICE only (never a guide person). Pricing is the existing
+  // deterministic GUIDE_RATES (+ overnight supplement) applied inside createItem;
+  // markup is the standard GUIDE_DEFAULT_MARKUP. No supplier/person assignment.
+  private async buildGuide(input: AddItemInput) {
+    const serviceId = (input.serviceId ?? '').trim();
+    const guideType = String(input.guideType).toLowerCase().trim();
+    const guideDuration = String(input.guideDuration).toLowerCase().trim();
+    const overnight = Boolean(input.overnight);
+    const langRaw = (input.guideLanguage ?? '').trim();
+    const guideLanguage = langRaw ? langRaw.slice(0, 40) : undefined;
 
-    // Fresh quote totals after the delegated recalculation (for the FE toast).
-    const totals = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { totalCost: true, totalSell: true } });
-
-    await this.writeAudit(quoteId, itemId, {
-      itemType: 'activity',
-      dayId,
-      activityId,
-      activityRateVariantId,
-      cost,
-      sell,
-      currency,
-    }, requiredActor);
+    const service = await (this.prisma as any).supplierService.findUnique({
+      where: { id: serviceId },
+      select: { id: true, category: true, serviceType: { select: { name: true, code: true } } },
+    });
+    if (!service) {
+      throw new BadRequestException({ code: 'service_not_found', message: 'Service not found.' });
+    }
+    if (resolveServiceTaxonomyGroup(service) !== 'guide') {
+      throw new BadRequestException({
+        code: 'not_guide_service',
+        message: 'Selected service is not guide-compatible.',
+      });
+    }
 
     return {
-      itemId,
-      itemType: 'activity',
-      dayId,
-      cost,
-      sell,
-      currency,
-      quote: { totalCost: totals?.totalCost ?? null, totalSell: totals?.totalSell ?? null },
+      createInput: {
+        serviceId,
+        guideType,
+        guideDuration,
+        overnight,
+        guideLanguage,
+        markupPercent: GUIDE_DEFAULT_MARKUP,
+      },
+      // guideLanguage is intentionally NOT audited (it is a free-text request note).
+      auditFields: { itemType: 'guide', serviceId, guideType, guideDuration, overnight } as Record<string, unknown>,
     };
   }
 
   // Best-effort generic audit row. NEVER blocks the create (matches the
   // quote.pricing.apply audit contract). Safe metadata only — no secrets/tokens/
-  // URLs/large payloads/PII.
+  // URLs/large payloads/PII/guide-person id.
   private async writeAudit(
     quoteId: string,
     itemId: string | null,

@@ -468,19 +468,21 @@ export function BuilderV2Client({
     } catch {
       // non-JSON body
     }
+    // Label the toast/errors by the item type being added (activity or guide).
+    const label = String((payload as { itemType?: unknown })?.itemType ?? "activity").toLowerCase() === "guide" ? "Guide" : "Activity"
     if (!res.ok) {
       const code = parsed?.code
       if (code === "feature_disabled") throw new Error("Adding items from V2 is not available.")
-      if (code === "out_of_scope") throw new Error("Only activities can be added from V2 in this version.")
+      if (code === "out_of_scope") throw new Error("Only activities and guides can be added from V2 in this version.")
       const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
-      throw new Error(message?.slice(0, 300) || `Could not add the activity (${res.status}).`)
+      throw new Error(message?.slice(0, 300) || `Could not add the ${label.toLowerCase()} (${res.status}).`)
     }
     const after = parsed?.quote
     setApplyToast({
       text:
         after && typeof after.totalCost === "number" && typeof after.totalSell === "number"
-          ? `Activity added successfully. Quote total is now ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
-          : "Activity added successfully.",
+          ? `${label} added successfully. Quote total is now ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
+          : `${label} added successfully.`,
     })
     router.refresh()
     return parsed

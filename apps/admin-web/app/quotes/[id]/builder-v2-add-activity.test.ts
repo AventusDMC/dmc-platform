@@ -37,7 +37,7 @@ describe('Quote Builder V2 — add Activity item (Phase B, Slice 2)', () => {
       '`/api/quotes/${quote.id}/v2/experiences/item`',
       '"feature_disabled"',
       '"out_of_scope"',
-      'Activity added successfully',
+      'added successfully',
     ]);
   });
 
@@ -51,10 +51,10 @@ describe('Quote Builder V2 — add Activity item (Phase B, Slice 2)', () => {
 
   it('experiences step gates the add form on the flag + handler + days, activity-only, via the catalog', () => {
     contains(stepSrc, [
-      'function AddActivityPanel',
+      'function AddItemPanel',
       'const canAddActivity = Boolean(addItemEnabled && onAddItem && itineraryDays',
-      '<AddActivityPanel',
-      // Activity-only payload with all explicit identity fields.
+      '<AddItemPanel',
+      // Activity payload with all explicit identity fields.
       'itemType: "activity"',
       'activityRateVariantId: variantId',
       'serviceDate',
