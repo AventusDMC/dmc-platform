@@ -230,14 +230,27 @@ function ExperienceRow({
   )
 }
 
-// Phase B, Slice 2: inline "Add activity" form. Activity ONLY. Explicit day +
-// activity + rate variant + service date. Submits to the V2 route via onAddItem
-// (which reuses the existing createItem + recalculation). The persistent success
-// toast + refresh are handled by the client handler; this form just resets/closes.
+// Phase B item-create form. Activity (Slice 2) + Guide (Slice 3). Explicit day +
+// service date, plus per-type fields. Submits to the V2 route via onAddItem (which
+// reuses the existing createItem + recalculation). The persistent success toast +
+// refresh are handled by the client handler; this form just resets/closes.
 const FIELD_CLASS =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
-function AddActivityPanel({
+type AddItemMode = "activity" | "guide"
+
+// A service is guide-compatible when its taxonomy source (serviceType code/name or
+// category) contains "guide" — mirrors the backend resolveServiceTaxonomyGroup rule.
+// The guide catalog uses the services proxy (never the guide-people endpoint, which
+// is for assigning a real guide person and is out of scope).
+function isGuideServiceRecord(s: { category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null }) {
+  const src = String(s.serviceType?.code || s.serviceType?.name || s.category || "")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+  return src.includes("guide")
+}
+
+function AddItemPanel({
   onAddItem,
   itineraryDays,
 }: {
@@ -245,24 +258,30 @@ function AddActivityPanel({
   itineraryDays: ItineraryDay[]
 }) {
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<AddItemMode>("activity")
   const [loadingCatalog, setLoadingCatalog] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [activities, setActivities] = useState<Array<{ id: string; name: string; rateVariants?: Array<{ id: string; name: string; currency?: string; costPrice?: number; active?: boolean }> }>>([])
+  const [guideServices, setGuideServices] = useState<Array<{ id: string; name: string }>>([])
   const [dayId, setDayId] = useState("")
+  const [serviceDate, setServiceDate] = useState("")
+  // Activity fields
   const [activityId, setActivityId] = useState("")
   const [variantId, setVariantId] = useState("")
-  const [serviceDate, setServiceDate] = useState("")
+  // Guide fields
+  const [serviceId, setServiceId] = useState("")
+  const [guideType, setGuideType] = useState("")
+  const [guideDuration, setGuideDuration] = useState("")
+  const [overnight, setOvernight] = useState(false)
+  const [guideLanguage, setGuideLanguage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const openForm = async () => {
-    setOpen(true)
-    setError(null)
-    if (activities.length > 0 || loadingCatalog) return
+  const loadActivities = async () => {
+    if (activities.length > 0) return
     setLoadingCatalog(true)
     setCatalogError(null)
     try {
-      // Reuse the existing catalog proxy — read-only, no quote mutation.
       const res = await fetch("/api/activities", { cache: "no-store" })
       if (!res.ok) throw new Error(`Could not load activities (${res.status}).`)
       const data = await res.json()
@@ -274,11 +293,42 @@ function AddActivityPanel({
     }
   }
 
+  const loadGuideServices = async () => {
+    if (guideServices.length > 0) return
+    setLoadingCatalog(true)
+    setCatalogError(null)
+    try {
+      // Guide-compatible SERVICES only — /api/services filtered to guide taxonomy.
+      const res = await fetch("/api/services", { cache: "no-store" })
+      if (!res.ok) throw new Error(`Could not load services (${res.status}).`)
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : []
+      setGuideServices(list.filter(isGuideServiceRecord).map((s: any) => ({ id: s.id, name: s.name })))
+    } catch (e) {
+      setCatalogError(e instanceof Error ? e.message : "Could not load guide services.")
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }
+
+  const openForm = async (nextMode: AddItemMode) => {
+    setMode(nextMode)
+    setOpen(true)
+    setError(null)
+    if (nextMode === "activity") await loadActivities()
+    else await loadGuideServices()
+  }
+
   const reset = () => {
     setDayId("")
+    setServiceDate("")
     setActivityId("")
     setVariantId("")
-    setServiceDate("")
+    setServiceId("")
+    setGuideType("")
+    setGuideDuration("")
+    setOvernight(false)
+    setGuideLanguage("")
     setError(null)
   }
   const cancel = () => {
@@ -291,7 +341,6 @@ function AddActivityPanel({
 
   const onDayChange = (id: string) => {
     setDayId(id)
-    // Default the service date to the selected day's ISO date when available.
     const day = itineraryDays.find((d) => d.id === id)
     if (day?.date && !serviceDate) {
       const match = /^\d{4}-\d{2}-\d{2}/.exec(day.date)
@@ -299,18 +348,25 @@ function AddActivityPanel({
     }
   }
 
-  const canSubmit = Boolean(dayId && activityId && variantId && serviceDate) && !submitting
+  const canSubmit =
+    Boolean(dayId && serviceDate) &&
+    (mode === "activity" ? Boolean(activityId && variantId) : Boolean(serviceId && guideType && guideDuration)) &&
+    !submitting
 
   const submit = async () => {
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
     try {
-      await onAddItem({ itemType: "activity", dayId, activityId, activityRateVariantId: variantId, serviceDate })
+      const payload: Record<string, unknown> =
+        mode === "activity"
+          ? { itemType: "activity", dayId, activityId, activityRateVariantId: variantId, serviceDate }
+          : { itemType: "guide", dayId, serviceId, guideType, guideDuration, overnight, guideLanguage: guideLanguage || undefined, serviceDate }
+      await onAddItem(payload)
       setOpen(false)
       reset()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add the activity.")
+      setError(e instanceof Error ? e.message : `Could not add the ${mode}.`)
     } finally {
       setSubmitting(false)
     }
@@ -318,10 +374,14 @@ function AddActivityPanel({
 
   if (!open) {
     return (
-      <div className="mb-3">
-        <Button size="sm" className="gap-1.5" onClick={openForm}>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <Button size="sm" className="gap-1.5" onClick={() => openForm("activity")}>
           <Plus className="h-4 w-4" aria-hidden="true" />
           Add activity
+        </Button>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openForm("guide")}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add guide
         </Button>
       </div>
     )
@@ -329,7 +389,9 @@ function AddActivityPanel({
 
   return (
     <Card className="mb-3 space-y-2 p-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add activity</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {mode === "activity" ? "Add activity" : "Add guide"}
+      </div>
       {catalogError ? (
         <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -352,37 +414,80 @@ function AddActivityPanel({
           <span className="mb-1 block text-xs text-muted-foreground">Service date</span>
           <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} disabled={submitting} className={FIELD_CLASS} />
         </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted-foreground">Activity</span>
-          <select
-            value={activityId}
-            onChange={(e) => {
-              setActivityId(e.target.value)
-              setVariantId("")
-            }}
-            disabled={submitting || loadingCatalog}
-            className={FIELD_CLASS}
-          >
-            <option value="">{loadingCatalog ? "Loading…" : "Select an activity…"}</option>
-            {activities.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted-foreground">Rate variant</span>
-          <select value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={submitting || !activityId} className={FIELD_CLASS}>
-            <option value="">Select a rate…</option>
-            {variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-                {typeof v.costPrice === "number" ? ` — ${v.currency ?? ""} ${v.costPrice}`.trimEnd() : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+
+        {mode === "activity" ? (
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Activity</span>
+              <select
+                value={activityId}
+                onChange={(e) => {
+                  setActivityId(e.target.value)
+                  setVariantId("")
+                }}
+                disabled={submitting || loadingCatalog}
+                className={FIELD_CLASS}
+              >
+                <option value="">{loadingCatalog ? "Loading…" : "Select an activity…"}</option>
+                {activities.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Rate variant</span>
+              <select value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={submitting || !activityId} className={FIELD_CLASS}>
+                <option value="">Select a rate…</option>
+                {variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                    {typeof v.costPrice === "number" ? ` — ${v.currency ?? ""} ${v.costPrice}`.trimEnd() : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Guide service</span>
+              <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={submitting || loadingCatalog} className={FIELD_CLASS}>
+                <option value="">{loadingCatalog ? "Loading…" : "Select a guide service…"}</option>
+                {guideServices.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Guide type</span>
+              <select value={guideType} onChange={(e) => setGuideType(e.target.value)} disabled={submitting} className={FIELD_CLASS}>
+                <option value="">Select type…</option>
+                <option value="local">Local</option>
+                <option value="escort">Escort</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Duration</span>
+              <select value={guideDuration} onChange={(e) => setGuideDuration(e.target.value)} disabled={submitting} className={FIELD_CLASS}>
+                <option value="">Select duration…</option>
+                <option value="half_day">Half day</option>
+                <option value="full_day">Full day</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted-foreground">Language (optional)</span>
+              <input type="text" value={guideLanguage} onChange={(e) => setGuideLanguage(e.target.value)} disabled={submitting} className={FIELD_CLASS} placeholder="e.g. English" />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input type="checkbox" checked={overnight} onChange={(e) => setOvernight(e.target.checked)} disabled={submitting} />
+              Overnight (+ supplement)
+            </label>
+          </>
+        )}
       </div>
       {error ? (
         <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
@@ -393,14 +498,14 @@ function AddActivityPanel({
       <div className="flex items-center gap-2">
         <Button size="sm" className="gap-1.5" onClick={submit} disabled={!canSubmit}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-          {submitting ? "Adding…" : "Add activity"}
+          {submitting ? "Adding…" : mode === "activity" ? "Add activity" : "Add guide"}
         </Button>
         <Button variant="outline" size="sm" onClick={cancel} disabled={submitting}>
           Cancel
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Adds one activity to the selected day at the standard experience markup. Meals, guides, entrance, external
+        Adds one {mode} to the selected day at the standard markup. Guide-person assignment, meals, entrance, external
         packages, and editing/removing/reordering stay in Classic.
       </p>
     </Card>
@@ -486,9 +591,9 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
         classicHref={classicHref}
       />
 
-      {/* Phase B, Slice 2: add ONE activity from V2 (flag + role/status gated). */}
+      {/* Phase B: add ONE activity (Slice 2) or guide (Slice 3) from V2 (flag + role/status gated). */}
       {canAddActivity && onAddItem && itineraryDays ? (
-        <AddActivityPanel onAddItem={onAddItem} itineraryDays={itineraryDays} />
+        <AddItemPanel onAddItem={onAddItem} itineraryDays={itineraryDays} />
       ) : null}
 
       {/* Staff guidance for the in-scope V2 pricing apply. Shown only when apply is
