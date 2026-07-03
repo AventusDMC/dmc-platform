@@ -19,6 +19,7 @@ import {
 } from './ops-status-map';
 
 export type RawFinanceSummary = {
+  currency?: string | null;
   quotedTotalSell?: number | null;
   realizedTotalCost?: number | null;
   quotedMargin?: number | null;
@@ -124,8 +125,11 @@ export function buildFinanceVM(detail: RawBookingFinance): FinanceVM {
   const clientPayments = rawPayments.filter((p) => String(p.type || '').toUpperCase() === 'CLIENT').map(mapPayment);
   const supplierPayments = rawPayments.filter((p) => String(p.type || '').toUpperCase() === 'SUPPLIER').map(mapPayment);
 
+  // Prefer the booking's snapshot currency (correct even before any payment exists);
+  // fall back to a payment currency, then USD, so bookings without a stored currency
+  // keep the previous behavior.
   const currency =
-    clientPayments[0]?.currency || supplierPayments[0]?.currency || 'USD';
+    finance?.currency || clientPayments[0]?.currency || supplierPayments[0]?.currency || 'USD';
 
   const clientInvoiceStatus = String(finance?.clientInvoiceStatus || 'unbilled');
   const supplierPaymentStatus = String(finance?.supplierPaymentStatus || 'unpaid');

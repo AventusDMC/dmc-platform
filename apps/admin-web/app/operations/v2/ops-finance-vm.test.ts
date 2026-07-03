@@ -82,3 +82,26 @@ describe('ops-finance-vm — empty', () => {
     assert.equal(buildFinanceVM(null).paymentCount, 0);
   });
 });
+
+describe('ops-finance-vm — currency (Booking Creation V2 currency-label hardening)', () => {
+  it('prefers the snapshot currency from the finance summary, even with no payments', () => {
+    // Freshly converted booking: currency in the finance summary, no payments yet.
+    const vm = buildFinanceVM({ finance: { currency: 'JOD', quotedTotalSell: 100 }, payments: [] });
+    assert.equal(vm.currency, 'JOD');
+  });
+
+  it('falls back to USD when neither the summary nor any payment carries a currency', () => {
+    const vm = buildFinanceVM({ finance: { quotedTotalSell: 100 }, payments: [] });
+    assert.equal(vm.currency, 'USD');
+  });
+
+  it('falls back to a payment currency when the summary has none (no regression)', () => {
+    const vm = buildFinanceVM({ finance: { quotedTotalSell: 100 }, payments: [{ type: 'CLIENT', amount: 50, currency: 'AED' }] });
+    assert.equal(vm.currency, 'AED');
+  });
+
+  it('summary currency wins over payment currency', () => {
+    const vm = buildFinanceVM({ finance: { currency: 'JOD', quotedTotalSell: 100 }, payments: [{ type: 'CLIENT', amount: 50, currency: 'AED' }] });
+    assert.equal(vm.currency, 'JOD');
+  });
+});

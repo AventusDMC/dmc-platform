@@ -64,11 +64,12 @@ test('buildBookingSnapshotFromAcceptedVersion populates all six Booking snapshot
 
 test('pricingSnapshotJson preserves the commercial figures from the accepted version', () => {
   const service = makeService();
-  const out = (service as any).buildBookingSnapshotFromAcceptedVersion(makeSnapshot());
+  const out = (service as any).buildBookingSnapshotFromAcceptedVersion(makeSnapshot({ quoteCurrency: 'JOD' }));
   assert.deepEqual(out.pricingSnapshotJson, {
     pricingMode: 'FIXED',
     pricingType: 'simple',
     bookingType: 'FIT',
+    currency: 'JOD',
     totalCost: 5980,
     totalSell: 8450,
     pricePerPax: 4225,
@@ -77,6 +78,16 @@ test('pricingSnapshotJson preserves the commercial figures from the accepted ver
     pricingSlabs: [{ minPax: 1, maxPax: 2, pricePerPax: 900 }],
     scenarios: [{ id: 'sc-1', label: 'Base' }],
   });
+});
+
+test('pricingSnapshotJson.currency captures the accepted quote currency (null when absent)', () => {
+  const service = makeService();
+  // Currency preserved from the accepted-version snapshot.
+  const withCurrency = (service as any).buildBookingSnapshotFromAcceptedVersion(makeSnapshot({ quoteCurrency: 'AED' }));
+  assert.equal(withCurrency.pricingSnapshotJson.currency, 'AED');
+  // No quoteCurrency on the snapshot ⇒ null (FE applies its own USD fallback).
+  const withoutCurrency = (service as any).buildBookingSnapshotFromAcceptedVersion(makeSnapshot({ quoteCurrency: undefined }));
+  assert.equal(withoutCurrency.pricingSnapshotJson.currency, null);
 });
 
 test('pax + room + night counts are coerced to safe non-negative integers', () => {

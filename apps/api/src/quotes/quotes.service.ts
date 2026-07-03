@@ -11101,6 +11101,7 @@ export class QuotesService {
       pricingMode?: string | null;
       pricingType?: string | null;
       validUntil?: string | null;
+      quoteCurrency?: string | null;
       adults?: number | null;
       children?: number | null;
       roomCount?: number | null;
@@ -11123,6 +11124,9 @@ export class QuotesService {
         pricingMode: snapshot.pricingMode ?? null,
         pricingType: snapshot.pricingType ?? null,
         bookingType: snapshot.bookingType ?? 'FIT',
+        // Currency of the accepted quote — frozen into the pricing snapshot so the
+        // Ops finance view can label figures correctly even before any payment exists.
+        currency: snapshot.quoteCurrency ?? null,
         totalCost: snapshot.totalCost ?? null,
         totalSell: snapshot.totalSell ?? null,
         pricePerPax: snapshot.pricePerPax ?? null,
