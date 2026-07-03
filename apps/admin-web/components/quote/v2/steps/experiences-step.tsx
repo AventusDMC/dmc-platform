@@ -14,8 +14,11 @@ import { PricingPreviewModal } from "./pricing-preview-modal"
 import { ItemPricingApplyModal } from "./item-pricing-apply-modal"
 import { PricingApplyAuditPanel } from "./pricing-apply-audit-panel"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { ApplyItemPricingHandler, Experience, LoadApplyAuditHandler, PreviewItemHandler } from "../../../../lib/quote-types"
-import { Ticket, Calculator } from "lucide-react"
+import type { ApplyItemPricingHandler, Experience, ItineraryDay, LoadApplyAuditHandler, PreviewItemHandler } from "../../../../lib/quote-types"
+import { Ticket, Calculator, Plus, Loader2, AlertTriangle } from "lucide-react"
+
+/** Add one Activity item (Phase B, Slice 2) via the V2 route. */
+export type AddItemHandler = (payload: Record<string, unknown>) => void | Promise<unknown>
 
 export type UpdateDisplayText = (
   quoteItemId: string,
@@ -227,6 +230,183 @@ function ExperienceRow({
   )
 }
 
+// Phase B, Slice 2: inline "Add activity" form. Activity ONLY. Explicit day +
+// activity + rate variant + service date. Submits to the V2 route via onAddItem
+// (which reuses the existing createItem + recalculation). The persistent success
+// toast + refresh are handled by the client handler; this form just resets/closes.
+const FIELD_CLASS =
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+function AddActivityPanel({
+  onAddItem,
+  itineraryDays,
+}: {
+  onAddItem: AddItemHandler
+  itineraryDays: ItineraryDay[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [activities, setActivities] = useState<Array<{ id: string; name: string; rateVariants?: Array<{ id: string; name: string; currency?: string; costPrice?: number; active?: boolean }> }>>([])
+  const [dayId, setDayId] = useState("")
+  const [activityId, setActivityId] = useState("")
+  const [variantId, setVariantId] = useState("")
+  const [serviceDate, setServiceDate] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const openForm = async () => {
+    setOpen(true)
+    setError(null)
+    if (activities.length > 0 || loadingCatalog) return
+    setLoadingCatalog(true)
+    setCatalogError(null)
+    try {
+      // Reuse the existing catalog proxy — read-only, no quote mutation.
+      const res = await fetch("/api/activities", { cache: "no-store" })
+      if (!res.ok) throw new Error(`Could not load activities (${res.status}).`)
+      const data = await res.json()
+      setActivities(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setCatalogError(e instanceof Error ? e.message : "Could not load activities.")
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }
+
+  const reset = () => {
+    setDayId("")
+    setActivityId("")
+    setVariantId("")
+    setServiceDate("")
+    setError(null)
+  }
+  const cancel = () => {
+    setOpen(false)
+    reset()
+  }
+
+  const selectedActivity = activities.find((a) => a.id === activityId)
+  const variants = (selectedActivity?.rateVariants ?? []).filter((v) => v.active !== false)
+
+  const onDayChange = (id: string) => {
+    setDayId(id)
+    // Default the service date to the selected day's ISO date when available.
+    const day = itineraryDays.find((d) => d.id === id)
+    if (day?.date && !serviceDate) {
+      const match = /^\d{4}-\d{2}-\d{2}/.exec(day.date)
+      if (match) setServiceDate(match[0])
+    }
+  }
+
+  const canSubmit = Boolean(dayId && activityId && variantId && serviceDate) && !submitting
+
+  const submit = async () => {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onAddItem({ itemType: "activity", dayId, activityId, activityRateVariantId: variantId, serviceDate })
+      setOpen(false)
+      reset()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add the activity.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mb-3">
+        <Button size="sm" className="gap-1.5" onClick={openForm}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add activity
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="mb-3 space-y-2 p-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add activity</div>
+      {catalogError ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {catalogError}
+        </p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Itinerary day</span>
+          <select value={dayId} onChange={(e) => onDayChange(e.target.value)} disabled={submitting} className={FIELD_CLASS}>
+            <option value="">Select a day…</option>
+            {itineraryDays.map((d) => (
+              <option key={d.id} value={d.id}>
+                Day {d.day}: {d.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Service date</span>
+          <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} disabled={submitting} className={FIELD_CLASS} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Activity</span>
+          <select
+            value={activityId}
+            onChange={(e) => {
+              setActivityId(e.target.value)
+              setVariantId("")
+            }}
+            disabled={submitting || loadingCatalog}
+            className={FIELD_CLASS}
+          >
+            <option value="">{loadingCatalog ? "Loading…" : "Select an activity…"}</option>
+            {activities.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Rate variant</span>
+          <select value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={submitting || !activityId} className={FIELD_CLASS}>
+            <option value="">Select a rate…</option>
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+                {typeof v.costPrice === "number" ? ` — ${v.currency ?? ""} ${v.costPrice}`.trimEnd() : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </p>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <Button size="sm" className="gap-1.5" onClick={submit} disabled={!canSubmit}>
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+          {submitting ? "Adding…" : "Add activity"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={cancel} disabled={submitting}>
+          Cancel
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Adds one activity to the selected day at the standard experience markup. Meals, guides, entrance, external
+        packages, and editing/removing/reordering stay in Classic.
+      </p>
+    </Card>
+  )
+}
+
 export interface ExperiencesStepProps {
   experiences: Experience[]
   currency: string
@@ -259,9 +439,24 @@ export interface ExperiencesStepProps {
    * packages stay preview-only.
    */
   externalPackageApplyEnabled?: boolean
+  /**
+   * Add Activity item (Phase B, Slice 2) flag. When true AND onAddItem +
+   * itineraryDays are provided, the step exposes an "Add activity" form. Activity
+   * only. The backend enforces QUOTE_ITEM_CREATE + role + activity-only, so this is
+   * a UI affordance gate only.
+   */
+  addItemEnabled?: boolean
+  /** Add ONE Activity item (V2 route). Omitted → no Add affordance. */
+  onAddItem?: AddItemHandler
+  /** Itinerary days for the day-select dropdown in the Add-activity form. */
+  itineraryDays?: ItineraryDay[]
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, itineraryDays }: ExperiencesStepProps) {
+  // Add-activity affordance is active only when the flag is on AND a handler +
+  // itinerary days are provided (role/status-gated by the caller). Otherwise the
+  // Experiences step is unchanged.
+  const canAddActivity = Boolean(addItemEnabled && onAddItem && itineraryDays && itineraryDays.length > 0)
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -290,6 +485,11 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
         message="Adding, removing, and pricing services, activities, entrance fees, meals, guides, and external packages are managed in Classic Builder. V2 currently supports limited client text editing only where available."
         classicHref={classicHref}
       />
+
+      {/* Phase B, Slice 2: add ONE activity from V2 (flag + role/status gated). */}
+      {canAddActivity && onAddItem && itineraryDays ? (
+        <AddActivityPanel onAddItem={onAddItem} itineraryDays={itineraryDays} />
+      ) : null}
 
       {/* Staff guidance for the in-scope V2 pricing apply. Shown only when apply is
           enabled (role/status-gated handler present). */}

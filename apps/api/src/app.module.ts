@@ -111,9 +111,11 @@ import { QuoteBlocksController } from './quote-blocks/quote-blocks.controller';
 import { QuoteBlocksService } from './quote-blocks/quote-blocks.service';
 import { QuoteItineraryModule } from './quote-itinerary/quote-itinerary.module';
 import { QuotesController } from './quotes/quotes.controller';
+import { QuoteExperiencesV2Controller } from './quotes/quote-experiences-v2.controller';
 import { QuotePricingService } from './quotes/quote-pricing.service';
 import { ProposalV3Service } from './quotes/proposal-v3.service';
 import { QuotesService } from './quotes/quotes.service';
+import { QuoteExperiencesV2Service } from './quotes/quote-experiences-v2.service';
 import { PublicProposalsController } from './public-proposals/public-proposals.controller';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
@@ -214,6 +216,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ExcursionTemplatesController,
     QuoteBlocksController,
     QuotesController,
+    QuoteExperiencesV2Controller,
     PublicProposalsController,
     ReportsController,
     RoutesController,
@@ -304,6 +307,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ProposalV3Service,
     QuotePricingService,
     QuotesService,
+    QuoteExperiencesV2Service,
     ReportsService,
     RoutesService,
     RouteStandardsService,
