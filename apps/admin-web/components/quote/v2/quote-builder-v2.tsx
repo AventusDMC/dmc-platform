@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "../../ui/button"
 import { QuoteBuilderShell } from "./quote-builder-shell"
+import { CreateBookingCard } from "./create-booking-card"
 import { QuoteHeaderSummary } from "./quote-header-summary"
 import { QuoteWorkflowStepper } from "./quote-workflow-stepper"
 import { QuoteSummarySidebar } from "./quote-summary-sidebar"
@@ -200,6 +201,12 @@ export interface QuoteBuilderV2Props {
    * Omitted → no Add affordance. Resolves to the create result (with new quote total).
    */
   onAddItem?: (payload: Record<string, unknown>) => void | Promise<unknown>
+  /**
+   * Booking Creation V2 (Slice 1D). When true, the "Create booking" card renders in
+   * the sidebar. Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE + admin/operations +
+   * convertible status (ACCEPTED/CONFIRMED). Backend re-enforces everything.
+   */
+  canCreateBooking?: boolean
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -240,6 +247,7 @@ export function QuoteBuilderV2({
   onDeleteDay,
   itemCreateEnabled = false,
   onAddItem,
+  canCreateBooking = false,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -514,6 +522,9 @@ export function QuoteBuilderV2({
               nextAction={insights.nextAction}
               onNavigate={setCurrent}
             />
+            {/* Booking Creation V2 (Slice 1D): renders only when server-gated
+                (flag + admin/operations + convertible status). */}
+            <CreateBookingCard quoteId={quote.id} canCreateBooking={canCreateBooking} />
             {/* Read-only "can this quote be handled in V2?" audit (informational). */}
             <V2ReadinessPanel audit={insights.v2Readiness} />
           </aside>

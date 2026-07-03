@@ -142,6 +142,18 @@ export default async function QuoteBuilderV2Page({
   const canAddItem =
     hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
 
+  // Booking Creation V2 (Slice 1D). Show the "Create booking" card only when the flag
+  // is ON (default OFF), the user is admin/operations, and the quote is convertible
+  // (Accepted/Confirmed). The backend route POST /quotes/:id/v2/booking re-enforces the
+  // flag, role, status, accepted version, and duplicate protection — this is a UI
+  // affordance gate only.
+  const CONVERTIBLE_STATUSES = new Set(["ACCEPTED", "CONFIRMED"])
+  const bookingCreateFlag = process.env.NEXT_PUBLIC_QUOTE_BOOKING_CREATE === 'true'
+  const canCreateBooking =
+    bookingCreateFlag &&
+    hasRequiredRole(role, ["admin", "operations"]) &&
+    CONVERTIBLE_STATUSES.has(quoteStatusCode)
+
   return (
     <BuilderV2Client
       quote={quote}
@@ -163,6 +175,7 @@ export default async function QuoteBuilderV2Page({
       canEditItinerary={canEditItinerary}
       itemCreateEnabled={itemCreateFlag}
       canAddItem={canAddItem}
+      canCreateBooking={canCreateBooking}
     />
   )
 }
