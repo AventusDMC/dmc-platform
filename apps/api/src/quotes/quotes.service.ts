@@ -11239,6 +11239,7 @@ export class QuotesService {
       }>;
       quoteItems?: Array<{
         id?: string;
+        externalPackageName?: string | null;
         activityId?: string | null;
         activityRateVariantId?: string | null;
         ticketRateVariantId?: string | null;
@@ -11393,7 +11394,14 @@ export class QuotesService {
           category: [normalizedServiceType, item.service?.name].filter(Boolean).join(' '),
           serviceType: null,
         };
-        const operationType = this.inferBookingOperationServiceType(serviceTaxonomy);
+        // External-package items are identified by the externalPackageName signal (the
+        // same signal the preview/apply gates use). Real external packages usually have
+        // NO linked SupplierService, so taxonomy classification alone mis-buckets them as
+        // SERVICE. Treat the explicit external signal as authoritative for the bucket.
+        const isExternalPackageItem = Boolean(item.externalPackageName?.trim());
+        const operationType = isExternalPackageItem
+          ? BookingOperationServiceType.EXTERNAL_PACKAGE
+          : this.inferBookingOperationServiceType(serviceTaxonomy);
         const isActivityService = this.isActivityService(serviceTaxonomy);
         // Guides also carry operational timing (start/pickup/meeting) on the quote item,
         // and the BookingService model supports those columns. Preserve them for guides

@@ -185,9 +185,10 @@ test('OBSERVATION: itinerarySnapshotJson captures `itineraries`, NOT `quoteItine
 // Verified against production (2026-07-03, read-only probe): the DB holds exactly 2
 // external-package items, BOTH on CONFIRMED quotes with accepted versions, and BOTH
 // have NO linked SupplierService (service = null). This fixture reproduces that exact
-// shape (with generic placeholder names) so the current classification is traceable.
+// shape (with generic placeholder names). The external-package hardening fix now maps
+// them to EXTERNAL_PACKAGE via the externalPackageName signal.
 
-test('external-package items shaped like real production data classify as SERVICE (gap)', async () => {
+test('external-package items shaped like real production data classify as EXTERNAL_PACKAGE (fixed)', async () => {
   const prisma = { supplier: { findUnique: async ({ where }: any) => ({ id: where.id, name: 'S' }) } };
   const service = makeService(prisma);
   const snap = makeSnapshot({
@@ -204,10 +205,10 @@ test('external-package items shaped like real production data classify as SERVIC
   const byId: Record<string, any> = {};
   for (const r of rows) byId[r.sourceQuoteItemId] = r;
 
-  // GAP (documented, not fixed here): no service taxonomy ⇒ SERVICE, serviceType 'other'.
-  // A low-risk fix (classify by externalPackageName presence) is recommended separately.
-  assert.equal(byId['ext-1'].operationType, 'SERVICE');
-  assert.equal(byId['ext-2'].operationType, 'SERVICE');
+  // FIXED: the explicit externalPackageName signal maps these to EXTERNAL_PACKAGE even
+  // though they have no linked service taxonomy.
+  assert.equal(byId['ext-1'].operationType, 'EXTERNAL_PACKAGE');
+  assert.equal(byId['ext-2'].operationType, 'EXTERNAL_PACKAGE');
   // Conversion is NOT blocked — the rows still map with correct costs.
   assert.equal(byId['ext-1'].totalSell, 1300);
   assert.equal(rows.length, 2);

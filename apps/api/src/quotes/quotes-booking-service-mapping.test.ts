@@ -468,12 +468,11 @@ test('hardening: an unresolved supplier does NOT block mapping and leaves the ro
   assert.equal('assignmentStatus' in hotel, false);
 });
 
-// Risk 4 (documented GAP): external-package classification is driven by the item's
-// service category/name. A quote item whose category maps to external_package/
-// partner_package classifies as EXTERNAL_PACKAGE; but an external item that arrives
-// with NO service taxonomy (only external* fields) falls through to SERVICE. Pinned so
-// the gap is visible before any real-snapshot verification.
-test('hardening: external-package classification — mapped category vs. bare external item', async () => {
+// Risk 4 (FIXED): external-package classification now uses the explicit
+// externalPackageName signal as authoritative. Both a taxonomy-mapped external item
+// and a "bare" external item (only external* fields, no linked service — the real
+// production shape) map to EXTERNAL_PACKAGE.
+test('hardening: external-package classification — mapped category and bare external item both → EXTERNAL_PACKAGE', async () => {
   const service = makeService(['sup-ext']);
   const snap = makeSnapshot({
     quoteItems: [
@@ -500,11 +499,58 @@ test('hardening: external-package classification — mapped category vs. bare ex
   });
   const { byId } = await mapRows(service, snap);
 
-  // With a mapped taxonomy → correct dedicated bucket.
+  // Mapped taxonomy → EXTERNAL_PACKAGE (unchanged).
   assert.equal(byId['it-ext-typed'].operationType, 'EXTERNAL_PACKAGE');
 
-  // GAP: without any service taxonomy, the same commercial concept classifies as SERVICE
-  // and serviceType defaults to 'other'. Documented; not fixed in this slice.
-  assert.equal(byId['it-ext-bare'].operationType, 'SERVICE');
+  // FIXED: a bare external item (externalPackageName only, no linked service) now also
+  // maps to EXTERNAL_PACKAGE via the explicit signal. serviceType (raw category) stays
+  // 'other' — only the operational bucket is corrected.
+  assert.equal(byId['it-ext-bare'].operationType, 'EXTERNAL_PACKAGE');
   assert.equal(byId['it-ext-bare'].serviceType, 'other');
+});
+
+// Focused hardening proofs.
+test('hardening: externalPackageName forces EXTERNAL_PACKAGE even with a generic category/name', async () => {
+  const service = makeService(['sup-x']);
+  const snap = makeSnapshot({
+    quoteItems: [
+      {
+        // Deliberately generic taxonomy that would otherwise classify as SERVICE...
+        id: 'it-ext-generic',
+        itineraryId: 'day-1',
+        quantity: 1,
+        totalCost: 100,
+        totalSell: 130,
+        externalPackageName: 'Cross-border extension',
+        service: { name: 'Misc', category: 'Other', supplierId: 'sup-x', supplierName: 'X' },
+      },
+      {
+        // ...vs a genuinely generic SERVICE item with NO external signal.
+        id: 'it-plain-service',
+        itineraryId: 'day-1',
+        quantity: 1,
+        totalCost: 50,
+        totalSell: 60,
+        service: { name: 'Meet & assist', category: 'Other', supplierId: 'sup-x', supplierName: 'X' },
+      },
+    ],
+  });
+  const { byId } = await mapRows(service, snap);
+  // externalPackageName wins even though category/name are generic.
+  assert.equal(byId['it-ext-generic'].operationType, 'EXTERNAL_PACKAGE');
+  // A normal generic item without the external signal still maps to SERVICE.
+  assert.equal(byId['it-plain-service'].operationType, 'SERVICE');
+});
+
+test('hardening: no regression — hotel/transport/activity/guide/meal/ticket unchanged by the external fix', async () => {
+  const service = makeService();
+  const { byId } = await mapRows(service, makeSnapshot());
+  assert.equal(byId['it-hotel'].operationType, 'HOTEL');
+  assert.equal(byId['it-transport'].operationType, 'TRANSPORT');
+  assert.equal(byId['it-activity'].operationType, 'ACTIVITY');
+  assert.equal(byId['it-guide'].operationType, 'GUIDE');
+  assert.equal(byId['it-meal'].operationType, 'DINING');
+  assert.equal(byId['it-ticket'].operationType, 'TICKET');
+  // The default snapshot's external item uses a mapped category (no externalPackageName).
+  assert.equal(byId['it-external'].operationType, 'EXTERNAL_PACKAGE');
 });
