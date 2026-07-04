@@ -5,7 +5,14 @@ import {
   computeRoomValidity,
   getRoomOccupancyCapacity,
 } from './ops-pax-rooming-vm';
-import { COST_LEAK_VALUE, EMPTY_DETAIL, SAMPLE_DETAIL } from './ops-pax-rooming.fixtures';
+import {
+  COST_LEAK_VALUE,
+  EMPTY_DETAIL,
+  NO_TRAVEL_DETAIL,
+  READY_DETAIL,
+  SAMPLE_DETAIL,
+  WARN_DETAIL,
+} from './ops-pax-rooming.fixtures';
 
 describe('ops-pax-rooming-vm — passengers', () => {
   const vm = buildPaxRoomingVM(SAMPLE_DETAIL);
@@ -87,6 +94,92 @@ describe('ops-pax-rooming-vm — rooming validity (pinned to Classic)', () => {
 
   it('rooms are sorted by sortOrder', () => {
     assert.deepEqual(vm.rooms.map((r) => r.id), ['r-valid', 'r-mismatch', 'r-needs', 'r-assigned']);
+  });
+});
+
+describe('ops-pax-rooming-vm — advisory readiness (PR-1)', () => {
+  const codesOf = (detail: Parameters<typeof buildPaxRoomingVM>[0]) =>
+    buildPaxRoomingVM(detail).readiness.warnings.map((w) => w.code);
+
+  it('WARN fixture raises all six advisory warnings, isReady false', () => {
+    const vm = buildPaxRoomingVM(WARN_DETAIL);
+    const codes = vm.readiness.warnings.map((w) => w.code).sort();
+    assert.deepEqual(codes, [
+      'empty-rooms',
+      'missing-passport',
+      'passport-expiry',
+      'room-count-vs-pax',
+      'rooms-vs-roomCount',
+      'unassigned-passengers',
+    ]);
+    assert.equal(vm.readiness.isReady, false);
+    // every warning is advisory only
+    assert.ok(vm.readiness.warnings.every((w) => w.level === 'warning'));
+  });
+
+  it('WARN fixture reports meaningful counts', () => {
+    const byCode = Object.fromEntries(
+      buildPaxRoomingVM(WARN_DETAIL).readiness.warnings.map((w) => [w.code, w.count]),
+    );
+    assert.equal(byCode['unassigned-passengers'], 2); // w2, w3
+    assert.equal(byCode['empty-rooms'], 1); // wr-b
+    assert.equal(byCode['missing-passport'], 1); // w2
+    assert.equal(byCode['passport-expiry'], 1); // w1
+    assert.equal(byCode['rooms-vs-roomCount'], 1); // 2 vs 3
+    assert.equal(byCode['room-count-vs-pax'], 1); // capacity 2 vs 3 pax
+  });
+
+  it('READY fixture is clean — zero warnings, isReady true', () => {
+    const vm = buildPaxRoomingVM(READY_DETAIL);
+    assert.deepEqual(vm.readiness.warnings, []);
+    assert.equal(vm.readiness.isReady, true);
+  });
+
+  it('each warning is absent when its condition is not met (READY has none of them)', () => {
+    const codes = codesOf(READY_DETAIL);
+    for (const c of [
+      'room-count-vs-pax',
+      'rooms-vs-roomCount',
+      'unassigned-passengers',
+      'empty-rooms',
+      'missing-passport',
+      'passport-expiry',
+    ]) {
+      assert.ok(!codes.includes(c as never), `unexpected warning ${c} in clean booking`);
+    }
+  });
+
+  it('passport EXPIRING inside 6 months of travel warns + sets the per-row flag', () => {
+    const vm = buildPaxRoomingVM(WARN_DETAIL);
+    const w1 = vm.passengers.find((p) => p.id === 'w1')!;
+    assert.equal(w1.passportExpiring, true);
+    assert.ok(codesOf(WARN_DETAIL).includes('passport-expiry'));
+  });
+
+  it('passport valid OUTSIDE 6 months does not warn', () => {
+    const vm = buildPaxRoomingVM(READY_DETAIL);
+    assert.ok(vm.passengers.every((p) => p.passportExpiring === false));
+    assert.ok(!codesOf(READY_DETAIL).includes('passport-expiry'));
+  });
+
+  it('missing travel dates SKIP the expiry warning (no false positive)', () => {
+    const vm = buildPaxRoomingVM(NO_TRAVEL_DETAIL);
+    const n1 = vm.passengers.find((p) => p.id === 'n1')!;
+    assert.equal(n1.passportExpiring, false);
+    assert.equal(n1.passportExpiryDaysToTravel, null);
+    assert.ok(!vm.readiness.warnings.some((w) => w.code === 'passport-expiry'));
+    assert.equal(vm.readiness.isReady, true);
+  });
+
+  it('per-row missingPassport flag is set only for passengers without a passport', () => {
+    const vm = buildPaxRoomingVM(WARN_DETAIL);
+    assert.equal(vm.passengers.find((p) => p.id === 'w2')!.missingPassport, true);
+    assert.equal(vm.passengers.find((p) => p.id === 'w1')!.missingPassport, false);
+  });
+
+  it('readiness carries no finance/cost/sell/margin fields', () => {
+    const serialized = JSON.stringify(buildPaxRoomingVM(WARN_DETAIL).readiness);
+    assert.ok(!/unitSell|unitCost|totalSell|payable|margin|invoice|cost/i.test(serialized), 'readiness leaked a financial key');
   });
 });
 

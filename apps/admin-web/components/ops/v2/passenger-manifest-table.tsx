@@ -12,7 +12,13 @@ function Muted({ value, fallback = '—' }: { value: string | null; fallback?: s
  * controls — display only. Renders allowlisted identity fields from the lean VM
  * (passport is the API's already-masked value). Missing fields show muted text.
  */
-export function PassengerManifestTable({ passengers }: { passengers: PaxRowVM[] }) {
+export function PassengerManifestTable({
+  passengers,
+  showReadinessChips = false,
+}: {
+  passengers: PaxRowVM[];
+  showReadinessChips?: boolean;
+}) {
   if (passengers.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
@@ -45,6 +51,16 @@ export function PassengerManifestTable({ passengers }: { passengers: PaxRowVM[] 
                     </span>
                   ) : null}
                   {p.name}
+                  {showReadinessChips && p.missingPassport ? (
+                    <span className="inline-flex items-center rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                      No passport
+                    </span>
+                  ) : null}
+                  {showReadinessChips && p.passportExpiring ? (
+                    <span className="inline-flex items-center rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                      Passport expiring
+                    </span>
+                  ) : null}
                 </span>
               </td>
               <td className="px-3 py-2"><Muted value={p.nationality} /></td>
