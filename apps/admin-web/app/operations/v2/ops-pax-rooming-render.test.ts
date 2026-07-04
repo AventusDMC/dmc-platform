@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
 import { PaxRoomingTab } from '../../../components/ops/v2/pax-rooming-tab';
 import { buildPaxRoomingVM } from './ops-pax-rooming-vm';
-import { COST_LEAK_VALUE, EMPTY_DETAIL, SAMPLE_DETAIL } from './ops-pax-rooming.fixtures';
+import { COST_LEAK_VALUE, EMPTY_DETAIL, READY_DETAIL, SAMPLE_DETAIL, WARN_DETAIL } from './ops-pax-rooming.fixtures';
 
 // Components are authored for Next's automatic JSX runtime (no `import React`);
 // tsx transpiles with the classic runtime, so expose React for the render.
@@ -49,6 +49,61 @@ describe('PaxRoomingTab render — read-only guardrails', () => {
     for (const forbidden of ['<form', '<input', '<select', '<textarea', '<button', 'Auto-allocate', 'Auto-assign']) {
       assert.ok(!html.includes(forbidden), `pax tab must not render "${forbidden}"`);
     }
+  });
+});
+
+// --- PR-1 advisory readiness strip (flag-gated) ----------------------------
+
+function renderWithFlag(detail: Parameters<typeof buildPaxRoomingVM>[0], enabled: boolean): string {
+  const prev = process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+  if (enabled) process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS = 'true';
+  else delete process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+  try {
+    return renderToStaticMarkup(
+      createElement(PaxRoomingTab, { vm: buildPaxRoomingVM(detail), bookingId: BK }),
+    );
+  } finally {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+    else process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS = prev;
+  }
+}
+
+describe('PaxRoomingTab render — readiness strip (flag ON)', () => {
+  it('renders advisory warning badges for a booking with issues', () => {
+    const h = renderWithFlag(WARN_DETAIL, true);
+    assert.ok(h.includes('missing a passport'), 'missing-passport badge missing');
+    assert.ok(h.includes('expiring within 6 months'), 'passport-expiry badge missing');
+    assert.ok(h.includes('no passengers'), 'empty-rooms badge missing');
+    assert.ok(h.includes('not assigned to a room'), 'unassigned badge missing');
+  });
+
+  it('renders per-row passport chips', () => {
+    const h = renderWithFlag(WARN_DETAIL, true);
+    assert.ok(h.includes('No passport'), 'No passport chip missing');
+    assert.ok(h.includes('Passport expiring'), 'Passport expiring chip missing');
+  });
+
+  it('shows the clean ready state when there are no warnings', () => {
+    const h = renderWithFlag(READY_DETAIL, true);
+    assert.ok(h.includes('Manifest') && h.includes('rooming ready'), 'ready affirmative missing');
+    assert.ok(!h.includes('No passport'), 'no passport chip should not appear when clean');
+  });
+
+  it('renders no form controls even with the strip enabled', () => {
+    const h = renderWithFlag(WARN_DETAIL, true);
+    for (const forbidden of ['<form', '<input', '<select', '<textarea', '<button']) {
+      assert.ok(!h.includes(forbidden), `strip must not render "${forbidden}"`);
+    }
+  });
+});
+
+describe('PaxRoomingTab render — readiness strip (flag OFF default)', () => {
+  it('renders neither the strip nor per-row chips when the flag is unset', () => {
+    const h = renderWithFlag(WARN_DETAIL, false);
+    assert.ok(!h.includes('No passport'), 'chip leaked with flag off');
+    assert.ok(!h.includes('Passport expiring'), 'chip leaked with flag off');
+    assert.ok(!h.includes('missing a passport'), 'strip badge leaked with flag off');
+    assert.ok(!h.includes('Manifest &amp; rooming ready'), 'ready strip leaked with flag off');
   });
 });
 

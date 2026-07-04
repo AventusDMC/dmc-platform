@@ -113,3 +113,71 @@ export const EMPTY_DETAIL: RawBookingDetail = {
   passengers: [],
   roomingEntries: [],
 };
+
+// --- PR-1 advisory-readiness fixtures --------------------------------------
+
+/** Triggers ALL SIX advisory warnings at once. travelEnd = 2026-09-16. */
+export const WARN_DETAIL: RawBookingDetail = {
+  status: 'confirmed',
+  bookingRef: 'BK-WARN',
+  adults: 3,
+  children: 0,
+  roomCount: 3, // vs 2 rooms created -> rooms-vs-roomCount
+  startDate: '2026-09-15',
+  endDate: '2026-09-16',
+  passengers: [
+    // expiring: valid only to 2027-01-10, < travelEnd(2026-09-16)+6mo(2027-03-16)
+    { id: 'w1', firstName: 'Ana', lastName: 'Lopez', title: 'Ms', isLead: true, nationality: 'ESP', passportNumberMasked: '11•••••1', passportExpiryDate: '2027-01-10' },
+    // missing passport + unassigned
+    { id: 'w2', firstName: 'Bruno', lastName: 'Costa', title: 'Mr', isLead: false, nationality: 'PRT', passportNumberMasked: null, passportExpiryDate: null },
+    // valid passport (far), unassigned
+    { id: 'w3', firstName: 'Cara', lastName: 'Nolan', title: 'Ms', isLead: false, nationality: 'IRL', passportNumberMasked: '33•••••3', passportExpiryDate: '2030-01-01' },
+  ],
+  roomingEntries: [
+    // capacity 2, only w1 assigned -> contributes to sumCapacity 2 vs pax 3
+    { id: 'wr-a', roomType: 'DBL', occupancy: 'double', notes: null, sortOrder: 1, assignments: [
+      { id: 'wa1', bookingPassenger: { id: 'w1', firstName: 'Ana', lastName: 'Lopez', title: 'Ms', isLead: true } },
+    ] },
+    // empty room
+    { id: 'wr-b', roomType: null, occupancy: 'unknown', notes: null, sortOrder: 2, assignments: [] },
+  ],
+};
+
+/** Clean booking — zero warnings, ready state. */
+export const READY_DETAIL: RawBookingDetail = {
+  status: 'confirmed',
+  bookingRef: 'BK-READY',
+  adults: 2,
+  children: 0,
+  roomCount: 1,
+  startDate: '2026-09-15',
+  endDate: '2026-09-16',
+  passengers: [
+    { id: 'r1', firstName: 'Dana', lastName: 'Reid', title: 'Ms', isLead: true, nationality: 'GBR', passportNumberMasked: 'AA•••••1', passportExpiryDate: '2030-01-01' },
+    { id: 'r2', firstName: 'Evan', lastName: 'Reid', title: 'Mr', isLead: false, nationality: 'GBR', passportNumberMasked: 'BB•••••2', passportExpiryDate: '2030-01-01' },
+  ],
+  roomingEntries: [
+    { id: 'rr-a', roomType: 'DBL', occupancy: 'double', notes: null, sortOrder: 1, assignments: [
+      { id: 'ra1', bookingPassenger: { id: 'r1', firstName: 'Dana', lastName: 'Reid', title: 'Ms', isLead: true } },
+      { id: 'ra2', bookingPassenger: { id: 'r2', firstName: 'Evan', lastName: 'Reid', title: 'Mr', isLead: false } },
+    ] },
+  ],
+};
+
+/** Passport would be expiring, but travel dates are absent -> expiry warning skipped. */
+export const NO_TRAVEL_DETAIL: RawBookingDetail = {
+  status: 'confirmed',
+  bookingRef: 'BK-NOTRAVEL',
+  adults: 1,
+  children: 0,
+  roomCount: 1,
+  // no startDate / endDate on purpose
+  passengers: [
+    { id: 'n1', firstName: 'Faye', lastName: 'Ortiz', title: 'Ms', isLead: true, nationality: 'MEX', passportNumberMasked: 'CC•••••1', passportExpiryDate: '2026-10-01' },
+  ],
+  roomingEntries: [
+    { id: 'nr-a', roomType: 'SGL', occupancy: 'single', notes: null, sortOrder: 1, assignments: [
+      { id: 'na1', bookingPassenger: { id: 'n1', firstName: 'Faye', lastName: 'Ortiz', title: 'Ms', isLead: true } },
+    ] },
+  ],
+};
