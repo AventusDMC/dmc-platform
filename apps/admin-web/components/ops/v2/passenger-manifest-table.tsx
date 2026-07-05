@@ -8,16 +8,38 @@ function Muted({ value, fallback = '—' }: { value: string | null; fallback?: s
 }
 
 /**
+ * A PII manifest cell. For restricted roles the backend redacts these fields
+ * (PR-3a) so they arrive null; show an explicit "Restricted" placeholder rather
+ * than a misleading "Missing"/"—" (PR-3d). Full-PII roles see the real value.
+ */
+function PiiCell({
+  value,
+  canSeeFullPii,
+  fallback = '—',
+}: {
+  value: string | null;
+  canSeeFullPii: boolean;
+  fallback?: string;
+}) {
+  if (!canSeeFullPii) return <span className="text-muted-foreground italic">Restricted</span>;
+  return <Muted value={value} fallback={fallback} />;
+}
+
+/**
  * Read-only passenger manifest. No inputs/selects/textareas, no forms, no edit
  * controls — display only. Renders allowlisted identity fields from the lean VM
  * (passport is the API's already-masked value). Missing fields show muted text.
+ * For restricted roles (`canSeeFullPii=false`) the redacted PII columns show a
+ * "Restricted" placeholder and passport readiness chips are suppressed (PR-3d).
  */
 export function PassengerManifestTable({
   passengers,
   showReadinessChips = false,
+  canSeeFullPii = true,
 }: {
   passengers: PaxRowVM[];
   showReadinessChips?: boolean;
+  canSeeFullPii?: boolean;
 }) {
   if (passengers.length === 0) {
     return (
@@ -51,24 +73,24 @@ export function PassengerManifestTable({
                     </span>
                   ) : null}
                   {p.name}
-                  {showReadinessChips && p.missingPassport ? (
+                  {showReadinessChips && canSeeFullPii && p.missingPassport ? (
                     <span className="inline-flex items-center rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
                       No passport
                     </span>
                   ) : null}
-                  {showReadinessChips && p.passportExpiring ? (
+                  {showReadinessChips && canSeeFullPii && p.passportExpiring ? (
                     <span className="inline-flex items-center rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
                       Passport expiring
                     </span>
                   ) : null}
                 </span>
               </td>
-              <td className="px-3 py-2"><Muted value={p.nationality} /></td>
-              <td className="px-3 py-2"><Muted value={p.passportMasked} fallback="Missing" /></td>
-              <td className="px-3 py-2"><Muted value={p.arrivalFlight} /></td>
-              <td className="px-3 py-2"><Muted value={p.departureFlight} /></td>
-              <td className="px-3 py-2"><Muted value={p.dietaryNotes} /></td>
-              <td className="px-3 py-2"><Muted value={p.roomingNotes} /></td>
+              <td className="px-3 py-2"><PiiCell value={p.nationality} canSeeFullPii={canSeeFullPii} /></td>
+              <td className="px-3 py-2"><PiiCell value={p.passportMasked} canSeeFullPii={canSeeFullPii} fallback="Missing" /></td>
+              <td className="px-3 py-2"><PiiCell value={p.arrivalFlight} canSeeFullPii={canSeeFullPii} /></td>
+              <td className="px-3 py-2"><PiiCell value={p.departureFlight} canSeeFullPii={canSeeFullPii} /></td>
+              <td className="px-3 py-2"><PiiCell value={p.dietaryNotes} canSeeFullPii={canSeeFullPii} /></td>
+              <td className="px-3 py-2"><PiiCell value={p.roomingNotes} canSeeFullPii={canSeeFullPii} /></td>
             </tr>
           ))}
         </tbody>
