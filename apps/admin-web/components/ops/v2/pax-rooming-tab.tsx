@@ -3,6 +3,7 @@ import { OpenInClassicButton } from './open-in-classic-button';
 import { PassengerEditor } from './passenger-editor';
 import { PassengerManifestTable } from './passenger-manifest-table';
 import { ReadOnlyNotice } from './read-only-notice';
+import { RoomingEditor } from './rooming-editor';
 import { RoomingMap } from './rooming-map';
 
 // PR-1 advisory readiness strip. Flag-gated (default OFF); pure display, no
@@ -60,7 +61,7 @@ export function PaxRoomingTab({
       <ReadOnlyNotice
         message={
           canEditPassengers
-            ? 'Passengers are editable in V2. Rooming is read-only — changes are made in Classic.'
+            ? 'Passengers and rooms are editable in V2. Passenger–room assignment is still done in Classic.'
             : 'Passenger and rooming data are read-only in V2. Changes are made in Classic.'
         }
       />
@@ -84,7 +85,11 @@ export function PaxRoomingTab({
           <h2 className="font-heading text-sm font-semibold text-foreground">Rooming map</h2>
           <OpenInClassicButton href={`/bookings/${bookingId}?tab=rooming`} label="Open rooming in Classic" />
         </div>
-        <RoomingMap rooms={vm.rooms} />
+        {canEditPassengers ? (
+          <RoomingEditor bookingId={bookingId} rooms={vm.rooms} />
+        ) : (
+          <RoomingMap rooms={vm.rooms} />
+        )}
       </section>
     </div>
   );
