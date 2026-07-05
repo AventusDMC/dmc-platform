@@ -45,6 +45,40 @@ describe('ops-pax-rooming-vm — passengers', () => {
     assert.equal(lead.passportMasked, '55•••••1');
   });
 
+  it('maps a fully-redacted passenger safely (restricted-role PR-3a payload)', () => {
+    // Mirrors the backend redaction for a restricted role: identity kept, every
+    // sensitive manifest field nulled. The VM must map it without throwing.
+    const redactedVm = buildPaxRoomingVM({
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+      passengers: [
+        {
+          id: 'p-redacted',
+          firstName: 'Lina',
+          lastName: 'Haddad',
+          title: 'Ms',
+          isLead: true,
+          nationality: null,
+          passportNumberMasked: null,
+          passportExpiryDate: null,
+          arrivalFlight: null,
+          departureFlight: null,
+          dietaryNotes: null,
+          roomingNotes: null,
+        },
+      ],
+    });
+    const p = redactedVm.passengers.find((x) => x.id === 'p-redacted')!;
+    assert.equal(p.name, 'Ms Lina Haddad');
+    assert.equal(p.isLead, true);
+    assert.equal(p.passportMasked, null);
+    assert.equal(p.missingPassport, true);
+    assert.equal(p.passportExpiring, false);
+    assert.equal(p.nationality, null);
+    assert.equal(p.arrivalFlight, null);
+    assert.equal(p.dietaryNotes, null);
+  });
+
   it('NEVER carries financial fields through the allowlist', () => {
     const serialized = JSON.stringify(vm);
     assert.ok(!serialized.includes(COST_LEAK_VALUE), `pax view model leaked value ${COST_LEAK_VALUE}`);
