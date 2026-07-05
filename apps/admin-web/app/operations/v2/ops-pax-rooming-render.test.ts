@@ -219,7 +219,7 @@ describe('PassengerEditorError — inline backend error', () => {
 
 // --- PR-2c-1: rooming editing (room CRUD, same edit flag) --------------------
 
-describe('PaxRoomingTab — rooming editing ON (PR-2c-1 CRUD)', () => {
+describe('PaxRoomingTab — rooming editing ON (room CRUD)', () => {
   const h = renderTab(SAMPLE_DETAIL, true);
 
   it('renders add / edit / delete room controls + occupancy select', () => {
@@ -231,10 +231,33 @@ describe('PaxRoomingTab — rooming editing ON (PR-2c-1 CRUD)', () => {
     assert.ok(h.includes('>Delete<'), 'room delete control missing');
   });
 
-  it('does NOT render assignment / auto-assign controls (deferred to PR-2c-2)', () => {
-    for (const token of ['Auto-assign', 'Auto-allocate', 'Assign passenger', 'Unassign']) {
-      assert.ok(!h.includes(token), `PR-2c-1 must not render "${token}"`);
-    }
+  it('introduces no finance/cost/sell/margin fields', () => {
+    assert.ok(!/unitSell|unitCost|totalSell|payable|margin|invoice/i.test(h), 'rooming editor leaked a financial key');
+  });
+});
+
+describe('PaxRoomingTab — rooming assignment ON (PR-2c-2)', () => {
+  // WARN_DETAIL: 3 passengers, only w1 assigned → w2/w3 unassigned (picker + auto-assign show).
+  const h = renderTab(WARN_DETAIL, true);
+
+  it('renders the auto-assign control when passengers are unassigned', () => {
+    assert.ok(h.includes('Auto-assign'), 'auto-assign control missing');
+    assert.ok(h.includes('not assigned to a room'), 'unassigned summary missing');
+  });
+
+  it('renders a per-room assign picker of unassigned passengers', () => {
+    assert.ok(h.includes('Assign passenger…'), 'assign picker placeholder missing');
+    assert.ok(/aria-label="Assign passenger to /.test(h), 'assign select missing');
+    assert.ok(h.includes('>Assign<'), 'assign button missing');
+  });
+
+  it('renders an Unassign control on assigned passengers', () => {
+    assert.ok(h.includes('>Unassign<'), 'unassign control missing');
+  });
+
+  it('still renders room CRUD controls (unchanged)', () => {
+    assert.ok(h.includes('Add room'), 'room CRUD Add room missing');
+    assert.ok(h.includes('aria-label="Occupancy"'), 'room CRUD occupancy select missing');
   });
 
   it('introduces no finance/cost/sell/margin fields', () => {

@@ -5,9 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
   ROOM_OCCUPANCIES,
+  assignmentsPath,
+  buildAssignPassengerRequest,
+  buildAutoAssignRequest,
   buildRoomCreateRequest,
   buildRoomDeleteRequest,
   buildRoomUpdateRequest,
+  buildUnassignPassengerRequest,
   normalizeRoomOccupancy,
   pickAllowedRoomFields,
   resolveRoomingErrorMessage,
@@ -70,6 +74,34 @@ describe('ops-rooming-request — whitelist + occupancy enum', () => {
   });
 });
 
+describe('ops-rooming-request — assignments + auto-assign (PR-2c-2)', () => {
+  it('assign → POST V2 assignments path; body carries ONLY passengerId', () => {
+    const req = buildAssignPassengerRequest('bk-1', 'r-2', 'p-9');
+    assert.equal(req.url, '/api/bookings/bk-1/v2/rooming/r-2/assignments');
+    assert.equal(req.method, 'POST');
+    assert.deepEqual(req.body, { passengerId: 'p-9' });
+    assert.deepEqual(Object.keys(req.body ?? {}), ['passengerId']); // nothing else
+  });
+
+  it('unassign → DELETE V2 assignments/:passengerId path, no body', () => {
+    const req = buildUnassignPassengerRequest('bk-1', 'r-2', 'p-9');
+    assert.equal(req.url, '/api/bookings/bk-1/v2/rooming/r-2/assignments/p-9');
+    assert.equal(req.method, 'DELETE');
+    assert.equal(req.body, undefined);
+  });
+
+  it('auto-assign → POST V2 auto-assign path, no body', () => {
+    const req = buildAutoAssignRequest('bk-1');
+    assert.equal(req.url, '/api/bookings/bk-1/v2/rooming/auto-assign');
+    assert.equal(req.method, 'POST');
+    assert.equal(req.body, undefined);
+  });
+
+  it('assignmentsPath targets the V2 namespace', () => {
+    assert.equal(assignmentsPath('bk', 'r'), '/api/bookings/bk/v2/rooming/r/assignments');
+  });
+});
+
 // --- V2 rooming proxies: JSON forward (not redirect), whitelist, Classic untouched
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // app/operations/v2
@@ -79,6 +111,9 @@ const readClassic = (p: string) => readFileSync(path.join(HERE, '../../api/booki
 
 const createSrc = readV2('route.ts');
 const idSrc = readV2('[roomingEntryId]/route.ts');
+const assignSrc = readV2('[roomingEntryId]/assignments/route.ts');
+const unassignSrc = readV2('[roomingEntryId]/assignments/[passengerId]/route.ts');
+const autoAssignSrc = readV2('auto-assign/route.ts');
 
 describe('V2 rooming proxies — JSON forward, never redirect (CRUD only)', () => {
   it('create proxy POSTs to backend /rooming, whitelists, returns JSON', () => {
@@ -98,16 +133,26 @@ describe('V2 rooming proxies — JSON forward, never redirect (CRUD only)', () =
     assert.ok(!/NextResponse\.redirect|status:\s*303|formData/.test(idSrc));
   });
 
-  it('PR-2c-1 adds NO assignment / auto-assign V2 proxies (deferred to PR-2c-2)', () => {
-    for (const p of ['auto-assign/route.ts', '[roomingEntryId]/assignments/route.ts']) {
-      let exists = true;
-      try {
-        readFileSync(v2(p), 'utf8');
-      } catch {
-        exists = false;
-      }
-      assert.equal(exists, false, `V2 proxy ${p} must not exist in PR-2c-1`);
-    }
+  it('assign proxy POSTs passengerId to backend /assignments, returns JSON', () => {
+    assert.match(assignSrc, /export async function POST/);
+    assert.match(assignSrc, /\/rooming\/\$\{roomingEntryId\}\/assignments`/);
+    assert.match(assignSrc, /forwardProxyJsonResponse/);
+    assert.match(assignSrc, /passengerId/);
+    assert.ok(!/NextResponse\.redirect|status:\s*303|formData/.test(assignSrc));
+  });
+
+  it('unassign proxy DELETEs backend /assignments/:passengerId, returns JSON, no body', () => {
+    assert.match(unassignSrc, /export async function DELETE/);
+    assert.match(unassignSrc, /\/rooming\/\$\{roomingEntryId\}\/assignments\/\$\{passengerId\}`/);
+    assert.match(unassignSrc, /forwardProxyJsonResponse/);
+    assert.ok(!/NextResponse\.redirect|status:\s*303|formData|JSON\.stringify/.test(unassignSrc));
+  });
+
+  it('auto-assign proxy POSTs backend /rooming/auto-assign, returns JSON, no body', () => {
+    assert.match(autoAssignSrc, /export async function POST/);
+    assert.match(autoAssignSrc, /\/rooming\/auto-assign`/);
+    assert.match(autoAssignSrc, /forwardProxyJsonResponse/);
+    assert.ok(!/NextResponse\.redirect|status:\s*303|formData|JSON\.stringify/.test(autoAssignSrc));
   });
 });
 
@@ -116,5 +161,11 @@ describe('V2 rooming proxies — Classic rooming proxies untouched', () => {
     assert.match(readClassic('route.ts'), /formData/);
     assert.match(readClassic('[roomingEntryId]/route.ts'), /formData/);
     assert.match(readClassic('[roomingEntryId]/route.ts'), /NextResponse\.redirect/);
+  });
+
+  it('the Classic assignment + auto-assign proxies still use formData/redirect (unmodified)', () => {
+    assert.match(readClassic('[roomingEntryId]/assignments/route.ts'), /formData/);
+    assert.match(readClassic('[roomingEntryId]/assignments/route.ts'), /NextResponse\.redirect/);
+    assert.match(readClassic('auto-assign/route.ts'), /NextResponse\.redirect/);
   });
 });

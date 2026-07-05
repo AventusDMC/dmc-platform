@@ -82,6 +82,48 @@ export function buildRoomDeleteRequest(bookingId: string, roomingEntryId: string
   return { url: `${roomingBasePath(bookingId)}/${roomingEntryId}`, method: 'DELETE' };
 }
 
+// --- PR-2c-2: assignments + auto-assign -------------------------------------
+
+export type RoomAssignmentRequest = {
+  url: string;
+  method: 'POST' | 'DELETE';
+  body?: { passengerId: string };
+};
+
+export function assignmentsPath(bookingId: string, roomingEntryId: string): string {
+  return `${roomingBasePath(bookingId)}/${roomingEntryId}/assignments`;
+}
+
+/** Assign a passenger to a room. Body carries ONLY passengerId (nothing else). */
+export function buildAssignPassengerRequest(
+  bookingId: string,
+  roomingEntryId: string,
+  passengerId: string,
+): RoomAssignmentRequest {
+  return {
+    url: assignmentsPath(bookingId, roomingEntryId),
+    method: 'POST',
+    body: { passengerId: String(passengerId) },
+  };
+}
+
+/** Unassign a passenger from a room. No body — the ids are in the path. */
+export function buildUnassignPassengerRequest(
+  bookingId: string,
+  roomingEntryId: string,
+  passengerId: string,
+): RoomAssignmentRequest {
+  return {
+    url: `${assignmentsPath(bookingId, roomingEntryId)}/${passengerId}`,
+    method: 'DELETE',
+  };
+}
+
+/** Auto-assign unassigned passengers into rooms. No body. */
+export function buildAutoAssignRequest(bookingId: string): RoomAssignmentRequest {
+  return { url: `${roomingBasePath(bookingId)}/auto-assign`, method: 'POST' };
+}
+
 /** Pull a human-readable error message out of a mutation response body. */
 export function resolveRoomingErrorMessage(body: unknown, fallback = 'Could not save rooming changes.'): string {
   if (body && typeof body === 'object') {
