@@ -3913,6 +3913,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException('Unassign the passenger from rooming before deleting the passenger record.');
       }
 
+      // Lead guard (PR-2a): never leave a booking with zero leads. Deleting the
+      // lead is blocked while other passengers exist — reassign the lead first.
+      // Deleting the last remaining passenger (the lead) is still allowed.
+      if (passenger.isLead) {
+        const otherPassengers = await tx.bookingPassenger.count({
+          where: { bookingId, NOT: { id: passengerId } },
+        });
+        if (otherPassengers > 0) {
+          throw new BadRequestException('Set another passenger as lead before deleting the lead passenger.');
+        }
+      }
+
       await tx.bookingPassenger.delete({
         where: { id: passengerId },
       });
