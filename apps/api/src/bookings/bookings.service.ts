@@ -22,6 +22,8 @@ import { DispatchEventsService } from '../dispatch-events/dispatch-events.servic
 import { HotelContractsService } from '../hotel-contracts/hotel-contracts.service';
 import { loadRouteStandardsForBookingServices } from '../route-standards/route-standard-lookup';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { type DmcRole } from '../auth/auth.types';
+import { mapPassengerForDetail } from './passenger-detail-pii';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
@@ -362,6 +364,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Invalid booking id');
     }
 
+    // Actor role drives passenger-PII redaction in the detail payload (PR-3a).
+    // Internal/server-side callers pass a company-only actor (no role) and keep
+    // full data; every external HTTP request carries the authenticated role.
+    const actorRole: DmcRole | null = (actor as { role?: DmcRole } | null | undefined)?.role ?? null;
+
     const bookingWhere = this.buildBookingCompanyWhere(actor);
     const baseBooking = await (this.prisma.booking as any).findFirst({
       where: {
@@ -505,7 +512,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return {
         ...booking,
-        passengers: (booking.passengers || []).map((passenger: any) => this.mapPassengerForList(passenger)),
+        passengers: (booking.passengers || []).map((passenger: any) => this.mapPassengerForList(passenger, actorRole)),
         bookingDays: booking.days || [],
         payments,
         invoiceDelivery: this.getBookingInvoiceDelivery(booking.auditLogs || []),
@@ -9111,12 +9118,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return `${'*'.repeat(Math.max(0, normalized.length - 4))}${visible}`;
   }
 
-  private mapPassengerForList(passenger: any) {
-    return {
-      ...passenger,
-      passportNumberMasked: this.maskPassportNumber(passenger.passportNumber),
-      passportNumber: undefined,
-    };
+  private mapPassengerForList(passenger: any, role?: DmcRole | null) {
+    // Masks the raw passport for everyone and, for restricted roles (PR-3a),
+    // additionally nulls sensitive manifest fields. See passenger-detail-pii.ts.
+    return mapPassengerForDetail(passenger, role);
   }
 
   private normalizeBookingListRelations(booking: any) {
