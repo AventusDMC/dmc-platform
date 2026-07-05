@@ -79,10 +79,71 @@ test('passenger manifest export route uses extensionless URL and Excel response 
     },
   };
 
-  await controller.downloadPassengerManifestExcel('11111111-1111-4111-8111-111111111111', { companyId: 'company-1' }, response);
+  await controller.downloadPassengerManifestExcel(
+    '11111111-1111-4111-8111-111111111111',
+    { companyId: 'company-1', role: 'admin' },
+    response,
+  );
 
   assert.equal(headers['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   assert.equal(headers['Content-Disposition'], 'attachment; filename="BK-1-passenger-manifest.xlsx"');
+});
+
+test('passenger manifest export is allowed for full-PII roles (admin, operations, super_admin)', async () => {
+  for (const role of ['admin', 'operations', 'super_admin']) {
+    const calls: any[] = [];
+    const controller = new BookingsController(
+      {
+        exportPassengerManifestExcel: async (id: string, actor: any) => {
+          calls.push({ id, actor });
+          return { fileName: 'BK-1-passenger-manifest.xlsx', buffer: Buffer.from('excel') };
+        },
+      },
+      {},
+      {},
+    );
+    const headers: Record<string, string> = {};
+    const response = { setHeader: (n: string, v: string) => { headers[n] = v; } };
+
+    const stream = await controller.downloadPassengerManifestExcel(
+      '11111111-1111-4111-8111-111111111111',
+      { companyId: 'company-1', role },
+      response,
+    );
+
+    assert.equal(calls.length, 1, `service should be called for ${role}`);
+    assert.equal(headers['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    assert.ok(stream, `stream returned for ${role}`);
+  }
+});
+
+test('passenger manifest export is blocked (403) for restricted roles incl. agent_admin', async () => {
+  for (const role of ['agent_admin', 'agent', 'viewer', 'finance', undefined]) {
+    const calls: any[] = [];
+    const controller = new BookingsController(
+      {
+        exportPassengerManifestExcel: async (id: string, actor: any) => {
+          calls.push({ id, actor });
+          return { fileName: 'x.xlsx', buffer: Buffer.from('excel') };
+        },
+      },
+      {},
+      {},
+    );
+    const response = { setHeader: () => {} };
+
+    await assert.rejects(
+      () =>
+        controller.downloadPassengerManifestExcel(
+          '11111111-1111-4111-8111-111111111111',
+          { companyId: 'company-1', role },
+          response,
+        ),
+      /permission to export passenger manifest/i,
+      `role=${role} should be blocked`,
+    );
+    assert.equal(calls.length, 0, `service must NOT be called for role=${role}`);
+  }
 });
 
 test('admin booking voucher PDF route returns attachment PDF without false permission block', async () => {

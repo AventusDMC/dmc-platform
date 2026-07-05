@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Headers, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { AuthenticatedActor } from '../auth/auth.types';
+import { isFullPiiRole } from '../auth/pii-roles';
 import { BookingsService } from './bookings.service';
 import { InvoicesService } from '../invoices/invoices.service';
 
@@ -728,6 +729,14 @@ export class BookingsController {
     @Actor() actor: AuthenticatedActor,
     @Res({ passthrough: true }) response: any,
   ) {
+    // Explicit full-PII gate (PR-3b). The manifest export contains raw passport,
+    // DOB, emergency contact, etc. @Roles('admin','operations') alone is not
+    // sufficient: agent_admin satisfies @Roles('admin') via the global guard's
+    // coalescing. Restrict export to admin/operations/super_admin only.
+    if (!isFullPiiRole(actor?.role)) {
+      throw new ForbiddenException('You do not have permission to export passenger manifest data');
+    }
+
     const exportFile = await this.bookingsService.exportPassengerManifestExcel(id, actor);
     response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     response.setHeader('Content-Disposition', `attachment; filename="${exportFile.fileName}"`);
