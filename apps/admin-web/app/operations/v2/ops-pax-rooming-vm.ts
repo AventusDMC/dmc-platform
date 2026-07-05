@@ -101,6 +101,8 @@ export type PaxRowVM = {
 export type RoomRowVM = {
   id: string;
   label: string;
+  // Raw room type for the PR-2c editor prefill (label falls back to "Room N").
+  roomType: string | null;
   occupancy: RoomOccupancy;
   capacity: number | null;
   assignedNames: string[];
@@ -236,6 +238,7 @@ function mapRoom(entry: RawRoomingEntry): RoomRowVM {
   return {
     id: entry.id,
     label: entry.roomType || `Room ${entry.sortOrder ?? 0}`,
+    roomType: entry.roomType ?? null,
     occupancy,
     capacity,
     assignedNames,

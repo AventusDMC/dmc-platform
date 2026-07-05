@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { PaxRoomingTab } from '../../../components/ops/v2/pax-rooming-tab';
 import { PassengerEditorError } from '../../../components/ops/v2/passenger-editor';
+import { RoomingEditorError } from '../../../components/ops/v2/rooming-editor';
 import { buildPaxRoomingVM } from './ops-pax-rooming-vm';
 import { COST_LEAK_VALUE, EMPTY_DETAIL, READY_DETAIL, SAMPLE_DETAIL, WARN_DETAIL } from './ops-pax-rooming.fixtures';
 
@@ -213,5 +214,55 @@ describe('PassengerEditorError — inline backend error', () => {
 
   it('renders nothing when there is no error', () => {
     assert.equal(renderToStaticMarkup(createElement(PassengerEditorError, { message: null })), '');
+  });
+});
+
+// --- PR-2c-1: rooming editing (room CRUD, same edit flag) --------------------
+
+describe('PaxRoomingTab — rooming editing ON (PR-2c-1 CRUD)', () => {
+  const h = renderTab(SAMPLE_DETAIL, true);
+
+  it('renders add / edit / delete room controls + occupancy select', () => {
+    assert.ok(h.includes('Add room'), 'add-room control missing');
+    assert.ok(h.includes('aria-label="Room type"'), 'room type input missing');
+    assert.ok(h.includes('aria-label="Occupancy"'), 'occupancy select missing');
+    assert.ok(h.includes('<select'), 'occupancy <select> missing');
+    assert.ok(h.includes('>Edit<'), 'room edit control missing');
+    assert.ok(h.includes('>Delete<'), 'room delete control missing');
+  });
+
+  it('does NOT render assignment / auto-assign controls (deferred to PR-2c-2)', () => {
+    for (const token of ['Auto-assign', 'Auto-allocate', 'Assign passenger', 'Unassign']) {
+      assert.ok(!h.includes(token), `PR-2c-1 must not render "${token}"`);
+    }
+  });
+
+  it('introduces no finance/cost/sell/margin fields', () => {
+    assert.ok(!/unitSell|unitCost|totalSell|payable|margin|invoice/i.test(h), 'rooming editor leaked a financial key');
+  });
+});
+
+describe('PaxRoomingTab — rooming editing OFF (default) stays read-only', () => {
+  it('renders the read-only rooming map and no editor controls', () => {
+    const h = renderTab(SAMPLE_DETAIL, false);
+    assert.ok(h.includes('DBL'), 'read-only rooming map (room label) missing');
+    assert.ok(!h.includes('Add room'), 'add-room leaked when editing off');
+    for (const forbidden of ['<form', '<input', '<select', '<button']) {
+      assert.ok(!h.includes(forbidden), `read-only tab must not render "${forbidden}"`);
+    }
+  });
+});
+
+describe('RoomingEditorError — inline backend error', () => {
+  it('renders the delete-with-occupants guard message as an alert', () => {
+    const h = renderToStaticMarkup(
+      createElement(RoomingEditorError, { message: 'Unassign passengers from the room before deleting the rooming entry.' }),
+    );
+    assert.ok(h.includes('Unassign passengers from the room before deleting'));
+    assert.ok(h.includes('role="alert"'));
+  });
+
+  it('renders nothing when there is no error', () => {
+    assert.equal(renderToStaticMarkup(createElement(RoomingEditorError, { message: null })), '');
   });
 });
