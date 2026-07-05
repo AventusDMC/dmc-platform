@@ -1212,7 +1212,7 @@ test('amend booking clones days passengers and services without changing origina
   assert.equal(original.bookingRef, 'BK-2026-0001');
 });
 
-test('passenger manifest validates required fields and dates', async () => {
+test('passenger manifest allows optional passport/nationality but still validates date order', async () => {
   const service = createService({
     $transaction: async (callback: any) =>
       callback({
@@ -1229,17 +1229,19 @@ test('passenger manifest validates required fields and dates', async () => {
       }),
   });
 
-  await assert.rejects(
-    () =>
-      service.createPassenger('11111111-1111-4111-8111-111111111111', {
-        fullName: 'Lina Haddad',
-        nationality: '',
-        passportNumber: 'P1234567',
-        passportExpiryDate: '2030-01-01',
-        companyActor: { companyId: 'company-1' },
-      }),
-    /nationality is required/i,
-  );
+  // PR-2b: nationality + passport are OPTIONAL now — an empty nationality (and no
+  // passport) succeeds; missing passport stays a readiness warning, not a blocker.
+  const created = await service.createPassenger('11111111-1111-4111-8111-111111111111', {
+    fullName: 'Lina Haddad',
+    nationality: '',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(created.firstName, 'Lina');
+  assert.equal(created.lastName, 'Haddad');
+  assert.ok(!created.passportNumber, 'passport is optional');
+  assert.ok(!created.nationality, 'empty nationality is allowed');
+
+  // Date-order integrity is still enforced whenever both dates ARE supplied.
   await assert.rejects(
     () =>
       service.createPassenger('11111111-1111-4111-8111-111111111111', {
@@ -4897,4 +4899,111 @@ test('deletePassenger is pricing-inert (touches no finance/service models)', asy
   await service.deletePassenger(DL_BOOKING, 'p-only', undefined, { companyId: 'company-1' });
   assert.ok(!touched.has('bookingService'), 'deletePassenger must not touch bookingService (pricing-inert)');
   assert.ok(!touched.has('payment'), 'deletePassenger must not touch payments (pricing-inert)');
+});
+
+// --- PR-2b backend fix: passport / nationality / expiry optional on create+update
+
+function passengerMutationService(overrides: {
+  existing?: any;
+  onCreate?: (data: any) => void;
+  onUpdate?: (data: any) => void;
+}) {
+  return createService({
+    $transaction: async (callback: any) =>
+      callback({
+        // assertLatestBookingAmendment probes amendedFromId → return null (latest);
+        // the initial booking lookup returns the booking.
+        booking: { findFirst: async ({ where }: any) => (where?.amendedFromId !== undefined ? null : { id: DL_BOOKING }) },
+        bookingPassenger: {
+          findFirst: async () => overrides.existing ?? null,
+          updateMany: async () => ({ count: 0 }),
+          create: async ({ data }: any) => {
+            overrides.onCreate?.(data);
+            return { id: 'p-new', ...data };
+          },
+          update: async ({ data }: any) => {
+            overrides.onUpdate?.(data);
+            return { id: overrides.existing?.id ?? 'p-upd', ...data };
+          },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+}
+
+test('createPassenger (fix): succeeds with firstName/lastName only — no passport / nationality', async () => {
+  const service = passengerMutationService({});
+  const p = await service.createPassenger(DL_BOOKING, {
+    firstName: 'Solo',
+    lastName: 'Traveler',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(p.firstName, 'Solo');
+  assert.equal(p.lastName, 'Traveler');
+  assert.ok(!p.passportNumber, 'passport is optional on create');
+  assert.ok(!p.passportExpiryDate, 'passport expiry is optional on create');
+  assert.ok(!p.nationality, 'nationality is optional on create');
+});
+
+test('createPassenger (fix): succeeds with non-PII fields, still no passport required', async () => {
+  const service = passengerMutationService({});
+  const p = await service.createPassenger(DL_BOOKING, {
+    firstName: 'Ana',
+    lastName: 'Lopez',
+    title: 'Ms',
+    nationality: 'JOR',
+    arrivalFlight: 'RJ1',
+    dietaryNotes: 'None',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(p.nationality, 'JOR');
+  assert.equal(p.arrivalFlight, 'RJ1');
+  assert.equal(p.dietaryNotes, 'None');
+  assert.ok(!p.passportNumber, 'passport still optional');
+});
+
+test('updatePassenger (fix): edits non-PII fields on a passenger that has NO passport', async () => {
+  const existing = {
+    id: 'p-1', firstName: 'QA', lastName: 'Contact', title: null, gender: null, dateOfBirth: null,
+    nationality: null, passportNumber: null, passportIssueDate: null, passportExpiryDate: null,
+    arrivalFlight: null, departureFlight: null, entryPoint: null, visaStatus: null,
+    emergencyContactName: null, emergencyContactPhone: null, dietaryNotes: null, roomingNotes: null,
+    isLead: true, notes: null,
+  };
+  const service = passengerMutationService({ existing });
+  const p = await service.updatePassenger(DL_BOOKING, 'p-1', {
+    dietaryNotes: 'Vegetarian',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(p.dietaryNotes, 'Vegetarian');
+  assert.ok(!p.passportNumber, 'no passport required to edit');
+  assert.ok(!p.nationality, 'no nationality required to edit');
+});
+
+test('updatePassenger (fix): omitting passport fields preserves existing passport', async () => {
+  const existing = {
+    id: 'p-2', firstName: 'Has', lastName: 'Passport', title: null, gender: null, dateOfBirth: null,
+    nationality: 'JOR', passportNumber: 'P12345', passportIssueDate: null, passportExpiryDate: null,
+    arrivalFlight: null, departureFlight: null, entryPoint: null, visaStatus: null,
+    emergencyContactName: null, emergencyContactPhone: null, dietaryNotes: null, roomingNotes: null,
+    isLead: false, notes: null,
+  };
+  const service = passengerMutationService({ existing });
+  const p = await service.updatePassenger(DL_BOOKING, 'p-2', {
+    dietaryNotes: 'Halal',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(p.dietaryNotes, 'Halal');
+  assert.equal(p.passportNumber, 'P12345', 'existing passport preserved when passport fields are omitted');
+  assert.equal(p.nationality, 'JOR', 'existing nationality preserved');
+});
+
+test('createPassenger (fix): supplied passport still normalizes + persists (Classic path safe)', async () => {
+  const service = passengerMutationService({});
+  const p = await service.createPassenger(DL_BOOKING, {
+    firstName: 'Full', lastName: 'Manifest', nationality: 'GBR', passportNumber: 'X99',
+    companyActor: { companyId: 'company-1' },
+  });
+  assert.equal(p.passportNumber, 'X99', 'supplied passport still stored');
+  assert.equal(p.nationality, 'GBR');
 });
