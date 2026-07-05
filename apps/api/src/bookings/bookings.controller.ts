@@ -386,6 +386,20 @@ export class BookingsController {
     return grid;
   }
 
+  // Supplier Voucher Packet V2 — S2. READ-ONLY: computes supplier packet groups
+  // from the booking's services and returns them. No writes, no generate/PDF/send.
+  @Get(':id/voucher-packets/groups')
+  @Roles('admin', 'operations')
+  async getVoucherPacketGroups(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const result = await this.bookingsService.getVoucherPacketGroups(id, actor);
+
+    if (!result) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return result;
+  }
+
   @Patch(':id/operations/:operationId/assign-supplier')
   @Roles('admin', 'operations')
   assignOperationalSupplier(

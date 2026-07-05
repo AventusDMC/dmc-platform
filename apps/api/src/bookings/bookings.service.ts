@@ -24,6 +24,7 @@ import { loadRouteStandardsForBookingServices } from '../route-standards/route-s
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { type DmcRole } from '../auth/auth.types';
 import { mapPassengerForDetail } from './passenger-detail-pii';
+import { computeVoucherPacketGroups, type PackableService } from './voucher-packet-grouping';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
@@ -578,6 +579,42 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         sourceQuoteId: baseBooking.quoteId,
       };
     }
+  }
+
+  // Supplier Voucher Packet V2 — S2 read-only grouping.
+  // Loads the booking's services (READ only, company-scoped via findOne) and
+  // returns the computed supplier packet groups. Writes NOTHING — no
+  // VoucherPacket/VoucherPacketItem row is created; no generate/PDF/send.
+  async getVoucherPacketGroups(id: string, actor?: CompanyScopedActor) {
+    const booking = await this.findOne(id, actor);
+
+    if (!booking) {
+      return null;
+    }
+
+    const dayById = new Map<string, any>(
+      ((booking.days || booking.bookingDays || []) as any[]).map((day) => [day.id, day]),
+    );
+    const toIso = (value: any): string | null =>
+      value instanceof Date ? value.toISOString() : value ? String(value) : null;
+
+    const services: PackableService[] = ((booking.services || []) as any[]).map((service) => ({
+      id: service.id,
+      assignedSupplierId: service.assignedSupplierId ?? service.supplierId ?? null,
+      assignedSupplierName: service.assignedSupplier?.name ?? service.supplierName ?? null,
+      assignmentStatus: service.assignmentStatus ?? null,
+      serviceType: service.serviceType ?? null,
+      operationType: service.operationType ?? null,
+      category: service.serviceType ?? null,
+      serviceDate: toIso(service.serviceDate),
+      operationalDate: toIso(service.operationalDate),
+      bookingDayId: service.bookingDayId ?? null,
+      dayNumber: service.bookingDayId ? dayById.get(service.bookingDayId)?.dayNumber ?? null : null,
+      nights: service.nights ?? null,
+      label: service.description ?? null,
+    }));
+
+    return { groups: computeVoucherPacketGroups(services) };
   }
 
   async getOperationalServiceGrid(id: string, actor?: CompanyScopedActor) {

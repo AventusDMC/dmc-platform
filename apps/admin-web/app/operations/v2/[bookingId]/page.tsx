@@ -7,6 +7,7 @@ import { OpsBetaHeader } from '../../../../components/ops/v2/ops-beta-header';
 import { OperationalStatusBadge } from '../../../../components/ops/v2/operational-status-badge';
 import { OpsBoard } from '../../../../components/ops/v2/ops-board';
 import { OpsErrorCard } from '../../../../components/ops/v2/ops-error-card';
+import { VoucherPacketsPanel, type VoucherPacketGroupVM } from '../../../../components/ops/v2/voucher-packets-panel';
 import { PaxRoomingTab } from '../../../../components/ops/v2/pax-rooming-tab';
 import { ActivityTab } from '../../../../components/ops/v2/activity-tab';
 import { FinanceTab } from '../../../../components/ops/v2/finance-tab';
@@ -57,6 +58,24 @@ async function loadOperationsGrid(id: string): Promise<RawOperationsGrid> {
   return adminPageFetchJson<RawOperationsGrid>(`/api/bookings/${id}/operations-grid`, 'Booking operations (V2)', {
     cache: 'no-store',
   });
+}
+
+// Supplier Voucher Packet V2 — S2 read-only panel. Flag-gated (default OFF);
+// supplementary/degrades to [] on failure so it never blanks the operations board.
+function voucherPacketPanelEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_OPS_V2_VOUCHER_PACKET === 'true';
+}
+async function loadVoucherPacketGroups(id: string): Promise<VoucherPacketGroupVM[]> {
+  try {
+    const res = await adminPageFetchJson<{ groups?: VoucherPacketGroupVM[] }>(
+      `/api/bookings/${id}/voucher-packets/groups`,
+      'Voucher packets (V2)',
+      { cache: 'no-store' },
+    );
+    return res?.groups ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // Booking detail is SUPPLEMENTARY for the Operations tab (rooming badge + status
@@ -123,6 +142,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
   // Fetch only the active tab's data; placeholder tabs stay cheap.
   let vm: OperationsBoardVM | null = null;
   let opsError = false;
+  let packetGroups: VoucherPacketGroupVM[] = [];
   let paxVm: PaxRoomingVM | null = null;
   let paxError = false;
   let activityVm: ActivityVM | null = null;
@@ -145,6 +165,9 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
       bookingLabel = vm.booking.bookingRef;
     } catch {
       opsError = true;
+    }
+    if (voucherPacketPanelEnabled()) {
+      packetGroups = await loadVoucherPacketGroups(bookingId);
     }
   } else if (activeTab === 'passengers') {
     try {
@@ -209,7 +232,10 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
             opsError || !vm ? (
               <OpsErrorCard classicHref={classicHref} />
             ) : (
-              <OpsBoard vm={vm} bookingId={bookingId} />
+              <div className="space-y-6">
+                {voucherPacketPanelEnabled() ? <VoucherPacketsPanel groups={packetGroups} /> : null}
+                <OpsBoard vm={vm} bookingId={bookingId} />
+              </div>
             )
           ) : null}
 
