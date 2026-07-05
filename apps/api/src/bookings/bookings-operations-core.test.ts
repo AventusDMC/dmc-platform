@@ -4745,3 +4745,156 @@ test('booking operational service grid foundation wires schema conversion valida
     assert.match(`${bookingsSource}\n${controllerSource}\n${quotesSource}`, new RegExp(token));
   }
 });
+
+// --- PR-2a: delete-lead guard (never leave a booking with zero leads) ---------
+
+const DL_BOOKING = '11111111-1111-4111-8111-111111111111';
+
+test('deletePassenger blocks deleting the lead while other passengers exist', async () => {
+  const deleted: string[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p-lead', bookingId: DL_BOOKING, firstName: 'Lead', lastName: 'A', title: null,
+            isLead: true, roomingAssignments: [],
+          }),
+          count: async ({ where }: any) => {
+            assert.equal(where.NOT.id, 'p-lead');
+            assert.equal(where.bookingId, DL_BOOKING);
+            return 2; // other passengers remain
+          },
+          delete: async ({ where }: any) => { deleted.push(where.id); return {}; },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  await assert.rejects(
+    () => service.deletePassenger(DL_BOOKING, 'p-lead', undefined, { companyId: 'company-1' }),
+    /Set another passenger as lead before deleting the lead passenger/,
+  );
+  assert.deepEqual(deleted, [], 'the lead must not be deleted while other passengers exist');
+});
+
+test('deletePassenger allows deleting a non-lead passenger', async () => {
+  const deleted: string[] = [];
+  let countCalled = false;
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p2', bookingId: DL_BOOKING, firstName: 'Solo', lastName: 'B', title: null,
+            isLead: false, roomingAssignments: [],
+          }),
+          count: async () => { countCalled = true; return 5; },
+          delete: async ({ where }: any) => { deleted.push(where.id); return {}; },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  const result = await service.deletePassenger(DL_BOOKING, 'p2', undefined, { companyId: 'company-1' });
+  assert.equal(result.id, 'p2');
+  assert.deepEqual(deleted, ['p2']);
+  assert.equal(countCalled, false, 'a non-lead delete should not invoke the lead-count guard');
+});
+
+test('deletePassenger allows deleting the last remaining (lead) passenger', async () => {
+  const deleted: string[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p-only', bookingId: DL_BOOKING, firstName: 'Only', lastName: 'One', title: null,
+            isLead: true, roomingAssignments: [],
+          }),
+          count: async () => 0, // no other passengers → allowed
+          delete: async ({ where }: any) => { deleted.push(where.id); return {}; },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  const result = await service.deletePassenger(DL_BOOKING, 'p-only', undefined, { companyId: 'company-1' });
+  assert.equal(result.id, 'p-only');
+  assert.deepEqual(deleted, ['p-only']);
+});
+
+test('deletePassenger still blocks a passenger with rooming assignments (guard unchanged)', async () => {
+  const deleted: string[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p3', bookingId: DL_BOOKING, firstName: 'Room', lastName: 'C', title: null,
+            isLead: false, roomingAssignments: [{ bookingRoomingEntryId: 'room-1' }],
+          }),
+          count: async () => 3,
+          delete: async ({ where }: any) => { deleted.push(where.id); return {}; },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  await assert.rejects(
+    () => service.deletePassenger(DL_BOOKING, 'p3', undefined, { companyId: 'company-1' }),
+    /Unassign the passenger from rooming before deleting/,
+  );
+  assert.deepEqual(deleted, []);
+});
+
+test('setLeadPassenger keeps exactly one lead (demotes all others)', async () => {
+  let demote: any = null;
+  let promote: any = null;
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p2', bookingId: DL_BOOKING, firstName: 'New', lastName: 'Lead', title: null, isLead: false,
+          }),
+          updateMany: async ({ where, data }: any) => { demote = { where, data }; return { count: 1 }; },
+          update: async ({ where, data }: any) => { promote = { where, data }; return { id: where.id, ...data }; },
+        },
+        bookingAuditLog: { create: async () => ({}) },
+      }),
+  });
+
+  const result = await service.setLeadPassenger(DL_BOOKING, 'p2', undefined, { companyId: 'company-1' });
+  assert.equal(result.isLead, true);
+  assert.deepEqual(demote.data, { isLead: false }, 'all others demoted');
+  assert.equal(demote.where.bookingId, DL_BOOKING);
+  assert.equal(promote.where.id, 'p2');
+  assert.equal(promote.data.isLead, true);
+});
+
+test('deletePassenger is pricing-inert (touches no finance/service models)', async () => {
+  const touched = new Set<string>();
+  const track = (name: string) =>
+    new Proxy({}, { get: () => async () => { touched.add(name); return []; } });
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'p-only', bookingId: DL_BOOKING, firstName: 'A', lastName: 'B', title: null,
+            isLead: true, roomingAssignments: [],
+          }),
+          count: async () => 0,
+          delete: async () => ({}),
+        },
+        bookingAuditLog: { create: async () => ({}) },
+        bookingService: track('bookingService'),
+        payment: track('payment'),
+      }),
+  });
+
+  await service.deletePassenger(DL_BOOKING, 'p-only', undefined, { companyId: 'company-1' });
+  assert.ok(!touched.has('bookingService'), 'deletePassenger must not touch bookingService (pricing-inert)');
+  assert.ok(!touched.has('payment'), 'deletePassenger must not touch payments (pricing-inert)');
+});
