@@ -105,6 +105,14 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
   const activeTab = resolveTab(resolvedSearch?.tab);
   const classicHref = `/bookings/${bookingId}/operations`;
 
+  // PR-2b — passenger editing gate: flag (default OFF) AND a role the backend
+  // passenger endpoints accept (admin / operations / super_admin). Decided
+  // server-side; passed to the tab so the editable surface never renders for
+  // read-only roles or with the flag off.
+  const canEditPassengers =
+    process.env.NEXT_PUBLIC_OPS_V2_PAX_EDIT === 'true' &&
+    ['admin', 'operations', 'super_admin'].includes(role ?? '');
+
   // Fetch only the active tab's data; placeholder tabs stay cheap.
   let vm: OperationsBoardVM | null = null;
   let opsError = false;
@@ -202,7 +210,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
             paxError || !paxVm ? (
               <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=passengers`} />
             ) : (
-              <PaxRoomingTab vm={paxVm} bookingId={bookingId} />
+              <PaxRoomingTab vm={paxVm} bookingId={bookingId} canEditPassengers={canEditPassengers} />
             )
           ) : null}
 

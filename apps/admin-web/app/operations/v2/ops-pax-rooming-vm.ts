@@ -78,6 +78,11 @@ export type RoomValidity = 'Valid' | 'Mismatch' | 'Needs occupancy' | 'Assigned'
 export type PaxRowVM = {
   id: string;
   name: string;
+  // Raw name parts for the PR-2b editor (non-PII). Kept alongside the composed
+  // `name` so edit forms can prefill without re-parsing.
+  firstName: string | null;
+  lastName: string | null;
+  title: string | null;
   isLead: boolean;
   nationality: string | null;
   passportMasked: string | null;
@@ -204,6 +209,9 @@ function mapPassenger(p: RawPassenger, travelEnd: Date | null): PaxRowVM {
   return {
     id: p.id,
     name: passengerName(p),
+    firstName: p.firstName ?? null,
+    lastName: p.lastName ?? null,
+    title: p.title ?? null,
     isLead: Boolean(p.isLead),
     nationality: p.nationality ?? null,
     passportMasked,

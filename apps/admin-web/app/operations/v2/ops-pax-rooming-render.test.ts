@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { PaxRoomingTab } from '../../../components/ops/v2/pax-rooming-tab';
+import { PassengerEditorError } from '../../../components/ops/v2/passenger-editor';
 import { buildPaxRoomingVM } from './ops-pax-rooming-vm';
 import { COST_LEAK_VALUE, EMPTY_DETAIL, READY_DETAIL, SAMPLE_DETAIL, WARN_DETAIL } from './ops-pax-rooming.fixtures';
 
@@ -118,5 +120,98 @@ describe('PaxRoomingTab render — empty states', () => {
   it('still shows the read-only notice and Classic links when empty', () => {
     assert.ok(emptyHtml.includes('read-only in V2'));
     assert.ok(emptyHtml.includes(`href="/bookings/${BK}?tab=passengers"`));
+  });
+});
+
+// --- PR-2b: passenger editing surface (flag/role decided server-side) --------
+
+const STUB_ROUTER = { back() {}, forward() {}, push() {}, replace() {}, refresh() {}, prefetch() {} };
+
+function renderTab(detail: Parameters<typeof buildPaxRoomingVM>[0], canEditPassengers: boolean): string {
+  return renderToStaticMarkup(
+    createElement(
+      AppRouterContext.Provider as never,
+      { value: STUB_ROUTER } as never,
+      createElement(PaxRoomingTab, { vm: buildPaxRoomingVM(detail), bookingId: BK, canEditPassengers }),
+    ),
+  );
+}
+
+const ALLOWED_FIELD_LABELS = [
+  'First name',
+  'Last name',
+  'Title',
+  'Nationality',
+  'Arrival flight',
+  'Departure flight',
+  'Dietary notes',
+  'Rooming notes',
+];
+
+const PII_INPUT_NAMES = [
+  'passportNumber',
+  'passportIssueDate',
+  'passportExpiryDate',
+  'dateOfBirth',
+  'gender',
+  'entryPoint',
+  'visaStatus',
+  'emergencyContactName',
+  'emergencyContactPhone',
+];
+
+describe('PaxRoomingTab — passenger editing ON', () => {
+  const h = renderTab(SAMPLE_DETAIL, true);
+
+  it('renders add / edit / delete / set-lead controls', () => {
+    assert.ok(h.includes('Add passenger'), 'add control missing');
+    assert.ok(h.includes('>Edit<'), 'edit control missing');
+    assert.ok(h.includes('>Delete<'), 'delete control missing');
+    assert.ok(h.includes('>Set lead<'), 'set-lead control missing');
+  });
+
+  it('renders only the allowlisted non-PII input fields', () => {
+    for (const label of ALLOWED_FIELD_LABELS) {
+      assert.ok(h.includes(`aria-label="${label}"`), `missing allowed field ${label}`);
+    }
+  });
+
+  it('renders NO PII inputs even with editing on', () => {
+    for (const name of PII_INPUT_NAMES) {
+      assert.ok(!h.includes(`name="${name}"`), `editor rendered a PII input: ${name}`);
+    }
+    for (const token of ['Passport', 'Date of birth', 'Emergency', 'Visa', 'Gender']) {
+      assert.ok(!h.includes(token), `editor leaked a PII label: ${token}`);
+    }
+  });
+
+  it('introduces no finance/cost/sell/margin fields', () => {
+    assert.ok(!/unitSell|unitCost|totalSell|payable|margin|invoice/i.test(h), 'editor leaked a financial key');
+  });
+});
+
+describe('PaxRoomingTab — passenger editing OFF (default) stays read-only', () => {
+  it('renders the read-only manifest table and no editor controls', () => {
+    const h = renderTab(SAMPLE_DETAIL, false);
+    assert.ok(h.includes('<table'), 'read-only manifest table missing');
+    assert.ok(!h.includes('Add passenger'), 'add control leaked when editing off');
+    assert.ok(!h.includes('Set lead'), 'set-lead leaked when editing off');
+    for (const forbidden of ['<form', '<input', '<button']) {
+      assert.ok(!h.includes(forbidden), `read-only tab must not render "${forbidden}"`);
+    }
+  });
+});
+
+describe('PassengerEditorError — inline backend error', () => {
+  it('renders the delete-lead guard message as an alert', () => {
+    const h = renderToStaticMarkup(
+      createElement(PassengerEditorError, { message: 'Set another passenger as lead before deleting the lead passenger.' }),
+    );
+    assert.ok(h.includes('Set another passenger as lead before deleting the lead passenger.'));
+    assert.ok(h.includes('role="alert"'));
+  });
+
+  it('renders nothing when there is no error', () => {
+    assert.equal(renderToStaticMarkup(createElement(PassengerEditorError, { message: null })), '');
   });
 });

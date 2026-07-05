@@ -1,5 +1,6 @@
 import type { PaxRoomingReadiness, PaxRoomingVM } from '../../../app/operations/v2/ops-pax-rooming-vm';
 import { OpenInClassicButton } from './open-in-classic-button';
+import { PassengerEditor } from './passenger-editor';
 import { PassengerManifestTable } from './passenger-manifest-table';
 import { ReadOnlyNotice } from './read-only-notice';
 import { RoomingMap } from './rooming-map';
@@ -37,16 +38,32 @@ function PaxReadinessStrip({ readiness }: { readiness: PaxRoomingReadiness }) {
 }
 
 /**
- * Passengers & Rooming tab body (read-only). Persistent notice + manifest table
- * + rooming map, each with a navigation-only "Open in Classic" deep link. No
- * edit controls, no forms, no inputs — display only. An optional advisory
- * readiness strip (flag-gated, default OFF) surfaces non-blocking warnings.
+ * Passengers & Rooming tab body. Read-only by default (manifest table + rooming
+ * map + "Open in Classic" deep links). When passenger editing is enabled (PR-2b,
+ * flag + admin/operations, decided server-side and passed as `canEditPassengers`)
+ * the manifest becomes an editor for the non-PII fields; rooming stays read-only
+ * (PR-2c). An optional advisory readiness strip (separate flag) surfaces
+ * non-blocking warnings.
  */
-export function PaxRoomingTab({ vm, bookingId }: { vm: PaxRoomingVM; bookingId: string }) {
+export function PaxRoomingTab({
+  vm,
+  bookingId,
+  canEditPassengers = false,
+}: {
+  vm: PaxRoomingVM;
+  bookingId: string;
+  canEditPassengers?: boolean;
+}) {
   const readinessEnabled = paxReadinessEnabled();
   return (
     <div className="space-y-6">
-      <ReadOnlyNotice message="Passenger and rooming data are read-only in V2. Changes are made in Classic." />
+      <ReadOnlyNotice
+        message={
+          canEditPassengers
+            ? 'Passengers are editable in V2. Rooming is read-only — changes are made in Classic.'
+            : 'Passenger and rooming data are read-only in V2. Changes are made in Classic.'
+        }
+      />
 
       {readinessEnabled ? <PaxReadinessStrip readiness={vm.readiness} /> : null}
 
@@ -55,7 +72,11 @@ export function PaxRoomingTab({ vm, bookingId }: { vm: PaxRoomingVM; bookingId: 
           <h2 className="font-heading text-sm font-semibold text-foreground">Passenger manifest</h2>
           <OpenInClassicButton href={`/bookings/${bookingId}?tab=passengers`} label="Open passengers in Classic" />
         </div>
-        <PassengerManifestTable passengers={vm.passengers} showReadinessChips={readinessEnabled} />
+        {canEditPassengers ? (
+          <PassengerEditor bookingId={bookingId} passengers={vm.passengers} />
+        ) : (
+          <PassengerManifestTable passengers={vm.passengers} showReadinessChips={readinessEnabled} />
+        )}
       </section>
 
       <section aria-label="Rooming map" className="space-y-3">
