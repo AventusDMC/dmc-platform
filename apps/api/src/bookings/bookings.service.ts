@@ -3689,7 +3689,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const firstName = this.normalizeOptionalText(data.firstName) || splitName.firstName;
     const lastName = this.normalizeOptionalText(data.lastName) || splitName.lastName;
     const title = this.normalizeOptionalText(data.title);
-    const manifest = this.normalizePassengerManifestFields(data, true);
+    // Passport / nationality / expiry are OPTIONAL on create — a missing passport
+    // or expiry is an Ops readiness warning (PR-1), not a hard blocker. Supplied
+    // values (e.g. from Classic) still normalize safely. firstName/lastName stay
+    // required via the fullName check above. Server-side only — never a
+    // client-controlled flag.
+    const manifest = this.normalizePassengerManifestFields(data, false);
     const notes = this.normalizeOptionalText(data.notes);
     const shouldSetLead = Boolean(data.isLead);
 
@@ -3839,7 +3844,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           dietaryNotes: data.dietaryNotes === undefined ? passenger.dietaryNotes : data.dietaryNotes,
           roomingNotes: data.roomingNotes === undefined ? passenger.roomingNotes : data.roomingNotes,
         },
-        true,
+        // Partial non-PII edits don't require passport / nationality / expiry to
+        // already exist (missing passport stays a readiness warning). Omitted
+        // passport fields are preserved via the merge above.
+        false,
       );
       const nextNotes = data.notes === undefined ? passenger.notes : this.normalizeOptionalText(data.notes);
       const nextIsLead = data.isLead === undefined ? passenger.isLead : Boolean(data.isLead);
