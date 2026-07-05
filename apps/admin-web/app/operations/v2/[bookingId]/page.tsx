@@ -113,6 +113,13 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
     process.env.NEXT_PUBLIC_OPS_V2_PAX_EDIT === 'true' &&
     ['admin', 'operations', 'super_admin'].includes(role ?? '');
 
+  // PR-3d — full-PII visibility gate. Mirrors the backend PII_FULL_ROLES: only
+  // internal ops roles receive raw passenger manifest fields (the detail API
+  // redacts the rest for restricted roles, PR-3a). Passed to the tab so the UI
+  // suppresses passport readiness warnings and shows "Restricted" placeholders
+  // for redacted columns rather than a misleading "Missing"/"—".
+  const canSeeFullPii = ['admin', 'operations', 'super_admin'].includes(role ?? '');
+
   // Fetch only the active tab's data; placeholder tabs stay cheap.
   let vm: OperationsBoardVM | null = null;
   let opsError = false;
@@ -210,7 +217,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
             paxError || !paxVm ? (
               <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=passengers`} />
             ) : (
-              <PaxRoomingTab vm={paxVm} bookingId={bookingId} canEditPassengers={canEditPassengers} />
+              <PaxRoomingTab vm={paxVm} bookingId={bookingId} canEditPassengers={canEditPassengers} canSeeFullPii={canSeeFullPii} />
             )
           ) : null}
 

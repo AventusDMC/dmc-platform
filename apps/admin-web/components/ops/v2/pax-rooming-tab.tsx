@@ -13,8 +13,23 @@ function paxReadinessEnabled(): boolean {
   return process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS === 'true';
 }
 
-function PaxReadinessStrip({ readiness }: { readiness: PaxRoomingReadiness }) {
-  if (readiness.isReady) {
+// Passport-derived readiness codes. For restricted roles the passport fields are
+// redacted (null) server-side (PR-3a), so these would fire as false warnings —
+// suppress them (PR-3d). Non-passport warnings (rooming/room-count) still show.
+const PASSPORT_WARNING_CODES = new Set(['missing-passport', 'passport-expiry']);
+
+function PaxReadinessStrip({
+  readiness,
+  canSeeFullPii,
+}: {
+  readiness: PaxRoomingReadiness;
+  canSeeFullPii: boolean;
+}) {
+  const warnings = canSeeFullPii
+    ? readiness.warnings
+    : readiness.warnings.filter((w) => !PASSPORT_WARNING_CODES.has(w.code));
+
+  if (warnings.length === 0) {
     return (
       <div
         aria-label="Passenger and rooming readiness"
@@ -26,7 +41,7 @@ function PaxReadinessStrip({ readiness }: { readiness: PaxRoomingReadiness }) {
   }
   return (
     <div aria-label="Passenger and rooming readiness" className="flex flex-wrap items-center gap-2">
-      {readiness.warnings.map((w) => (
+      {warnings.map((w) => (
         <span
           key={w.code}
           className="inline-flex items-center rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning"
@@ -50,10 +65,14 @@ export function PaxRoomingTab({
   vm,
   bookingId,
   canEditPassengers = false,
+  canSeeFullPii = true,
 }: {
   vm: PaxRoomingVM;
   bookingId: string;
   canEditPassengers?: boolean;
+  /** Full-PII role (admin/operations/super_admin). Restricted roles get passport
+   *  warnings suppressed and "Restricted" placeholders for redacted columns (PR-3d). */
+  canSeeFullPii?: boolean;
 }) {
   const readinessEnabled = paxReadinessEnabled();
   return (
@@ -66,7 +85,7 @@ export function PaxRoomingTab({
         }
       />
 
-      {readinessEnabled ? <PaxReadinessStrip readiness={vm.readiness} /> : null}
+      {readinessEnabled ? <PaxReadinessStrip readiness={vm.readiness} canSeeFullPii={canSeeFullPii} /> : null}
 
       <section aria-label="Passenger manifest" className="space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -76,7 +95,11 @@ export function PaxRoomingTab({
         {canEditPassengers ? (
           <PassengerEditor bookingId={bookingId} passengers={vm.passengers} />
         ) : (
-          <PassengerManifestTable passengers={vm.passengers} showReadinessChips={readinessEnabled} />
+          <PassengerManifestTable
+            passengers={vm.passengers}
+            showReadinessChips={readinessEnabled}
+            canSeeFullPii={canSeeFullPii}
+          />
         )}
       </section>
 

@@ -289,3 +289,74 @@ describe('RoomingEditorError — inline backend error', () => {
     assert.equal(renderToStaticMarkup(createElement(RoomingEditorError, { message: null })), '');
   });
 });
+
+// --- PR-3d: restricted-role FE privacy polish -------------------------------
+
+function renderPii(
+  detail: Parameters<typeof buildPaxRoomingVM>[0],
+  opts: { canSeeFullPii: boolean; readinessEnabled?: boolean; canEditPassengers?: boolean },
+): string {
+  const prev = process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+  if (opts.readinessEnabled) process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS = 'true';
+  else delete process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+  try {
+    return renderToStaticMarkup(
+      createElement(
+        AppRouterContext.Provider as never,
+        { value: STUB_ROUTER } as never,
+        createElement(PaxRoomingTab, {
+          vm: buildPaxRoomingVM(detail),
+          bookingId: BK,
+          canSeeFullPii: opts.canSeeFullPii,
+          canEditPassengers: opts.canEditPassengers ?? false,
+        }),
+      ),
+    );
+  } finally {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS;
+    else process.env.NEXT_PUBLIC_OPS_V2_PAX_READINESS = prev;
+  }
+}
+
+describe('PaxRoomingTab — PR-3d restricted-role privacy polish', () => {
+  it('suppresses passport chips + strip badges for restricted roles (readiness ON)', () => {
+    const h = renderPii(WARN_DETAIL, { canSeeFullPii: false, readinessEnabled: true });
+    assert.ok(!h.includes('No passport'), 'No passport chip leaked to restricted role');
+    assert.ok(!h.includes('Passport expiring'), 'Passport expiring chip leaked to restricted role');
+    assert.ok(!h.includes('missing a passport'), 'missing-passport strip badge leaked to restricted role');
+    assert.ok(!h.includes('expiring within 6 months'), 'passport-expiry strip badge leaked to restricted role');
+    // Non-passport readiness warnings still surface (not PII).
+    assert.ok(h.includes('not assigned to a room'), 'non-passport warning wrongly suppressed');
+  });
+
+  it('full-PII roles still see passport chips + badges (readiness ON) — unchanged', () => {
+    const h = renderPii(WARN_DETAIL, { canSeeFullPii: true, readinessEnabled: true });
+    assert.ok(h.includes('No passport'), 'passport chip missing for full-PII role');
+    assert.ok(h.includes('missing a passport'), 'passport strip badge missing for full-PII role');
+  });
+
+  it('shows "Restricted" (not Missing/values) for redacted columns to restricted roles', () => {
+    const h = renderPii(SAMPLE_DETAIL, { canSeeFullPii: false });
+    assert.ok(h.includes('Restricted'), '"Restricted" placeholder missing');
+    assert.ok(!h.includes('Missing'), 'misleading "Missing" fallback shown to restricted role');
+    assert.ok(!h.includes('55•••••1'), 'masked passport shown to restricted role');
+    assert.ok(!h.includes('Vegetarian'), 'dietary PII shown to restricted role');
+    // Identity is still shown.
+    assert.ok(h.includes('James Anderson'), 'passenger name should still render');
+    assert.ok(h.includes('Lead'), 'lead marker should still render');
+  });
+
+  it('full-PII roles still see real manifest values (no "Restricted")', () => {
+    const h = renderPii(SAMPLE_DETAIL, { canSeeFullPii: true });
+    assert.ok(h.includes('55•••••1'), 'masked passport missing for full-PII role');
+    assert.ok(h.includes('Vegetarian'), 'dietary value missing for full-PII role');
+    assert.ok(!h.includes('Restricted'), '"Restricted" leaked to full-PII role');
+  });
+
+  it('restricted role keeps a read-only manifest (no editor) and no finance', () => {
+    const h = renderPii(SAMPLE_DETAIL, { canSeeFullPii: false, canEditPassengers: false });
+    assert.ok(h.includes('<table'), 'read-only manifest table missing');
+    assert.ok(!h.includes('Add passenger'), 'editor leaked to restricted role');
+    assert.ok(!/unitSell|unitCost|totalSell|payable|margin|invoice/i.test(h), 'leaked a financial key');
+  });
+});
