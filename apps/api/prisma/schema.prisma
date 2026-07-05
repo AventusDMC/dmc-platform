@@ -43,6 +43,7 @@ model Booking {
   days                  BookingDay[]
   services              BookingService[]
   vouchers              Voucher[]
+  voucherPackets        VoucherPacket[]
   auditLogs             BookingAuditLog[]
   passengers            BookingPassenger[]
   payments              Payment[]
@@ -2277,6 +2278,7 @@ model Supplier {
   vehicleRates          VehicleRate[]
   transportContracts    TransportContract[]
   vouchers              Voucher[]
+  voucherPackets        VoucherPacket[]
   dmcQuoteDayServices   DmcQuoteDayService[]
 
   @@map("suppliers")
@@ -2920,6 +2922,7 @@ model BookingService {
   touringRoutePricing        TouringRoutePricing?          @relation(fields: [touringRoutePricingId], references: [id], onDelete: SetNull)
   auditLogs                  BookingAuditLog[]
   vouchers                   Voucher[]
+  voucherPacketItems         VoucherPacketItem[]
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   assignedSupplier           Supplier?                     @relation("BookingServiceAssignedSupplier", fields: [assignedSupplierId], references: [id], onDelete: SetNull)
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
@@ -3083,6 +3086,59 @@ model Voucher {
   @@index([supplierId])
   @@index([generatedAt])
   @@map("vouchers")
+}
+
+// Supplier Voucher Packet V2 — Slice S1 (additive, inert).
+// A packet groups multiple same-supplier BookingServices into one supplier-facing
+// voucher (one PDF, one send). Additive layer ALONGSIDE the 1:1 `Voucher` model —
+// the existing single-service voucher behaviour is unchanged. No behaviour, API,
+// UI, PDF, or send is wired in S1; these tables are created but unused.
+// String status/type (mirrors BookingService.voucherStatus/serviceType) to avoid
+// enum churn in S1. Audit for packets is deferred to a later slice (no
+// BookingAuditEntityType change here).
+model VoucherPacket {
+  id           String              @id @default(uuid()) @db.Uuid
+  bookingId    String              @db.Uuid
+  supplierId   String?             @db.Uuid
+  // Grouping dimension + deterministic key computed from the member services
+  // (e.g. TRANSPORT / HOTEL / ...; key like "TRANSPORT:<supplierId>").
+  groupingType String
+  groupingKey  String
+  // DRAFT | GENERATED | PREVIEWED | DOWNLOADED | SENT | STALE (String, no enum in S1).
+  status       String              @default("DRAFT")
+  // Stale detection: set at generation; packet is STALE when a member changed since.
+  contentHash  String?
+  snapshotJson Json?
+  generatedAt  DateTime?
+  generatedBy  String?             @db.Uuid
+  sentAt       DateTime?
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  booking      Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  supplier     Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items        VoucherPacketItem[]
+
+  @@index([bookingId, status])
+  @@index([supplierId])
+  @@index([generatedAt])
+  @@map("voucher_packets")
+}
+
+model VoucherPacketItem {
+  id               String         @id @default(uuid()) @db.Uuid
+  packetId         String         @db.Uuid
+  bookingServiceId String         @db.Uuid
+  includedAt       DateTime       @default(now())
+  snapshotJson     Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  packet           VoucherPacket  @relation(fields: [packetId], references: [id], onDelete: Cascade)
+  bookingService   BookingService @relation(fields: [bookingServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([packetId, bookingServiceId])
+  @@index([bookingServiceId])
+  @@map("voucher_packet_items")
 }
 
 enum BookingStatus {
