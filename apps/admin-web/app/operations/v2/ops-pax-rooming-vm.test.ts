@@ -62,6 +62,14 @@ describe('ops-pax-rooming-vm — rooming validity (pinned to Classic)', () => {
     assert.deepEqual(byId['r-valid'].assignedNames, ['Mr James Anderson', 'Mrs Sarah Anderson']);
   });
 
+  it('assignedPassengers carries ids + names (PR-2c-2, for unassign/assign)', () => {
+    assert.deepEqual(byId['r-valid'].assignedPassengers, [
+      { id: 'p-lead', name: 'Mr James Anderson' },
+      { id: 'p-sarah', name: 'Mrs Sarah Anderson' },
+    ]);
+    assert.deepEqual(byId['r-needs'].assignedPassengers, []);
+  });
+
   it('Mismatch: capacity != assigned', () => {
     assert.equal(byId['r-mismatch'].validity, 'Mismatch');
   });

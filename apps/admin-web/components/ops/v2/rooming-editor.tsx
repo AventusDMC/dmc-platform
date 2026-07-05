@@ -2,25 +2,31 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { RoomRowVM } from '../../../app/operations/v2/ops-pax-rooming-vm';
+import type { PaxRowVM, RoomRowVM } from '../../../app/operations/v2/ops-pax-rooming-vm';
 import {
   ROOM_OCCUPANCIES,
+  buildAssignPassengerRequest,
+  buildAutoAssignRequest,
   buildRoomCreateRequest,
   buildRoomDeleteRequest,
   buildRoomUpdateRequest,
+  buildUnassignPassengerRequest,
   resolveRoomingErrorMessage,
+  type RoomAssignmentRequest,
   type RoomMutationRequest,
   type RoomOccupancyValue,
 } from '../../../app/operations/v2/ops-rooming-request';
 
 /**
- * Booking Operations V2 — rooming editor (PR-2c-1, flag-gated by the caller).
+ * Booking Operations V2 — rooming editor (PR-2c-1 + PR-2c-2, flag-gated by the
+ * caller).
  *
- * Room CRUD ONLY: create / edit / delete rooms (roomType, occupancy, notes).
- * Passenger assignment / unassignment / auto-assign are PR-2c-2 and are NOT
- * rendered here — assigned passengers are shown read-only. Mutations go through
- * the V2 JSON proxies and, on success, `router.refresh()` reloads server truth so
- * the readiness strip + room validity update. No optimistic local mutation.
+ * Room CRUD (create / edit / delete) plus passenger assignment / unassignment /
+ * auto-assign (PR-2c-2). The assign picker lists only currently-unassigned
+ * passengers; capacity / already-assigned errors are surfaced inline from the
+ * backend. Mutations go through the V2 JSON proxies and, on success,
+ * `router.refresh()` reloads server truth so the readiness strip + room validity
+ * update. No optimistic local mutation. No PII, no finance.
  */
 
 type RoomFormValues = { roomType: string; occupancy: RoomOccupancyValue; notes: string };
@@ -100,15 +106,28 @@ function RoomFields({
   );
 }
 
-export function RoomingEditor({ bookingId, rooms }: { bookingId: string; rooms: RoomRowVM[] }) {
+export function RoomingEditor({
+  bookingId,
+  rooms,
+  passengers,
+}: {
+  bookingId: string;
+  rooms: RoomRowVM[];
+  passengers: PaxRowVM[];
+}) {
   const router = useRouter();
   const [addValues, setAddValues] = useState<RoomFormValues>(emptyRoom);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<RoomFormValues>(emptyRoom);
+  const [assignSelection, setAssignSelection] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(req: RoomMutationRequest): Promise<boolean> {
+  // Passengers not currently assigned to any room (the assign-picker options).
+  const assignedIds = new Set(rooms.flatMap((r) => r.assignedPassengers.map((p) => p.id)));
+  const unassignedPassengers = passengers.filter((p) => !assignedIds.has(p.id));
+
+  async function run(req: RoomMutationRequest | RoomAssignmentRequest): Promise<boolean> {
     setSubmitting(true);
     setError(null);
     try {
@@ -163,9 +182,49 @@ export function RoomingEditor({ bookingId, rooms }: { bookingId: string; rooms: 
     }
   }
 
+  async function onAssign(roomId: string) {
+    const passengerId = assignSelection[roomId];
+    if (!passengerId) {
+      setError('Choose a passenger to assign.');
+      return;
+    }
+    if (await run(buildAssignPassengerRequest(bookingId, roomId, passengerId))) {
+      setAssignSelection((s) => ({ ...s, [roomId]: '' }));
+      router.refresh();
+    }
+  }
+
+  async function onUnassign(roomId: string, passengerId: string) {
+    if (await run(buildUnassignPassengerRequest(bookingId, roomId, passengerId))) {
+      router.refresh();
+    }
+  }
+
+  async function onAutoAssign() {
+    if (await run(buildAutoAssignRequest(bookingId))) {
+      router.refresh();
+    }
+  }
+
   return (
     <div className="space-y-4">
       <RoomingEditorError message={error} />
+
+      {unassignedPassengers.length > 0 ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+          <span className="text-xs text-muted-foreground">
+            {unassignedPassengers.length} passenger{unassignedPassengers.length === 1 ? '' : 's'} not assigned to a room.
+          </span>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onAutoAssign}
+            className="inline-flex h-7 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground disabled:opacity-60"
+          >
+            Auto-assign
+          </button>
+        </div>
+      ) : null}
 
       <ul className="space-y-2">
         {rooms.length === 0 ? (
@@ -226,20 +285,55 @@ export function RoomingEditor({ bookingId, rooms }: { bookingId: string; rooms: 
                       </button>
                     </div>
                   </div>
-                  {room.assignedNames.length > 0 ? (
+                  {room.assignedPassengers.length > 0 ? (
                     <ul className="flex flex-wrap gap-1.5">
-                      {room.assignedNames.map((name, i) => (
+                      {room.assignedPassengers.map((p) => (
                         <li
-                          key={`${room.id}-pax-${i}`}
-                          className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                          key={`${room.id}-pax-${p.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
                         >
-                          {name}
+                          {p.name}
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => onUnassign(room.id, p.id)}
+                            aria-label={`Unassign ${p.name}`}
+                            className="text-destructive hover:underline disabled:opacity-60"
+                          >
+                            Unassign
+                          </button>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-xs text-muted-foreground">No passengers assigned. Assign in Classic (V2 assignment is coming next).</p>
+                    <p className="text-xs text-muted-foreground">No passengers assigned.</p>
                   )}
+                  {unassignedPassengers.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <select
+                        aria-label={`Assign passenger to ${room.label}`}
+                        value={assignSelection[room.id] ?? ''}
+                        disabled={submitting}
+                        onChange={(e) => setAssignSelection((s) => ({ ...s, [room.id]: e.target.value }))}
+                        className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      >
+                        <option value="">Assign passenger…</option>
+                        {unassignedPassengers.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => onAssign(room.id)}
+                        className="inline-flex h-7 items-center rounded-md border border-input px-3 text-xs font-medium text-foreground disabled:opacity-60"
+                      >
+                        Assign
+                      </button>
+                    </div>
+                  ) : null}
                   {room.notes ? <p className="text-xs text-muted-foreground">{room.notes}</p> : null}
                 </div>
               )}

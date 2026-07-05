@@ -61,7 +61,7 @@ export function PaxRoomingTab({
       <ReadOnlyNotice
         message={
           canEditPassengers
-            ? 'Passengers and rooms are editable in V2. Passenger–room assignment is still done in Classic.'
+            ? 'Passengers and rooming are editable in V2 (add/edit rooms, assign passengers, auto-assign).'
             : 'Passenger and rooming data are read-only in V2. Changes are made in Classic.'
         }
       />
@@ -86,7 +86,7 @@ export function PaxRoomingTab({
           <OpenInClassicButton href={`/bookings/${bookingId}?tab=rooming`} label="Open rooming in Classic" />
         </div>
         {canEditPassengers ? (
-          <RoomingEditor bookingId={bookingId} rooms={vm.rooms} />
+          <RoomingEditor bookingId={bookingId} rooms={vm.rooms} passengers={vm.passengers} />
         ) : (
           <RoomingMap rooms={vm.rooms} />
         )}

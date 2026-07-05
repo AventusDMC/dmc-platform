@@ -106,6 +106,9 @@ export type RoomRowVM = {
   occupancy: RoomOccupancy;
   capacity: number | null;
   assignedNames: string[];
+  // Assigned passengers with ids (PR-2c-2) — for unassign + computing which
+  // passengers are still unassigned. `assignedNames` stays for the read-only map.
+  assignedPassengers: { id: string; name: string }[];
   notes: string | null;
   validity: RoomValidity;
 };
@@ -235,6 +238,12 @@ function mapRoom(entry: RawRoomingEntry): RoomRowVM {
   const assignedNames = assignments
     .map((a) => (a.bookingPassenger ? joinName([a.bookingPassenger.title, a.bookingPassenger.firstName, a.bookingPassenger.lastName]) : ''))
     .filter(Boolean);
+  const assignedPassengers = assignments
+    .filter((a) => a.bookingPassenger?.id)
+    .map((a) => ({
+      id: a.bookingPassenger!.id as string,
+      name: joinName([a.bookingPassenger!.title, a.bookingPassenger!.firstName, a.bookingPassenger!.lastName]) || 'Passenger',
+    }));
   return {
     id: entry.id,
     label: entry.roomType || `Room ${entry.sortOrder ?? 0}`,
@@ -242,6 +251,7 @@ function mapRoom(entry: RawRoomingEntry): RoomRowVM {
     occupancy,
     capacity,
     assignedNames,
+    assignedPassengers,
     notes: entry.notes ?? null,
     validity: computeRoomValidity(capacity, assignments.length),
   };
