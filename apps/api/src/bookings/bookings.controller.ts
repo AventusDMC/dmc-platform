@@ -418,6 +418,30 @@ export class BookingsController {
     });
   }
 
+  // Supplier Voucher Packet V2 — S4 PACKET PDF (read-only download). Renders a
+  // PDF for an already-generated packet from its snapshot. Backend-flag-gated
+  // (OPS_V2_VOUCHER_PACKET_ENABLED, fail-closed) inside the service; role-gated
+  // here. No mutation, no status change, no audit, no send.
+  @Get(':id/voucher-packets/:packetId/pdf')
+  @Roles('admin', 'operations')
+  async downloadVoucherPacketPdf(
+    @Param('id') id: string,
+    @Param('packetId') packetId: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const pdfBuffer = await this.bookingsService.generateVoucherPacketPdf(id, packetId, actor);
+    const safeFileName =
+      `packet-${packetId}-voucher`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'supplier-voucher-packet';
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${safeFileName}.pdf"`);
+    return new StreamableFile(pdfBuffer);
+  }
+
   @Patch(':id/operations/:operationId/assign-supplier')
   @Roles('admin', 'operations')
   assignOperationalSupplier(

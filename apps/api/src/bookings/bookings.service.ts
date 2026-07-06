@@ -31,6 +31,7 @@ import {
   buildVoucherPacketItemSnapshot,
   computeVoucherPacketContentHash,
 } from './voucher-packet-generate';
+import { renderVoucherPacketPdf } from './voucher-packet-pdf';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
@@ -733,6 +734,31 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return packet;
     });
+  }
+
+  // Supplier Voucher Packet V2 — S4 PACKET PDF (read-only). Renders a PDF for an
+  // already-generated packet from its SNAPSHOT only. Backend-flag-gated and
+  // fail-closed (OPS_V2_VOUCHER_PACKET_ENABLED). Writes NOTHING — no status
+  // change, no audit, no send. Mirrors generateOperationalVoucherPdf's read-only
+  // posture.
+  async generateVoucherPacketPdf(bookingId: string, packetId: string, actor?: CompanyScopedActor): Promise<Buffer> {
+    if (!isOpsV2VoucherPacketEnabled()) {
+      throw new ForbiddenException('Voucher packet generation is not enabled.');
+    }
+
+    const packet = await (this.prisma.voucherPacket as any).findFirst({
+      where: {
+        id: packetId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(actor),
+      },
+      select: { id: true, status: true, generatedAt: true, snapshotJson: true },
+    });
+    if (!packet) {
+      throw new NotFoundException('Voucher packet not found');
+    }
+
+    return renderVoucherPacketPdf(packet);
   }
 
   async getOperationalServiceGrid(id: string, actor?: CompanyScopedActor) {
