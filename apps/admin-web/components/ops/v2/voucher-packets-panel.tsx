@@ -10,6 +10,7 @@
  */
 
 import { VoucherPacketRegenerateControl } from './voucher-packet-regenerate-control';
+import { VoucherPacketSendReadiness } from './voucher-packet-send-readiness';
 
 export type VoucherPacketGroupVM = {
   groupingKey: string;
@@ -101,6 +102,9 @@ export function VoucherPacketsPanel({ groups, bookingId }: { groups: VoucherPack
                       <VoucherPacketRegenerateControl bookingId={bookingId} packetId={g.existingPacketId} />
                     ) : null}
                   </div>
+                ) : null}
+                {g.existingPacketId ? (
+                  <VoucherPacketSendReadiness bookingId={bookingId} packetId={g.existingPacketId} />
                 ) : null}
               </li>
             );
