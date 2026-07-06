@@ -400,6 +400,24 @@ export class BookingsController {
     return result;
   }
 
+  // Supplier Voucher Packet V2 — S3 GENERATE. Creates a VoucherPacket +
+  // VoucherPacketItem rows from a computed group. Backend-flag-gated and
+  // fail-closed inside the service (OPS_V2_VOUCHER_PACKET_ENABLED); role-gated
+  // here. No PDF / preview / download / send / delete.
+  @Post(':id/voucher-packets')
+  @Roles('admin', 'operations')
+  async generateVoucherPacket(
+    @Param('id') id: string,
+    @Body() body: { groupingKey?: string },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.generateVoucherPacket(id, {
+      groupingKey: String(body?.groupingKey ?? ''),
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Patch(':id/operations/:operationId/assign-supplier')
   @Roles('admin', 'operations')
   assignOperationalSupplier(
