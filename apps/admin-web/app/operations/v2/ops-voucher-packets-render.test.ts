@@ -5,10 +5,24 @@ import { fileURLToPath } from 'node:url';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import {
   VoucherPacketsPanel,
   type VoucherPacketGroupVM,
 } from '../../../components/ops/v2/voucher-packets-panel';
+
+// Wrap the panel in a stubbed app-router context — the S6 Regenerate control is a
+// client component that calls useRouter(); rendering it otherwise throws.
+const ROUTER_STUB = { back() {}, forward() {}, push() {}, replace() {}, refresh() {}, prefetch() {} };
+function renderPanel(groups: VoucherPacketGroupVM[], bookingId = 'bk-1'): string {
+  return renderToStaticMarkup(
+    createElement(
+      AppRouterContext.Provider as never,
+      { value: ROUTER_STUB } as never,
+      createElement(VoucherPacketsPanel, { groups, bookingId }),
+    ),
+  );
+}
 
 // Components use Next's automatic JSX runtime; expose React for the classic runtime.
 (globalThis as unknown as { React?: unknown }).React = React;
@@ -91,6 +105,48 @@ describe('VoucherPacketsPanel — S5 Download PDF (generated packets only)', () 
   });
 });
 
+describe('VoucherPacketsPanel — S6 stale badge + Regenerate (stale generated only)', () => {
+  it('stale generated packet: shows the stale badge + a Regenerate button, still a Download, NO Send', () => {
+    const groups: VoucherPacketGroupVM[] = [
+      { ...SAMPLE[0], existingPacketId: 'packet-abc', packetStatus: 'GENERATED', isStale: true },
+    ];
+    const html = renderPanel(groups);
+    assert.ok(html.includes('Stale'), 'stale badge missing');
+    assert.ok(html.includes('needs regenerate'), 'stale-needs-regenerate copy missing');
+    assert.ok(html.includes('Regenerate'), 'Regenerate control missing for a stale packet');
+    assert.ok(html.includes('Download PDF'), 'Download PDF should remain');
+    for (const forbidden of ['>Send<', 'Send preview', 'send-preview', 'Preview voucher']) {
+      assert.ok(!html.includes(forbidden), `panel must not render "${forbidden}"`);
+    }
+  });
+
+  it('NOT stale generated packet: NO stale badge, NO Regenerate, Download only', () => {
+    const groups: VoucherPacketGroupVM[] = [
+      { ...SAMPLE[0], existingPacketId: 'packet-abc', packetStatus: 'GENERATED', isStale: false },
+    ];
+    const html = renderPanel(groups);
+    assert.ok(!html.includes('Stale'), 'no stale badge when fresh');
+    assert.ok(!html.includes('Regenerate'), 'no Regenerate when fresh');
+    assert.ok(html.includes('Download PDF'));
+  });
+
+  it('orphaned packet: stale badge (no-longer-maps copy) but NO Regenerate button', () => {
+    const groups: VoucherPacketGroupVM[] = [
+      { ...SAMPLE[0], existingPacketId: 'packet-orphan', packetStatus: 'GENERATED', isStale: true, orphaned: true },
+    ];
+    const html = renderPanel(groups);
+    assert.ok(html.includes('no longer maps to services'), 'orphaned copy missing');
+    assert.ok(!html.includes('Regenerate'), 'orphaned packet must not offer Regenerate');
+  });
+
+  it('ungenerated group with no packet: no stale badge, no Regenerate even if isStale slips through', () => {
+    const groups: VoucherPacketGroupVM[] = [{ ...SAMPLE[1], isStale: true }];
+    const html = renderPanel(groups);
+    assert.ok(!html.includes('Regenerate'), 'no Regenerate without a generated packet');
+    assert.ok(!html.includes('Stale'), 'no stale badge without a generated packet');
+  });
+});
+
 describe('VoucherPacketsPanel — empty state', () => {
   it('shows the empty message and no controls', () => {
     const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: [], bookingId: BK }));
@@ -149,5 +205,34 @@ describe('voucher-packet PDF proxy — read-only binary passthrough', () => {
   it('is a binary passthrough (not JSON forward) and never redirects/mutates', () => {
     assert.ok(!/forwardProxyJsonResponse/.test(pdfProxySrc), 'PDF proxy must not JSONify the body');
     assert.ok(!/NextResponse\.redirect|status:\s*303|formData/.test(pdfProxySrc), 'proxy must not redirect/mutate');
+  });
+});
+
+// --- S6 regenerate proxy: POST-only JSON forward, no body, never send/PDF --------
+
+const regenProxySrc = readFileSync(
+  path.join(HERE, '../../api/bookings/[id]/voucher-packets/[packetId]/regenerate/route.ts'),
+  'utf8',
+);
+
+describe('voucher-packet regenerate proxy — POST-only JSON forward', () => {
+  it('exposes POST only (no GET/PATCH/DELETE)', () => {
+    assert.match(regenProxySrc, /export async function POST/);
+    assert.ok(!/export async function (GET|PATCH|DELETE|PUT)/.test(regenProxySrc), 'proxy must be POST-only');
+  });
+
+  it('targets the backend regenerate endpoint, forwards auth, JSON verbatim', () => {
+    assert.match(regenProxySrc, /\/bookings\/\$\{id\}\/voucher-packets\/\$\{packetId\}\/regenerate`/);
+    assert.match(regenProxySrc, /buildActorHeaders/);
+    assert.match(regenProxySrc, /forwardProxyJsonResponse/);
+    assert.match(regenProxySrc, /method:\s*'POST'/);
+  });
+
+  it('sends NO body and never redirects; no PDF/send/preview references', () => {
+    assert.ok(!/JSON\.stringify|body:|formData/.test(regenProxySrc), 'regenerate proxy must not send a body');
+    assert.ok(!/NextResponse\.redirect|status:\s*303/.test(regenProxySrc), 'proxy must not redirect');
+    for (const bad of ['.pdf', '/pdf', '/send', '/preview', 'send-document-email']) {
+      assert.ok(!regenProxySrc.includes(bad), `regenerate proxy must not reference "${bad}"`);
+    }
   });
 });

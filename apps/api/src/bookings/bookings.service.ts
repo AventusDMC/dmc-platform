@@ -599,24 +599,65 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    const groups = computeVoucherPacketGroups(this.buildPackableServices(booking));
+    const services = this.buildPackableServices(booking);
+    const groups = computeVoucherPacketGroups(services);
 
     // S5 enrichment (read-only): when the backend packet flag is ON, annotate each
     // group with an already-generated packet's id + status so the UI can offer a
     // download. When OFF, the fields stay absent (fail-closed — no download
     // affordance appears, no visible-but-403 button in production). No writes.
+    //
+    // S6 stale detection (read-only, same flag gate): for each group that already
+    // has a packet, recompute the current group's contentHash and compare it to the
+    // stored packet.contentHash — a mismatch (member field/add/remove/supplier
+    // change) means the packet is stale. Packets whose groupingKey maps to no live
+    // group are surfaced as synthetic "orphaned" entries (isStale=true). NOTHING is
+    // written — no status='STALE', no audit; the packet status stays GENERATED until
+    // an operator regenerates.
     if (isOpsV2VoucherPacketEnabled()) {
       const packets = await (this.prisma.voucherPacket as any).findMany({
         where: { bookingId: id },
-        select: { id: true, groupingKey: true, status: true },
+        select: { id: true, groupingKey: true, status: true, contentHash: true, snapshotJson: true },
       });
-      const byKey = new Map<string, { id: string; status: string }>(
-        (packets as any[]).map((p) => [p.groupingKey, { id: p.id, status: p.status }]),
+      const byKey = new Map<string, { id: string; status: string; contentHash: string | null; snapshotJson: any }>(
+        (packets as any[]).map((p) => [p.groupingKey, { id: p.id, status: p.status, contentHash: p.contentHash, snapshotJson: p.snapshotJson }]),
       );
+      const liveKeys = new Set(groups.map((g) => g.groupingKey));
+
       for (const group of groups) {
         const match = byKey.get(group.groupingKey);
         group.existingPacketId = match?.id ?? null;
         group.packetStatus = match?.status ?? null;
+        if (match) {
+          const members = services.filter((s) => group.serviceIds.includes(s.id));
+          const currentHash = computeVoucherPacketContentHash(members);
+          group.isStale = currentHash !== (match.contentHash ?? null);
+        }
+      }
+
+      // Orphaned packets: a generated packet whose group no longer exists (e.g. the
+      // supplier was unassigned, or every member was removed). Surface it read-only so
+      // the operator can see it — display fields come from the stored snapshot. It is
+      // always stale; regenerate is not offered (the group is gone → would 409).
+      for (const packet of packets as any[]) {
+        if (liveKeys.has(packet.groupingKey)) continue;
+        const snap = (packet.snapshotJson ?? {}) as any;
+        const snapServices = Array.isArray(snap.services) ? snap.services : [];
+        groups.push({
+          groupingKey: packet.groupingKey,
+          groupingType: snap.groupingType ?? 'SERVICE',
+          supplierId: snap.supplierId ?? '',
+          supplierName: snap.supplierName ?? null,
+          serviceIds: snapServices.map((s: any) => s.id).filter(Boolean),
+          serviceCount: typeof snap.serviceCount === 'number' ? snap.serviceCount : snapServices.length,
+          dateRange: snap.dateRange ?? { start: null, end: null },
+          dayNumbers: Array.isArray(snap.dayNumbers) ? snap.dayNumbers : [],
+          memberLabels: snapServices.map((s: any) => (s.label ?? '').trim()).filter(Boolean),
+          existingPacketId: packet.id,
+          packetStatus: packet.status,
+          isStale: true,
+          orphaned: true,
+        });
       }
     }
 
@@ -754,6 +795,142 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
 
       return packet;
+    });
+  }
+
+  // Supplier Voucher Packet V2 — S6 REGENERATE (backend-flag-gated, fail-closed).
+  // Rebuilds an existing packet's snapshot + items + contentHash from the CURRENT
+  // grouping, in place: same packetId, status stays GENERATED, generatedAt/By
+  // refreshed. The server re-runs the S2 engine and never trusts client data. NO
+  // PDF/preview/download/send, no STALE persistence, no delete of the packet. If the
+  // packet's group no longer exists (orphaned) it cannot be regenerated → Conflict.
+  async regenerateVoucherPacket(
+    id: string,
+    data: { packetId: string; actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ) {
+    // 1) Fail-closed backend gate — checked FIRST, before any load/write.
+    if (!isOpsV2VoucherPacketEnabled()) {
+      throw new ForbiddenException('Voucher packet generation is not enabled.');
+    }
+
+    const packetId = this.normalizeRequiredText(data.packetId, 'A packetId is required.');
+
+    const booking = await this.findOne(id, data.companyActor);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // 2) Load the existing packet (company-scoped) — 404 if it is not this booking's.
+    const packet = await (this.prisma.voucherPacket as any).findFirst({
+      where: {
+        id: packetId,
+        bookingId: id,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      select: { id: true, groupingKey: true, status: true },
+    });
+    if (!packet) {
+      throw new NotFoundException('Voucher packet not found');
+    }
+
+    // 3) Re-run the S2 engine (authoritative) and locate the packet's current group.
+    const services = this.buildPackableServices(booking);
+    const group = computeVoucherPacketGroups(services).find((g) => g.groupingKey === packet.groupingKey);
+    if (!group) {
+      // Orphaned — the supplier was unassigned or every member removed. No group to
+      // rebuild from; the operator must reassign services (delete is a later slice).
+      throw new ConflictException('The packet group no longer exists; it cannot be regenerated.');
+    }
+    const members = services.filter((s) => group.serviceIds.includes(s.id));
+
+    return this.prisma.$transaction(async (tx: any) => {
+      // 4) Double-coverage guard — a member must not be covered by ANOTHER packet or a
+      // standalone voucher. Exclude THIS packet's own items (they are expected).
+      for (const serviceId of group.serviceIds) {
+        const inOtherPacket = await tx.voucherPacketItem.findFirst({
+          where: { bookingServiceId: serviceId, packetId: { not: packetId } },
+          select: { id: true },
+        });
+        if (inOtherPacket) {
+          throw new ConflictException('A service is already included in another voucher packet.');
+        }
+        const inVoucher = await tx.voucher.findFirst({
+          where: { bookingServiceId: serviceId },
+          select: { id: true },
+        });
+        if (inVoucher) {
+          throw new ConflictException('A service already has a single-service voucher.');
+        }
+      }
+
+      // 5) Membership delta (for per-service audits) — old vs current members.
+      const oldItems = await tx.voucherPacketItem.findMany({
+        where: { packetId },
+        select: { bookingServiceId: true },
+      });
+      const oldIds = new Set<string>((oldItems as any[]).map((i) => i.bookingServiceId));
+      const newIds = new Set<string>(members.map((m) => m.id));
+      const addedIds = members.map((m) => m.id).filter((sid) => !oldIds.has(sid));
+      const removedIds = Array.from(oldIds).filter((sid) => !newIds.has(sid));
+
+      // 6) Rebuild snapshot + contentHash; refresh generatedAt/By; KEEP status GENERATED.
+      const contentHash = computeVoucherPacketContentHash(members);
+      const updated = await tx.voucherPacket.update({
+        where: { id: packetId },
+        data: {
+          contentHash,
+          snapshotJson: buildVoucherPacketSnapshot(group, booking.bookingRef ?? null, members),
+          generatedAt: new Date(),
+          generatedBy: data.actor?.userId ?? null,
+        },
+      });
+
+      // 7) Replace the packet's items in place (same packetId).
+      await tx.voucherPacketItem.deleteMany({ where: { packetId } });
+      for (const member of members) {
+        await tx.voucherPacketItem.create({
+          data: {
+            packetId,
+            bookingServiceId: member.id,
+            snapshotJson: buildVoucherPacketItemSnapshot(member),
+          },
+        });
+      }
+
+      // 8) Per-service inclusion/removal audits (name/label only — PII/finance-free).
+      for (const serviceId of addedIds) {
+        await this.createAuditLog(tx, {
+          bookingId: id,
+          entityType: BookingAuditEntityType.booking_service,
+          entityId: serviceId,
+          action: 'voucher_packet_service_included',
+          newValue: `${group.supplierName ?? 'Supplier'} · ${group.groupingType}`,
+          actor: data.actor,
+        });
+      }
+      for (const serviceId of removedIds) {
+        await this.createAuditLog(tx, {
+          bookingId: id,
+          entityType: BookingAuditEntityType.booking_service,
+          entityId: serviceId,
+          action: 'voucher_packet_service_removed',
+          oldValue: `${group.supplierName ?? 'Supplier'} · ${group.groupingType}`,
+          actor: data.actor,
+        });
+      }
+
+      // 9) Packet-level regenerate audit (booking-scoped; packet id as entityId).
+      await this.createAuditLog(tx, {
+        bookingId: id,
+        entityType: BookingAuditEntityType.booking,
+        entityId: packetId,
+        action: 'voucher_packet_regenerated',
+        newValue: `${group.supplierName ?? 'Supplier'} · ${group.groupingType} · ${members.length} service${members.length === 1 ? '' : 's'}`,
+        note: group.groupingKey,
+        actor: data.actor,
+      });
+
+      return updated;
     });
   }
 
