@@ -1,12 +1,15 @@
 /**
- * Supplier Voucher Packet V2 — S2 read-only panel.
+ * Supplier Voucher Packet V2 — Supplier Packets panel.
  *
- * Display-only: shows the computed supplier packet groups for a booking. No
- * buttons, no forms, no mutation — no generate / preview / download / send in
- * S2. Rendered only when the caller passes the flag-gated groups (the page gates
- * on NEXT_PUBLIC_OPS_V2_VOUCHER_PACKET). Finance/PII-free by construction (the
- * group DTO carries only supplier name, type, counts, dates, and service labels).
+ * Read-first: shows the computed supplier packet groups for a booking. The only
+ * mutating affordance is the S6 "Regenerate" control, shown ONLY for a stale
+ * generated packet. No generate / preview / send / email / delete. Rendered only
+ * when the caller passes the flag-gated groups (the page gates on
+ * NEXT_PUBLIC_OPS_V2_VOUCHER_PACKET). Finance/PII-free by construction (the group
+ * DTO carries only supplier name, type, counts, dates, and service labels).
  */
+
+import { VoucherPacketRegenerateControl } from './voucher-packet-regenerate-control';
 
 export type VoucherPacketGroupVM = {
   groupingKey: string;
@@ -22,6 +25,11 @@ export type VoucherPacketGroupVM = {
   // when a packet has been generated for this group — enables "Download PDF".
   existingPacketId?: string | null;
   packetStatus?: string | null;
+  // S6 (read-only, flag-gated): isStale = the generated packet's stored contentHash
+  // no longer matches the current grouping. orphaned = the packet's group no longer
+  // exists (surfaced read-only; not regeneratable here).
+  isStale?: boolean;
+  orphaned?: boolean;
 };
 
 function dateRangeLabel(range: { start: string | null; end: string | null }): string | null {
@@ -63,6 +71,11 @@ export function VoucherPacketsPanel({ groups, bookingId }: { groups: VoucherPack
                     {range ? ` · ${range}` : ''}
                     {g.dayNumbers.length ? ` · day${g.dayNumbers.length === 1 ? '' : 's'} ${g.dayNumbers.join(', ')}` : ''}
                   </span>
+                  {g.existingPacketId && g.isStale ? (
+                    <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning">
+                      {g.orphaned ? 'Stale · no longer maps to services' : 'Stale · needs regenerate'}
+                    </span>
+                  ) : null}
                 </div>
                 {g.memberLabels.length ? (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
@@ -77,13 +90,16 @@ export function VoucherPacketsPanel({ groups, bookingId }: { groups: VoucherPack
                   </ul>
                 ) : null}
                 {g.existingPacketId ? (
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <a
                       href={`/api/bookings/${bookingId}/voucher-packets/${g.existingPacketId}/pdf`}
                       className="inline-flex items-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium text-foreground hover:underline"
                     >
                       Download PDF
                     </a>
+                    {g.isStale && !g.orphaned ? (
+                      <VoucherPacketRegenerateControl bookingId={bookingId} packetId={g.existingPacketId} />
+                    ) : null}
                   </div>
                 ) : null}
               </li>

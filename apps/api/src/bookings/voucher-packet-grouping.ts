@@ -55,6 +55,15 @@ export type VoucherPacketGroup = {
   // engine never sets these.
   existingPacketId?: string | null;
   packetStatus?: string | null;
+  // S6 stale detection (populated by the service, read-only, flag-gated): true when
+  // this group has a generated packet whose stored contentHash no longer matches the
+  // current group's recomputed contentHash (member field/add/remove/supplier change),
+  // or when the packet's group no longer exists (orphaned). Never persisted — the
+  // packet status stays GENERATED. `orphaned` marks a packet whose groupingKey maps
+  // to no live group (surfaced as a synthetic, non-regeneratable entry). The pure
+  // engine never sets these.
+  isStale?: boolean;
+  orphaned?: boolean;
 };
 
 /** Stable display/sort order of the group types. */

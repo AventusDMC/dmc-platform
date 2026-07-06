@@ -418,6 +418,25 @@ export class BookingsController {
     });
   }
 
+  // Supplier Voucher Packet V2 — S6 REGENERATE. Rebuilds an existing packet's
+  // snapshot + items + contentHash from the current grouping (same packetId, status
+  // stays GENERATED). Backend-flag-gated and fail-closed inside the service
+  // (OPS_V2_VOUCHER_PACKET_ENABLED); role-gated here. No PDF / preview / send /
+  // delete. Group-missing (orphaned) → Conflict.
+  @Post(':id/voucher-packets/:packetId/regenerate')
+  @Roles('admin', 'operations')
+  async regenerateVoucherPacket(
+    @Param('id') id: string,
+    @Param('packetId') packetId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.regenerateVoucherPacket(id, {
+      packetId,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   // Supplier Voucher Packet V2 — S4 PACKET PDF (read-only download). Renders a
   // PDF for an already-generated packet from its snapshot. Backend-flag-gated
   // (OPS_V2_VOUCHER_PACKET_ENABLED, fail-closed) inside the service; role-gated
