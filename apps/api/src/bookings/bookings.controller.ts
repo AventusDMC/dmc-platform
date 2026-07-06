@@ -437,6 +437,21 @@ export class BookingsController {
     });
   }
 
+  // Supplier Voucher Packet V2 — S7 SEND-PREVIEW / READINESS (read-only). Reports
+  // whether a packet email COULD be sent and to whom (recipient resolved from the
+  // packet's assigned supplier only). Backend-flag-gated
+  // (OPS_V2_VOUCHER_PACKET_ENABLED, fail-closed) inside the service; role-gated
+  // here. No body, no send, no email, no transport, no mutation/audit/PDF.
+  @Get(':id/voucher-packets/:packetId/send-preview')
+  @Roles('admin', 'operations')
+  getVoucherPacketSendPreview(
+    @Param('id') id: string,
+    @Param('packetId') packetId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.getVoucherPacketSendPreview(id, packetId, actor);
+  }
+
   // Supplier Voucher Packet V2 — S4 PACKET PDF (read-only download). Renders a
   // PDF for an already-generated packet from its snapshot. Backend-flag-gated
   // (OPS_V2_VOUCHER_PACKET_ENABLED, fail-closed) inside the service; role-gated

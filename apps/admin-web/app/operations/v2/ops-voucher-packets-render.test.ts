@@ -10,6 +10,10 @@ import {
   VoucherPacketsPanel,
   type VoucherPacketGroupVM,
 } from '../../../components/ops/v2/voucher-packets-panel';
+import {
+  VoucherPacketSendReadinessView,
+  type VoucherPacketSendPreviewVM,
+} from '../../../components/ops/v2/voucher-packet-send-readiness';
 
 // Wrap the panel in a stubbed app-router context — the S6 Regenerate control is a
 // client component that calls useRouter(); rendering it otherwise throws.
@@ -147,6 +151,48 @@ describe('VoucherPacketsPanel — S6 stale badge + Regenerate (stale generated o
   });
 });
 
+describe('VoucherPacketSendReadinessView — S7 read-only readiness (no send controls)', () => {
+  const READY: VoucherPacketSendPreviewVM = {
+    supplierName: 'TEST Hotel Supplier A',
+    recipientEmail: 'ops@supplier.example',
+    emails: ['ops@supplier.example'],
+    serviceCount: 1,
+    memberLabels: ['QA Hotel Service'],
+    readiness: 'READY',
+    readinessReason: 'ready',
+    blockingReasons: [],
+    note: 'Preview only. No email is sent.',
+  };
+
+  it('READY: shows header, preview-only note, "Would send to", Ready pill, and NO controls', () => {
+    const html = renderToStaticMarkup(createElement(VoucherPacketSendReadinessView, { preview: READY }));
+    assert.ok(html.includes('Send readiness — preview only'));
+    assert.ok(html.includes('Preview only. No email is sent.'));
+    assert.ok(html.includes('Would send to: TEST Hotel Supplier A — ops@supplier.example'));
+    assert.ok(html.includes('Ready to send'));
+    for (const forbidden of ['<button', '<form', '<input', '>Send<', 'Send preview', 'Send packet']) {
+      assert.ok(!html.includes(forbidden), `readiness must not render "${forbidden}"`);
+    }
+  });
+
+  it('Not ready: shows blocker chips and no resolved recipient, still NO controls', () => {
+    const blocked: VoucherPacketSendPreviewVM = {
+      ...READY,
+      recipientEmail: null,
+      readiness: 'MISSING_EMAIL',
+      blockingReasons: ['The assigned supplier has no email on file.', 'Supplier sending is not enabled.'],
+    };
+    const html = renderToStaticMarkup(createElement(VoucherPacketSendReadinessView, { preview: blocked }));
+    assert.ok(html.includes('Not ready'));
+    assert.ok(html.includes('The assigned supplier has no email on file.'));
+    assert.ok(html.includes('Supplier sending is not enabled.'));
+    assert.ok(html.includes('No single valid recipient resolved'));
+    for (const forbidden of ['<button', '<form', '>Send<', 'Send preview']) {
+      assert.ok(!html.includes(forbidden), `readiness must not render "${forbidden}"`);
+    }
+  });
+});
+
 describe('VoucherPacketsPanel — empty state', () => {
   it('shows the empty message and no controls', () => {
     const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: [], bookingId: BK }));
@@ -234,5 +280,33 @@ describe('voucher-packet regenerate proxy — POST-only JSON forward', () => {
     for (const bad of ['.pdf', '/pdf', '/send', '/preview', 'send-document-email']) {
       assert.ok(!regenProxySrc.includes(bad), `regenerate proxy must not reference "${bad}"`);
     }
+  });
+});
+
+// --- S7 send-preview proxy: read-only GET JSON forward, no body, never mutate ----
+
+const sendPreviewProxySrc = readFileSync(
+  path.join(HERE, '../../api/bookings/[id]/voucher-packets/[packetId]/send-preview/route.ts'),
+  'utf8',
+);
+
+describe('voucher-packet send-preview proxy — read-only GET JSON forward', () => {
+  it('exposes GET only (no POST/PATCH/DELETE)', () => {
+    assert.match(sendPreviewProxySrc, /export async function GET/);
+    assert.ok(!/export async function (POST|PATCH|DELETE|PUT)/.test(sendPreviewProxySrc), 'proxy must be GET-only');
+  });
+
+  it('targets the backend send-preview read endpoint and forwards JSON', () => {
+    assert.match(sendPreviewProxySrc, /\/voucher-packets\/\$\{packetId\}\/send-preview`/);
+    assert.match(sendPreviewProxySrc, /buildActorHeaders/);
+    assert.match(sendPreviewProxySrc, /forwardProxyJsonResponse/);
+    assert.match(sendPreviewProxySrc, /method:\s*'GET'/);
+  });
+
+  it('sends NO body, never redirects, and performs no actual send/transport', () => {
+    assert.ok(!/JSON\.stringify|body:|formData/.test(sendPreviewProxySrc), 'send-preview proxy must not send a body');
+    assert.ok(!/NextResponse\.redirect|status:\s*303/.test(sendPreviewProxySrc), 'proxy must not redirect');
+    // read-only: it must not call the actual send endpoint or a mail transport
+    assert.ok(!/voucher\/send\b|\/send`|sendMail|resend|nodemailer|smtp/i.test(sendPreviewProxySrc), 'must not reference a send/transport path');
   });
 });

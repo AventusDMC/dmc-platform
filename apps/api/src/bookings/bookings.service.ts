@@ -32,6 +32,10 @@ import {
   computeVoucherPacketContentHash,
 } from './voucher-packet-generate';
 import { renderVoucherPacketPdf } from './voucher-packet-pdf';
+import {
+  buildVoucherPacketSendPreview,
+  type VoucherPacketSendPreview,
+} from './voucher-packet-send-preview';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
@@ -957,6 +961,82 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return renderVoucherPacketPdf(packet);
+  }
+
+  // Supplier Voucher Packet V2 — S7 SEND-PREVIEW / READINESS (read-only,
+  // fail-closed). Describes whether a packet email COULD be sent and to whom.
+  // Backend-flag-gated (OPS_V2_VOUCHER_PACKET_ENABLED). Recipient is resolved from
+  // packet.supplierId -> Supplier.email ONLY (never client-supplied). Send config
+  // (OPS_V2_VOUCHER_SEND_ENABLED + allowlist) is READ ONLY to report blockers.
+  // Writes NOTHING — no send, no email, no transport, no status/sentAt, no audit,
+  // no PDF generation.
+  async getVoucherPacketSendPreview(
+    bookingId: string,
+    packetId: string,
+    actor?: CompanyScopedActor,
+  ): Promise<VoucherPacketSendPreview> {
+    if (!isOpsV2VoucherPacketEnabled()) {
+      throw new ForbiddenException('Voucher packet generation is not enabled.');
+    }
+
+    const booking = await this.findOne(bookingId, actor);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const packet = await (this.prisma.voucherPacket as any).findFirst({
+      where: {
+        id: packetId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(actor),
+      },
+      select: { id: true, status: true, groupingKey: true, supplierId: true, contentHash: true, snapshotJson: true },
+    });
+    if (!packet) {
+      throw new NotFoundException('Voucher packet not found');
+    }
+
+    // Stale check (same computation as S6): recompute the current group's
+    // contentHash and compare. A missing group (orphaned) counts as stale.
+    const services = this.buildPackableServices(booking);
+    const group = computeVoucherPacketGroups(services).find((g) => g.groupingKey === packet.groupingKey);
+    let isStale: boolean;
+    if (!group) {
+      isStale = true;
+    } else {
+      const members = services.filter((s) => group.serviceIds.includes(s.id));
+      isStale = computeVoucherPacketContentHash(members) !== (packet.contentHash ?? null);
+    }
+
+    // Recipient — the packet's stored supplier ONLY (never client-supplied).
+    const supplier = packet.supplierId
+      ? await (this.prisma.supplier as any).findUnique({
+          where: { id: packet.supplierId },
+          select: { id: true, name: true, email: true },
+        })
+      : null;
+
+    const snap = (packet.snapshotJson ?? {}) as any;
+    const snapServices = Array.isArray(snap.services) ? snap.services : [];
+    const memberLabels = snapServices.map((s: any) => (s.label ?? '').trim()).filter(Boolean);
+    const serviceCount = typeof snap.serviceCount === 'number' ? snap.serviceCount : snapServices.length;
+
+    return buildVoucherPacketSendPreview({
+      bookingId,
+      packetId,
+      bookingRef: booking.bookingRef ?? null,
+      packetStatus: packet.status ?? null,
+      isStale,
+      hasSnapshot: Boolean(packet.snapshotJson),
+      supplierId: packet.supplierId ?? null,
+      supplierName: supplier?.name ?? null,
+      supplierEmail: supplier?.email ?? null,
+      serviceCount,
+      memberLabels,
+      // Read-only: report SEND_DISABLED / RECIPIENT_NOT_ALLOWLISTED without enabling send.
+      sendEnabled: isOpsV2VoucherSendEnabled(),
+      allowlist: parseRecipientAllowlist(),
+    });
   }
 
   async getOperationalServiceGrid(id: string, actor?: CompanyScopedActor) {
