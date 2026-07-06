@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   BookingAuditEntityType,
   BookingOperationServiceStatus,
@@ -25,6 +25,12 @@ import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-
 import { type DmcRole } from '../auth/auth.types';
 import { mapPassengerForDetail } from './passenger-detail-pii';
 import { computeVoucherPacketGroups, type PackableService } from './voucher-packet-grouping';
+import { isOpsV2VoucherPacketEnabled } from './ops-voucher-packet-flags';
+import {
+  buildVoucherPacketSnapshot,
+  buildVoucherPacketItemSnapshot,
+  computeVoucherPacketContentHash,
+} from './voucher-packet-generate';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
@@ -592,13 +598,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
+    return { groups: computeVoucherPacketGroups(this.buildPackableServices(booking)) };
+  }
+
+  // Shared mapping from a loaded booking's services to the pure engine's input.
+  // Used by both the read-only groups view (S2) and packet generation (S3) so
+  // grouping is identical in both paths.
+  private buildPackableServices(booking: any): PackableService[] {
     const dayById = new Map<string, any>(
       ((booking.days || booking.bookingDays || []) as any[]).map((day) => [day.id, day]),
     );
     const toIso = (value: any): string | null =>
       value instanceof Date ? value.toISOString() : value ? String(value) : null;
 
-    const services: PackableService[] = ((booking.services || []) as any[]).map((service) => ({
+    return ((booking.services || []) as any[]).map((service) => ({
       id: service.id,
       assignedSupplierId: service.assignedSupplierId ?? service.supplierId ?? null,
       assignedSupplierName: service.assignedSupplier?.name ?? service.supplierName ?? null,
@@ -613,8 +626,113 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       nights: service.nights ?? null,
       label: service.description ?? null,
     }));
+  }
 
-    return { groups: computeVoucherPacketGroups(services) };
+  // Supplier Voucher Packet V2 — S3 GENERATE (backend-flag-gated, fail-closed).
+  // Creates one VoucherPacket + N VoucherPacketItem rows from a computed group,
+  // with snapshots + packet/per-service audit. NO PDF/preview/download/send. The
+  // server re-runs the S2 engine and never trusts client-supplied service/supplier
+  // data. Existing single-service vouchers + BookingService.voucherStatus are
+  // untouched; packet membership is tracked ONLY via VoucherPacketItem.
+  async generateVoucherPacket(
+    id: string,
+    data: { groupingKey: string; actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ) {
+    // 1) Fail-closed backend gate — checked FIRST, before any load/write.
+    if (!isOpsV2VoucherPacketEnabled()) {
+      throw new ForbiddenException('Voucher packet generation is not enabled.');
+    }
+
+    const groupingKey = this.normalizeRequiredText(data.groupingKey, 'A groupingKey is required.');
+
+    const booking = await this.findOne(id, data.companyActor);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // 2) Re-run the S2 engine (authoritative) and locate the requested group.
+    const services = this.buildPackableServices(booking);
+    const group = computeVoucherPacketGroups(services).find((g) => g.groupingKey === groupingKey);
+    if (!group) {
+      throw new NotFoundException('Voucher packet group not found');
+    }
+    const members = services.filter((s) => group.serviceIds.includes(s.id));
+
+    return this.prisma.$transaction(async (tx: any) => {
+      // 3) Duplicate guard — one packet per (bookingId, groupingKey).
+      const existingPacket = await tx.voucherPacket.findFirst({
+        where: { bookingId: id, groupingKey },
+        select: { id: true },
+      });
+      if (existingPacket) {
+        throw new ConflictException('A voucher packet already exists for this group.');
+      }
+
+      // 4) Double-coverage guards — a service belongs to at most one artifact.
+      for (const serviceId of group.serviceIds) {
+        const inPacket = await tx.voucherPacketItem.findFirst({
+          where: { bookingServiceId: serviceId },
+          select: { id: true },
+        });
+        if (inPacket) {
+          throw new ConflictException('A service is already included in another voucher packet.');
+        }
+        const inVoucher = await tx.voucher.findFirst({
+          where: { bookingServiceId: serviceId },
+          select: { id: true },
+        });
+        if (inVoucher) {
+          throw new ConflictException('A service already has a single-service voucher.');
+        }
+      }
+
+      const contentHash = computeVoucherPacketContentHash(members);
+      const packet = await tx.voucherPacket.create({
+        data: {
+          bookingId: id,
+          supplierId: group.supplierId,
+          groupingType: group.groupingType,
+          groupingKey: group.groupingKey,
+          status: 'GENERATED',
+          contentHash,
+          snapshotJson: buildVoucherPacketSnapshot(group, booking.bookingRef ?? null, members),
+          generatedAt: new Date(),
+          generatedBy: data.actor?.userId ?? null,
+        },
+      });
+
+      for (const member of members) {
+        await tx.voucherPacketItem.create({
+          data: {
+            packetId: packet.id,
+            bookingServiceId: member.id,
+            snapshotJson: buildVoucherPacketItemSnapshot(member),
+          },
+        });
+        // Per-service inclusion audit (name/label only — PII/finance-free).
+        await this.createAuditLog(tx, {
+          bookingId: id,
+          entityType: BookingAuditEntityType.booking_service,
+          entityId: member.id,
+          action: 'voucher_packet_service_included',
+          newValue: `${group.supplierName ?? 'Supplier'} · ${group.groupingType}`,
+          actor: data.actor,
+        });
+      }
+
+      // Packet-level audit (booking-scoped; packet id as entityId label).
+      await this.createAuditLog(tx, {
+        bookingId: id,
+        entityType: BookingAuditEntityType.booking,
+        entityId: packet.id,
+        action: 'voucher_packet_generated',
+        newValue: `${group.supplierName ?? 'Supplier'} · ${group.groupingType} · ${members.length} service${members.length === 1 ? '' : 's'}`,
+        note: group.groupingKey,
+        actor: data.actor,
+      });
+
+      return packet;
+    });
   }
 
   async getOperationalServiceGrid(id: string, actor?: CompanyScopedActor) {
