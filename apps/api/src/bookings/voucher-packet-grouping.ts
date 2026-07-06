@@ -49,6 +49,12 @@ export type VoucherPacketGroup = {
   dateRange: { start: string | null; end: string | null };
   dayNumbers: number[];
   memberLabels: string[];
+  // S5 enrichment (populated by the service, only when the backend packet flag is
+  // ON): the id + status of an already-generated packet for this group, so the UI
+  // can offer a download. Null when not generated or the flag is OFF. The pure
+  // engine never sets these.
+  existingPacketId?: string | null;
+  packetStatus?: string | null;
 };
 
 /** Stable display/sort order of the group types. */

@@ -38,8 +38,10 @@ const SAMPLE: VoucherPacketGroupVM[] = [
   },
 ];
 
-describe('VoucherPacketsPanel — content (groups present)', () => {
-  const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: SAMPLE }));
+const BK = 'bk-1';
+
+describe('VoucherPacketsPanel — content (groups present, none generated)', () => {
+  const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: SAMPLE, bookingId: BK }));
 
   it('renders the read-only heading + preview tag', () => {
     assert.ok(html.includes('Supplier packets'));
@@ -55,7 +57,7 @@ describe('VoucherPacketsPanel — content (groups present)', () => {
     assert.ok(html.includes('HOTEL'));
   });
 
-  it('renders NO mutating controls (read-only)', () => {
+  it('renders NO mutating controls, and NO Download for ungenerated groups', () => {
     for (const forbidden of ['<button', '<form', '<input', '<select', '<textarea', 'Generate', 'Preview voucher', 'Download', '>Send<', 'Auto-assign']) {
       assert.ok(!html.includes(forbidden), `panel must not render "${forbidden}"`);
     }
@@ -66,11 +68,35 @@ describe('VoucherPacketsPanel — content (groups present)', () => {
   });
 });
 
+describe('VoucherPacketsPanel — S5 Download PDF (generated packets only)', () => {
+  const GENERATED: VoucherPacketGroupVM[] = [
+    { ...SAMPLE[0], existingPacketId: 'packet-abc', packetStatus: 'GENERATED' }, // transport, generated
+    { ...SAMPLE[1] }, // hotel, NOT generated
+  ];
+  const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: GENERATED, bookingId: BK }));
+
+  it('shows a Download PDF link for the generated packet, pointing at the proxy', () => {
+    assert.ok(html.includes('Download PDF'), 'Download PDF affordance missing');
+    assert.ok(html.includes(`href="/api/bookings/${BK}/voucher-packets/packet-abc/pdf"`), 'download href wrong');
+  });
+
+  it('shows exactly ONE Download PDF (hidden for the ungenerated group)', () => {
+    assert.equal(html.split('Download PDF').length - 1, 1, 'only generated groups get a download link');
+  });
+
+  it('adds NO Send / send-preview / Generate / button / form', () => {
+    for (const forbidden of ['<button', '<form', '<input', '>Send<', 'Send preview', 'Generate', 'Preview voucher']) {
+      assert.ok(!html.includes(forbidden), `panel must not render "${forbidden}"`);
+    }
+  });
+});
+
 describe('VoucherPacketsPanel — empty state', () => {
   it('shows the empty message and no controls', () => {
-    const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: [] }));
+    const html = renderToStaticMarkup(createElement(VoucherPacketsPanel, { groups: [], bookingId: BK }));
     assert.ok(html.includes('No supplier packets yet'));
     assert.ok(!html.includes('<button'), 'empty state must have no buttons');
+    assert.ok(!html.includes('Download PDF'), 'no download in empty state');
   });
 });
 
@@ -96,5 +122,32 @@ describe('voucher-packets groups proxy — read-only JSON forward', () => {
 
   it('never redirects, posts a body, or uses formData', () => {
     assert.ok(!/NextResponse\.redirect|status:\s*303|formData|JSON\.stringify/.test(proxySrc), 'proxy must not mutate/redirect');
+  });
+});
+
+// --- S5 read-only PDF proxy: binary passthrough, GET only, never mutate -------
+
+const pdfProxySrc = readFileSync(
+  path.join(HERE, '../../api/bookings/[id]/voucher-packets/[packetId]/pdf/route.ts'),
+  'utf8',
+);
+
+describe('voucher-packet PDF proxy — read-only binary passthrough', () => {
+  it('exposes GET only (no POST/PATCH/DELETE)', () => {
+    assert.match(pdfProxySrc, /export async function GET/);
+    assert.ok(!/export async function (POST|PATCH|DELETE|PUT)/.test(pdfProxySrc), 'proxy must be GET-only');
+  });
+
+  it('targets the backend packet PDF endpoint, forwards auth, streams application/pdf', () => {
+    assert.match(pdfProxySrc, /\/bookings\/\$\{id\}\/voucher-packets\/\$\{packetId\}\/pdf`/);
+    assert.match(pdfProxySrc, /buildActorHeaders/);
+    assert.match(pdfProxySrc, /application\/pdf/);
+    assert.match(pdfProxySrc, /arrayBuffer/);
+    assert.match(pdfProxySrc, /content-disposition/);
+  });
+
+  it('is a binary passthrough (not JSON forward) and never redirects/mutates', () => {
+    assert.ok(!/forwardProxyJsonResponse/.test(pdfProxySrc), 'PDF proxy must not JSONify the body');
+    assert.ok(!/NextResponse\.redirect|status:\s*303|formData/.test(pdfProxySrc), 'proxy must not redirect/mutate');
   });
 });

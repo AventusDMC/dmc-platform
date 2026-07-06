@@ -599,7 +599,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    return { groups: computeVoucherPacketGroups(this.buildPackableServices(booking)) };
+    const groups = computeVoucherPacketGroups(this.buildPackableServices(booking));
+
+    // S5 enrichment (read-only): when the backend packet flag is ON, annotate each
+    // group with an already-generated packet's id + status so the UI can offer a
+    // download. When OFF, the fields stay absent (fail-closed — no download
+    // affordance appears, no visible-but-403 button in production). No writes.
+    if (isOpsV2VoucherPacketEnabled()) {
+      const packets = await (this.prisma.voucherPacket as any).findMany({
+        where: { bookingId: id },
+        select: { id: true, groupingKey: true, status: true },
+      });
+      const byKey = new Map<string, { id: string; status: string }>(
+        (packets as any[]).map((p) => [p.groupingKey, { id: p.id, status: p.status }]),
+      );
+      for (const group of groups) {
+        const match = byKey.get(group.groupingKey);
+        group.existingPacketId = match?.id ?? null;
+        group.packetStatus = match?.status ?? null;
+      }
+    }
+
+    return { groups };
   }
 
   // Shared mapping from a loaded booking's services to the pure engine's input.
