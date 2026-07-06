@@ -129,6 +129,8 @@ import { SeasonsController } from './seasons/seasons.controller';
 import { SeasonsService } from './seasons/seasons.service';
 import { SuppliersController } from './suppliers/suppliers.controller';
 import { SuppliersService } from './suppliers/suppliers.service';
+import { CatalogController } from './catalog/catalog.controller';
+import { CatalogService } from './catalog/catalog.service';
 import { RouteStandardsController } from './route-standards/route-standards.controller';
 import { RouteStandardsService } from './route-standards/route-standards.service';
 import { OperationalAreasController } from './operational-areas/operational-areas.controller';
@@ -234,6 +236,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ItinerariesController,
     ServicesController,
     SuppliersController,
+    CatalogController,
     ServiceTypesController,
     SupportTextTemplatesController,
     VehiclesController,
@@ -323,6 +326,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ItinerariesService,
     ServicesService,
     SuppliersService,
+    CatalogService,
     ServiceTypesService,
     SupportTextTemplatesService,
     VehiclesService,
