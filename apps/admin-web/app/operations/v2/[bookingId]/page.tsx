@@ -233,7 +233,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
               <OpsErrorCard classicHref={classicHref} />
             ) : (
               <div className="space-y-6">
-                {voucherPacketPanelEnabled() ? <VoucherPacketsPanel groups={packetGroups} /> : null}
+                {voucherPacketPanelEnabled() ? <VoucherPacketsPanel groups={packetGroups} bookingId={bookingId} /> : null}
                 <OpsBoard vm={vm} bookingId={bookingId} />
               </div>
             )

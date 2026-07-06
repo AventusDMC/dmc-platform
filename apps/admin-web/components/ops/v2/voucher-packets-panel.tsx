@@ -18,6 +18,10 @@ export type VoucherPacketGroupVM = {
   dateRange: { start: string | null; end: string | null };
   dayNumbers: number[];
   memberLabels: string[];
+  // S5: set (by the backend groups endpoint, only when the packet flag is ON)
+  // when a packet has been generated for this group — enables "Download PDF".
+  existingPacketId?: string | null;
+  packetStatus?: string | null;
 };
 
 function dateRangeLabel(range: { start: string | null; end: string | null }): string | null {
@@ -26,7 +30,7 @@ function dateRangeLabel(range: { start: string | null; end: string | null }): st
   return range.start ?? range.end;
 }
 
-export function VoucherPacketsPanel({ groups }: { groups: VoucherPacketGroupVM[] }) {
+export function VoucherPacketsPanel({ groups, bookingId }: { groups: VoucherPacketGroupVM[]; bookingId: string }) {
   return (
     <section aria-label="Supplier packets" className="space-y-3">
       <div className="flex items-center gap-2">
@@ -71,6 +75,16 @@ export function VoucherPacketsPanel({ groups }: { groups: VoucherPacketGroupVM[]
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {g.existingPacketId ? (
+                  <div className="mt-2">
+                    <a
+                      href={`/api/bookings/${bookingId}/voucher-packets/${g.existingPacketId}/pdf`}
+                      className="inline-flex items-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium text-foreground hover:underline"
+                    >
+                      Download PDF
+                    </a>
+                  </div>
                 ) : null}
               </li>
             );
