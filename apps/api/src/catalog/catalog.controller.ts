@@ -4,13 +4,16 @@ import { AuthenticatedActor } from '../auth/auth.types';
 import { CatalogService } from './catalog.service';
 
 /**
- * Product Catalog V2 — Slice 1 read-only aggregator route.
+ * Product Catalog V2 — read-only aggregator route.
  *
- * GET /catalog/v2/summary — every authenticated role is admitted (so the view is
- * shared), and pricing/rate FIGURES are redacted in the service for non-pricing
- * roles (agent / viewer / agent_admin). Unauthenticated requests are blocked by
- * the RolesGuard (a role list is present). Backend-flag-gated and fail-closed
- * inside the service (CATALOG_V2_ENABLED). Read-only — no writes, no send.
+ * GET /catalog/v2/summary. Unauthenticated requests are blocked by the RolesGuard
+ * (a role list is present). The @Roles list stays broad so the service can apply,
+ * in order: (1) the fail-closed CATALOG_V2_ENABLED flag, then (2) the Slice 3
+ * INTERNAL-FIRST role gate. The role gate is an EXPLICIT allowlist in the service
+ * (admin / operations / super_admin / finance) — done there, not via @Roles,
+ * because the RolesGuard coalesces agent_admin→admin, which must be blocked for
+ * the first production debut. Pricing redaction in the builder is retained for a
+ * future widen-out. Read-only — no writes, no send.
  */
 @Controller('catalog/v2')
 export class CatalogController {

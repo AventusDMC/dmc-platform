@@ -86,29 +86,40 @@ test('flag ON → read-only summary with expected sections', async () => {
   });
 });
 
-test('flag ON + pricing role → pricing visible', async () => {
+test('flag ON + each ALLOWED internal role → summary, pricing visible, read-only', async () => {
   await withFlag('true', async () => {
-    const { service } = makeService();
-    const res = await service.getV2Summary('finance');
-    assert.equal(res.meta.pricingRedacted, false);
-    assert.ok(res.suppliers[0].pricing);
+    for (const role of ['admin', 'operations', 'super_admin', 'finance']) {
+      const { service } = makeService();
+      const res = await service.getV2Summary(role);
+      assert.equal(res.meta.pricingRedacted, false, role);
+      assert.ok(res.suppliers[0].pricing, `${role} sees pricing`);
+    }
   });
 });
 
-test('flag ON + redacted role → pricing hidden, no figures leak', async () => {
+test('flag ON + BLOCKED role (agent / viewer / agent_admin) → Forbidden, before any read', async () => {
   await withFlag('true', async () => {
-    const { service } = makeService();
-    const res = await service.getV2Summary('viewer');
-    assert.equal(res.meta.pricingRedacted, true);
-    assert.equal(res.suppliers[0].pricing, null);
-    assert.ok(!/"baseCost"|"costBaseAmount"|"transportDiscountPercent"/.test(JSON.stringify(res.suppliers[0])));
+    for (const role of ['agent', 'viewer', 'agent_admin']) {
+      const { service, calls } = makeService();
+      await assert.rejects(() => service.getV2Summary(role), /restricted to internal roles/i, role);
+      assert.equal(calls.reads, 0, `${role} blocked before any read`);
+    }
   });
 });
 
-test('null role → treated as redacted (fail-safe)', async () => {
+test('flag ON + null role → Forbidden (fail-safe), before any read', async () => {
   await withFlag('true', async () => {
-    const { service } = makeService();
-    const res = await service.getV2Summary(null);
-    assert.equal(res.meta.pricingRedacted, true);
+    const { service, calls } = makeService();
+    await assert.rejects(() => service.getV2Summary(null), /restricted to internal roles/i);
+    assert.equal(calls.reads, 0);
+  });
+});
+
+test('flag OFF takes precedence over role gate (flag checked first)', async () => {
+  await withFlag(null, async () => {
+    const { service, calls } = makeService();
+    // even an allowed role gets the flag error first
+    await assert.rejects(() => service.getV2Summary('admin'), /not enabled/i);
+    assert.equal(calls.reads, 0);
   });
 });
