@@ -219,6 +219,28 @@ describe('catalog v2 internal-first role gate', () => {
   });
 });
 
+describe('catalog v2 route-scoped Tailwind (visual polish renders)', () => {
+  const tailwindCfg = readFileSync(path.join(HERE, '../../../tailwind.config.ts'), 'utf8');
+  const layoutSrc = readFileSync(path.join(HERE, 'layout.tsx'), 'utf8');
+  const cssSrc = readFileSync(path.join(HERE, 'catalog-v2.css'), 'utf8');
+
+  it('tailwind content scans the catalog v2 route + components (so utilities generate)', () => {
+    assert.ok(tailwindCfg.includes('./app/catalog/v2/**/*.{ts,tsx}'), 'catalog app path in content');
+    assert.ok(tailwindCfg.includes('./components/catalog/v2/**/*.{ts,tsx}'), 'catalog components path in content');
+  });
+
+  it('the route layout imports the scoped Tailwind stylesheet', () => {
+    assert.match(layoutSrc, /import '\.\/catalog-v2\.css'/);
+  });
+
+  it('the scoped stylesheet emits Tailwind utilities + supplemental tokens', () => {
+    assert.ok(cssSrc.includes('@tailwind utilities'));
+    assert.ok(cssSrc.includes('--card:'), 'card token');
+    assert.ok(cssSrc.includes('--warning:'), 'warning token');
+    assert.ok(cssSrc.includes('--success:'), 'success token');
+  });
+});
+
 describe('catalog v2 flag', () => {
   it('is OFF unless NEXT_PUBLIC_CATALOG_V2 === "true"', () => {
     const prev = process.env.NEXT_PUBLIC_CATALOG_V2;

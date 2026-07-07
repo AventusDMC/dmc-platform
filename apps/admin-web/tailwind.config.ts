@@ -30,6 +30,9 @@ const config: Config = {
     // Booking Operations V2 — route-scoped (see app/operations/v2/ops-v2.css).
     "./app/operations/v2/**/*.{ts,tsx}",
     "./components/ops/v2/**/*.{ts,tsx}",
+    // Product Catalog V2 — route-scoped (see app/catalog/v2/catalog-v2.css).
+    "./app/catalog/v2/**/*.{ts,tsx}",
+    "./components/catalog/v2/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

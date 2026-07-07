@@ -93,19 +93,21 @@ function WarningChip({ code }: { code: string }) {
 }
 
 function WarningChips({ warnings }: { warnings: CatalogWarningVM[] }) {
-  if (!warnings.length) return <span className="text-[11px] text-success">No issues</span>;
+  if (!warnings.length) return <span className="text-[11px] font-medium text-success">No issues</span>;
   const highest = warnings.reduce<'high' | 'medium' | 'low'>((acc, w) => {
     const s = warnMeta(w.code).severity;
     return SEV_RANK[s] > SEV_RANK[acc] ? s : acc;
   }, 'low');
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      <span className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-semibold ${SEV_CLASS[highest]}`}>
+    <span className="flex flex-wrap items-center gap-2">
+      <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[10px] font-bold ${SEV_CLASS[highest]}`}>
         {warnings.length}
       </span>
-      {warnings.map((w, i) => (
-        <WarningChip key={`${w.code}-${i}`} code={w.code} />
-      ))}
+      <span className="flex flex-wrap gap-1.5">
+        {warnings.map((w, i) => (
+          <WarningChip key={`${w.code}-${i}`} code={w.code} />
+        ))}
+      </span>
     </span>
   );
 }
@@ -270,7 +272,7 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
                   <td className="px-3 py-2.5 text-muted-foreground">{s.contractCount}</td>
                   <td className="px-3 py-2.5">
                     {s.currencies.length ? (
-                      <span className="flex flex-wrap gap-1">
+                      <span className="flex flex-wrap gap-1.5">
                         {s.currencies.map((c) => (
                           <span key={c} className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c}</span>
                         ))}

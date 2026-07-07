@@ -1,0 +1,38 @@
+/* Product Catalog V2 — route-scoped Tailwind layer.
+ *
+ * Imported ONLY by the catalog/v2 layout, so Tailwind's utilities (and the
+ * supplemental design tokens below) are confined to the /catalog/v2 route. The
+ * rest of admin-web keeps its bespoke CSS.
+ *
+ * This is a deliberate CLONE of the Booking Operations V2 token block
+ * (app/operations/v2/ops-v2.css) so Product Catalog V2 matches the same V2
+ * visual language. Tokens are space-separated RGB CHANNELS so Tailwind can apply
+ * opacity modifiers via `rgb(var(--token) / <alpha-value>)`. Tailwind preflight
+ * is disabled in tailwind.config.ts, so `@tailwind base` emits almost nothing and
+ * the global app shell is never reset. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --card: 255 255 255;
+  --card-foreground: 17 24 39; /* #111827 */
+  --popover: 255 255 255;
+  --popover-foreground: 17 24 39;
+  --primary: 31 154 207; /* #1F9ACF brand */
+  --primary-foreground: 255 255 255;
+  --secondary: 243 244 246; /* #F3F4F6 */
+  --secondary-foreground: 17 24 39;
+  --accent-foreground: 255 255 255; /* on the #1F9ACF accent */
+  --destructive: 220 38 38; /* #DC2626 */
+  --destructive-foreground: 255 255 255;
+  --input: 229 231 235; /* #E5E7EB */
+  --ring: 31 154 207;
+  --radius: 0.5rem;
+
+  /* Semantic status */
+  --warning: 217 119 6; /* amber-600 #D97706 */
+  --warning-foreground: 120 53 15; /* amber-900 #78350F */
+  --success: 22 163 74; /* green-600 #16A34A */
+  --success-foreground: 255 255 255;
+}
