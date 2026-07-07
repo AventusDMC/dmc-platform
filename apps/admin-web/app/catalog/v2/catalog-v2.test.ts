@@ -93,22 +93,28 @@ describe('CatalogV2View — read-only rendering', () => {
     assert.ok(html.includes('Read-only summary. No changes are made.'));
   });
 
-  it('renders summary counts', () => {
+  it('renders summary cards (suppliers + active, services, hotel contracts, warnings)', () => {
     assert.ok(html.includes('Suppliers'));
     assert.ok(html.includes('Services'));
+    assert.ok(html.includes('Hotel contracts'));
     assert.ok(html.includes('Warnings'));
+    assert.ok(html.includes('active'), 'active/inactive subtext present');
   });
 
-  it('renders the suppliers table with rows', () => {
+  it('renders the suppliers table with rows + status/email/currency indicators', () => {
     assert.ok(html.includes('Almushtari Logistics'));
     assert.ok(html.includes('Petra Guides Co'));
     assert.ok(html.includes('transport'));
     assert.ok(html.includes('ops@almushtari.example'));
+    assert.ok(html.includes('Active'), 'active status chip');
+    assert.ok(html.includes('Inactive'), 'inactive status chip');
+    assert.ok(html.includes('>Missing<'), 'missing-email status chip');
+    assert.ok(html.includes('>JOD<'), 'currency chip');
   });
 
   it('renders the service catalog summary', () => {
     assert.ok(html.includes('Service catalog'));
-    assert.ok(html.includes('Activities:'));
+    assert.ok(html.includes('Activities'));
   });
 
   it('renders the hotel contracts table', () => {
@@ -116,18 +122,22 @@ describe('CatalogV2View — read-only rendering', () => {
     assert.ok(html.includes('Movenpick Petra'));
   });
 
-  it('renders the data-quality warnings + per-entity warning chips', () => {
+  it('renders friendly severity-coded warning badges (not raw codes)', () => {
     assert.ok(html.includes('Data-quality warnings'));
-    assert.ok(html.includes('MISSING_EMAIL'));
-    assert.ok(html.includes('UNVERIFIED_HOTEL_CONTRACT'));
-    assert.ok(html.includes('NO_ACTIVE_SERVICES'));
+    assert.ok(html.includes('Missing email'), 'friendly label for MISSING_EMAIL');
+    assert.ok(html.includes('No active services'), 'friendly label for NO_ACTIVE_SERVICES');
+    assert.ok(html.includes('Unverified hotel contract'), 'friendly label for UNVERIFIED_HOTEL_CONTRACT');
+    // severity colour classes applied
+    assert.ok(html.includes('text-destructive'), 'high-severity styling');
+    assert.ok(html.includes('text-warning'), 'medium-severity styling');
   });
 
-  it('exposes the three filters (search, type, warnings-only) but NO buttons/forms/mutation controls', () => {
+  it('exposes the filters (search, type, severity, warnings-only) but NO buttons/forms/mutation controls', () => {
     assert.ok(html.includes('Search suppliers'), 'text search present');
     assert.ok(html.includes('Supplier type'), 'type filter present');
+    assert.ok(html.includes('Warning severity'), 'severity filter present');
     assert.ok(html.includes('Warnings only'), 'warnings-only toggle present');
-    for (const forbidden of ['<button', '<form', 'Create', 'Edit', 'Delete', '>Send<', 'Save', 'Add supplier', 'Regenerate']) {
+    for (const forbidden of ['<button', '<form', '>Create<', '>Edit<', '>Delete<', '>Send<', '>Save<', 'Add supplier', 'Regenerate']) {
       assert.ok(!html.includes(forbidden), `must not render "${forbidden}"`);
     }
   });
@@ -171,6 +181,24 @@ describe('catalog v2 summary proxy — read-only GET JSON forward', () => {
     assert.match(proxySrc, /forwardProxyJsonResponse/);
     assert.match(proxySrc, /method:\s*'GET'/);
     assert.ok(!/JSON\.stringify|body:|formData|NextResponse\.redirect|status:\s*303/.test(proxySrc), 'no body/redirect');
+  });
+});
+
+describe('CatalogV2View — empty states', () => {
+  it('renders friendly empty states for no suppliers / no hotel contracts / no warnings', () => {
+    const empty = sample({
+      meta: { role: 'admin', pricingRedacted: false, counts: { suppliers: 0, hotelContracts: 0, totalWarnings: 0 } },
+      suppliers: [],
+      hotelContracts: [],
+      warningCounts: { MISSING_EMAIL: 0, MULTIPLE_EMAILS: 0, MISSING_RATES: 0, NO_ACTIVE_SERVICES: 0, CURRENCY_MISMATCH: 0, MISSING_BASE_CITY: 0, EXPIRED_CONTRACT: 0, EXPIRING_SOON: 0, UNVERIFIED_HOTEL_CONTRACT: 0 },
+    });
+    const html = render(empty);
+    assert.ok(html.includes('No suppliers in the catalog yet.'));
+    assert.ok(html.includes('No hotel contracts in the catalog.'));
+    assert.ok(html.includes('catalog looks clean'), 'no-warnings empty state');
+    // still read-only
+    assert.ok(!html.includes('<button'));
+    assert.ok(!/<form[\s>]/.test(html));
   });
 });
 
