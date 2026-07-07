@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
 import { CatalogV2View, type CatalogV2Summary } from '../../../components/catalog/v2/catalog-v2-view';
 import { isCatalogV2Enabled } from './catalog-v2-flag';
+import { isCatalogV2Authorized, CATALOG_V2_ALLOWED_ROLES } from './catalog-v2-access';
 
 // Components use Next's automatic JSX runtime; expose React for the classic runtime.
 (globalThis as unknown as { React?: unknown }).React = React;
@@ -170,6 +171,23 @@ describe('catalog v2 summary proxy — read-only GET JSON forward', () => {
     assert.match(proxySrc, /forwardProxyJsonResponse/);
     assert.match(proxySrc, /method:\s*'GET'/);
     assert.ok(!/JSON\.stringify|body:|formData|NextResponse\.redirect|status:\s*303/.test(proxySrc), 'no body/redirect');
+  });
+});
+
+describe('catalog v2 internal-first role gate', () => {
+  it('allows only admin / operations / super_admin / finance', () => {
+    assert.deepEqual([...CATALOG_V2_ALLOWED_ROLES].sort(), ['admin', 'finance', 'operations', 'super_admin']);
+    for (const role of ['admin', 'operations', 'super_admin', 'finance'] as const) {
+      assert.equal(isCatalogV2Authorized(role), true, role);
+    }
+  });
+
+  it('BLOCKS agent / viewer / agent_admin and unauthenticated (no coalescence)', () => {
+    for (const role of ['agent', 'viewer', 'agent_admin'] as const) {
+      assert.equal(isCatalogV2Authorized(role), false, role);
+    }
+    assert.equal(isCatalogV2Authorized(null), false);
+    assert.equal(isCatalogV2Authorized(undefined), false);
   });
 });
 

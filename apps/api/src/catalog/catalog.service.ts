@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isCatalogV2Enabled } from './catalog-v2-flags';
+import { isCatalogV2Authorized } from './catalog-v2-access';
 import { buildCatalogV2Summary, type CatalogRole } from './catalog-v2-summary';
 
 /**
@@ -18,6 +19,14 @@ export class CatalogService {
     // Fail-closed backend gate — checked FIRST, before any read.
     if (!isCatalogV2Enabled()) {
       throw new ForbiddenException('Product Catalog V2 is not enabled.');
+    }
+
+    // Internal-first role gate (Slice 3) — checked before any read. EXPLICIT
+    // allowlist (no coalescence), so agent / viewer / agent_admin are blocked for
+    // the first production debut. Kept after the flag check to preserve the
+    // fail-closed "flag first" invariant.
+    if (!isCatalogV2Authorized(role)) {
+      throw new ForbiddenException('Product Catalog V2 is restricted to internal roles.');
     }
 
     const toIso = (value: any): string | null =>
