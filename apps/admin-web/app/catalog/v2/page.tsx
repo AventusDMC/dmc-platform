@@ -50,8 +50,11 @@ export default async function CatalogV2Page() {
     <main className="px-4 py-6 md:px-6">
       <div className="mx-auto w-full max-w-[1200px]">
         {loadError || !summary ? (
-          <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-            The Product Catalog summary is unavailable right now.
+          <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+            <p className="text-sm font-medium text-foreground">Product Catalog is unavailable right now</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The read-only catalog summary could not be loaded. Please try again in a moment.
+            </p>
           </div>
         ) : (
           <CatalogV2View summary={summary} />
