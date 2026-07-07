@@ -132,6 +132,18 @@ describe('CatalogV2View — read-only rendering', () => {
     assert.ok(html.includes('text-warning'), 'medium-severity styling');
   });
 
+  it('table headers render as whole labels and compact columns do not wrap', () => {
+    for (const header of ['Supplier', 'Status', 'Email', 'Base city', 'Services', 'Contracts', 'Currencies', 'Pricing', 'Warnings']) {
+      assert.ok(html.includes(`>${header}</th>`), `header "${header}" renders as a single cell`);
+    }
+    // nowrap applied to header rows + compact cells so words like STATUS/PRICING don't break
+    assert.ok(html.includes('whitespace-nowrap'), 'nowrap utility applied');
+    // the table gets a min-width so the overflow-x wrapper scrolls instead of cramming columns
+    assert.ok(html.includes('min-w-['), 'table/columns have min-widths');
+    // "Warnings only" filter label stays on one line
+    assert.match(html, /whitespace-nowrap[^>]*>\s*<input[^>]*aria-label="Warnings only"|aria-label="Warnings only"[\s\S]{0,80}Warnings only/);
+  });
+
   it('exposes the filters (search, type, severity, warnings-only) but NO buttons/forms/mutation controls', () => {
     assert.ok(html.includes('Search suppliers'), 'text search present');
     assert.ok(html.includes('Supplier type'), 'type filter present');
