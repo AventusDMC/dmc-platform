@@ -228,7 +228,7 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
             <option value="low">Low</option>
           </select>
         </label>
-        <label className="inline-flex h-9 items-center gap-1.5 text-xs text-muted-foreground">
+        <label className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
           <input type="checkbox" checked={warningsOnly} onChange={(e) => setWarningsOnly(e.target.checked)} aria-label="Warnings only" />
           Warnings only
         </label>
@@ -238,15 +238,15 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
       <div className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Suppliers ({filteredSuppliers.length})</h2>
         <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[1040px] text-left text-xs">
             <thead className="bg-muted text-muted-foreground">
-              <tr>
+              <tr className="whitespace-nowrap">
                 <th className="px-3 py-2.5 font-medium">Supplier</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">Email</th>
                 <th className="px-3 py-2.5 font-medium">Base city</th>
-                <th className="px-3 py-2.5 font-medium">Services</th>
-                <th className="px-3 py-2.5 font-medium">Contracts</th>
+                <th className="px-3 py-2.5 text-center font-medium">Services</th>
+                <th className="px-3 py-2.5 text-center font-medium">Contracts</th>
                 <th className="px-3 py-2.5 font-medium">Currencies</th>
                 <th className="px-3 py-2.5 font-medium">Pricing</th>
                 <th className="px-3 py-2.5 font-medium">Warnings</th>
@@ -255,40 +255,40 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
             <tbody>
               {filteredSuppliers.map((s) => (
                 <tr key={s.id} className="border-t border-border align-top">
-                  <td className="px-3 py-2.5">
+                  <td className="min-w-[190px] px-3 py-2.5">
                     <div className="font-medium text-foreground">{dash(s.name)}</div>
                     <div className="text-[11px] text-muted-foreground">{dash(s.type)}</div>
                   </td>
-                  <td className="px-3 py-2.5"><StatusChip active={s.operationallyActive} /></td>
-                  <td className="px-3 py-2.5">
+                  <td className="whitespace-nowrap px-3 py-2.5"><StatusChip active={s.operationallyActive} /></td>
+                  <td className="min-w-[170px] px-3 py-2.5">
                     {s.email && s.email.trim() ? (
-                      <span className="text-muted-foreground">{s.email}</span>
+                      <span className="break-all text-muted-foreground">{s.email}</span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">Missing</span>
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">Missing</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{dash(s.baseCity)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{s.serviceCount}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{s.contractCount}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{dash(s.baseCity)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center text-muted-foreground">{s.serviceCount}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center text-muted-foreground">{s.contractCount}</td>
                   <td className="px-3 py-2.5">
                     {s.currencies.length ? (
                       <span className="flex flex-wrap gap-1.5">
                         {s.currencies.map((c) => (
-                          <span key={c} className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c}</span>
+                          <span key={c} className="inline-flex items-center whitespace-nowrap rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c}</span>
                         ))}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="whitespace-nowrap px-3 py-2.5">
                     {s.pricingRedacted || !s.pricing ? (
                       <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Hidden</span>
                     ) : (
                       <span className="text-muted-foreground">{s.pricing.transportDiscountPercent ?? 0}% disc.</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5"><WarningChips warnings={s.warnings} /></td>
+                  <td className="min-w-[240px] px-3 py-2.5"><WarningChips warnings={s.warnings} /></td>
                 </tr>
               ))}
               {filteredSuppliers.length === 0 ? (
@@ -326,9 +326,9 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
       <div className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Hotel contracts ({summary.hotelContracts.length})</h2>
         <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[880px] text-left text-xs">
             <thead className="bg-muted text-muted-foreground">
-              <tr>
+              <tr className="whitespace-nowrap">
                 <th className="px-3 py-2.5 font-medium">Hotel</th>
                 <th className="px-3 py-2.5 font-medium">Contract</th>
                 <th className="px-3 py-2.5 font-medium">Valid</th>
@@ -341,15 +341,15 @@ export function CatalogV2View({ summary }: { summary: CatalogV2Summary }) {
             <tbody>
               {summary.hotelContracts.map((c) => (
                 <tr key={c.id} className="border-t border-border align-top">
-                  <td className="px-3 py-2.5 font-medium text-foreground">{dash(c.hotelName)}</td>
+                  <td className="min-w-[160px] px-3 py-2.5 font-medium text-foreground">{dash(c.hotelName)}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{dash(c.name)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
                     {dash(c.validFrom?.slice(0, 10))} → {dash(c.validTo?.slice(0, 10))}
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{dash(c.currency)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{dash(c.confidence)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{dash(c.validity)}</td>
-                  <td className="px-3 py-2.5"><WarningChips warnings={c.warnings} /></td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{dash(c.currency)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{dash(c.confidence)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{dash(c.validity)}</td>
+                  <td className="min-w-[220px] px-3 py-2.5"><WarningChips warnings={c.warnings} /></td>
                 </tr>
               ))}
               {summary.hotelContracts.length === 0 ? (
