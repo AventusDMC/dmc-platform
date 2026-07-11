@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'node:test';
 import { FinanceTab } from '../../../components/ops/v2/finance-tab';
 import { buildFinanceVM } from './ops-finance-vm';
+import { canAccessFinance, type SessionRole } from '../../lib/auth-session';
 import { EMPTY_FINANCE_DETAIL, FINANCE_REDACTED_RAW, SAMPLE_FINANCE_DETAIL } from './ops-finance.fixtures';
 
 // Components are authored for Next's automatic JSX runtime (no `import React`);
@@ -11,8 +12,13 @@ import { EMPTY_FINANCE_DETAIL, FINANCE_REDACTED_RAW, SAMPLE_FINANCE_DETAIL } fro
 (globalThis as unknown as { React?: unknown }).React = React;
 
 const BK = 'bk-1';
+// Finance-visibility render (canSeeMargin = true — admin / super_admin / finance).
 const html = renderToStaticMarkup(
-  createElement(FinanceTab, { vm: buildFinanceVM(SAMPLE_FINANCE_DETAIL), bookingId: BK }),
+  createElement(FinanceTab, { vm: buildFinanceVM(SAMPLE_FINANCE_DETAIL), bookingId: BK, canSeeMargin: true }),
+);
+// Restricted render (canSeeMargin = false — operations / agent_admin / agent / viewer).
+const restrictedHtml = renderToStaticMarkup(
+  createElement(FinanceTab, { vm: buildFinanceVM(SAMPLE_FINANCE_DETAIL), bookingId: BK, canSeeMargin: false }),
 );
 
 describe('FinanceTab render — content', () => {
@@ -50,6 +56,71 @@ describe('FinanceTab render — content', () => {
   });
 });
 
+describe('FinanceTab render — F1 margin/role gate', () => {
+  // The page wires `canSeeMargin` = canAccessFinance(role); render each role with
+  // that exact capability and assert cost/margin visibility follows the accepted
+  // decision (admin / super_admin / finance see it; everyone else does not).
+  const ALL_ROLES: SessionRole[] = ['admin', 'super_admin', 'finance', 'operations', 'agent_admin', 'agent', 'viewer'];
+  const COST_MARGIN_MARKERS = ['Realized cost', '5,980', 'Margin', '2,470', '29%'];
+
+  it('canAccessFinance grants cost/margin only to admin / super_admin / finance', () => {
+    assert.equal(canAccessFinance('admin'), true);
+    assert.equal(canAccessFinance('super_admin'), true);
+    assert.equal(canAccessFinance('finance'), true);
+    assert.equal(canAccessFinance('operations'), false);
+    assert.equal(canAccessFinance('agent_admin'), false);
+    assert.equal(canAccessFinance('agent'), false);
+    assert.equal(canAccessFinance('viewer'), false);
+  });
+
+  for (const role of ALL_ROLES) {
+    const canSee = canAccessFinance(role);
+    const roleHtml = renderToStaticMarkup(
+      createElement(FinanceTab, { vm: buildFinanceVM(SAMPLE_FINANCE_DETAIL), bookingId: BK, canSeeMargin: canSee }),
+    );
+
+    if (canSee) {
+      it(`${role}: sees cost + margin`, () => {
+        for (const marker of COST_MARGIN_MARKERS) {
+          assert.ok(roleHtml.includes(marker), `${role} should see "${marker}"`);
+        }
+        assert.ok(!roleHtml.includes('Cost and margin are restricted to finance roles.'));
+        assert.ok(roleHtml.includes('Supplier payments'));
+        // supplier payment amount is visible (finance roles)
+        assert.ok(roleHtml.includes('3,000'), `${role} should see the supplier payment amount`);
+      });
+    } else {
+      it(`${role}: does NOT see cost / realized cost / margin / margin %`, () => {
+        assert.ok(!roleHtml.includes('Realized cost'), `${role} must not see Realized cost`);
+        assert.ok(!roleHtml.includes('5,980'), `${role} must not see the realized cost value`);
+        assert.ok(!roleHtml.includes('2,470'), `${role} must not see the margin value`);
+        assert.ok(!roleHtml.includes('29%'), `${role} must not see the margin percent`);
+        // supplier payment amounts (cost-revealing) are withheld
+        assert.ok(!roleHtml.includes('3,000'), `${role} must not see the supplier payment amount`);
+      });
+      it(`${role}: sees the restricted copy + keeps non-financial summary`, () => {
+        assert.ok(roleHtml.includes('Cost and margin are restricted to finance roles.'));
+        // Non-sensitive summary still renders: quoted total, statuses, currency,
+        // payment count, client payments, Open-in-Classic.
+        assert.ok(roleHtml.includes('Quoted total'));
+        assert.ok(roleHtml.includes('8,450'), 'quoted total (sell) stays visible');
+        assert.ok(roleHtml.includes('Statuses'));
+        assert.ok(roleHtml.includes('Client payments'));
+        assert.ok(roleHtml.includes('Supplier payment amounts are restricted to finance roles.'));
+        assert.ok(roleHtml.includes(`href="/bookings/${BK}?tab=financials"`));
+      });
+    }
+  }
+
+  it('introduces no finance write mechanics for restricted roles', () => {
+    for (const forbidden of ['<form', '<input', '<select', '<textarea', 'action="/api', 'download=']) {
+      assert.ok(!restrictedHtml.includes(forbidden), `restricted finance tab must not render "${forbidden}"`);
+    }
+    // Disabled "Coming later" actions remain inert for everyone.
+    assert.ok(restrictedHtml.includes('aria-disabled="true"'));
+  });
+});
+
 describe('FinanceTab render — read-only / data safety', () => {
   it('renders no forms / inputs / real action mechanics', () => {
     for (const forbidden of ['<form', '<input', '<select', '<textarea', 'window.print', 'createObjectURL', 'download=', '.pdf', '/export', 'action="/api']) {
@@ -66,7 +137,7 @@ describe('FinanceTab render — read-only / data safety', () => {
 
 describe('FinanceTab render — empty state', () => {
   const emptyHtml = renderToStaticMarkup(
-    createElement(FinanceTab, { vm: buildFinanceVM(EMPTY_FINANCE_DETAIL), bookingId: BK }),
+    createElement(FinanceTab, { vm: buildFinanceVM(EMPTY_FINANCE_DETAIL), bookingId: BK, canSeeMargin: true }),
   );
   it('shows empty payment states and keeps notice + Classic link', () => {
     assert.ok(emptyHtml.includes('No payments recorded.'));
