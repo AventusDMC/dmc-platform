@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { adminPageFetchJson } from '../../../lib/admin-server';
-import { readSessionActor } from '../../../lib/auth-session';
+import { readSessionActor, canAccessFinance } from '../../../lib/auth-session';
 import { AdminForbiddenState } from '../../../components/AdminForbiddenState';
 import { OpsBetaHeader } from '../../../../components/ops/v2/ops-beta-header';
 import { OperationalStatusBadge } from '../../../../components/ops/v2/operational-status-badge';
@@ -139,6 +139,14 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
   // for redacted columns rather than a misleading "Missing"/"—".
   const canSeeFullPii = ['admin', 'operations', 'super_admin'].includes(role ?? '');
 
+  // F1 — finance margin/cost visibility gate. Cost / realized cost / margin /
+  // margin % (and the supplier payments table, whose amounts reveal supplier
+  // cost) are finance-sensitive. Reuse `canAccessFinance` so only finance
+  // roles (admin / super_admin / finance) see them; other authorized ops roles
+  // (operations / agent_admin) get the non-financial summary + a restricted
+  // notice. Decided server-side so restricted values never render.
+  const canSeeFinanceMargin = canAccessFinance(role);
+
   // Fetch only the active tab's data; placeholder tabs stay cheap.
   let vm: OperationsBoardVM | null = null;
   let opsError = false;
@@ -251,7 +259,7 @@ export default async function OperationsV2BookingWorkspacePage({ params, searchP
             financeError || !financeVm ? (
               <OpsErrorCard classicHref={`/bookings/${bookingId}?tab=financials`} />
             ) : (
-              <FinanceTab vm={financeVm} bookingId={bookingId} />
+              <FinanceTab vm={financeVm} bookingId={bookingId} canSeeMargin={canSeeFinanceMargin} />
             )
           ) : null}
 
