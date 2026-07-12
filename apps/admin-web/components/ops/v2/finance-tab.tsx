@@ -1,5 +1,4 @@
 import type { FinanceVM } from '../../../app/operations/v2/ops-finance-vm';
-import { DisabledAction } from './disabled-action';
 import { FinanceSummary } from './finance-summary';
 import { OpenInClassicButton } from './open-in-classic-button';
 import { PaymentsTable } from './payments-table';
@@ -7,8 +6,10 @@ import { ReadOnlyNotice } from './read-only-notice';
 
 /**
  * Finance tab body (read-only). Internal finance summary + client/supplier
- * payment tables. Future finance actions render DISABLED + "Coming later" — no
- * real record, mark-paid, send, or financial-export mechanics; no forms, no
+ * payment tables. Finance actions live in Classic: instead of inert buttons,
+ * the tab shows a read-only "Classic handoff" panel that names the Classic-only
+ * actions as plain text and links once to the Classic booking financials tab —
+ * no record, mark-paid, send, or financial-export mechanics; no forms, no
  * inputs, and no PDF, download, or print hrefs.
  *
  * `canSeeMargin` (F1 margin/role gate) is true only for finance-visibility roles
@@ -29,13 +30,28 @@ export function FinanceTab({ vm, bookingId, canSeeMargin }: { vm: FinanceVM; boo
 
       <FinanceSummary vm={vm} canSeeMargin={canSeeMargin} />
 
-      {/* Future finance actions — disabled in Round 1. */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
-        <DisabledAction label="Record payment" />
-        <DisabledAction label="Mark paid" />
-        <DisabledAction label="Send invoice" />
-        <DisabledAction label="Send payment reminder" />
-        <DisabledAction label="Export financials" />
+      {/* Classic handoff — finance actions are performed in Classic. Read-only:
+          a plain-text list of the Classic-only actions + one navigation link to
+          the Classic booking financials tab. No buttons, no forms, no mutation
+          or export/download mechanics. */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <h3 className="font-heading text-sm font-semibold text-foreground">Finance actions are handled in Classic.</h3>
+            <p className="text-xs text-muted-foreground">
+              These actions are available in the Classic booking financials workspace:
+            </p>
+            <ul className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+              <li>Record payment</li>
+              <li>Mark paid</li>
+              <li>Invoice / send invoice</li>
+              <li>Payment reminder</li>
+              <li>Reconciliation</li>
+              <li>Exports</li>
+            </ul>
+          </div>
+          <OpenInClassicButton href={`/bookings/${bookingId}?tab=financials`} label="Open financials in Classic" />
+        </div>
       </div>
 
       <PaymentsTable title="Client payments" payments={vm.clientPayments} />
