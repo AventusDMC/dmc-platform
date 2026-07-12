@@ -46,13 +46,30 @@ describe('FinanceTab render — content', () => {
     assert.ok(html.includes('Open financials in Classic'));
   });
 
-  it('renders disabled "Coming later" finance actions', () => {
-    for (const label of ['Record payment', 'Mark paid', 'Send invoice', 'Send payment reminder', 'Export financials']) {
-      assert.ok(html.includes(label), `missing disabled action "${label}"`);
+  it('renders the Classic handoff panel (actions as text, not buttons)', () => {
+    assert.ok(html.includes('Finance actions are handled in Classic.'));
+    // Classic-only actions render as plain list items — NOT buttons.
+    for (const li of [
+      '<li>Record payment</li>',
+      '<li>Mark paid</li>',
+      '<li>Invoice / send invoice</li>',
+      '<li>Payment reminder</li>',
+      '<li>Reconciliation</li>',
+      '<li>Exports</li>',
+    ]) {
+      assert.ok(html.includes(li), `missing handoff list item "${li}"`);
     }
-    assert.ok(html.includes('Coming later'));
-    assert.ok(html.includes('aria-disabled="true"'));
-    assert.ok(html.includes('disabled'));
+    // Exactly the one safe Classic link (the booking financials tab).
+    assert.ok(html.includes(`href="/bookings/${BK}?tab=financials"`));
+    assert.ok(html.includes('Open financials in Classic'));
+    // The old inert "Coming later" disabled buttons are gone from the tab.
+    assert.ok(!html.includes('Coming later'), '"Coming later" pills must be removed');
+    assert.ok(!html.includes('aria-disabled'), 'no disabled action buttons may remain');
+    // No per-action deep links / export / pdf / download / /finance route links.
+    assert.ok(!html.includes('/export'));
+    assert.ok(!html.includes('.pdf'));
+    assert.ok(!html.includes('download='));
+    assert.ok(!html.includes('/finance/'));
   });
 });
 
@@ -116,8 +133,10 @@ describe('FinanceTab render — F1 margin/role gate', () => {
     for (const forbidden of ['<form', '<input', '<select', '<textarea', 'action="/api', 'download=']) {
       assert.ok(!restrictedHtml.includes(forbidden), `restricted finance tab must not render "${forbidden}"`);
     }
-    // Disabled "Coming later" actions remain inert for everyone.
-    assert.ok(restrictedHtml.includes('aria-disabled="true"'));
+    // Read-only Classic handoff panel renders for restricted roles too — and no
+    // inert "Coming later" buttons remain.
+    assert.ok(restrictedHtml.includes('Finance actions are handled in Classic.'));
+    assert.ok(!restrictedHtml.includes('Coming later'));
   });
 });
 
