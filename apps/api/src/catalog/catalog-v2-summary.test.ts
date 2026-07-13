@@ -186,6 +186,81 @@ test('warningCounts aggregate across suppliers + hotel contracts', () => {
   assert.equal(res.meta.counts.totalWarnings, Object.values(res.warningCounts).reduce((a: number, b: number) => a + b, 0));
 });
 
+// --- Slice 5: hotel contracts count toward supplier operational activity ---
+
+const hotelSupplier = (over: any = {}) => supplier({ type: 'hotel', email: 'h@x.example', baseCity: null, ...over });
+
+test('Slice 5: hotel supplier with an active hotel contract → no NO_ACTIVE_SERVICES', () => {
+  const res = buildCatalogV2Summary(
+    input({
+      suppliers: [hotelSupplier()],
+      hotelContracts: [{ id: 'h1', name: 'C', hotelName: 'H', supplierId: 'sup-1', validFrom: iso(-10), validTo: iso(200), currency: 'USD', confidence: 'IMPORTED_UNVERIFIED' }],
+    }),
+    'admin',
+    NOW,
+  );
+  assert.ok(!codes(res).includes('NO_ACTIVE_SERVICES'), 'active hotel contract counts toward activity');
+  assert.equal(res.suppliers[0].operationallyActive, true);
+  assert.equal(res.suppliers[0].activeHotelContractCount, 1);
+  // The contract itself is still flagged unverified — independent of the supplier flag.
+  assert.equal(res.warningCounts.UNVERIFIED_HOTEL_CONTRACT, 1);
+});
+
+test('Slice 5: hotel supplier with only an expired hotel contract → still NO_ACTIVE_SERVICES', () => {
+  const res = buildCatalogV2Summary(
+    input({
+      suppliers: [hotelSupplier()],
+      hotelContracts: [{ id: 'h1', name: 'C', hotelName: 'H', supplierId: 'sup-1', validFrom: iso(-200), validTo: iso(-1), currency: 'USD', confidence: 'VERIFIED' }],
+    }),
+    'admin',
+    NOW,
+  );
+  assert.ok(codes(res).includes('NO_ACTIVE_SERVICES'), 'expired hotel contract does not count');
+  assert.equal(res.suppliers[0].activeHotelContractCount, 0);
+});
+
+test('Slice 5: hotel supplier with no services and no contracts → still NO_ACTIVE_SERVICES', () => {
+  const res = buildCatalogV2Summary(input({ suppliers: [hotelSupplier()] }), 'admin', NOW);
+  assert.ok(codes(res).includes('NO_ACTIVE_SERVICES'));
+  assert.equal(res.suppliers[0].activeHotelContractCount, 0);
+});
+
+test('Slice 5: links via resolvedSupplierId; a contract owned by another supplier does not count', () => {
+  const res = buildCatalogV2Summary(
+    input({
+      suppliers: [hotelSupplier({ id: 'sup-1' }), hotelSupplier({ id: 'sup-2', name: 'Other', email: 'o@x.example' })],
+      hotelContracts: [{ id: 'h1', name: 'C', hotelName: 'H', resolvedSupplierId: 'sup-1', validFrom: iso(-10), validTo: iso(200), currency: 'USD', confidence: 'VERIFIED' }],
+    }),
+    'admin',
+    NOW,
+  );
+  const bySup = Object.fromEntries(res.suppliers.map((s: any) => [s.id, s]));
+  assert.equal(bySup['sup-1'].activeHotelContractCount, 1);
+  assert.ok(!bySup['sup-1'].warnings.map((w: any) => w.code).includes('NO_ACTIVE_SERVICES'));
+  // sup-2 owns no contract → still flagged.
+  assert.equal(bySup['sup-2'].activeHotelContractCount, 0);
+  assert.ok(bySup['sup-2'].warnings.map((w: any) => w.code).includes('NO_ACTIVE_SERVICES'));
+});
+
+test('Slice 5: linking a hotel contract to its supplier drops ONLY NO_ACTIVE_SERVICES', () => {
+  const base = {
+    suppliers: [hotelSupplier()],
+    hotelContracts: [{ id: 'h1', name: 'C', hotelName: 'H', validFrom: iso(-10), validTo: iso(200), currency: 'USD', confidence: 'IMPORTED_UNVERIFIED' }],
+  };
+  const unlinked = buildCatalogV2Summary(input(base as any), 'admin', NOW);
+  const linked = buildCatalogV2Summary(
+    input({ ...base, hotelContracts: [{ ...base.hotelContracts[0], supplierId: 'sup-1' }] } as any),
+    'admin',
+    NOW,
+  );
+  assert.equal(unlinked.warningCounts.NO_ACTIVE_SERVICES, 1);
+  assert.equal(linked.warningCounts.NO_ACTIVE_SERVICES, 0);
+  // Every other warning count is identical — only the false positive drops.
+  const { NO_ACTIVE_SERVICES: _u, ...restU } = unlinked.warningCounts;
+  const { NO_ACTIVE_SERVICES: _l, ...restL } = linked.warningCounts;
+  assert.deepEqual(restL, restU, 'no other warning count changes');
+});
+
 test('pricing VISIBLE for admin/operations/super_admin/finance', () => {
   for (const role of ['admin', 'operations', 'super_admin', 'finance'] as const) {
     const res = buildCatalogV2Summary(
