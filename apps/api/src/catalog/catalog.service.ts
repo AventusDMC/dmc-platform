@@ -67,7 +67,7 @@ export class CatalogService {
       }),
       (this.prisma.vehicleRate as any).findMany({ select: { supplierId: true, currency: true } }),
       (this.prisma.hotelContract as any).findMany({
-        select: { id: true, name: true, validFrom: true, validTo: true, currency: true, confidence: true, hotel: { select: { name: true } } },
+        select: { id: true, name: true, validFrom: true, validTo: true, currency: true, confidence: true, hotel: { select: { name: true, supplierId: true, resolvedSupplierId: true } } },
       }),
       (this.prisma.supplierService as any).count(),
       (this.prisma.activity as any).findMany({ select: { active: true } }),
@@ -115,6 +115,8 @@ export class CatalogService {
           id: c.id,
           name: c.name ?? null,
           hotelName: c.hotel?.name ?? null,
+          supplierId: c.hotel?.supplierId ?? null,
+          resolvedSupplierId: c.hotel?.resolvedSupplierId ?? null,
           validFrom: toIso(c.validFrom),
           validTo: toIso(c.validTo),
           currency: c.currency ?? null,

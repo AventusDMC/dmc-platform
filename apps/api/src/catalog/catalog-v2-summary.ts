@@ -106,6 +106,10 @@ export type CatalogV2Input = {
     id: string;
     name: string | null;
     hotelName: string | null;
+    // Owning hotel's supplier link (Hotel.supplierId / resolvedSupplierId) so
+    // a hotel supplier's active contracts count toward its operational activity.
+    supplierId?: string | null;
+    resolvedSupplierId?: string | null;
     validFrom: string | null;
     validTo: string | null;
     currency: string | null;
@@ -188,7 +192,20 @@ export function buildCatalogV2Summary(input: CatalogV2Input, role: CatalogRole |
     const validContractCount = linkedContracts.filter(
       (c) => c.active && classifyValidity(c.validTo, c.active, nowMs) !== 'expired',
     ).length;
-    const operationallyActive = activeServiceCount > 0 || validContractCount > 0;
+    // Slice 5 — count the supplier's own active (non-expired) hotel contracts.
+    // Hotel contracts are keyed to a hotel, which links to this supplier via
+    // Hotel.supplierId / resolvedSupplierId. Without this, a hotel supplier whose
+    // inventory lives entirely in hotel contracts is wrongly flagged
+    // NO_ACTIVE_SERVICES (the supplier-level check historically only saw services
+    // + transport contracts). Confidence/verification is irrelevant to "active".
+    const linkedHotelContracts = input.hotelContracts.filter(
+      (hc) => hc.supplierId === s.id || hc.resolvedSupplierId === s.id,
+    );
+    const activeHotelContractCount = linkedHotelContracts.filter(
+      (hc) => classifyValidity(hc.validTo, true, nowMs) !== 'expired',
+    ).length;
+    const operationallyActive =
+      activeServiceCount > 0 || validContractCount > 0 || activeHotelContractCount > 0;
 
     const currencies = Array.from(
       new Set(
@@ -233,6 +250,9 @@ export function buildCatalogV2Summary(input: CatalogV2Input, role: CatalogRole |
       activeServiceCount,
       contractCount: linkedContracts.length,
       contractValidity,
+      // Slice 5 — supplier's own active (non-expired) hotel contracts (read-only,
+      // for debugging/tests). Feeds operationallyActive alongside services/transport.
+      activeHotelContractCount,
       rateCount,
       pricingRedacted: !pricingVisible,
       pricing: pricingVisible
