@@ -5068,3 +5068,89 @@ test('createPassenger (fix): supplied passport still normalizes + persists (Clas
   assert.equal(p.passportNumber, 'X99', 'supplied passport still stored');
   assert.equal(p.nationality, 'GBR');
 });
+
+// V2 service-scoped assignSupplier field alignment (Supplier Voucher Packet V2 fix):
+// assigning a supplier must also set assignedSupplierId + assignmentStatus so the
+// packet grouping (isAssigned requires assignmentStatus !== UNASSIGNED) includes the
+// service. Mirrors the operations/Classic assign path; clearing resets both.
+function assignSupplierService(over: { current: any; resolved: any }) {
+  let updatedData: any;
+  const prisma: any = {
+    booking: { findFirst: async () => null }, // assertLatestBookingAmendment: this is the latest
+    supplier: { findUnique: async () => over.resolved }, // resolveOperationalSupplier lookup
+    bookingService: {
+      findFirst: async () => over.current,
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { id: over.current.id, ...data };
+      },
+    },
+    bookingAuditLog: { create: async () => ({}) },
+  };
+  prisma.$transaction = async (cb: any) =>
+    cb({
+      bookingService: { update: async (a: any) => prisma.bookingService.update(a) },
+      bookingAuditLog: { create: async (a: any) => prisma.bookingAuditLog.create(a) },
+    });
+  const service = createService(prisma);
+  return { service, getUpdated: () => updatedData };
+}
+
+test('V2 assignSupplier sets supplierId, supplierName, assignedSupplierId, assignmentStatus=ASSIGNED', async () => {
+  const { service, getUpdated } = assignSupplierService({
+    current: {
+      id: 'service-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
+      serviceType: 'ACTIVITY',
+      serviceDate: new Date('2026-08-01T00:00:00.000Z'),
+      status: 'pending',
+      totalCost: 80,
+      totalSell: 100,
+      confirmationStatus: 'pending',
+      supplierId: null,
+      supplierName: null,
+    },
+    resolved: { id: 'supplier-1', name: 'QA Supplier' },
+  });
+
+  await service.assignSupplier('service-1', {
+    supplierId: 'supplier-1',
+    companyActor: { companyId: 'company-1' },
+  });
+
+  const data = getUpdated();
+  assert.equal(data.supplierId, 'supplier-1');
+  assert.equal(data.supplierName, 'QA Supplier');
+  assert.equal(data.assignedSupplierId, 'supplier-1', 'assignedSupplierId aligned with supplierId');
+  assert.equal(data.assignmentStatus, 'ASSIGNED', 'assignmentStatus set so packet grouping includes it');
+});
+
+test('V2 assignSupplier clear sets supplierId/assignedSupplierId null + assignmentStatus=UNASSIGNED', async () => {
+  const { service, getUpdated } = assignSupplierService({
+    current: {
+      id: 'service-1',
+      bookingId: '11111111-1111-4111-8111-111111111111',
+      serviceType: 'ACTIVITY',
+      serviceDate: null,
+      status: 'confirmed',
+      totalCost: 80,
+      totalSell: 100,
+      confirmationStatus: 'pending',
+      supplierId: 'supplier-1',
+      supplierName: 'QA Supplier',
+    },
+    resolved: null, // no supplier resolved → cleared
+  });
+
+  await service.assignSupplier('service-1', {
+    supplierId: null,
+    supplierName: null,
+    companyActor: { companyId: 'company-1' },
+  });
+
+  const data = getUpdated();
+  assert.equal(data.supplierId, null);
+  assert.equal(data.supplierName, null);
+  assert.equal(data.assignedSupplierId, null, 'assignedSupplierId cleared');
+  assert.equal(data.assignmentStatus, 'UNASSIGNED', 'assignmentStatus reset on clear');
+});

@@ -113,3 +113,15 @@ test('DTO carries no finance/PII fields', () => {
   }
   assert.deepEqual(groups[0].memberLabels, ['Airport transfer']);
 });
+
+// Regression anchor for the V2 supplier-field alignment fix: a service assigned
+// through V2 now carries assignmentStatus=ASSIGNED (writer sets it), so it groups;
+// a supplier id without ASSIGNED status (the pre-fix state) stays excluded.
+test('V2-assigned service (assignmentStatus=ASSIGNED) groups; supplier id alone without ASSIGNED does not', () => {
+  const groups = computeVoucherPacketGroups([
+    svc({ id: 'v2', serviceType: 'ACTIVITY', assignedSupplierId: 'sup-1', assignmentStatus: 'ASSIGNED', bookingDayId: 'd1', dayNumber: 1 }),
+    svc({ id: 'prefix', serviceType: 'ACTIVITY', assignedSupplierId: 'sup-1', assignmentStatus: 'UNASSIGNED', bookingDayId: 'd1', dayNumber: 1 }),
+  ]);
+  assert.equal(groups.length, 1, 'only the ASSIGNED service groups');
+  assert.deepEqual(groups[0].serviceIds, ['v2']);
+});
