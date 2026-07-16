@@ -5550,6 +5550,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             data: {
               supplierId: resolvedSupplier.supplierId,
               supplierName: resolvedSupplier.supplierName,
+              // Align the V2 service-scoped assign writer with the
+              // operations/Classic assign path (assignBookingServiceSupplier),
+              // which sets assignedSupplierId + assignmentStatus. Without these,
+              // assignmentStatus stays UNASSIGNED and Supplier Voucher Packet V2
+              // grouping (isAssigned requires assignmentStatus !== UNASSIGNED)
+              // excludes a V2-assigned service. Clearing (null supplierId) sets
+              // assignedSupplierId null + assignmentStatus UNASSIGNED.
+              assignedSupplierId: resolvedSupplier.supplierId,
+              assignmentStatus: this.normalizeSupplierAssignmentStatus(null, resolvedSupplier.supplierId),
               status: nextStatus,
             },
           });
