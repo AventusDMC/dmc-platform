@@ -1,24 +1,24 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId } from '../auth/company-scope';
+import { canViewQuoteCostMargin } from '../auth/cost-visibility';
+import { DmcRole } from '../auth/auth.types';
 import { EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildCreatePreviewToken, verifyCreatePreviewToken } from './quote-create-preview-token';
 import { isQuoteItemCreateEnabled } from './quote-item-create.flags';
-import {
-  buildPreviewToken,
-  getPreviewTokenSecret,
-  normalizePayloadHash,
-  verifyPreviewToken,
-} from './quote-preview-token';
+import { getPreviewTokenSecret, normalizePayloadHash } from './quote-preview-token';
 import { QuotesService } from './quotes.service';
 
-// Actor for a V2 item create — id + auditLabel (for the generic AuditLog row) and
-// companyId (for access scoping + delegated createItem). Assembled by the controller
+// Actor for a V2 item create — id + auditLabel (for the generic AuditLog row),
+// companyId (for access scoping + delegated createItem), and role (Slice 2C: cost/
+// margin redaction of the preview/create responses). Assembled by the controller
 // from the AuthenticatedActor.
 export type QuoteItemCreateActor = {
   id: string;
   companyId?: string | null;
   auditLabel: string;
+  role?: DmcRole | null;
 } | null;
 
 export type AddActivityItemInput = {
@@ -258,7 +258,11 @@ export class QuoteExperiencesV2Service {
 
     const issuedAt = Math.floor(Date.now() / 1000);
     const exp = issuedAt + CREATE_TOKEN_TTL_SECONDS;
-    const previewToken = buildPreviewToken(
+    // Slice 2C: OPAQUE (encrypted) create-preview token. The token still carries the
+    // projected cost totals — the server needs them for the drift compare on create —
+    // but the payload is encrypted, so a restricted client can no longer base64-decode
+    // it and read cost. The shared apply-path token helper is untouched.
+    const previewToken = buildCreatePreviewToken(
       {
         kind: CREATE_TOKEN_KIND,
         quoteId,
@@ -282,14 +286,17 @@ export class QuoteExperiencesV2Service {
       getPreviewTokenSecret(),
     );
 
+    // Slice 2C: redact cost/margin for non-finance roles (selling price + currency
+    // stay visible). The guard uses the token's internal cost, not this response.
+    const showCost = canViewQuoteCostMargin(actor?.role ?? null);
     return {
       itemType: 'activity',
       dayId: ctx.dayId,
       projected: {
-        cost: projected.totalCost,
+        cost: showCost ? projected.totalCost : null,
         sell: projected.totalSell,
         currency,
-        quote: { totalCost: quoteTotalCost, totalSell: quoteTotalSell },
+        quote: { totalCost: showCost ? quoteTotalCost : null, totalSell: quoteTotalSell },
       },
       previewToken,
     };
@@ -304,7 +311,9 @@ export class QuoteExperiencesV2Service {
     const ctx = await this.resolveContext(quoteId, input, actor);
 
     // --- Guard: verify the preview token + identity binding + freshness ---
-    const payload = verifyPreviewToken(guard.previewToken, getPreviewTokenSecret());
+    // Slice 2C: decrypt the opaque create-preview token (tamper → null via GCM auth
+    // tag). Expiry/identity/snapshot checks below are unchanged.
+    const payload = verifyCreatePreviewToken(guard.previewToken, getPreviewTokenSecret());
     if (!payload || payload.kind !== CREATE_TOKEN_KIND) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'A valid create-preview token is required. Re-run the preview.' });
     }
@@ -382,6 +391,8 @@ export class QuoteExperiencesV2Service {
       });
     }
 
+    // Audit always records the true cost/sell (server-side, sanitized metadata) —
+    // redaction below only affects what the CLIENT receives.
     await this.writeAudit(quoteId, itemId, {
       itemType: 'activity',
       dayId: ctx.dayId,
@@ -392,14 +403,17 @@ export class QuoteExperiencesV2Service {
       currency,
     }, ctx.requiredActor);
 
+    // Slice 2C: redact cost/margin from the create response for non-finance roles
+    // (selling total + currency stay visible).
+    const showCost = canViewQuoteCostMargin(actor?.role ?? null);
     return {
       itemId,
       itemType: 'activity',
       dayId: ctx.dayId,
-      cost,
+      cost: showCost ? cost : null,
       sell,
       currency,
-      quote: { totalCost: actualTotalCost, totalSell: actualTotalSell },
+      quote: { totalCost: showCost ? actualTotalCost : null, totalSell: actualTotalSell },
     };
   }
 

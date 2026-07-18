@@ -69,6 +69,11 @@ export class QuoteExperiencesV2Controller {
   }
 
   private toActor(actor?: AuthenticatedActor | null): QuoteItemCreateActor {
-    return actor ? { id: actor.id, companyId: actor.companyId ?? null, auditLabel: actor.auditLabel } : null;
+    // Slice 2C: carry the role through so the service can redact cost/margin from
+    // preview/create responses for non-finance roles. auditLabel/companyId/id kept
+    // exactly as before (the audit actor shape is unchanged).
+    return actor
+      ? { id: actor.id, companyId: actor.companyId ?? null, auditLabel: actor.auditLabel, role: actor.role ?? null }
+      : null;
   }
 }

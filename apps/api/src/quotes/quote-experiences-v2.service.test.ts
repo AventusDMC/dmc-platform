@@ -1,7 +1,8 @@
 import { test, afterEach } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { QuoteExperiencesV2Service } from './quote-experiences-v2.service';
-import { buildPreviewToken, getPreviewTokenSecret } from './quote-preview-token';
+import { buildCreatePreviewToken } from './quote-create-preview-token';
+import { getPreviewTokenSecret } from './quote-preview-token';
 
 // Fakes for PrismaService + the delegated QuotesService (createItem / removeItem /
 // previewCreateItemValues) + AuditService. A small MUTABLE state mimics the real
@@ -42,7 +43,12 @@ const QID = 'quote-1';
 const DAY = 'day-1';
 const ACT = 'act-1';
 const VAR = 'var-1';
-const ACTOR = { id: 'user-1', companyId: 'company-A', auditLabel: 'Alice' };
+// Default actor is a cost-visible role (admin) so the pre-2C guard tests keep
+// asserting cost values. Slice 2C redaction for restricted roles is covered by the
+// dedicated tests at the end of this file.
+const ACTOR = { id: 'user-1', companyId: 'company-A', auditLabel: 'Alice', role: 'admin' as const };
+// A restricted (non-finance) actor: same access to add, but no cost/margin visibility.
+const OPS_ACTOR = { id: 'user-2', companyId: 'company-A', auditLabel: 'Omar', role: 'operations' as const };
 const GOOD = { itemType: 'activity', dayId: DAY, activityId: ACT, activityRateVariantId: VAR, serviceDate: '2026-08-07' };
 
 function build(opts: Options = {}) {
@@ -252,7 +258,7 @@ test('an invalid / tampered token is rejected (invalid_preview_token)', async ()
 
 test('an expired token is rejected (invalid_preview_token)', async () => {
   const { service, calls } = build({ flag: true });
-  const expired = buildPreviewToken(
+  const expired = buildCreatePreviewToken(
     {
       kind: 'v2-activity-create', quoteId: QID, dayId: DAY, activityId: ACT, activityRateVariantId: VAR,
       serviceDate: new Date('2026-08-07').toISOString(), adultCount: 2, childCount: 0,
@@ -324,4 +330,73 @@ test('a failed create propagates and writes no success audit / no compensation',
   assert.equal(calls.createItem.length, 1);
   assert.equal(calls.removeItem.length, 0);
   assert.equal(calls.auditLog.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Slice 2C — cost/margin redaction of preview + create responses by role
+// ---------------------------------------------------------------------------
+
+test('preview: privileged (admin) role receives cost; restricted (operations) role does not', async () => {
+  const { service } = build({ flag: true });
+  const priv: any = await service.previewActivityItem(QID, GOOD, ACTOR);
+  assert.equal(priv.projected.cost, 120);
+  assert.equal(priv.projected.quote.totalCost, 320);
+  // Selling price + currency always visible.
+  assert.equal(priv.projected.sell, 144);
+  assert.equal(priv.projected.quote.totalSell, 384);
+
+  const restricted: any = await service.previewActivityItem(QID, GOOD, OPS_ACTOR);
+  assert.equal(restricted.projected.cost, null, 'operations must not receive projected item cost');
+  assert.equal(restricted.projected.quote.totalCost, null, 'operations must not receive projected quote total cost');
+  // Selling price + currency still visible to operations.
+  assert.equal(restricted.projected.sell, 144);
+  assert.equal(restricted.projected.quote.totalSell, 384);
+  assert.equal(restricted.projected.currency, 'USD');
+  // The opaque token is still issued (the client replays it verbatim on create).
+  assert.equal(typeof restricted.previewToken, 'string');
+});
+
+test('create: restricted (operations) role gets a redacted create response but the add still commits', async () => {
+  const { service, calls } = build({ flag: true });
+  // Preview + create both as operations; the token is role-independent, so a
+  // restricted user completes the add and only the RESPONSE cost is redacted.
+  const preview: any = await service.previewActivityItem(QID, GOOD, OPS_ACTOR);
+  const result: any = await service.addActivityItem(QID, GOOD, OPS_ACTOR, {
+    previewToken: preview.previewToken,
+    acknowledgedDelta: true,
+  });
+  assert.equal(result.itemId, 'item-new');
+  assert.equal(result.cost, null, 'operations must not receive item cost on create');
+  assert.equal(result.quote.totalCost, null, 'operations must not receive quote total cost on create');
+  // Selling total + currency preserved.
+  assert.equal(result.sell, 144);
+  assert.equal(result.quote.totalSell, 384);
+  assert.equal(result.currency, 'USD');
+  // The write actually happened + was audited (redaction is response-only).
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.auditLog.length, 1);
+  // The audit row records the TRUE cost (server-side), not the redacted value.
+  assert.equal(calls.auditLog[0].metadata.cost, 120);
+});
+
+test('create: privileged (admin) role receives full cost on the create response', async () => {
+  const { service } = build({ flag: true });
+  const token = await previewToken(service, GOOD, ACTOR);
+  const result: any = await service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(result.cost, 120);
+  assert.equal(result.quote.totalCost, 320);
+});
+
+test('the guard still uses the token internal cost for restricted roles (drift → rate_changed + compensation)', async () => {
+  // Even though the operations user cannot SEE cost, the drift compare (which reads
+  // the token's internal projected totals) must still fire and compensate.
+  const { service, calls, state } = build({ flag: true, driftCost: 40 });
+  const preview: any = await service.previewActivityItem(QID, GOOD, OPS_ACTOR);
+  await expectRejects(
+    service.addActivityItem(QID, GOOD, OPS_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true }),
+    'rate_changed',
+  );
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1);
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
 });
