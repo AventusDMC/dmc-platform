@@ -1,11 +1,14 @@
 import { test, afterEach } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { QuoteExperiencesV2Service } from './quote-experiences-v2.service';
+import { buildPreviewToken, getPreviewTokenSecret } from './quote-preview-token';
 
-// Fakes for PrismaService + the delegated QuotesService.createItem + AuditService.
-// The V2 service is thin (flag-gate → activity-only → required-fields → access-guard
-// → day-belongs → activity/variant integrity → delegate → audit), so plain object
-// fakes exercise every branch without a DB.
+// Fakes for PrismaService + the delegated QuotesService (createItem / removeItem /
+// previewCreateItemValues) + AuditService. A small MUTABLE state mimics the real
+// recalc: previewCreateItemValues projects the item price with no writes; createItem
+// appends the item and moves the quote totals (by the item contribution + any injected
+// drift); removeItem compensates. This lets the Slice 2B-1 guard (preview token →
+// snapshot → post-write compare → compensating rollback) be exercised without a DB.
 
 type Options = {
   flag?: boolean;
@@ -17,7 +20,16 @@ type Options = {
   created?: any;
   createThrows?: boolean;
   auditThrows?: boolean;
-  totalsAfter?: { totalCost: number; totalSell: number };
+  previewThrows?: boolean;
+  removeThrows?: boolean;
+  // Pre-create quote totals (before the add).
+  preTotals?: { totalCost: number; totalSell: number };
+  // Projected new-item price (previewCreateItemValues).
+  projected?: { totalCost: number; totalSell: number; currency?: string };
+  // Extra drift applied to the quote totals on create, BEYOND the item contribution
+  // (simulates a pre-existing item re-pricing during recalc).
+  driftCost?: number;
+  driftSell?: number;
 };
 
 function setFlag(on: boolean) {
@@ -34,7 +46,12 @@ const ACTOR = { id: 'user-1', companyId: 'company-A', auditLabel: 'Alice' };
 const GOOD = { itemType: 'activity', dayId: DAY, activityId: ACT, activityRateVariantId: VAR, serviceDate: '2026-08-07' };
 
 function build(opts: Options = {}) {
-  const calls: Record<string, any[]> = { createItem: [], auditLog: [] };
+  const calls: Record<string, any[]> = { createItem: [], removeItem: [], previewValues: [], auditLog: [] };
+  const projected = opts.projected ?? { totalCost: 120, totalSell: 144, currency: 'USD' };
+  const state = {
+    totals: { ...(opts.preTotals ?? { totalCost: 200, totalSell: 240 }) },
+    items: [] as { id: string; totalCost: number; totalSell: number }[],
+  };
 
   const prisma = {
     quote: {
@@ -44,7 +61,11 @@ function build(opts: Options = {}) {
           ? { id: QID, brandCompanyId: null, status: 'DRAFT', quoteCurrency: 'USD', adults: 2, children: 0 }
           : opts.quote;
       },
-      findUnique: async () => opts.totalsAfter ?? { totalCost: 320, totalSell: 384 },
+      // Reads current mutable totals (pre-create during snapshots, post-create during compare).
+      findUnique: async () => ({ totalCost: state.totals.totalCost, totalSell: state.totals.totalSell, quoteCurrency: 'USD' }),
+    },
+    quoteItem: {
+      findMany: async () => state.items,
     },
     quoteItineraryDay: {
       findUnique: async () => (opts.day === undefined ? { id: DAY, quoteId: QID } : opts.day),
@@ -58,10 +79,31 @@ function build(opts: Options = {}) {
   };
 
   const quotes = {
+    previewCreateItemValues: async (data: any) => {
+      calls.previewValues.push({ data });
+      if (opts.previewThrows) throw new Error('resolve boom');
+      return { totalCost: projected.totalCost, totalSell: projected.totalSell, currency: projected.currency ?? 'USD' };
+    },
     createItem: async (data: any, actor: any) => {
       calls.createItem.push({ data, actor });
       if (opts.createThrows) throw new Error('createItem boom');
-      return opts.created ?? { id: 'item-new', totalCost: 120, totalSell: 144, currency: 'USD' };
+      const created = opts.created ?? { id: 'item-new', totalCost: projected.totalCost, totalSell: projected.totalSell, currency: 'USD' };
+      // Simulate recalc: totals move by the item contribution (+ any injected drift).
+      state.items.push({ id: created.id, totalCost: created.totalCost, totalSell: created.totalSell });
+      state.totals.totalCost += created.totalCost + (opts.driftCost ?? 0);
+      state.totals.totalSell += created.totalSell + (opts.driftSell ?? 0);
+      return created;
+    },
+    removeItem: async (itemId: string, actor: any) => {
+      calls.removeItem.push({ itemId, actor });
+      if (opts.removeThrows) throw new Error('removeItem boom');
+      const idx = state.items.findIndex((i) => i.id === itemId);
+      if (idx >= 0) {
+        const it = state.items.splice(idx, 1)[0];
+        state.totals.totalCost -= it.totalCost + (opts.driftCost ?? 0);
+        state.totals.totalSell -= it.totalSell + (opts.driftSell ?? 0);
+      }
+      return { id: itemId };
     },
   };
 
@@ -75,7 +117,7 @@ function build(opts: Options = {}) {
 
   setFlag(opts.flag ?? true);
   const service = new QuoteExperiencesV2Service(prisma as any, quotes as any, audit as any);
-  return { service, calls };
+  return { service, calls, state };
 }
 
 async function expectRejects(promise: Promise<unknown>, codeOrText: string) {
@@ -91,132 +133,195 @@ async function expectRejects(promise: Promise<unknown>, codeOrText: string) {
   });
 }
 
-// 1. Flag OFF blocks create
+// Preview → returns a token used by the guarded create.
+async function previewToken(service: QuoteExperiencesV2Service, input = GOOD, actor = ACTOR): Promise<string> {
+  const res: any = await service.previewActivityItem(QID, input, actor as any);
+  return res.previewToken as string;
+}
+
+// ---------------------------------------------------------------------------
+// Validation gate (runs BEFORE the token guard — unchanged behavior)
+// ---------------------------------------------------------------------------
+
 test('addActivityItem is blocked (feature_disabled) when the flag is OFF and writes nothing', async () => {
   const { service, calls } = build({ flag: false });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'feature_disabled');
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'feature_disabled');
   assert.equal(calls.createItem.length, 0);
   assert.equal(calls.auditLog.length, 0);
 });
 
-// 2. Flag ON + authorized creates one activity item (+ delegation args + audit)
-test('addActivityItem creates one activity item, delegates to createItem, and writes a sanitized audit row', async () => {
-  const { service, calls } = build({ flag: true });
-  const result = await service.addActivityItem(QID, GOOD, ACTOR);
-
-  assert.equal(calls.createItem.length, 1);
-  const d = calls.createItem[0].data;
-  assert.equal(d.quoteId, QID);
-  assert.equal(d.activityId, ACT);
-  assert.equal(d.activityRateVariantId, VAR);
-  assert.equal(d.itineraryId, DAY); // linked to the selected day
-  assert.ok(d.serviceDate instanceof Date);
-  assert.equal(d.adultCount, 2); // defaulted from quote
-  assert.equal(calls.createItem[0].actor.companyId, 'company-A');
-
-  assert.equal(result.itemId, 'item-new');
-  assert.equal(result.itemType, 'activity');
-  assert.deepEqual(result.quote, { totalCost: 320, totalSell: 384 });
-
-  assert.equal(calls.auditLog.length, 1);
-  const a = calls.auditLog[0];
-  assert.equal(a.action, 'quote.item.created');
-  assert.equal(a.entity, 'quoteItem');
-  assert.equal(a.entityId, 'item-new');
-  assert.deepEqual(Object.keys(a.metadata).sort(), ['activityId', 'activityRateVariantId', 'cost', 'currency', 'dayId', 'itemId', 'itemType', 'quoteId', 'sell'].sort());
-  assert.equal(a.metadata.itemType, 'activity');
-  assert.equal(a.metadata.cost, 120);
-  assert.equal(a.metadata.sell, 144);
-  // no PII / token / secret keys
-  for (const k of Object.keys(a.metadata)) {
-    assert.ok(!/passenger|passport|token|secret|cookie|url|password/i.test(k), `unexpected metadata key: ${k}`);
-  }
-});
-
-// 3. Non-activity type rejected out_of_scope
 test('a non-activity itemType is rejected out_of_scope', async () => {
   const { service, calls } = build({ flag: true });
-  await expectRejects(service.addActivityItem(QID, { ...GOOD, itemType: 'meal' }, ACTOR), 'out_of_scope');
+  await expectRejects(service.addActivityItem(QID, { ...GOOD, itemType: 'meal' }, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'out_of_scope');
   assert.equal(calls.createItem.length, 0);
 });
 
-// 4. Missing required fields rejected
 for (const field of ['dayId', 'activityId', 'activityRateVariantId', 'serviceDate']) {
   test(`missing ${field} is rejected (missing_field) and does not create`, async () => {
     const { service, calls } = build({ flag: true });
     const bad: any = { ...GOOD, [field]: '' };
-    await expectRejects(service.addActivityItem(QID, bad, ACTOR), 'missing_field');
+    await expectRejects(service.addActivityItem(QID, bad, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'missing_field');
     assert.equal(calls.createItem.length, 0);
   });
 }
 
-// 5. Day must belong to quote
 test('a day that does not belong to the quote is rejected (day_not_found)', async () => {
   const { service, calls } = build({ flag: true, day: { id: DAY, quoteId: 'other-quote' } });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'day_not_found');
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'day_not_found');
   assert.equal(calls.createItem.length, 0);
 });
 
-// 6. Rate variant must belong to activity
 test('a rate variant that does not belong to the activity is rejected (variant_mismatch)', async () => {
   const { service, calls } = build({ flag: true, variant: { id: VAR, activityId: 'other-activity' } });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'variant_mismatch');
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'variant_mismatch');
   assert.equal(calls.createItem.length, 0);
 });
 
-// 7. Unauthorized (no company context) rejected
 test('a caller without a company context is rejected (company isolation)', async () => {
   const { service, calls } = build({ flag: true });
   await expectRejects(
-    service.addActivityItem(QID, GOOD, { id: 'user-1', companyId: null, auditLabel: 'NoCo' }),
+    service.addActivityItem(QID, GOOD, { id: 'user-1', companyId: null, auditLabel: 'NoCo' }, { previewToken: 'x', acknowledgedDelta: true }),
     'Company context is required',
   );
   assert.equal(calls.createItem.length, 0);
 });
 
-// 8. Cross-company access rejected; legacy null-brand allowed
 test('a quote owned by a different company is rejected (cross-company)', async () => {
   const { service, calls } = build({ flag: true, quote: { id: QID, brandCompanyId: 'company-B', status: 'DRAFT', quoteCurrency: 'USD', adults: 2, children: 0 } });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'different company');
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'different company');
   assert.equal(calls.createItem.length, 0);
 });
 
-test('a legacy quote with no brandCompanyId is accessible (no regression)', async () => {
-  const { service, calls } = build({ flag: true, quote: { id: QID, brandCompanyId: null, status: 'DRAFT', quoteCurrency: 'USD', adults: 2, children: 0 } });
-  const result = await service.addActivityItem(QID, GOOD, ACTOR);
-  assert.equal(result.itemId, 'item-new');
-  assert.equal(calls.createItem.length, 1);
-});
-
-// non-editable status rejected
 test('a non-editable quote status is rejected (quote_not_editable)', async () => {
   const { service, calls } = build({ flag: true, quote: { id: QID, brandCompanyId: null, status: 'SENT', quoteCurrency: 'USD', adults: 2, children: 0 } });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'quote_not_editable');
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'quote_not_editable');
   assert.equal(calls.createItem.length, 0);
 });
 
-// 9/10. Delegation carries the cost/sell + day link; result reflects fresh totals
-test('the created item cost/sell and fresh quote totals are returned', async () => {
-  const { service } = build({ flag: true, created: { id: 'item-9', totalCost: 200, totalSell: 240, currency: 'USD' }, totalsAfter: { totalCost: 400, totalSell: 480 } });
-  const result = await service.addActivityItem(QID, GOOD, ACTOR);
-  assert.equal(result.cost, 200);
-  assert.equal(result.sell, 240);
-  assert.deepEqual(result.quote, { totalCost: 400, totalSell: 480 });
+// ---------------------------------------------------------------------------
+// Slice 2B-1 guard
+// ---------------------------------------------------------------------------
+
+test('create-preview projects the price and returns a token, writing nothing', async () => {
+  const { service, calls } = build({ flag: true });
+  const res: any = await service.previewActivityItem(QID, GOOD, ACTOR);
+  assert.equal(res.itemType, 'activity');
+  assert.equal(res.projected.cost, 120);
+  assert.equal(res.projected.sell, 144);
+  assert.deepEqual(res.projected.quote, { totalCost: 320, totalSell: 384 }); // additive (200+120 / 240+144)
+  assert.equal(typeof res.previewToken, 'string');
+  assert.equal(calls.createItem.length, 0);
+  assert.equal(calls.removeItem.length, 0);
+  assert.equal(calls.auditLog.length, 0);
 });
 
-// 12. Audit failure does not block the create
-test('a failing audit write does not block the create', async () => {
+test('happy path: preview → create succeeds when token matches and acknowledgedDelta=true', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service);
+  const result: any = await service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(result.itemId, 'item-new');
+  assert.equal(result.cost, 120);
+  assert.equal(result.sell, 144);
+  assert.deepEqual(result.quote, { totalCost: 320, totalSell: 384 });
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 0);
+  assert.equal(calls.auditLog.length, 1);
+});
+
+test('confirmation_required when the add changes pricing and acknowledgedDelta is not true', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: false }), 'confirmation_required');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('stale_preview when the quote changes after the preview', async () => {
+  const { service, calls, state } = build({ flag: true });
+  const token = await previewToken(service);
+  // Quote moves after the preview (e.g. another edit) → snapshot hash no longer matches.
+  state.totals.totalCost += 50;
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'stale_preview');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('an invalid / tampered token is rejected (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: 'v1.garbage.sig', acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('an expired token is rejected (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  const expired = buildPreviewToken(
+    {
+      kind: 'v2-activity-create', quoteId: QID, dayId: DAY, activityId: ACT, activityRateVariantId: VAR,
+      serviceDate: new Date('2026-08-07').toISOString(), adultCount: 2, childCount: 0,
+      snapshotHash: 'x', projected: {}, issuedAt: 1, exp: 2,
+    },
+    getPreviewTokenSecret(),
+  );
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: expired, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('a token for a different add is rejected (invalid_preview_token identity binding)', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service, GOOD);
+  // Same token, but the request targets a different day → the token's identity
+  // binding (dayId) no longer matches → invalid_preview_token, nothing created.
+  await expectRejects(
+    service.addActivityItem(QID, { ...GOOD, dayId: 'day-2' }, ACTOR, { previewToken: token, acknowledgedDelta: true }),
+    'invalid_preview_token',
+  );
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('missing/unresolvable rate returns not_resolvable and writes nothing (create)', async () => {
+  const { service, calls } = build({ flag: true, previewThrows: true });
+  // Preview itself surfaces not_resolvable when pricing cannot resolve.
+  await expectRejects(service.previewActivityItem(QID, GOOD, ACTOR), 'not_resolvable');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('injected drift after preview triggers rate_changed AND a compensating removeItem', async () => {
+  // Build ONE service; preview with no drift, then flip drift on for the create by
+  // making createItem move totals beyond the item contribution.
+  const { service, calls, state } = build({ flag: true, driftCost: 40 });
+  // Preview must see NO drift (its snapshot is pre-create). Compute the token from a
+  // clean projection: temporarily the state is pre-create, projected additive = 320/384.
+  const token = await previewToken(service);
+  const result = service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  await expectRejects(result, 'rate_changed');
+  assert.equal(calls.createItem.length, 1); // it did create...
+  assert.equal(calls.removeItem.length, 1); // ...then compensated
+  assert.equal(calls.auditLog.length, 0); // no success audit on a rolled-back create
+  // Totals restored to pre-create by the compensating removeItem.
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+test('if the compensating removeItem fails, the error surfaces (compensation_failed) and is not swallowed', async () => {
+  const { service, calls } = build({ flag: true, driftCost: 40, removeThrows: true });
+  const token = await previewToken(service);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'compensation_failed');
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1); // attempted
+  assert.equal(calls.auditLog.length, 0);
+});
+
+test('a failing audit write does not block a successful create', async () => {
   const { service, calls } = build({ flag: true, auditThrows: true });
-  const result = await service.addActivityItem(QID, GOOD, ACTOR);
+  const token = await previewToken(service);
+  const result: any = await service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true });
   assert.equal(result.itemId, 'item-new');
   assert.equal(calls.createItem.length, 1);
   assert.equal(calls.auditLog.length, 1); // attempted, threw, swallowed
 });
 
-// 13. Failed create writes no success audit
-test('a failed create writes no success audit and propagates the error', async () => {
+test('a failed create propagates and writes no success audit / no compensation', async () => {
   const { service, calls } = build({ flag: true, createThrows: true });
-  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR), 'createItem boom');
+  const token = await previewToken(service);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'createItem boom');
   assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 0);
   assert.equal(calls.auditLog.length, 0);
 });

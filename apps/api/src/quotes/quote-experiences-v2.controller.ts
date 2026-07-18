@@ -11,6 +11,9 @@ type AddItemBody = {
   serviceDate?: string | null;
   adultCount?: number | string | null;
   childCount?: number | string | null;
+  // Slice 2B-1 determinism guard — replayed from the create-preview response.
+  previewToken?: unknown;
+  acknowledgedDelta?: boolean;
 };
 
 // Quote Builder V2 — Phase B, Slice 2: add ONE Activity item. NEW, V2-SCOPED route
@@ -25,6 +28,19 @@ type AddItemBody = {
 export class QuoteExperiencesV2Controller {
   constructor(private readonly service: QuoteExperiencesV2Service) {}
 
+  // Slice 2B-1: read-only create-preview. Projects the activity's price with NO
+  // writes and returns a signed previewToken the client must replay on create.
+  // Same flag/role/status gating as create (enforced in the service).
+  @Post('item/preview')
+  @Roles('admin', 'operations')
+  async previewItem(
+    @Param('quoteId') quoteId: string,
+    @Body() body: AddItemBody,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.service.previewActivityItem(quoteId, this.toInput(body), this.toActor(actor));
+  }
+
   @Post('item')
   @Roles('admin', 'operations')
   async addItem(
@@ -32,7 +48,10 @@ export class QuoteExperiencesV2Controller {
     @Body() body: AddItemBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
-    return this.service.addActivityItem(quoteId, this.toInput(body), this.toActor(actor));
+    return this.service.addActivityItem(quoteId, this.toInput(body), this.toActor(actor), {
+      previewToken: body?.previewToken,
+      acknowledgedDelta: body?.acknowledgedDelta === true,
+    });
   }
 
   private toInput(body: AddItemBody): AddActivityItemInput {
