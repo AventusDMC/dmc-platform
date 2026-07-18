@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import { BuilderV2Client } from "./builder-v2-client"
 import { loadQuoteV2 } from "../../../../lib/quote-v2-adapter"
+import { redactQuoteV2CostMargin } from "../../../../lib/quote-v2-cost-redaction"
 import { readSessionActor, hasRequiredRole, canAccessFinance } from "../../../lib/auth-session"
 
 export const metadata: Metadata = {
@@ -68,6 +69,13 @@ export default async function QuoteBuilderV2Page({
   // per-person figures stay visible to everyone; the proposal/PDF mapper redaction
   // is unchanged and remains the client-facing source of truth.
   const canViewCostMargin = canAccessFinance(role)
+
+  // Slice 2A-2: redact the sensitive cost/margin figures from the payload that
+  // hydrates the client component, so restricted roles never RECEIVE them (the
+  // Slice 2A UI gating hides them, but the raw values still travelled in props).
+  // Narrow + pure: only the pricing breakdown's internal cost figures are zeroed;
+  // client-facing sell/per-person and all itinerary/item data are preserved.
+  const safeQuote = redactQuoteV2CostMargin(quote, canViewCostMargin)
 
   // Entrance / Jordan-Pass apply scope (PR #561) — a separate, build-time public
   // flag, default OFF. When not 'true', entrance rows stay read-only even for
@@ -167,7 +175,7 @@ export default async function QuoteBuilderV2Page({
 
   return (
     <BuilderV2Client
-      quote={quote}
+      quote={safeQuote}
       error={error}
       canEditPassengers={canEditPassengers}
       canEditRooming={canEditRooming}
