@@ -200,7 +200,16 @@ export interface QuoteBuilderV2Props {
    * { itemType:'activity', dayId, activityId, activityRateVariantId, serviceDate }.
    * Omitted → no Add affordance. Resolves to the create result (with new quote total).
    */
-  onAddItem?: (payload: Record<string, unknown>) => void | Promise<unknown>
+  /**
+   * Slice 2B-2 step 1 — READ-ONLY create-preview for add-activity. Projects the
+   * price and returns a signed previewToken the create replays. No writes.
+   */
+  onPreviewAddItem?: (payload: Record<string, unknown>) => Promise<{ projected?: { sell?: number; currency?: string | null }; previewToken?: string }>
+  /**
+   * Slice 2B-2 step 2 — guarded create. Replays the previewToken + acknowledgedDelta
+   * from the confirmed preview (the backend fails closed on stale/rate drift).
+   */
+  onAddItem?: (payload: Record<string, unknown>, previewToken?: string, acknowledgedDelta?: boolean) => void | Promise<unknown>
   /**
    * Booking Creation V2 (Slice 1D). When true, the "Create booking" card renders in
    * the sidebar. Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE + admin/operations +
@@ -254,6 +263,7 @@ export function QuoteBuilderV2({
   onEditDay,
   onDeleteDay,
   itemCreateEnabled = false,
+  onPreviewAddItem,
   onAddItem,
   canCreateBooking = false,
   canViewCostMargin = false,
@@ -409,6 +419,7 @@ export function QuoteBuilderV2({
             externalPackagePreviewEnabled={externalPackagePreviewEnabled}
             externalPackageApplyEnabled={externalPackageApplyEnabled}
             addItemEnabled={itemCreateEnabled}
+            onPreviewAddItem={onPreviewAddItem}
             onAddItem={onAddItem}
             itineraryDays={quote.itinerary}
           />

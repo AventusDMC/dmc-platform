@@ -18,7 +18,17 @@ import type { ApplyItemPricingHandler, Experience, ItineraryDay, LoadApplyAuditH
 import { Ticket, Calculator, Plus, Loader2, AlertTriangle } from "lucide-react"
 
 /** Add one Activity item (Phase B, Slice 2) via the V2 route. */
-export type AddItemHandler = (payload: Record<string, unknown>) => void | Promise<unknown>
+// Slice 2B-2 step 2 — guarded create; replays the previewToken + acknowledgedDelta.
+export type AddItemHandler = (
+  payload: Record<string, unknown>,
+  previewToken?: string,
+  acknowledgedDelta?: boolean,
+) => void | Promise<unknown>
+// Slice 2B-2 step 1 — read-only create-preview; returns the projected client-safe
+// selling price + the signed previewToken.
+export type PreviewAddHandler = (
+  payload: Record<string, unknown>,
+) => Promise<{ projected?: { sell?: number; currency?: string | null }; previewToken?: string }>
 
 export type UpdateDisplayText = (
   quoteItemId: string,
@@ -239,9 +249,11 @@ const FIELD_CLASS =
 
 function AddActivityPanel({
   onAddItem,
+  onPreviewAddItem,
   itineraryDays,
 }: {
   onAddItem: AddItemHandler
+  onPreviewAddItem: PreviewAddHandler
   itineraryDays: ItineraryDay[]
 }) {
   const [open, setOpen] = useState(false)
@@ -254,6 +266,9 @@ function AddActivityPanel({
   const [serviceDate, setServiceDate] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Slice 2B-2: preview-then-confirm. `preview` holds the projected CLIENT-SAFE
+  // selling price + the signed token replayed on confirm (cost/margin never shown).
+  const [preview, setPreview] = useState<{ sell: number | null; currency: string | null; previewToken: string } | null>(null)
 
   const openForm = async () => {
     setOpen(true)
@@ -280,6 +295,7 @@ function AddActivityPanel({
     setVariantId("")
     setServiceDate("")
     setError(null)
+    setPreview(null)
   }
   const cancel = () => {
     setOpen(false)
@@ -291,6 +307,7 @@ function AddActivityPanel({
 
   const onDayChange = (id: string) => {
     setDayId(id)
+    setPreview(null)
     // Default the service date to the selected day's ISO date when available.
     const day = itineraryDays.find((d) => d.id === id)
     if (day?.date && !serviceDate) {
@@ -300,17 +317,44 @@ function AddActivityPanel({
   }
 
   const canSubmit = Boolean(dayId && activityId && variantId && serviceDate) && !submitting
+  const currentPayload = () => ({ itemType: "activity", dayId, activityId, activityRateVariantId: variantId, serviceDate })
 
-  const submit = async () => {
+  // Step 1 — preview: project the price (no write) and hold the token for confirm.
+  const doPreview = async () => {
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
     try {
-      await onAddItem({ itemType: "activity", dayId, activityId, activityRateVariantId: variantId, serviceDate })
+      const res = await onPreviewAddItem(currentPayload())
+      const token = res?.previewToken
+      if (!token) throw new Error("Could not preview the activity price. Please try again.")
+      setPreview({
+        sell: typeof res?.projected?.sell === "number" ? res.projected.sell : null,
+        currency: res?.projected?.currency ?? null,
+        previewToken: token,
+      })
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not preview the activity.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Step 2 — confirm: create with the previewed token + acknowledgedDelta. On a
+  // stale/rate drift the backend fails closed; we clear the preview so the user
+  // re-previews.
+  const doConfirm = async () => {
+    if (!preview || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onAddItem(currentPayload(), preview.previewToken, true)
       setOpen(false)
       reset()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add the activity.")
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not add the activity. Please preview again.")
     } finally {
       setSubmitting(false)
     }
@@ -350,7 +394,7 @@ function AddActivityPanel({
         </label>
         <label className="block">
           <span className="mb-1 block text-xs text-muted-foreground">Service date</span>
-          <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} disabled={submitting} className={FIELD_CLASS} />
+          <input type="date" value={serviceDate} onChange={(e) => { setServiceDate(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} />
         </label>
         <label className="block">
           <span className="mb-1 block text-xs text-muted-foreground">Activity</span>
@@ -359,6 +403,7 @@ function AddActivityPanel({
             onChange={(e) => {
               setActivityId(e.target.value)
               setVariantId("")
+              setPreview(null)
             }}
             disabled={submitting || loadingCatalog}
             className={FIELD_CLASS}
@@ -373,7 +418,7 @@ function AddActivityPanel({
         </label>
         <label className="block">
           <span className="mb-1 block text-xs text-muted-foreground">Rate variant</span>
-          <select value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={submitting || !activityId} className={FIELD_CLASS}>
+          <select value={variantId} onChange={(e) => { setVariantId(e.target.value); setPreview(null) }} disabled={submitting || !activityId} className={FIELD_CLASS}>
             <option value="">Select a rate…</option>
             {variants.map((v) => (
               <option key={v.id} value={v.id}>
@@ -390,11 +435,27 @@ function AddActivityPanel({
           {error}
         </p>
       ) : null}
+      {preview ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Projected selling price: </span>
+          <span className="font-semibold text-foreground">
+            {preview.sell != null ? `${preview.currency ?? ""} ${Math.round(preview.sell)}`.trim() : "—"}
+          </span>
+          <span className="text-muted-foreground"> — confirm to add.</span>
+        </div>
+      ) : null}
       <div className="flex items-center gap-2">
-        <Button size="sm" className="gap-1.5" onClick={submit} disabled={!canSubmit}>
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-          {submitting ? "Adding…" : "Add activity"}
-        </Button>
+        {preview ? (
+          <Button size="sm" className="gap-1.5" onClick={doConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Adding…" : "Confirm & add"}
+          </Button>
+        ) : (
+          <Button size="sm" className="gap-1.5" onClick={doPreview} disabled={!canSubmit}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Previewing…" : "Preview price"}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={cancel} disabled={submitting}>
           Cancel
         </Button>
@@ -446,17 +507,19 @@ export interface ExperiencesStepProps {
    * a UI affordance gate only.
    */
   addItemEnabled?: boolean
-  /** Add ONE Activity item (V2 route). Omitted → no Add affordance. */
+  /** Add ONE Activity item (V2 route, guarded create). Omitted → no Add affordance. */
   onAddItem?: AddItemHandler
+  /** Read-only create-preview (Slice 2B-2 step 1). Omitted → no Add affordance. */
+  onPreviewAddItem?: PreviewAddHandler
   /** Itinerary days for the day-select dropdown in the Add-activity form. */
   itineraryDays?: ItineraryDay[]
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, itineraryDays }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays }: ExperiencesStepProps) {
   // Add-activity affordance is active only when the flag is on AND a handler +
   // itinerary days are provided (role/status-gated by the caller). Otherwise the
   // Experiences step is unchanged.
-  const canAddActivity = Boolean(addItemEnabled && onAddItem && itineraryDays && itineraryDays.length > 0)
+  const canAddActivity = Boolean(addItemEnabled && onAddItem && onPreviewAddItem && itineraryDays && itineraryDays.length > 0)
   const anyEditable = Boolean(
     onUpdateDisplayText && experiences.some((e) => e.editableText && e.quoteItemId),
   )
@@ -487,8 +550,8 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
       />
 
       {/* Phase B, Slice 2: add ONE activity from V2 (flag + role/status gated). */}
-      {canAddActivity && onAddItem && itineraryDays ? (
-        <AddActivityPanel onAddItem={onAddItem} itineraryDays={itineraryDays} />
+      {canAddActivity && onAddItem && onPreviewAddItem && itineraryDays ? (
+        <AddActivityPanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
       ) : null}
 
       {/* Staff guidance for the in-scope V2 pricing apply. Shown only when apply is

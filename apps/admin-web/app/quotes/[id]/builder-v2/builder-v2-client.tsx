@@ -471,9 +471,39 @@ export function BuilderV2Client({
   // status. It reuses the existing createItem + recalculation (pricing is never
   // forked here). On success it shows the persistent toast (with the new quote
   // total, if returned) and refreshes the route. Errors surface a safe message.
-  const handleAddItem = async (payload: Record<string, unknown>) => {
-    if (!quote) return
-    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item`, {
+  // Maps the guarded add-activity backend codes (Slice 2B-1) to safe, client-facing
+  // messages. Never surfaces cost/margin — only role-safe guidance (PR #766/#767).
+  const addItemErrorMessage = (code: unknown, parsed: any, text: string, status: number): string => {
+    switch (code) {
+      case "feature_disabled":
+        return "Adding items from V2 is not available."
+      case "out_of_scope":
+        return "Only activities can be added from V2 in this version."
+      case "invalid_preview_token":
+        return "This preview expired. Please preview the activity again."
+      case "stale_preview":
+        return "The quote changed since the preview. Please preview the activity again."
+      case "not_resolvable":
+        return "Pricing isn’t available for this activity / rate right now. Try another rate or use Classic."
+      case "confirmation_required":
+        return "Please confirm the projected price before adding."
+      case "rate_changed":
+        return "Pricing changed since the preview; nothing was added. Please preview again."
+      case "compensation_failed":
+        return "Pricing drifted and the automatic rollback failed. Please review this quote in Classic."
+      default: {
+        const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+        return message?.slice(0, 300) || `Could not add the activity (${status}).`
+      }
+    }
+  }
+
+  // Slice 2B-2 step 1 — READ-ONLY create-preview. Projects the activity's price and
+  // returns a signed previewToken the create call must replay. No writes. Returns
+  // the projected CLIENT-SAFE selling price only (cost/margin are never shown here).
+  const handlePreviewAddItem = async (payload: Record<string, unknown>) => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload ?? {}),
@@ -486,17 +516,41 @@ export function BuilderV2Client({
       // non-JSON body
     }
     if (!res.ok) {
-      const code = parsed?.code
-      if (code === "feature_disabled") throw new Error("Adding items from V2 is not available.")
-      if (code === "out_of_scope") throw new Error("Only activities can be added from V2 in this version.")
-      const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
-      throw new Error(message?.slice(0, 300) || `Could not add the activity (${res.status}).`)
+      throw new Error(addItemErrorMessage(parsed?.code, parsed, text, res.status))
+    }
+    return parsed as { projected?: { sell?: number; currency?: string | null }; previewToken?: string }
+  }
+
+  // Slice 2B-2 step 2 — guarded create. Replays the previewToken + acknowledgedDelta
+  // from the confirmed preview. The backend re-verifies the token + snapshot and, on
+  // drift, compensates (rate_changed). On success shows a CLIENT-SAFE toast (selling
+  // total only) and refreshes.
+  const handleAddItem = async (
+    payload: Record<string, unknown>,
+    previewToken?: string,
+    acknowledgedDelta?: boolean,
+  ) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...(payload ?? {}), previewToken, acknowledgedDelta: acknowledgedDelta === true }),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      throw new Error(addItemErrorMessage(parsed?.code, parsed, text, res.status))
     }
     const after = parsed?.quote
     setApplyToast({
       text:
-        after && typeof after.totalCost === "number" && typeof after.totalSell === "number"
-          ? `Activity added successfully. Quote total is now ${Math.round(after.totalCost)} cost / ${Math.round(after.totalSell)} sell.`
+        after && typeof after.totalSell === "number"
+          ? `Activity added successfully. Quote selling total is now ${Math.round(after.totalSell)}.`
           : "Activity added successfully.",
     })
     router.refresh()
@@ -708,6 +762,7 @@ export function BuilderV2Client({
       onEditDay={canEditItinerary ? handleEditDay : undefined}
       onDeleteDay={canEditItinerary ? handleDeleteDay : undefined}
       itemCreateEnabled={canAddItem && itemCreateEnabled}
+      onPreviewAddItem={canAddItem ? handlePreviewAddItem : undefined}
       onAddItem={canAddItem ? handleAddItem : undefined}
       canCreateBooking={canCreateBooking}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
