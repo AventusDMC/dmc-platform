@@ -52,7 +52,7 @@ describe('Quote Builder V2 — add Activity item (Phase B, Slice 2)', () => {
   it('experiences step gates the add form on the flag + handler + days, activity-only, via the catalog', () => {
     contains(stepSrc, [
       'function AddActivityPanel',
-      'const canAddActivity = Boolean(addItemEnabled && onAddItem && itineraryDays',
+      'const canAddActivity = Boolean(addItemEnabled && onAddItem && onPreviewAddItem && itineraryDays',
       '<AddActivityPanel',
       // Activity-only payload with all explicit identity fields.
       'itemType: "activity"',
