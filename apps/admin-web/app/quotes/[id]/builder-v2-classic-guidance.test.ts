@@ -98,7 +98,7 @@ describe('Quote Builder V2 — Classic guidance banners', () => {
   it('builder threads the /quotes/[id]/classic href into all five Classic-only steps', () => {
     contains(builderSrc, [
       '<SetupStep fields={quote.setupFields} classicHref={`/quotes/${quote.id}/classic`} />',
-      '<PricingStep pricing={quote.pricing} classicHref={`/quotes/${quote.id}/classic`} />',
+      '<PricingStep pricing={quote.pricing} classicHref={`/quotes/${quote.id}/classic`} canViewCostMargin={canViewCostMargin} />',
     ]);
     // HotelsStep / ExperiencesStep / TransportStep carry the same classic href.
     const hrefCount = builderSrc.split('classicHref={`/quotes/${quote.id}/classic`}').length - 1;

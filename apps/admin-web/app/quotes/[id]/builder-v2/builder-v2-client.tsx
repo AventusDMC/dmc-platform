@@ -24,6 +24,7 @@ export function BuilderV2Client({
   canDeletePassenger = false,
   canPreviewPricing = false,
   canViewPricingApplyAudit = false,
+  canViewCostMargin = false,
   entrancePricingEnabled = false,
   transportPreviewEnabled = false,
   transportApplyEnabled = false,
@@ -63,6 +64,14 @@ export function BuilderV2Client({
    * quote read access and returns only sanitized fields.
    */
   canViewPricingApplyAudit?: boolean
+  /**
+   * Whether the current user's role may VIEW sensitive cost/margin figures in the
+   * internal V2 builder UI (net cost, markup, margin, per-line cost). Finance V2
+   * predicate (admin / super_admin / finance) — narrower than the edit predicates
+   * (operations is excluded). Client-facing sell/per-person stay visible to all;
+   * the proposal/PDF redaction is the separate client-facing control.
+   */
+  canViewCostMargin?: boolean
   /**
    * Entrance / Jordan-Pass apply scope (PR #561) — a build-time
    * NEXT_PUBLIC_QUOTE_BUILDER_V2_ENTRANCE_PRICING flag, default OFF. Only widens
@@ -685,6 +694,7 @@ export function BuilderV2Client({
       externalPackagePreviewEnabled={canPreviewPricing && externalPackagePreviewEnabled}
       externalPackageApplyEnabled={canPreviewPricing && externalPackagePreviewEnabled && externalPackageApplyEnabled}
       onLoadApplyAudit={canViewPricingApplyAudit ? handleLoadApplyAudit : undefined}
+      canViewCostMargin={canViewCostMargin}
       entrancePricingEnabled={canPreviewPricing && entrancePricingEnabled}
       onUpdatePassenger={canEditPassengers ? handleUpdatePassenger : undefined}
       onAddPassenger={canEditPassengers ? handleAddPassenger : undefined}

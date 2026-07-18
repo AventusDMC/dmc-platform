@@ -36,6 +36,13 @@ export interface QuoteSummarySidebarProps {
   blockingItems: BlockingItem[]
   nextAction: NextAction | null
   onNavigate: (step: StepId) => void
+  /**
+   * Whether the current user's role may see sensitive cost/margin (default false
+   * → restricted). When false the Margin row is omitted; the client-facing Total
+   * quote value + Per person always render. Server-resolved (admin/super_admin/
+   * finance); client-facing proposal/PDF redaction is separate and unchanged.
+   */
+  canViewCostMargin?: boolean
 }
 
 export function QuoteSummarySidebar({
@@ -45,6 +52,7 @@ export function QuoteSummarySidebar({
   blockingItems,
   nextAction,
   onNavigate,
+  canViewCostMargin = false,
 }: QuoteSummarySidebarProps) {
   const ready = blockingItems.length === 0
 
@@ -63,15 +71,17 @@ export function QuoteSummarySidebar({
             {formatCurrency(pricing.perPerson, pricing.currency)}
           </span>
         </div>
-        <div className="mt-2 flex items-center justify-between px-3">
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <TrendingUp className="size-4" aria-hidden="true" />
-            Margin
-          </span>
-          <span className="text-sm font-medium text-success">
-            {formatCurrency(pricing.margin, pricing.currency)} · {pricing.markupPercent}%
-          </span>
-        </div>
+        {canViewCostMargin ? (
+          <div className="mt-2 flex items-center justify-between px-3">
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <TrendingUp className="size-4" aria-hidden="true" />
+              Margin
+            </span>
+            <span className="text-sm font-medium text-success">
+              {formatCurrency(pricing.margin, pricing.currency)} · {pricing.markupPercent}%
+            </span>
+          </div>
+        ) : null}
       </Card>
 
       <Card className="p-5">
