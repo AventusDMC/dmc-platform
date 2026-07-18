@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import { BuilderV2Client } from "./builder-v2-client"
 import { loadQuoteV2 } from "../../../../lib/quote-v2-adapter"
-import { readSessionActor, hasRequiredRole } from "../../../lib/auth-session"
+import { readSessionActor, hasRequiredRole, canAccessFinance } from "../../../lib/auth-session"
 
 export const metadata: Metadata = {
   title: "Quote Builder V2 — Aventus DMC",
@@ -57,6 +57,17 @@ export default async function QuoteBuilderV2Page({
   // /quotes/:id/pricing-apply-audit @Roles('admin','operations'); the backend also
   // enforces quote read access and returns only sanitized fields. No status gate.
   const canViewPricingApplyAudit = hasRequiredRole(role, ["admin", "operations"])
+
+  // Sensitive cost/margin visibility in the internal V2 builder UI (net cost,
+  // markup, margin, per-line cost amounts). Reuses the Finance V2 predicate
+  // canAccessFinance (admin / super_admin / finance) — deliberately NARROWER than
+  // the edit predicates: operations can preview/apply pricing but does NOT see
+  // net cost / margin here, and agent / viewer / agent_admin never see it. Note
+  // canAccessFinance does NOT auto-grant agent_admin (unlike hasRequiredRole with
+  // 'admin'), which is the intended stricter behavior. Client-facing sell/
+  // per-person figures stay visible to everyone; the proposal/PDF mapper redaction
+  // is unchanged and remains the client-facing source of truth.
+  const canViewCostMargin = canAccessFinance(role)
 
   // Entrance / Jordan-Pass apply scope (PR #561) — a separate, build-time public
   // flag, default OFF. When not 'true', entrance rows stay read-only even for
@@ -163,6 +174,7 @@ export default async function QuoteBuilderV2Page({
       canDeletePassenger={canDeletePassenger}
       canPreviewPricing={canPreviewPricing}
       canViewPricingApplyAudit={canViewPricingApplyAudit}
+      canViewCostMargin={canViewCostMargin}
       entrancePricingEnabled={entrancePricingEnabled}
       transportPreviewEnabled={transportPreviewEnabled}
       transportApplyEnabled={transportApplyEnabled}

@@ -207,6 +207,14 @@ export interface QuoteBuilderV2Props {
    * convertible status (ACCEPTED/CONFIRMED). Backend re-enforces everything.
    */
   canCreateBooking?: boolean
+  /**
+   * Whether the current user's role may see sensitive cost/margin in the internal
+   * UI (net cost, markup, margin, per-line cost). Default false → restricted:
+   * Pricing step + summary sidebar redact those figures and show only the
+   * client-facing sell / per-person. Server-resolved (admin / super_admin /
+   * finance); the backend/proposal redaction is unchanged and independent.
+   */
+  canViewCostMargin?: boolean
   /** Which step to open first. */
   initialStep?: StepId
 }
@@ -248,6 +256,7 @@ export function QuoteBuilderV2({
   itemCreateEnabled = false,
   onAddItem,
   canCreateBooking = false,
+  canViewCostMargin = false,
   initialStep = "setup",
 }: QuoteBuilderV2Props) {
   const [current, setCurrent] = useState<StepId>(initialStep)
@@ -435,7 +444,7 @@ export function QuoteBuilderV2({
           />
         )
       case "pricing":
-        return <PricingStep pricing={quote.pricing} classicHref={`/quotes/${quote.id}/classic`} />
+        return <PricingStep pricing={quote.pricing} classicHref={`/quotes/${quote.id}/classic`} canViewCostMargin={canViewCostMargin} />
       case "proposal":
         return (
           <ProposalStep
@@ -521,6 +530,7 @@ export function QuoteBuilderV2({
               blockingItems={insights.blockingItems}
               nextAction={insights.nextAction}
               onNavigate={setCurrent}
+              canViewCostMargin={canViewCostMargin}
             />
             {/* Booking Creation V2 (Slice 1D): renders only when server-gated
                 (flag + admin/operations + convertible status). */}
