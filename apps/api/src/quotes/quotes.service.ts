@@ -3266,6 +3266,30 @@ export class QuotesService {
     };
   }
 
+  /**
+   * Read-only pricing projection for a NOT-YET-created quote item (Quote Builder
+   * V2 Slice 2B-1 — item-create determinism guard). Runs the SAME pure resolver
+   * (`resolveQuoteItemValues`) that `createItem` uses, but PERSISTS NOTHING: no
+   * `quoteItem.create`, no day-link, and NO `recalculateQuoteTotals`. Returns only
+   * the projected per-item cost/sell/currency so the V2 create-preview can sign a
+   * deterministic token and the guarded create can fail closed on drift; the
+   * quote-total projection (current + item) is assembled additively by the caller.
+   * Additive, side-effect-free, and never on the Classic write path — `createItem`,
+   * `recalculateQuoteTotals`, and `removeItem` are unchanged and Classic behavior
+   * is unaffected.
+   */
+  async previewCreateItemValues(data: CreateQuoteItemInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(data.quoteId, actor);
+    const optionId = data.optionId ? (await this.ensureOptionBelongsToQuote(quote.id, data.optionId, actor)).id : undefined;
+    const values = await this.resolveQuoteItemValues({ ...data, quoteId: quote.id, optionId });
+    const resolved = values.data as { totalCost?: number; totalSell?: number; currency?: string };
+    return {
+      totalCost: Number(resolved.totalCost ?? 0),
+      totalSell: Number(resolved.totalSell ?? 0),
+      currency: resolved.currency ?? null,
+    };
+  }
+
   async updateItem(itemId: string, data: UpdateQuoteItemInput, actor?: CompanyScopedActor) {
     requireActorCompanyId(actor);
     const existingItem = await this.prisma.quoteItem.findFirst({
