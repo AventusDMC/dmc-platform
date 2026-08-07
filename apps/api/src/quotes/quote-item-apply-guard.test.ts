@@ -4,7 +4,7 @@ import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
 import { buildPreviewToken, getPreviewTokenSecret, normalizePayloadHash } from './quote-preview-token';
 
-const ACTOR = { companyId: 'company-1' } as any;
+const ACTOR = { companyId: 'company-1', role: 'admin' } as any;
 const QUOTE_ID = 'q1';
 const ITEM_ID = 'i1';
 const MEAL_DATA = { quoteId: QUOTE_ID, quantity: 2, customServiceName: 'Lunch', unitCost: 50 } as any;
@@ -307,6 +307,69 @@ test('non-zero delta requires acknowledgedDelta', async () => {
   assert.equal(out.applied, true);
   assert.deepEqual(out.item.after, { totalCost: 150, totalSell: 180 });
   assert.equal(out.quote.after.totalCost, 1050);
+});
+
+const OPS = { id: 'user-r', companyId: 'company-1', role: 'operations' } as any;
+
+test('Slice A: restricted apply success redacts before/after totalCost, keeps totalSell', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ resolved: { cost: 100, sell: 120 } }); // no-op
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, OPS);
+  assert.equal(out.applied, true);
+  assert.equal(out.integrityOk, true);
+  assert.equal(out.item.before.totalCost, null);
+  assert.equal(out.item.after.totalCost, null);
+  assert.equal(out.quote.before.totalCost, null);
+  assert.equal(out.quote.after.totalCost, null);
+  // selling price preserved; the write still happened via the real (unredacted) path
+  assert.equal(out.item.after.totalSell, 120);
+  assert.equal(calls.updateItem, 1);
+});
+
+test('Slice A: privileged apply keeps before/after totalCost', async () => {
+  enable(true, true);
+  const { svc } = makeService({ resolved: { cost: 100, sell: 120 } });
+  const token = await mintToken(svc);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, ACTOR);
+  assert.equal(out.item.after.totalCost, 100);
+  assert.equal(out.quote.after.totalCost, 1000);
+});
+
+test('Slice A: restricted confirmation_required echo redacts cost (guard still fires, no write)', async () => {
+  enable(true, true);
+  const { svc, calls } = makeService({ resolved: { cost: 150, sell: 180 } });
+  const token = await mintToken(svc);
+  try {
+    await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, false, OPS);
+    assert.fail('expected confirmation_required');
+  } catch (err: any) {
+    assert.equal(err.getStatus(), 409);
+    const body = err.getResponse();
+    assert.equal(body.code, 'confirmation_required');
+    assert.equal(body.item.projected.totalCost, null);
+    assert.equal(body.quote.projected.totalCost, null);
+    assert.equal(body.item.projected.totalSell, 180); // sell preserved in the echo
+  }
+  assert.equal(calls.updateItem, 0); // guard blocked the write for the restricted role too
+});
+
+test('Slice A: restricted stale_preview echo redacts cost (guard still fires, no write)', async () => {
+  enable(true, true);
+  const { svc, db, calls } = makeService();
+  const token = await mintToken(svc);
+  db.agg.count = 6; // move the option scope → snapshot mismatch
+  try {
+    await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, OPS);
+    assert.fail('expected stale_preview');
+  } catch (err: any) {
+    assert.equal(err.getStatus(), 409);
+    const body = err.getResponse();
+    assert.equal(body.code, 'stale_preview');
+    assert.equal(body.item.current.totalCost, null);
+    assert.equal(body.quote.current.totalCost, null);
+  }
+  assert.equal(calls.updateItem, 0);
 });
 
 test('token: invalid signature / malformed → 400 invalid_preview_token', async () => {
@@ -825,7 +888,7 @@ test('successful apply writes a quote.pricing.apply audit log entry with before/
   enable(true, true);
   const { svc, calls, auditCalls } = makeService({ resolved: { cost: 150, sell: 180 } });
   const token = await mintToken(svc);
-  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, { id: 'user-1', companyId: 'company-1' } as any);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, token, true, { id: 'user-1', companyId: 'company-1', role: 'admin' } as any);
   assert.equal(out.applied, true);
   assert.equal(calls.updateItem, 1);
   const entry = auditCalls.find((e: any) => e.action === 'quote.pricing.apply');
@@ -1023,7 +1086,7 @@ test('entrance: successful apply writes a quote.pricing.apply audit entry (ENTRA
   enableEntrance(true, true);
   const { svc, auditCalls } = makeService({ entrance: true });
   const token = await mintEntranceToken(svc);
-  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, { id: 'user-9', companyId: 'company-1' } as any);
+  const out: any = await svc.applyPreviewQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, token, true, { id: 'user-9', companyId: 'company-1', role: 'admin' } as any);
   assert.equal(out.applied, true);
   const entry = auditCalls.find((e: any) => e.action === 'quote.pricing.apply');
   assert.ok(entry, 'expected a quote.pricing.apply audit entry');
