@@ -6,7 +6,7 @@ import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
 import { isQuotePricingPreviewEnabled, isQuotePricingTransportPreviewEnabled, isQuotePricingHotelPreviewEnabled, isQuotePricingExternalPackagePreviewEnabled } from './quote-pricing-preview-flags';
 
-const ACTOR = { companyId: 'company-1' } as any;
+const ACTOR = { companyId: 'company-1', role: 'admin' } as any;
 
 function enablePreview() {
   process.env.QUOTE_PRICING_PREVIEW = '1';
@@ -423,6 +423,46 @@ test('non-entrance edit: projects item + quote totals via delta, persists nothin
   assert.equal(res.jordanPass, null);
   assert.deepEqual(res.reResolved, { rates: true, fx: false });
   assert.equal(writes.length, 0);
+});
+
+test('Slice A: restricted role (operations) preview redacts item/quote totalCost, keeps totalSell', async () => {
+  enablePreview();
+  const { service, writes } = makeService({
+    quote: baseQuote,
+    item: baseItem,
+    resolveStub: async () => ({ data: { totalCost: 150, totalSell: 180 } }),
+  });
+  const OPS = { companyId: 'company-1', role: 'operations' } as any;
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', { quantity: 2 }, OPS);
+
+  assert.equal(res.blocked, false);
+  assert.equal(res.pricingResolvable, true);
+  // cost redacted at every projection level...
+  assert.equal(res.item.current.totalCost, null);
+  assert.equal(res.item.projected.totalCost, null);
+  assert.equal(res.item.delta.totalCost, null);
+  assert.equal(res.quote.current.totalCost, null);
+  assert.equal(res.quote.projected.totalCost, null);
+  assert.equal(res.quote.delta.totalCost, null);
+  // ...selling price preserved
+  assert.equal(res.item.current.totalSell, 120);
+  assert.equal(res.item.projected.totalSell, 180);
+  assert.equal(res.quote.projected.totalSell, 1260);
+  assert.equal(typeof res.previewToken, 'string'); // token still issued
+  assert.equal(writes.length, 0);
+});
+
+test('Slice A: privileged role (admin) preview keeps item/quote totalCost', async () => {
+  enablePreview();
+  const { service } = makeService({
+    quote: baseQuote,
+    item: baseItem,
+    resolveStub: async () => ({ data: { totalCost: 150, totalSell: 180 } }),
+  });
+  const res: any = await service.previewUpdateQuoteItem('q1', 'i1', { quantity: 2 }, { companyId: 'company-1', role: 'admin' } as any);
+  assert.equal(res.item.projected.totalCost, 150);
+  assert.equal(res.quote.projected.totalCost, 1050);
+  assert.equal(res.item.delta.totalCost, 50);
 });
 
 test('SLAB mode: selling price is slab-driven so the edit changes cost only', async () => {

@@ -32,6 +32,8 @@ import {
 } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { canViewQuoteCostMargin } from '../auth/cost-visibility';
+import { type DmcRole } from '../auth/auth.types';
 import { isQuoteProposalEmailSendEnabled } from './quote-proposal-email-flags';
 import {
   sendProposalEmailCore,
@@ -3574,6 +3576,36 @@ export class QuotesService {
    * Σ items + pax-based Jordan Pass product totals + off-by-default engine
    * deltas, so an item edit moves the total only by the changed items' delta).
    */
+  // Slice A: role-based RESPONSE cost redaction (reuses the Slice 2C predicate
+  // canViewQuoteCostMargin = admin/super_admin/finance). admin/operations reach the
+  // preview/apply routes; operations/agent_admin get cost redacted. Returns a CLONE
+  // (never mutates the input) with every nested `totalCost` set to null when the
+  // actor cannot view cost; `totalSell`/`currency`/`warnings`/all other fields are
+  // preserved. When canViewCost is true it is a pass-through. Applied ONLY at
+  // client-facing return/echo points — the internal preview `response`, snapshot,
+  // preview token, audit, and guard/staleness/delta logic all keep the real values.
+  private redactResponseCost<T>(value: T, canViewCost: boolean): T {
+    if (canViewCost || value == null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      return value.map((v) => this.redactResponseCost(v, false)) as unknown as T;
+    }
+    const clone: any = { ...(value as any) };
+    for (const key of Object.keys(clone)) {
+      if (clone[key] && typeof clone[key] === 'object') {
+        clone[key] = this.redactResponseCost(clone[key], false);
+      }
+    }
+    if ('totalCost' in clone) clone.totalCost = null;
+    return clone;
+  }
+
+  // True when the actor may see internal cost/margin. Role is present on the actor
+  // the controller forwards (AuthenticatedActor); typed loosely here since the
+  // service otherwise only needs companyId. Never alters the audit actor shape.
+  private canActorViewCost(actor?: CompanyScopedActor): boolean {
+    return canViewQuoteCostMargin((actor as { role?: DmcRole | null } | null | undefined)?.role ?? null);
+  }
+
   async previewUpdateQuoteItem(
     quoteId: string,
     itemId: string,
@@ -3586,8 +3618,14 @@ export class QuotesService {
       // re-derives the snapshot and compares it to this (verified) payload.
       const issuedAt = Math.floor(Date.now() / 1000);
       const exp = issuedAt + 15 * 60; // ~15 min TTL
+      // Token is built from the RAW snapshot (real cost) — unchanged. Redaction
+      // below only affects the response body returned to the client.
       (response as any).previewToken = buildPreviewToken({ ...snapshot, issuedAt, exp }, getPreviewTokenSecret());
     }
+    // Slice A: redact cost from the response body for restricted roles.
+    const canViewCost = this.canActorViewCost(actor);
+    if (response && response.item) response.item = this.redactResponseCost(response.item, canViewCost);
+    if (response && response.quote) response.quote = this.redactResponseCost(response.quote, canViewCost);
     return response;
   }
 
@@ -4142,6 +4180,10 @@ export class QuotesService {
     }
 
     const actorCompanyId = requireActorCompanyId(actor);
+    // Slice A: compute once — used only to redact cost from client-facing echoes /
+    // the success return below. Guard/staleness/delta/integrity/audit all use the
+    // real values regardless.
+    const canViewCost = this.canActorViewCost(actor);
 
     // Verify token signature + structure (cheap, before any DB work).
     const tokenPayload = verifyPreviewToken(previewToken, getPreviewTokenSecret());
@@ -4269,8 +4311,8 @@ export class QuotesService {
         code: 'stale_preview',
         message: `The quote changed since the preview (${mismatch}); re-run the preview and try again.`,
         mismatchField: mismatch,
-        quote: response.quote,
-        item: response.item,
+        quote: this.redactResponseCost(response.quote, canViewCost),
+        item: this.redactResponseCost(response.item, canViewCost),
       });
     }
 
@@ -4282,8 +4324,8 @@ export class QuotesService {
       throw new ConflictException({
         code: 'confirmation_required',
         message: 'This edit changes pricing; re-submit with acknowledgedDelta=true to apply.',
-        quote: response.quote,
-        item: response.item,
+        quote: this.redactResponseCost(response.quote, canViewCost),
+        item: this.redactResponseCost(response.item, canViewCost),
       });
     }
 
@@ -4386,8 +4428,10 @@ export class QuotesService {
       blocked: false,
       matchedPreview: true,
       integrityOk,
-      item: { before: before.item, after: after.item },
-      quote: { before: before.quote, after: after.quote },
+      // Slice A: redact cost for restricted roles (clones; the real before/after
+      // were already recorded in the audit above).
+      item: { before: this.redactResponseCost(before.item, canViewCost), after: this.redactResponseCost(after.item, canViewCost) },
+      quote: { before: this.redactResponseCost(before.quote, canViewCost), after: this.redactResponseCost(after.quote, canViewCost) },
       warnings,
     };
   }
