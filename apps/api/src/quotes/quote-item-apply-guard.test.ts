@@ -997,6 +997,50 @@ test('audit viewer is quote-access-scoped (missing quote → 400 Quote not found
   await expectHttp(() => (svc as any).getPricingApplyAudit('missing-quote-id', ACTOR), 400, 'Quote not found');
 });
 
+test('audit viewer: restricted role (operations) redacts the six cost fields, keeps sell/metadata', async () => {
+  const { svc } = makeService({
+    auditRows: AUDIT_ROWS,
+    users: [{ id: 'user-1', firstName: 'Ada', lastName: 'Ops', email: 'ada@example.com' }],
+  });
+  const rows: any[] = await (svc as any).getPricingApplyAudit(QUOTE_ID, OPS);
+  assert.equal(rows.length, 1);
+  // cost redacted...
+  assert.equal(rows[0].previousItemTotalCost, null);
+  assert.equal(rows[0].newItemTotalCost, null);
+  assert.equal(rows[0].deltaItemCost, null);
+  assert.equal(rows[0].newQuoteTotalCost, null);
+  assert.equal(rows[0].deltaQuoteCost, null);
+  assert.equal(rows[0].appliedPayload.unitCost, undefined);
+  // ...selling + metadata preserved
+  assert.equal(rows[0].previousItemTotalSell, 120);
+  assert.equal(rows[0].newItemTotalSell, 180);
+  assert.equal(rows[0].deltaItemSell, 60);
+  assert.equal(rows[0].newQuoteTotalSell, 1260);
+  assert.equal(rows[0].deltaQuoteSell, 60);
+  assert.equal(rows[0].appliedPayload.customServiceName, 'Lunch');
+  assert.equal(rows[0].appliedPayload.quantity, 2);
+  assert.equal(rows[0].serviceType, 'MEAL');
+  assert.equal(rows[0].integrityOk, true);
+  assert.equal(rows[0].acknowledgedDelta, true);
+  assert.equal(rows[0].actor.name, 'Ada Ops');
+  assert.ok(rows[0].timestamp instanceof Date);
+  // stored AuditLog metadata is NOT mutated (response-only redaction)
+  assert.equal(AUDIT_ROWS[0].metadata.previousItemTotalCost, 100);
+  assert.equal(AUDIT_ROWS[0].metadata.newItemTotalCost, 150);
+  assert.equal(AUDIT_ROWS[0].metadata.appliedPayload.unitCost, 75);
+});
+
+test('audit viewer: privileged role (admin) keeps cost incl. appliedPayload.unitCost', async () => {
+  const { svc } = makeService({ auditRows: AUDIT_ROWS, users: [] });
+  const rows: any[] = await (svc as any).getPricingApplyAudit(QUOTE_ID, ACTOR);
+  assert.equal(rows[0].previousItemTotalCost, 100);
+  assert.equal(rows[0].newItemTotalCost, 150);
+  assert.equal(rows[0].deltaItemCost, 50);
+  assert.equal(rows[0].newQuoteTotalCost, 1050);
+  assert.equal(rows[0].deltaQuoteCost, 50);
+  assert.equal(rows[0].appliedPayload.unitCost, 75);
+});
+
 // ── Entrance / Jordan Pass preview-apply (separate flags, default OFF) ────────
 
 test('entrance: with entrance flags OFF, preview is blocked even when global preview is ON', async () => {
