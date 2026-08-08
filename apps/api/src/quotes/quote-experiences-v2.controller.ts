@@ -6,8 +6,14 @@ import { AddActivityItemInput, QuoteExperiencesV2Service, QuoteItemCreateActor }
 type AddItemBody = {
   itemType?: string | null;
   dayId?: string | null;
+  // Activity fields.
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  // Guide fields.
+  serviceId?: string | null;
+  guideType?: string | null;
+  guideDuration?: string | null;
+  guideOvernight?: boolean | null;
   serviceDate?: string | null;
   adultCount?: number | string | null;
   childCount?: number | string | null;
@@ -16,14 +22,14 @@ type AddItemBody = {
   acknowledgedDelta?: boolean;
 };
 
-// Quote Builder V2 — Phase B, Slice 2: add ONE Activity item. NEW, V2-SCOPED route
-// under /quotes/:quoteId/v2/experiences so it never touches the shared Classic
-// item-create endpoint (POST /quotes/:id/items). Gated by the QUOTE_ITEM_CREATE flag
-// inside the service (fail-closed) and restricted to admin/operations. The service
-// enforces access/company isolation, editable status, day-belongs-to-quote,
-// activity/variant integrity, and ACTIVITY-only scope; it delegates the actual
-// create + recalculation to the existing QuotesService.createItem and writes a
-// sanitized audit row.
+// Quote Builder V2 — Phase B, Slice 2/3: add ONE Activity OR Guide item. NEW,
+// V2-SCOPED route under /quotes/:quoteId/v2/experiences so it never touches the shared
+// Classic item-create endpoint (POST /quotes/:id/items). Gated by the QUOTE_ITEM_CREATE
+// flag inside the service (fail-closed) and restricted to admin/operations. The service
+// enforces access/company isolation, editable status, day-belongs-to-quote, per-type
+// integrity (activity/variant, or guide-service/type/duration), and ACTIVITY+GUIDE-only
+// scope; it delegates the actual create + recalculation to the existing
+// QuotesService.createItem behind a determinism guard and writes a sanitized audit row.
 @Controller('quotes/:quoteId/v2/experiences')
 export class QuoteExperiencesV2Controller {
   constructor(private readonly service: QuoteExperiencesV2Service) {}
@@ -62,6 +68,10 @@ export class QuoteExperiencesV2Controller {
       dayId: body?.dayId ?? null,
       activityId: body?.activityId ?? null,
       activityRateVariantId: body?.activityRateVariantId ?? null,
+      serviceId: body?.serviceId ?? null,
+      guideType: body?.guideType ?? null,
+      guideDuration: body?.guideDuration ?? null,
+      guideOvernight: body?.guideOvernight === true,
       serviceDate: body?.serviceDate ?? null,
       adultCount: toNum(body?.adultCount),
       childCount: toNum(body?.childCount),

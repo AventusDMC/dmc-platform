@@ -18,6 +18,10 @@ type Options = {
   day?: { id: string; quoteId: string } | null;
   activity?: { id: string } | null;
   variant?: { id: string; activityId: string } | null;
+  // Guide-type service (resolveServiceTaxonomyGroup === 'guide'). Default is a GUIDE
+  // service; pass a non-guide serviceType to exercise the not_guide_service reject,
+  // or null to exercise service_not_found.
+  service?: { id: string; category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null } | null;
   created?: any;
   createThrows?: boolean;
   auditThrows?: boolean;
@@ -50,6 +54,8 @@ const ACTOR = { id: 'user-1', companyId: 'company-A', auditLabel: 'Alice', role:
 // A restricted (non-finance) actor: same access to add, but no cost/margin visibility.
 const OPS_ACTOR = { id: 'user-2', companyId: 'company-A', auditLabel: 'Omar', role: 'operations' as const };
 const GOOD = { itemType: 'activity', dayId: DAY, activityId: ACT, activityRateVariantId: VAR, serviceDate: '2026-08-07' };
+const SVC = 'svc-1';
+const GOOD_GUIDE = { itemType: 'guide', dayId: DAY, serviceId: SVC, guideType: 'local', guideDuration: 'full_day', serviceDate: '2026-08-07' };
 
 function build(opts: Options = {}) {
   const calls: Record<string, any[]> = { createItem: [], removeItem: [], previewValues: [], auditLog: [] };
@@ -81,6 +87,12 @@ function build(opts: Options = {}) {
     },
     activityRateVariant: {
       findUnique: async () => (opts.variant === undefined ? { id: VAR, activityId: ACT } : opts.variant),
+    },
+    service: {
+      findUnique: async () =>
+        opts.service === undefined
+          ? { id: SVC, category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' } }
+          : opts.service,
     },
   };
 
@@ -139,8 +151,9 @@ async function expectRejects(promise: Promise<unknown>, codeOrText: string) {
   });
 }
 
-// Preview → returns a token used by the guarded create.
-async function previewToken(service: QuoteExperiencesV2Service, input = GOOD, actor = ACTOR): Promise<string> {
+// Preview → returns a token used by the guarded create. `input` is loosely typed so
+// both the activity (GOOD) and guide (GOOD_GUIDE) literals can be passed.
+async function previewToken(service: QuoteExperiencesV2Service, input: any = GOOD, actor: any = ACTOR): Promise<string> {
   const res: any = await service.previewActivityItem(QID, input, actor as any);
   return res.previewToken as string;
 }
@@ -399,4 +412,122 @@ test('the guard still uses the token internal cost for restricted roles (drift �
   assert.equal(calls.createItem.length, 1);
   assert.equal(calls.removeItem.length, 1);
   assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 3 — GUIDE create (same guarded flow; ACTIVITY behavior above unchanged)
+// ---------------------------------------------------------------------------
+
+test('guide create-preview projects the price and returns a token (itemType guide), writing nothing', async () => {
+  const { service, calls } = build({ flag: true });
+  const res: any = await service.previewActivityItem(QID, GOOD_GUIDE, ACTOR);
+  assert.equal(res.itemType, 'guide');
+  assert.equal(res.projected.cost, 120);
+  assert.equal(res.projected.sell, 144);
+  assert.deepEqual(res.projected.quote, { totalCost: 320, totalSell: 384 });
+  assert.equal(typeof res.previewToken, 'string');
+  assert.equal(calls.createItem.length, 0);
+  assert.equal(calls.auditLog.length, 0);
+});
+
+test('guide happy path: preview → create succeeds with token + acknowledgedDelta', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service, GOOD_GUIDE);
+  const result: any = await service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(result.itemId, 'item-new');
+  assert.equal(result.itemType, 'guide');
+  assert.equal(result.cost, 120);
+  assert.equal(result.sell, 144);
+  assert.equal(calls.createItem.length, 1);
+  // the delegated createItem input carries the guide fields (serviceId + guide markup)
+  assert.equal(calls.createItem[0].data.serviceId, SVC);
+  assert.equal(calls.createItem[0].data.guideType, 'local');
+  assert.equal(calls.createItem[0].data.guideDuration, 'full_day');
+  // audited as a guide create
+  assert.equal(calls.auditLog.length, 1);
+  assert.equal(calls.auditLog[0].metadata.itemType, 'guide');
+  assert.equal(calls.auditLog[0].metadata.serviceId, SVC);
+});
+
+test('guide: confirmation_required when the add changes pricing and acknowledgedDelta is not true', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service, GOOD_GUIDE);
+  await expectRejects(service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: token, acknowledgedDelta: false }), 'confirmation_required');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: stale_preview when the quote changes after the preview', async () => {
+  const { service, calls, state } = build({ flag: true });
+  const token = await previewToken(service, GOOD_GUIDE);
+  state.totals.totalCost += 50;
+  await expectRejects(service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'stale_preview');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: an invalid / malformed token is rejected (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  await expectRejects(service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: 'v2c.garbage.token.here', acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: missing/unresolvable rate returns not_resolvable (preview) and writes nothing', async () => {
+  const { service, calls } = build({ flag: true, previewThrows: true });
+  await expectRejects(service.previewActivityItem(QID, GOOD_GUIDE, ACTOR), 'not_resolvable');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: injected drift after preview triggers rate_changed AND a compensating removeItem', async () => {
+  const { service, calls, state } = build({ flag: true, driftCost: 40 });
+  const token = await previewToken(service, GOOD_GUIDE);
+  await expectRejects(service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'rate_changed');
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1);
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+test('guide: missing serviceId / guideType / guideDuration is rejected (missing_field)', async () => {
+  for (const field of ['serviceId', 'guideType', 'guideDuration']) {
+    const { service, calls } = build({ flag: true });
+    const bad: any = { ...GOOD_GUIDE, [field]: '' };
+    await expectRejects(service.previewActivityItem(QID, bad, ACTOR), 'missing_field');
+    assert.equal(calls.createItem.length, 0);
+  }
+});
+
+test('guide: a non-guide service is rejected (not_guide_service)', async () => {
+  const { service, calls } = build({ flag: true, service: { id: SVC, category: 'activity', serviceType: { name: 'Activity', code: 'ACTIVITY' } } });
+  await expectRejects(service.previewActivityItem(QID, GOOD_GUIDE, ACTOR), 'not_guide_service');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: a missing service is rejected (service_not_found)', async () => {
+  const { service } = build({ flag: true, service: null });
+  await expectRejects(service.previewActivityItem(QID, GOOD_GUIDE, ACTOR), 'service_not_found');
+});
+
+test('cross-type replay: an ACTIVITY token cannot create a GUIDE (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  const activityToken = await previewToken(service, GOOD); // activity kind
+  await expectRejects(service.addActivityItem(QID, GOOD_GUIDE, ACTOR, { previewToken: activityToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('cross-type replay: a GUIDE token cannot create an ACTIVITY (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  const guideToken = await previewToken(service, GOOD_GUIDE); // guide kind
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: guideToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('guide: restricted role (operations) create response redacts cost, keeps sell', async () => {
+  const { service } = build({ flag: true });
+  const preview: any = await service.previewActivityItem(QID, GOOD_GUIDE, OPS_ACTOR);
+  assert.equal(preview.projected.cost, null); // preview cost redacted for ops
+  assert.equal(preview.projected.sell, 144);
+  const result: any = await service.addActivityItem(QID, GOOD_GUIDE, OPS_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  assert.equal(result.itemType, 'guide');
+  assert.equal(result.cost, null);
+  assert.equal(result.quote.totalCost, null);
+  assert.equal(result.sell, 144);
+  assert.equal(result.quote.totalSell, 384);
 });
