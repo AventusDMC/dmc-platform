@@ -3,7 +3,8 @@ import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId } from '../auth/company-scope';
 import { canViewQuoteCostMargin } from '../auth/cost-visibility';
 import { DmcRole } from '../auth/auth.types';
-import { EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP } from '../common/pricing-constants';
+import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildCreatePreviewToken, verifyCreatePreviewToken } from './quote-create-preview-token';
 import { isQuoteItemCreateEnabled } from './quote-item-create.flags';
@@ -22,12 +23,18 @@ export type QuoteItemCreateActor = {
 } | null;
 
 export type AddActivityItemInput = {
-  // Optional discriminator. Slice 2 is ACTIVITY ONLY — anything else is rejected
-  // out_of_scope. Absent is treated as 'activity' (the route is activity-scoped).
+  // Discriminator. Scope is ACTIVITY + GUIDE — anything else is rejected out_of_scope.
+  // Absent is treated as 'activity' (activity remains the default for back-compat).
   itemType?: string | null;
   dayId?: string | null;
+  // Activity fields (itemType='activity').
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  // Guide fields (itemType='guide'). serviceId is a GUIDE-type SERVICE (not a person).
+  serviceId?: string | null;
+  guideType?: string | null;
+  guideDuration?: string | null;
+  guideOvernight?: boolean | null;
   serviceDate?: string | null;
   // Optional pax override; defaults from the quote when omitted.
   adultCount?: number | null;
@@ -47,21 +54,34 @@ const EDITABLE_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
 
 // Preview-token version/kind + TTL. The token is stateless (nothing persisted) and
 // bound to the exact intended add + a snapshot of the quote's pre-create pricing.
+// The kind is PER ITEM-TYPE so an activity create-preview token can never create a
+// guide (and vice-versa) — the create verifies the kind matches the request's type.
 const CREATE_TOKEN_KIND = 'v2-activity-create';
+const GUIDE_CREATE_TOKEN_KIND = 'v2-guide-create';
+function tokenKindForItemType(itemType: 'activity' | 'guide'): string {
+  return itemType === 'guide' ? GUIDE_CREATE_TOKEN_KIND : CREATE_TOKEN_KIND;
+}
 const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
 // Money tolerance for the post-write totals compare (half a cent) — guards against
 // float rounding while still catching any real rate/recalc drift.
 const TOTALS_EPSILON = 0.005;
 
 type ResolvedCreateContext = {
+  itemType: 'activity' | 'guide';
   requiredActor: NonNullable<QuoteItemCreateActor>;
   quote: { id: string; quoteCurrency: string | null; adults: number | null; children: number | null };
   dayId: string;
-  activityId: string;
-  activityRateVariantId: string;
   serviceDate: Date;
   adultCount: number | undefined;
   childCount: number | undefined;
+  // Activity-only (present when itemType='activity').
+  activityId?: string;
+  activityRateVariantId?: string;
+  // Guide-only (present when itemType='guide').
+  serviceId?: string;
+  guideType?: string;
+  guideDuration?: string;
+  guideOvernight?: boolean;
 };
 
 // Quote Builder V2 — Phase B, Slice 2 + Slice 2B-1. Adds ONE Activity item from V2,
@@ -122,6 +142,18 @@ export class QuoteExperiencesV2Service {
     return quote;
   }
 
+  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY + GUIDE only.
+  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' {
+    const raw = String(input.itemType ?? 'activity').trim().toLowerCase() || 'activity';
+    if (raw !== 'activity' && raw !== 'guide') {
+      throw new BadRequestException({
+        code: 'out_of_scope',
+        message: 'Only activity and guide items can be added from V2 in this version.',
+      });
+    }
+    return raw;
+  }
+
   // Shared validation + identity resolution for both preview and create — no writes.
   private async resolveContext(
     quoteId: string,
@@ -130,26 +162,17 @@ export class QuoteExperiencesV2Service {
   ): Promise<ResolvedCreateContext> {
     this.assertEnabled();
 
-    // ACTIVITY only in this slice.
-    if (input.itemType != null && String(input.itemType).toLowerCase() !== 'activity') {
-      throw new BadRequestException({
-        code: 'out_of_scope',
-        message: 'Only activity items can be added from V2 in this version.',
-      });
-    }
+    const itemType = this.resolveItemType(input);
 
+    // ── Common validation (both types) ──
     const dayId = (input.dayId ?? '').trim();
-    const activityId = (input.activityId ?? '').trim();
-    const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
     const serviceDateRaw = (input.serviceDate ?? '').trim();
-    const missing = [
+    const baseMissing = [
       ['dayId', dayId],
-      ['activityId', activityId],
-      ['activityRateVariantId', activityRateVariantId],
       ['serviceDate', serviceDateRaw],
     ].filter(([, v]) => !v).map(([k]) => k);
-    if (missing.length > 0) {
-      throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
+    if (baseMissing.length > 0) {
+      throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${baseMissing.join(', ')}` });
     }
     const serviceDate = new Date(serviceDateRaw);
     if (Number.isNaN(serviceDate.getTime())) {
@@ -165,8 +188,55 @@ export class QuoteExperiencesV2Service {
       throw new BadRequestException({ code: 'day_not_found', message: 'Itinerary day not found for this quote.' });
     }
 
-    // Activity + rate-variant integrity (fail fast with clear codes; the delegated
-    // resolver also validates these defensively).
+    const base = {
+      itemType,
+      requiredActor,
+      quote,
+      dayId,
+      serviceDate,
+      adultCount: input.adultCount ?? quote.adults ?? undefined,
+      childCount: input.childCount ?? quote.children ?? undefined,
+    };
+
+    if (itemType === 'guide') {
+      // ── Guide-specific validation ──
+      const serviceId = (input.serviceId ?? '').trim();
+      const guideType = (input.guideType ?? '').trim();
+      const guideDuration = (input.guideDuration ?? '').trim();
+      const missing = [
+        ['serviceId', serviceId],
+        ['guideType', guideType],
+        ['guideDuration', guideDuration],
+      ].filter(([, v]) => !v).map(([k]) => k);
+      if (missing.length > 0) {
+        throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
+      }
+      // The service must exist AND be a GUIDE-type service (reject people/other types).
+      const service = await (this.prisma as any).service.findUnique({
+        where: { id: serviceId },
+        select: { id: true, category: true, serviceType: { select: { name: true, code: true } } },
+      });
+      if (!service) {
+        throw new BadRequestException({ code: 'service_not_found', message: 'Service not found.' });
+      }
+      if (resolveServiceTaxonomyGroup(service) !== 'guide') {
+        throw new BadRequestException({ code: 'not_guide_service', message: 'The selected service is not a guide service.' });
+      }
+      // guideType/guideDuration VALUE validity (local|escort × half_day|full_day) is
+      // enforced by the shared resolver at price time → surfaces as not_resolvable.
+      return { ...base, serviceId, guideType, guideDuration, guideOvernight: input.guideOvernight === true };
+    }
+
+    // ── Activity-specific validation (unchanged behavior) ──
+    const activityId = (input.activityId ?? '').trim();
+    const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
+    const missing = [
+      ['activityId', activityId],
+      ['activityRateVariantId', activityRateVariantId],
+    ].filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length > 0) {
+      throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
+    }
     const activity = await (this.prisma as any).activity.findUnique({ where: { id: activityId }, select: { id: true } });
     if (!activity) {
       throw new BadRequestException({ code: 'activity_not_found', message: 'Activity not found.' });
@@ -185,21 +255,29 @@ export class QuoteExperiencesV2Service {
       });
     }
 
-    return {
-      requiredActor,
-      quote,
-      dayId,
-      activityId,
-      activityRateVariantId,
-      serviceDate,
-      adultCount: input.adultCount ?? quote.adults ?? undefined,
-      childCount: input.childCount ?? quote.children ?? undefined,
-    };
+    return { ...base, activityId, activityRateVariantId };
   }
 
   // The EXACT createItem input used by both preview (projection) and create, so the
   // previewed price and the committed price are computed from identical inputs.
+  // Delegates to the SHARED QuotesService.createItem — guide items price via the
+  // deterministic GUIDE_RATES path (guideType/guideDuration + overnight supplement).
   private buildCreateInput(ctx: ResolvedCreateContext) {
+    if (ctx.itemType === 'guide') {
+      return {
+        quoteId: ctx.quote.id,
+        serviceId: ctx.serviceId,
+        itineraryId: ctx.dayId,
+        serviceDate: ctx.serviceDate,
+        guideType: ctx.guideType,
+        guideDuration: ctx.guideDuration,
+        overnight: ctx.guideOvernight === true,
+        adultCount: ctx.adultCount,
+        childCount: ctx.childCount,
+        quantity: 1,
+        markupPercent: GUIDE_DEFAULT_MARKUP,
+      };
+    }
     return {
       quoteId: ctx.quote.id,
       activityId: ctx.activityId,
@@ -210,6 +288,22 @@ export class QuoteExperiencesV2Service {
       childCount: ctx.childCount,
       quantity: 1,
       markupPercent: EXPERIENCE_DEFAULT_MARKUP,
+    };
+  }
+
+  // Type-specific identity fields for the token (binds the token to the exact add).
+  private tokenIdentityFor(ctx: ResolvedCreateContext) {
+    if (ctx.itemType === 'guide') {
+      return {
+        serviceId: ctx.serviceId,
+        guideType: ctx.guideType,
+        guideDuration: ctx.guideDuration,
+        guideOvernight: ctx.guideOvernight === true,
+      };
+    }
+    return {
+      activityId: ctx.activityId,
+      activityRateVariantId: ctx.activityRateVariantId,
     };
   }
 
@@ -248,7 +342,7 @@ export class QuoteExperiencesV2Service {
     try {
       projected = await this.quotes.previewCreateItemValues(this.buildCreateInput(ctx), { companyId: ctx.requiredActor.companyId });
     } catch (err) {
-      throw new ConflictException({ code: 'not_resolvable', message: 'Pricing could not be resolved for this activity.' });
+      throw new ConflictException({ code: 'not_resolvable', message: 'Pricing could not be resolved for this item.' });
     }
 
     const snapshot = await this.snapshotQuoteState(quoteId);
@@ -261,14 +355,15 @@ export class QuoteExperiencesV2Service {
     // Slice 2C: OPAQUE (encrypted) create-preview token. The token still carries the
     // projected cost totals — the server needs them for the drift compare on create —
     // but the payload is encrypted, so a restricted client can no longer base64-decode
-    // it and read cost. The shared apply-path token helper is untouched.
+    // it and read cost. The shared apply-path token helper is untouched. The `kind` is
+    // per item-type so an activity token cannot create a guide (and vice-versa).
     const previewToken = buildCreatePreviewToken(
       {
-        kind: CREATE_TOKEN_KIND,
+        kind: tokenKindForItemType(ctx.itemType),
+        itemType: ctx.itemType,
         quoteId,
         dayId: ctx.dayId,
-        activityId: ctx.activityId,
-        activityRateVariantId: ctx.activityRateVariantId,
+        ...this.tokenIdentityFor(ctx),
         serviceDate: ctx.serviceDate.toISOString(),
         adultCount: ctx.adultCount ?? null,
         childCount: ctx.childCount ?? null,
@@ -290,7 +385,7 @@ export class QuoteExperiencesV2Service {
     // stay visible). The guard uses the token's internal cost, not this response.
     const showCost = canViewQuoteCostMargin(actor?.role ?? null);
     return {
-      itemType: 'activity',
+      itemType: ctx.itemType,
       dayId: ctx.dayId,
       projected: {
         cost: showCost ? projected.totalCost : null,
@@ -314,19 +409,27 @@ export class QuoteExperiencesV2Service {
     // Slice 2C: decrypt the opaque create-preview token (tamper → null via GCM auth
     // tag). Expiry/identity/snapshot checks below are unchanged.
     const payload = verifyCreatePreviewToken(guard.previewToken, getPreviewTokenSecret());
-    if (!payload || payload.kind !== CREATE_TOKEN_KIND) {
+    // Per-type kind: an activity token cannot create a guide (and vice-versa).
+    if (!payload || payload.kind !== tokenKindForItemType(ctx.itemType)) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'A valid create-preview token is required. Re-run the preview.' });
     }
     if (typeof payload.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'The create-preview token has expired. Re-run the preview.' });
     }
-    const identityMatches =
+    // Identity binding — common fields + the type-specific identity.
+    const commonMatches =
       payload.quoteId === quoteId &&
       payload.dayId === ctx.dayId &&
-      payload.activityId === ctx.activityId &&
-      payload.activityRateVariantId === ctx.activityRateVariantId &&
       payload.serviceDate === ctx.serviceDate.toISOString();
-    if (!identityMatches) {
+    const typeMatches =
+      ctx.itemType === 'guide'
+        ? payload.serviceId === ctx.serviceId &&
+          payload.guideType === ctx.guideType &&
+          payload.guideDuration === ctx.guideDuration &&
+          payload.guideOvernight === (ctx.guideOvernight === true)
+        : payload.activityId === ctx.activityId &&
+          payload.activityRateVariantId === ctx.activityRateVariantId;
+    if (!commonMatches || !typeMatches) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
     }
 
@@ -394,10 +497,9 @@ export class QuoteExperiencesV2Service {
     // Audit always records the true cost/sell (server-side, sanitized metadata) —
     // redaction below only affects what the CLIENT receives.
     await this.writeAudit(quoteId, itemId, {
-      itemType: 'activity',
+      itemType: ctx.itemType,
       dayId: ctx.dayId,
-      activityId: ctx.activityId,
-      activityRateVariantId: ctx.activityRateVariantId,
+      ...this.tokenIdentityFor(ctx),
       cost,
       sell,
       currency,
@@ -408,7 +510,7 @@ export class QuoteExperiencesV2Service {
     const showCost = canViewQuoteCostMargin(actor?.role ?? null);
     return {
       itemId,
-      itemType: 'activity',
+      itemType: ctx.itemType,
       dayId: ctx.dayId,
       cost: showCost ? cost : null,
       sell,
