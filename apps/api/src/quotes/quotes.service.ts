@@ -4456,6 +4456,12 @@ export class QuotesService {
       ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true, email: true } })
       : [];
     const userById = new Map(users.map((u: any) => [u.id, u]));
+    // Response-only cost redaction (reuses the Slice A/2C predicate): restricted
+    // roles (operations/agent_admin) see the selling figures + metadata but not the
+    // internal cost. The stored AuditLog rows are NEVER mutated — only the mapped
+    // client shape below is redacted. If a new cost field is added to this shape,
+    // add it to the redaction list here.
+    const canViewCost = this.canActorViewCost(actor);
     return rows.map((r: any) => {
       const m = (r.metadata ?? {}) as Record<string, any>;
       const ap = (m.appliedPayload ?? {}) as Record<string, any>;
@@ -4467,22 +4473,22 @@ export class QuotesService {
         quoteItemId: m.quoteItemId ?? r.entityId ?? null,
         serviceType: m.serviceType ?? null,
         itemName: ap.customServiceName ?? null,
-        previousItemTotalCost: m.previousItemTotalCost ?? null,
+        previousItemTotalCost: canViewCost ? (m.previousItemTotalCost ?? null) : null,
         previousItemTotalSell: m.previousItemTotalSell ?? null,
-        newItemTotalCost: m.newItemTotalCost ?? null,
+        newItemTotalCost: canViewCost ? (m.newItemTotalCost ?? null) : null,
         newItemTotalSell: m.newItemTotalSell ?? null,
-        deltaItemCost: m.deltaItemCost ?? null,
+        deltaItemCost: canViewCost ? (m.deltaItemCost ?? null) : null,
         deltaItemSell: m.deltaItemSell ?? null,
-        newQuoteTotalCost: m.newQuoteTotalCost ?? null,
+        newQuoteTotalCost: canViewCost ? (m.newQuoteTotalCost ?? null) : null,
         newQuoteTotalSell: m.newQuoteTotalSell ?? null,
-        deltaQuoteCost: m.deltaQuoteCost ?? null,
+        deltaQuoteCost: canViewCost ? (m.deltaQuoteCost ?? null) : null,
         deltaQuoteSell: m.deltaQuoteSell ?? null,
         acknowledgedDelta: m.acknowledgedDelta ?? null,
         integrityOk: m.integrityOk ?? null,
         // Whitelisted applied-payload fields only — never raw metadata/tokens.
         appliedPayload: {
           customServiceName: ap.customServiceName ?? undefined,
-          unitCost: ap.unitCost ?? undefined,
+          unitCost: canViewCost ? (ap.unitCost ?? undefined) : undefined,
           quantity: ap.quantity ?? undefined,
           paxCount: ap.paxCount ?? undefined,
           currency: ap.currency ?? undefined,
