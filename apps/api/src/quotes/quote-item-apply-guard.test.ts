@@ -267,7 +267,7 @@ test('preview now issues a signed previewToken for a meal item', async () => {
   enable(true, true);
   const { svc } = makeService();
   const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, MEAL_DATA, ACTOR);
-  assert.ok(typeof res.previewToken === 'string' && res.previewToken.startsWith('v1.'));
+  assert.ok(typeof res.previewToken === 'string' && res.previewToken.startsWith('v2s.'));
 });
 
 test('flags: both OFF / preview-ON apply-OFF → feature_disabled, no write', async () => {
@@ -594,7 +594,7 @@ test('hotel apply audit: serviceType HOTEL, sanitized metadata (no token/secret)
   // Metadata must never carry the preview token or any secret-shaped value.
   const serialized = JSON.stringify(row.metadata);
   assert.ok(!serialized.includes(token), 'audit metadata must not contain the preview token');
-  assert.ok(!serialized.includes('v1.'), 'audit metadata must not contain a token prefix');
+  assert.ok(!serialized.includes('v2s.'), 'audit metadata must not contain a token prefix');
 });
 
 test('external-package item apply remains blocked when its flags are OFF (out of scope)', async () => {
@@ -685,7 +685,7 @@ test('external-package apply audit: serviceType EXTERNAL_PACKAGE, sanitized meta
   // Metadata must never carry the preview token or any secret-shaped value.
   const serialized = JSON.stringify(row.metadata);
   assert.ok(!serialized.includes(token), 'audit metadata must not contain the preview token');
-  assert.ok(!serialized.includes('v1.'), 'audit metadata must not contain a token prefix');
+  assert.ok(!serialized.includes('v2s.'), 'audit metadata must not contain a token prefix');
 });
 
 test('external-package flags do NOT affect meal apply (existing scope unchanged when external flags OFF)', async () => {
@@ -825,7 +825,7 @@ test('transport apply audit: transport code + classification, sanitized (no toke
   assert.equal(row.metadata.integrityOk, true);
   const serialized = JSON.stringify(row.metadata);
   assert.ok(!serialized.includes(token), 'audit metadata must not contain the preview token');
-  assert.ok(!serialized.includes('v1.'), 'audit metadata must not contain a token prefix');
+  assert.ok(!serialized.includes('v2s.'), 'audit metadata must not contain a token prefix');
 });
 
 test('transport flags do NOT affect meal apply (existing scope unchanged when transport flags OFF)', async () => {
@@ -1031,7 +1031,7 @@ test('entrance: with entrance flags ON, preview works and projects a Jordan-Pass
   const res: any = await svc.previewUpdateQuoteItem(QUOTE_ID, ITEM_ID, ENTRANCE_DATA, ACTOR);
   assert.equal(res.available, true);
   assert.equal(res.blocked, false);
-  assert.ok(typeof res.previewToken === 'string' && res.previewToken.startsWith('v1.'));
+  assert.ok(typeof res.previewToken === 'string' && res.previewToken.startsWith('v2s.'));
   // qty 1 → 2 at ENTRANCE_UNIT 50/60 ⇒ item 50→100, delta +50/+60.
   assert.deepEqual(res.item.projected, { totalCost: 100, totalSell: 120 });
   assert.equal(res.item.delta.totalCost, 50);
