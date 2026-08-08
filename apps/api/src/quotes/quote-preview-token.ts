@@ -1,17 +1,30 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 /**
- * Stateless, signed preview token for the pricing preview → apply guard (PR4).
+ * Stateless, OPAQUE preview token for the pricing preview → apply guard (PR4;
+ * Slice B).
  *
- * Format: `v1.<base64url(canonical payload)>.<HMAC-SHA256(segment, secret)>`.
+ * Format: `v2s.<base64url(iv)>.<base64url(authTag)>.<base64url(ciphertext)>`.
+ * The canonical payload is ENCRYPTED with AES-256-GCM (key derived from the
+ * existing QUOTE_PREVIEW_TOKEN_SECRET), so a restricted client can no longer
+ * base64-decode the token to read the projected cost it carries. GCM's auth tag
+ * provides tamper protection (it replaces the previous HMAC-SHA256 signature).
+ *
  * The token is computed at preview time and replayed at apply time; nothing is
  * persisted (no schema change). The apply path re-derives the same snapshot from
- * live state and compares it to the (signature-verified) token payload to detect
- * staleness. The token deliberately does NOT carry the user's role — role is
- * re-checked live at apply time.
+ * live state and compares it to the (decrypted, authenticated) token payload to
+ * detect staleness. The token deliberately does NOT carry the user's role — role
+ * is re-checked live at apply time.
+ *
+ * Slice B is a CLEAN CUT: only the `v2s` opaque format is accepted. The previous
+ * readable `v1.<seg>.<sig>` format is rejected (returns null → invalid_preview_token),
+ * so an in-flight v1 token fails closed and the user simply re-previews. Tokens are
+ * never persisted, so there is nothing to migrate. This is DISTINCT from the Slice
+ * 2C activity-create token (`quote-create-preview-token.ts`, `v2c` prefix), which is
+ * unchanged.
  */
 
-const TOKEN_VERSION = 'v1';
+const TOKEN_VERSION = 'v2s';
 
 export function getPreviewTokenSecret(): string {
   // Mirrors the auth session-secret pattern: env override with a dev fallback.
@@ -56,41 +69,52 @@ export function normalizePayloadHash(payload: unknown): string {
   return createHash('sha256').update(canonicalJson(payload)).digest('hex');
 }
 
+// 32-byte AES-256 key deterministically derived from the shared token secret.
+// Mirrors the Slice 2C create-token helper — same secret, no new env var.
+function deriveKey(secret: string): Buffer {
+  return createHash('sha256').update(String(secret)).digest();
+}
+
 export function buildPreviewToken(payload: Record<string, unknown>, secret: string): string {
-  const segment = Buffer.from(canonicalJson(payload)).toString('base64url');
-  const signature = createHmac('sha256', secret).update(segment).digest('hex');
-  return `${TOKEN_VERSION}.${segment}.${signature}`;
+  const key = deriveKey(secret);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  // Encrypt the SAME canonical JSON that used to be base64-signed, so the payload
+  // shape is unchanged — only the encoding (readable → opaque) changes.
+  const plaintext = Buffer.from(canonicalJson(payload), 'utf8');
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return [
+    TOKEN_VERSION,
+    iv.toString('base64url'),
+    authTag.toString('base64url'),
+    ciphertext.toString('base64url'),
+  ].join('.');
 }
 
 /**
- * Verify the signature + structure. Returns the decoded payload, or null when
- * the token is malformed or the signature does not match. Expiry and field
- * binding are checked by the caller.
+ * Decrypt + authenticate. Returns the decoded payload, or null when the token is
+ * malformed, the wrong version, or tampered/undecryptable (GCM auth failure or
+ * wrong key). Expiry and field binding are checked by the caller (unchanged).
+ * Clean cut: the legacy readable `v1` format is not accepted.
  */
 export function verifyPreviewToken(token: unknown, secret: string): Record<string, any> | null {
   if (typeof token !== 'string') {
     return null;
   }
   const parts = token.split('.');
-  if (parts.length !== 3 || parts[0] !== TOKEN_VERSION) {
-    return null;
-  }
-  const [, segment, signature] = parts;
-  const expected = createHmac('sha256', secret).update(segment).digest('hex');
-  if (signature.length !== expected.length) {
-    return null;
-  }
-  // Constant-time comparison.
-  let diff = 0;
-  for (let i = 0; i < signature.length; i += 1) {
-    diff |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  if (diff !== 0) {
+  if (parts.length !== 4 || parts[0] !== TOKEN_VERSION) {
     return null;
   }
   try {
-    return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as Record<string, any>;
+    const [, ivB64, tagB64, dataB64] = parts;
+    const key = deriveKey(secret);
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+    const plaintext = Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]);
+    return JSON.parse(plaintext.toString('utf8')) as Record<string, any>;
   } catch {
+    // Tampered / wrong key / malformed → invalid (caller returns invalid_preview_token).
     return null;
   }
 }
