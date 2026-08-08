@@ -478,13 +478,19 @@ export function BuilderV2Client({
       case "feature_disabled":
         return "Adding items from V2 is not available."
       case "out_of_scope":
-        return "Only activities can be added from V2 in this version."
+        return "Only activities and guides can be added from V2 in this version."
+      case "missing_field":
+        return "Please fill in all required fields before previewing."
+      case "service_not_found":
+        return "The selected service could not be found. Please pick another."
+      case "not_guide_service":
+        return "The selected service is not a guide service. Please pick a guide service."
       case "invalid_preview_token":
-        return "This preview expired. Please preview the activity again."
+        return "This preview expired. Please preview the item again."
       case "stale_preview":
-        return "The quote changed since the preview. Please preview the activity again."
+        return "The quote changed since the preview. Please preview the item again."
       case "not_resolvable":
-        return "Pricing isn’t available for this activity / rate right now. Try another rate or use Classic."
+        return "Pricing isn’t available for this item right now. Try another selection or use Classic."
       case "confirmation_required":
         return "Please confirm the projected price before adding."
       case "rate_changed":
@@ -493,7 +499,7 @@ export function BuilderV2Client({
         return "Pricing drifted and the automatic rollback failed. Please review this quote in Classic."
       default: {
         const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
-        return message?.slice(0, 300) || `Could not add the activity (${status}).`
+        return message?.slice(0, 300) || `Could not add the item (${status}).`
       }
     }
   }
