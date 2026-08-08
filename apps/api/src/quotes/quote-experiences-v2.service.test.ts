@@ -88,7 +88,10 @@ function build(opts: Options = {}) {
     activityRateVariant: {
       findUnique: async () => (opts.variant === undefined ? { id: VAR, activityId: ACT } : opts.variant),
     },
-    service: {
+    // NOTE: the mock key is `supplierService` (the REAL Prisma delegate). If the
+    // service code regresses to `prisma.service`, that delegate is undefined here
+    // and the guide tests fail — which is exactly what we want.
+    supplierService: {
       findUnique: async () =>
         opts.service === undefined
           ? { id: SVC, category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' } }
