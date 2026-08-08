@@ -46,6 +46,10 @@ export interface QuoteBuilderV2Props {
   onSave?: (quote: Quote) => void | Promise<void>
   /** Send the quote to the client. Only callable when all readiness items pass. */
   onSend?: (quote: Quote) => void | Promise<void>
+  /** VV-1: save a proposal version (snapshot) via the existing createVersion. */
+  onSaveVersion?: (label?: string) => Promise<{ versionNumber?: number | null }>
+  /** Whether the Save-proposal-version affordance is available (role + status). */
+  canSaveVersion?: boolean
   /** Download the client-facing proposal PDF in the given language. */
   onDownloadPdf?: (quote: Quote, language: string) => void | Promise<void>
   /** Open the client-facing proposal preview (HTML) in the given language. */
@@ -235,6 +239,8 @@ export function QuoteBuilderV2({
   onRetry,
   onSave,
   onSend,
+  onSaveVersion,
+  canSaveVersion = false,
   onDownloadPdf,
   onPreview,
   onSetPrimaryHotel,
@@ -471,6 +477,8 @@ export function QuoteBuilderV2({
             onLanguageChange={setLanguage}
             onDownloadPdf={onDownloadPdf ? (l) => onDownloadPdf(quote, l) : undefined}
             onSend={handleSend}
+            onSaveVersion={onSaveVersion}
+            canSaveVersion={canSaveVersion}
             onNavigate={setCurrent}
             itineraryDays={quote.itinerary}
             publicToken={quote.meta.publicToken}

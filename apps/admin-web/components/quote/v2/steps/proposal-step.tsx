@@ -19,7 +19,7 @@ import type {
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
-import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail } from "lucide-react"
+import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail, Save } from "lucide-react"
 
 export interface ProposalStepProps {
   meta: QuoteMeta
@@ -42,6 +42,14 @@ export interface ProposalStepProps {
   onDownloadPdf?: (language: string) => void | Promise<void>
   /** Mark the quote as Sent (status → SENT). Confirms before mutating. */
   onSend?: () => void
+  /**
+   * VV-1: Save a proposal VERSION (snapshot) via the existing createVersion
+   * (POST /quotes/:id/versions). Reuses the Classic versioning backend — NO status
+   * change, NO invoice, NO booking, NO send. Returns the new version number.
+   */
+  onSaveVersion?: (label?: string) => Promise<{ versionNumber?: number | null }>
+  /** Whether the Save-proposal-version affordance is available (role + editable status). */
+  canSaveVersion?: boolean
   /** Current public-link state (display-only seed for the Share section). */
   publicToken?: string | null
   publicEnabled?: boolean
@@ -92,6 +100,8 @@ export function ProposalStep({
   onLanguageChange,
   onDownloadPdf,
   onSend,
+  onSaveVersion,
+  canSaveVersion = false,
   publicToken,
   publicEnabled = false,
   onEnablePublicLink,
@@ -117,6 +127,29 @@ export function ProposalStep({
 
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  // ---- VV-1: Save proposal version (snapshot) — no status/invoice/booking/send ----
+  const [versionLabel, setVersionLabel] = useState("")
+  const [savingVersion, setSavingVersion] = useState(false)
+  const [savedVersionNumber, setSavedVersionNumber] = useState<number | null>(null)
+  const [versionError, setVersionError] = useState<string | null>(null)
+
+  const handleSaveVersion = async () => {
+    if (!onSaveVersion || savingVersion) return
+    setSavingVersion(true)
+    setVersionError(null)
+    setSavedVersionNumber(null)
+    try {
+      const label = versionLabel.trim()
+      const res = await onSaveVersion(label || undefined)
+      setSavedVersionNumber(typeof res?.versionNumber === "number" ? res.versionNumber : null)
+      setVersionLabel("")
+    } catch (e) {
+      setVersionError(e instanceof Error ? e.message : "Could not save the proposal version.")
+    } finally {
+      setSavingVersion(false)
+    }
+  }
 
   // ---- Send to client (proposal email) — separate from Mark as Sent ----
   const recipient = (proposalEmailRecipient || "").trim()
@@ -275,6 +308,23 @@ export function ProposalStep({
               )}
               {downloading ? "Preparing…" : "Download PDF"}
             </Button>
+            {/* VV-1: Save proposal version — snapshot only (no status/invoice/send). */}
+            {canSaveVersion && onSaveVersion ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={versionLabel}
+                  onChange={(e) => setVersionLabel(e.target.value)}
+                  placeholder="Version label (optional)"
+                  aria-label="Proposal version label"
+                  disabled={savingVersion}
+                  className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <Button size="sm" variant="outline" onClick={handleSaveVersion} disabled={savingVersion}>
+                  {savingVersion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {savingVersion ? "Saving…" : "Save version"}
+                </Button>
+              </div>
+            ) : null}
             {/* Mark as Sent — status-only change (no email, no public link). */}
             <Button
               size="sm"
@@ -308,6 +358,20 @@ export function ProposalStep({
           </div>
         }
       />
+
+      {/* VV-1: Save-proposal-version result (snapshot only — no status/invoice/send). */}
+      {savedVersionNumber != null ? (
+        <p className="mb-2 flex items-center gap-1.5 text-xs text-emerald-600" role="status">
+          <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Saved proposal version {savedVersionNumber}. This is a snapshot only — no status change, no email, no invoice.
+        </p>
+      ) : null}
+      {versionError ? (
+        <p className="mb-2 flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {versionError}
+        </p>
+      ) : null}
 
       {/* Clarify what "Mark as Sent" does — it is a status-only change. READY
           quotes now open V2 by default, so make explicit that emailing the client

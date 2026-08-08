@@ -161,6 +161,14 @@ export default async function QuoteBuilderV2Page({
   const canAddItem =
     hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
 
+  // VV-1: Save-proposal-version affordance. Mirrors the createVersion route's
+  // @Roles('admin','viewer','finance'); gated to editable statuses (save a version
+  // while building / before Mark-as-Sent). No flag — versioning is a shipped Classic
+  // capability; the backend route re-enforces role + company scope. Snapshot only —
+  // no status change, no invoice, no booking.
+  const canSaveVersion =
+    hasRequiredRole(role, ["admin", "viewer", "finance"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
+
   // Booking Creation V2 (Slice 1D). Show the "Create booking" card only when the flag
   // is ON (default OFF), the user is admin/operations, and the quote is convertible
   // (Accepted/Confirmed). The backend route POST /quotes/:id/v2/booking re-enforces the
@@ -196,6 +204,7 @@ export default async function QuoteBuilderV2Page({
       itemCreateEnabled={itemCreateFlag}
       canAddItem={canAddItem}
       canCreateBooking={canCreateBooking}
+      canSaveVersion={canSaveVersion}
     />
   )
 }
