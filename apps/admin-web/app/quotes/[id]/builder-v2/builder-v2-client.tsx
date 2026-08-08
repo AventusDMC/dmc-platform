@@ -38,6 +38,7 @@ export function BuilderV2Client({
   itemCreateEnabled = false,
   canAddItem = false,
   canCreateBooking = false,
+  canSaveVersion = false,
 }: {
   quote: Quote | null
   error?: string | null
@@ -174,6 +175,13 @@ export function BuilderV2Client({
    * accepted-version/duplicate — it stays the source of truth.
    */
   canCreateBooking?: boolean
+  /**
+   * VV-1 Save-proposal-version affordance. Server-gated: role (admin/viewer/finance)
+   * + editable status. Reuses the EXISTING createVersion (POST /quotes/:id/versions);
+   * snapshot only — no status change, no invoice, no booking, no send. The backend
+   * route stays the source of truth (role + company scope).
+   */
+  canSaveVersion?: boolean
 }) {
   const router = useRouter()
 
@@ -217,6 +225,30 @@ export function BuilderV2Client({
       throw new Error(message?.slice(0, 300) || `Could not mark the quote as sent (${res.status}).`)
     }
     router.refresh()
+  }
+
+  // VV-1: save a proposal VERSION (snapshot) via the existing createVersion proxy
+  // (POST /api/quotes/:id/versions → POST /quotes/:id/versions). This is a snapshot
+  // ONLY — the backend does NOT change status, create an invoice, mark sent, accept,
+  // or convert to booking. Returns the new versionNumber for the success state.
+  const handleSaveVersion = async (q: Quote, label?: string): Promise<{ versionNumber?: number | null }> => {
+    const res = await fetch(`/api/quotes/${q.id}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(label ? { label } : {}),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+      throw new Error(message?.slice(0, 300) || `Could not save the proposal version (${res.status}).`)
+    }
+    return { versionNumber: typeof parsed?.versionNumber === "number" ? parsed.versionNumber : null }
   }
 
   // Send the proposal email to the client (PR #576 UI → PR #575 backend).
@@ -741,6 +773,8 @@ export function BuilderV2Client({
       onRetry={() => router.refresh()}
       onSave={handleSave}
       onSend={handleSend}
+      onSaveVersion={canSaveVersion ? (label?: string) => handleSaveVersion(quote!, label) : undefined}
+      canSaveVersion={canSaveVersion}
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
