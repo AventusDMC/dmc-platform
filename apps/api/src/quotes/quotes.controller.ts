@@ -815,6 +815,18 @@ export class QuotesController {
     return this.quotesService.findVersions(id);
   }
 
+  @Get(':id/version-readiness')
+  @Roles('admin', 'viewer', 'finance')
+  async getVersionReadiness(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.getVersionReadiness(id);
+  }
+
   @Post(':id/convert-to-booking')
   @Roles('admin', 'viewer', 'finance')
   async convertToBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
