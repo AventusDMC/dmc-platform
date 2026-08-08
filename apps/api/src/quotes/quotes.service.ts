@@ -6686,6 +6686,70 @@ export class QuotesService {
     });
   }
 
+  /**
+   * Read-only version-readiness for a quote: does a saved proposal version exist,
+   * and would one satisfy the SAME completeness rule Accept applies
+   * (see {@link resolveAcceptedQuoteVersion} + {@link evaluateQuoteWorkflowCompleteness})?
+   *
+   * Performs NO writes and has NO lifecycle/financial side effects. It never
+   * returns `snapshotJson` (it is fetched only to evaluate completeness) nor any
+   * cost/margin/internal financial fields — only booleans + version numbers.
+   * Newest-first, short-circuiting at the first completeness-passing version to
+   * mirror what Accept resolves for a not-yet-accepted quote.
+   */
+  async getVersionReadiness(quoteId: string) {
+    const versions = await this.prisma.quoteVersion.findMany({
+      where: {
+        quoteId,
+      },
+      orderBy: [{ versionNumber: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        versionNumber: true,
+        snapshotJson: true,
+      },
+    });
+
+    const versionCount = versions.length;
+    const hasSavedVersion = versionCount > 0;
+    const latestVersionNumber = versions[0]?.versionNumber ?? null;
+
+    let hasCompleteVersion = false;
+    let latestVersionComplete = false;
+
+    for (let index = 0; index < versions.length; index += 1) {
+      const { ok } = this.evaluateQuoteWorkflowCompleteness(versions[index].snapshotJson);
+
+      if (index === 0) {
+        latestVersionComplete = ok;
+      }
+
+      if (ok) {
+        hasCompleteVersion = true;
+        break;
+      }
+    }
+
+    const acceptWillSucceed = hasCompleteVersion;
+
+    const reasons: string[] = [];
+    if (!hasSavedVersion) {
+      reasons.push('Accepted quotes require at least one saved quote version');
+    } else if (!hasCompleteVersion) {
+      reasons.push('Accepted quotes require a saved quote version with complete pricing and workflow details');
+    }
+
+    return {
+      versionCount,
+      hasSavedVersion,
+      hasCompleteVersion,
+      latestVersionNumber,
+      latestVersionComplete,
+      acceptWillSucceed,
+      reasons,
+    };
+  }
+
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
     const hasExternalPackageFields = Boolean(data.packageName || data.country || data.netCost !== undefined);
     const hasSyntheticExternalPackageServiceId = Boolean(
@@ -12073,6 +12137,24 @@ export class QuotesService {
     }
 
     return blockers;
+  }
+
+  /**
+   * Non-throwing companion to {@link assertQuoteWorkflowStateIsComplete}. It reuses
+   * the exact same completeness rules (by calling the throwing check and catching)
+   * so the advisory/read paths can never drift from what Accept actually enforces.
+   * Returns `{ ok, reasons }` — the reason mirrors the message Accept would throw.
+   */
+  private evaluateQuoteWorkflowCompleteness(snapshotJson: unknown): { ok: boolean; reasons: string[] } {
+    try {
+      this.assertQuoteWorkflowStateIsComplete(snapshotJson);
+      return { ok: true, reasons: [] };
+    } catch (error) {
+      return {
+        ok: false,
+        reasons: [error instanceof Error && error.message ? error.message : 'Quote workflow is incomplete.'],
+      };
+    }
   }
 
   private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
