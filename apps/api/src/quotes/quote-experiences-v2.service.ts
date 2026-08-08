@@ -212,7 +212,9 @@ export class QuoteExperiencesV2Service {
         throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
       }
       // The service must exist AND be a GUIDE-type service (reject people/other types).
-      const service = await (this.prisma as any).service.findUnique({
+      // The catalog model is SupplierService (QuoteItem.service → SupplierService);
+      // no `as any` so TypeScript validates the delegate + select.
+      const service = await this.prisma.supplierService.findUnique({
         where: { id: serviceId },
         select: { id: true, category: true, serviceType: { select: { name: true, code: true } } },
       });
