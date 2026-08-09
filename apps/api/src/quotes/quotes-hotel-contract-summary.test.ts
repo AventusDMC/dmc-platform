@@ -76,15 +76,54 @@ function deepKeys(obj: any, acc = new Set<string>()) {
   return acc;
 }
 
-test('route is gated to admin/operations/viewer/finance and keeps its path', () => {
+test('route is gated to admin/super_admin/operations/viewer/finance and keeps its path', () => {
   const roles = (Reflect as any).getMetadata(ROLES_KEY, QuotesController.prototype.findHotelContractSummary);
-  assert.deepEqual(roles, ['admin', 'operations', 'viewer', 'finance']);
+  assert.deepEqual(roles, ['admin', 'super_admin', 'operations', 'viewer', 'finance']);
   assert.equal(roles.includes('agent'), false);
   assert.equal(roles.includes('agent_admin'), false);
   assert.equal(
     (Reflect as any).getMetadata(PATH_METADATA, QuotesController.prototype.findHotelContractSummary),
     ':id/v2/items/:itemId/hotel-contract-summary',
   );
+});
+
+test('HC-1A: explicit exact-role allowlist — allowed roles reach the service, agent/agent_admin are 403', async () => {
+  const build = () => {
+    const calls: string[] = [];
+    const controller = new QuotesController(
+      {
+        findOne: async () => { calls.push('findOne'); return { id: 'quote-1' }; },
+        getHotelContractSummary: async () => { calls.push('summary'); return { itemId: 'item-1' }; },
+      } as any,
+      {} as any,
+    );
+    return { controller, calls };
+  };
+
+  // Allowed roles reach the service (guard coalescing of super_admin is preserved here explicitly).
+  for (const role of ['admin', 'super_admin', 'operations', 'viewer', 'finance']) {
+    const { controller, calls } = build();
+    const res = await controller.findHotelContractSummary('quote-1', 'item-1', { id: 'u1', role, companyId: 'c1' } as any);
+    assert.deepEqual(res, { itemId: 'item-1' }, `${role} should receive the summary`);
+    assert.deepEqual(calls, ['findOne', 'summary'], `${role} should reach findOne + service`);
+  }
+
+  // agent_admin — coalesced to admin by the roles.guard, but blocked by the explicit
+  // exact-role check BEFORE any quote is loaded.
+  for (const role of ['agent_admin', 'agent']) {
+    const { controller, calls } = build();
+    await assert.rejects(
+      () => controller.findHotelContractSummary('quote-1', 'item-1', { id: 'u1', role, companyId: 'c1' } as any),
+      /permission to view hotel contract details/,
+      `${role} must be 403`,
+    );
+    assert.deepEqual(calls, [], `${role} must not reach findOne or the service`);
+  }
+
+  // No actor at all → also blocked (defensive).
+  const { controller, calls } = build();
+  await assert.rejects(() => controller.findHotelContractSummary('quote-1', 'item-1', null as any), /permission/);
+  assert.deepEqual(calls, []);
 });
 
 test('admin receives curated summary WITH cost block; no forbidden fields', async () => {

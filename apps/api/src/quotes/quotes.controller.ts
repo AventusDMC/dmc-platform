@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Headers,
   NotFoundException,
@@ -14,7 +15,16 @@ import {
 } from '@nestjs/common';
 import { BookingRoomOccupancy, HotelMealPlan, HotelOccupancyType, QuoteOptionKind, QuoteStatus } from '@prisma/client';
 import { Actor, Public, Roles } from '../auth/auth.decorators';
-import { AuthenticatedActor } from '../auth/auth.types';
+import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
+
+/**
+ * HC-1A: EXPLICIT exact-role allowlist for the read-only hotel contract/rate
+ * summary. This is a plain `includes` (NOT the coalescing roles.guard), so
+ * `agent_admin` — which the guard coalesces to `admin` because the route @Roles
+ * includes 'admin' — is BLOCKED here, and `super_admin` is listed explicitly.
+ * Mirrors the Catalog V2 allowlist pattern. Does not broaden access.
+ */
+const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'operations', 'viewer', 'finance'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 
@@ -918,7 +928,7 @@ export class QuotesController {
   }
 
   @Get(':id/v2/items/:itemId/hotel-contract-summary')
-  @Roles('admin', 'operations', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'operations', 'viewer', 'finance')
   async findHotelContractSummary(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
@@ -929,6 +939,15 @@ export class QuotesController {
     // V2 read routes (findOne(id, actor) first), then the item is scoped to the
     // quote (cross-quote/missing/non-hotel → 404). The cost block is included only
     // for cost-visible roles (handled in getHotelContractSummary). Read-only.
+    //
+    // HC-1A: explicit exact-role allowlist fail-closed. The roles.guard coalesces
+    // agent_admin → admin (because @Roles includes 'admin'), so it would otherwise
+    // reach this endpoint; this check blocks agent_admin/agent by their ACTUAL role
+    // before any quote is loaded. Does not change cost-gating (still via canActorViewCost).
+    if (!actor || !HOTEL_CONTRACT_SUMMARY_ROLES.includes(actor.role as DmcRole)) {
+      throw new ForbiddenException('You do not have permission to view hotel contract details');
+    }
+
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
