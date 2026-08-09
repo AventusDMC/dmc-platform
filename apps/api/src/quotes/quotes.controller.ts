@@ -917,6 +917,33 @@ export class QuotesController {
     return summary;
   }
 
+  @Get(':id/v2/items/:itemId/hotel-contract-summary')
+  @Roles('admin', 'operations', 'viewer', 'finance')
+  async findHotelContractSummary(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    // HC-1: SAFE, whitelist-curated hotel contract/rate summary for a priced hotel
+    // QuoteItem (Option C — anchored on the item). Same actor scoping as the other
+    // V2 read routes (findOne(id, actor) first), then the item is scoped to the
+    // quote (cross-quote/missing/non-hotel → 404). The cost block is included only
+    // for cost-visible roles (handled in getHotelContractSummary). Read-only.
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    const summary = await this.quotesService.getHotelContractSummary(id, itemId, actor);
+
+    if (!summary) {
+      throw new NotFoundException('Hotel contract summary not found');
+    }
+
+    return summary;
+  }
+
   @Get(':id/items')
   async findItems(@Param('id') id: string) {
     const quote = await this.quotesService.findOne(id);
