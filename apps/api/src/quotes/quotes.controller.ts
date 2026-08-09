@@ -891,6 +891,32 @@ export class QuotesController {
     return version;
   }
 
+  @Get(':id/versions/:versionId/summary')
+  @Roles('admin', 'viewer', 'finance')
+  async findVersionSummary(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    // VV-3 Slice 2A: SAFE, whitelist-curated version summary for V2 — never the raw
+    // snapshotJson. Same gate + actor scoping as the hardened version routes; the
+    // version is scoped to the quote (404 cross-quote). The cost block is included
+    // only for cost-visible roles (handled in getVersionSummary). Read-only.
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    const summary = await this.quotesService.getVersionSummary(id, versionId, actor);
+
+    if (!summary) {
+      throw new NotFoundException('Quote version not found');
+    }
+
+    return summary;
+  }
+
   @Get(':id/items')
   async findItems(@Param('id') id: string) {
     const quote = await this.quotesService.findOne(id);

@@ -6750,6 +6750,89 @@ export class QuotesService {
     };
   }
 
+  /**
+   * VV-3 Slice 2A: safe, read-only, WHITELIST-CURATED summary of ONE saved version.
+   * Reads the version scoped to the quote and extracts ONLY the whitelisted fields
+   * below — it NEVER spreads or returns snapshotJson, passengers/PII, contact,
+   * company internals, notes, workflow diagnostics, booking/invoice, or the public
+   * token. Completeness reuses the VV-2 evaluator on the SAVED snapshot (not live).
+   * The cost block is included ONLY when the actor can view cost/margin
+   * ({@link canActorViewCost} = admin/super_admin/finance) — omitted entirely (never
+   * zeroed / never null) for everyone else. Performs NO writes.
+   * Returns null when the version does not exist or belongs to another quote (404).
+   */
+  async getVersionSummary(quoteId: string, versionId: string, actor?: CompanyScopedActor) {
+    const version = await this.prisma.quoteVersion.findFirst({
+      where: {
+        id: versionId,
+        quoteId,
+      },
+      select: {
+        id: true,
+        quoteId: true,
+        versionNumber: true,
+        label: true,
+        createdAt: true,
+        snapshotJson: true,
+      },
+    });
+
+    if (!version) {
+      return null;
+    }
+
+    const snap = (version.snapshotJson || {}) as Record<string, unknown>;
+    const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+    const arrLen = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+    const hasText = (v: unknown): boolean => typeof v === 'string' && v.trim().length > 0;
+
+    const { ok, reasons } = this.evaluateQuoteWorkflowCompleteness(version.snapshotJson);
+
+    const summary: Record<string, unknown> = {
+      // ---- version metadata (same as the list route) ----
+      id: version.id,
+      quoteId: version.quoteId,
+      versionNumber: version.versionNumber,
+      label: version.label ?? null,
+      createdAt: version.createdAt,
+      // ---- client-facing snapshot fields (whitelist only) ----
+      title: str(snap.title),
+      statusAtSnapshot: str(snap.status),
+      quoteNumber: str(snap.quoteNumber),
+      travelStartDate: str(snap.travelStartDate),
+      validUntil: str(snap.validUntil),
+      nightCount: num(snap.nightCount),
+      roomCount: num(snap.roomCount),
+      adults: num(snap.adults),
+      children: num(snap.children),
+      quoteCurrency: str(snap.quoteCurrency),
+      totalSell: num(snap.totalSell),
+      pricePerPax: num(snap.pricePerPax),
+      fixedPricePerPerson: num(snap.fixedPricePerPerson),
+      itemCount: arrLen(snap.quoteItems),
+      dayCount: arrLen(snap.quoteItineraryDays) || arrLen(snap.itineraries),
+      hasInclusions: hasText(snap.inclusionsText),
+      hasExclusions: hasText(snap.exclusionsText),
+      completeness: { ok, reasons },
+      acceptWillSucceed: ok,
+    };
+
+    // ---- cost block: cost-visible roles only; omitted entirely otherwise ----
+    if (this.canActorViewCost(actor)) {
+      const totalCost = num(snap.totalCost);
+      const totalSell = num(snap.totalSell);
+      const margin = totalCost != null && totalSell != null ? totalSell - totalCost : null;
+      const marginPercent =
+        margin != null && totalSell != null && totalSell > 0
+          ? Math.round((margin / totalSell) * 10000) / 100
+          : null;
+      summary.cost = { totalCost, margin, marginPercent };
+    }
+
+    return summary;
+  }
+
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
     const hasExternalPackageFields = Boolean(data.packageName || data.country || data.netCost !== undefined);
     const hasSyntheticExternalPackageServiceId = Boolean(
