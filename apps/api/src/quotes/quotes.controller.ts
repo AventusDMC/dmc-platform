@@ -805,8 +805,13 @@ export class QuotesController {
   }
 
   @Get(':id/versions')
-  async findVersions(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async findVersions(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    // Scope + gate the version LIST: same policy as createVersion / version-readiness
+    // (role admin/viewer/finance + actor company context via findOne(id, actor)).
+    // Previously ungated and called findOne without the actor. Response shape
+    // (metadata only) is unchanged.
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -860,8 +865,18 @@ export class QuotesController {
   }
 
   @Get(':id/versions/:versionId')
-  async findVersion(@Param('id') id: string, @Param('versionId') versionId: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async findVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    // Scope + gate the version DETAIL (which returns the raw QuoteVersion incl.
+    // snapshotJson): same policy as createVersion / version-readiness. Previously
+    // ungated and called findOne without the actor. findVersion still filters the
+    // version to this quote (404 if it belongs to another quote). Response shape
+    // is unchanged — surfacing a redacted summary is a later, separate slice.
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
