@@ -91,6 +91,8 @@ export interface QuoteBuilderV2Props {
    * endpoints; never writes via the existing item PATCH path.
    */
   onApplyItemPricing?: import("../../../lib/quote-types").ApplyItemPricingHandler
+  /** HC-2: fetch a priced hotel line's safe contract/rate summary (read-only drawer). */
+  onViewHotelContract?: import("../../../lib/quote-types").ViewHotelContractHandler
   /**
    * Load the read-only `quote.pricing.apply` audit history for this quote
    * (role/status-gated). When provided, the Experiences step shows a collapsible
@@ -270,6 +272,7 @@ export function QuoteBuilderV2({
   onUpdateDisplayText,
   onPreviewItem,
   onApplyItemPricing,
+  onViewHotelContract,
   onLoadApplyAudit,
   entrancePricingEnabled,
   transportPreviewEnabled,
@@ -430,6 +433,7 @@ export function QuoteBuilderV2({
             hotelPreviewEnabled={hotelPreviewEnabled}
             onApplyItemPricing={onApplyItemPricing}
             hotelApplyEnabled={hotelApplyEnabled}
+            onViewHotelContract={onViewHotelContract}
           />
         )
       case "experiences":

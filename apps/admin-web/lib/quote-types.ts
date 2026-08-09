@@ -397,6 +397,54 @@ export interface VersionSummary {
   cost?: { totalCost: number | null; margin: number | null; marginPercent: number | null }
 }
 
+/**
+ * HC-2: the safe, whitelist-curated hotel contract/rate summary for a priced hotel
+ * QuoteItem (from the backend GET /quotes/:id/v2/items/:itemId/hotel-contract-summary,
+ * HC-1/HC-1A). Client-facing/curated fields only; NEVER raw hotel/contract/rate
+ * objects, ratePolicies, verificationNotes, supplier contact, PII, booking, invoice,
+ * publicToken, or supplement amounts. The `cost` block is present ONLY when the
+ * backend included it (finance-visible roles); the UI renders it purely on presence.
+ */
+export interface HotelContractSummary {
+  itemId: string
+  quoteId: string
+  hotel: { name: string | null; city: string | null; category: string | null; preferenceRank: number | null }
+  contract: {
+    status: string
+    name: string | null
+    validFrom: string | null
+    validTo: string | null
+    currency: string | null
+    confidence: string | null
+    lastVerifiedAt: string | null
+  }
+  room: {
+    categoryName: string | null
+    mealPlan: string | null
+    occupancyType: string | null
+    seasonName: string | null
+  }
+  policies: {
+    hasCancellationPolicy: boolean
+    hasChildPolicy: boolean
+    supplementsCount: number
+    mealPlanCodes: string[]
+  }
+  warnings: string[]
+  cost?: {
+    baseCost: number | null
+    costBaseAmount: number | null
+    costCurrency: string | null
+    salesTaxPercent: number | null
+    serviceChargePercent: number | null
+    tourismFeeAmount: number | null
+    tourismFeeCurrency: string | null
+  }
+}
+
+/** HC-2: fetch ONE priced hotel line's safe contract/rate summary for the drawer. */
+export type ViewHotelContractHandler = (itemId: string) => Promise<HotelContractSummary>
+
 /** High-level descriptive metadata for the quote. */
 export interface QuoteMeta {
   title: string

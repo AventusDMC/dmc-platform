@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
-import type { PricingApplyAuditEntry, Quote, VersionReadiness, SavedVersionSummary, VersionSummary } from "../../../../lib/quote-types"
+import type { PricingApplyAuditEntry, Quote, VersionReadiness, SavedVersionSummary, VersionSummary, HotelContractSummary } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
@@ -356,6 +356,32 @@ export function BuilderV2Client({
       throw new Error(message?.slice(0, 300) || `Could not load the version summary (${res.status}).`)
     }
     return parsed as VersionSummary
+  }
+
+  // HC-2: fetch ONE priced hotel line's SAFE contract/rate summary via the HC-1/HC-1A
+  // proxy (GET /api/quotes/:id/v2/items/:itemId/hotel-contract-summary → GET
+  // /quotes/:id/v2/items/:itemId/hotel-contract-summary). This is the ONLY hotel
+  // contract read path used by V2 — no raw hotel/contract/rate endpoint is called.
+  // The payload is already whitelist-curated + cost-gated by the backend; the drawer
+  // renders it verbatim (never raw objects/JSON). Read-only.
+  const handleViewHotelContract = async (q: Quote, itemId: string): Promise<HotelContractSummary> => {
+    const res = await fetch(`/api/quotes/${q.id}/v2/items/${itemId}/hotel-contract-summary`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+      throw new Error(message?.slice(0, 300) || `Could not load the hotel contract summary (${res.status}).`)
+    }
+    return parsed as HotelContractSummary
   }
 
   // Send the proposal email to the client (PR #576 UI → PR #575 backend).
@@ -895,6 +921,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
+      onViewHotelContract={(itemId: string) => handleViewHotelContract(quote!, itemId)}
       transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
       transportApplyEnabled={canPreviewPricing && transportPreviewEnabled && transportApplyEnabled}
       hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
