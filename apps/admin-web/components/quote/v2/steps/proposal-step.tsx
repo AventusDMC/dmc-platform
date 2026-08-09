@@ -18,10 +18,11 @@ import type {
   ProposalReadinessItem,
   VersionReadiness,
   SavedVersionSummary,
+  VersionSummary,
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
-import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail, Save } from "lucide-react"
+import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail, Save, Eye } from "lucide-react"
 
 /** VV-3 Slice 1: format a saved-version createdAt for display. Defensive — returns
  *  the raw string if it isn't a parseable date. Metadata only. */
@@ -29,6 +30,20 @@ function formatSavedVersionDate(value: string): string {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+}
+
+/** VV-3 Slice 2B: display helpers for the read-only summary drawer. */
+function fmtOrDash(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—"
+  return String(value)
+}
+function fmtDateOrDash(value: string | null | undefined): string {
+  if (!value) return "—"
+  return formatSavedVersionDate(value)
+}
+function fmtMoney(currency: string | null | undefined, amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "—"
+  return `${currency ? `${currency} ` : ""}${amount}`
 }
 
 export interface ProposalStepProps {
@@ -75,6 +90,12 @@ export interface ProposalStepProps {
   savedVersions?: SavedVersionSummary[]
   savedVersionsLoading?: boolean
   savedVersionsError?: string | null
+  /**
+   * VV-3 Slice 2B: fetch ONE version's SAFE curated summary for the read-only drawer
+   * (backend GET /quotes/:id/versions/:versionId/summary). Never the raw detail
+   * endpoint; the payload carries no raw snapshot or PII. When omitted, no View action.
+   */
+  onViewVersion?: (versionId: string) => Promise<VersionSummary>
   /** Current public-link state (display-only seed for the Share section). */
   publicToken?: string | null
   publicEnabled?: boolean
@@ -133,6 +154,7 @@ export function ProposalStep({
   savedVersions = [],
   savedVersionsLoading = false,
   savedVersionsError = null,
+  onViewVersion,
   publicToken,
   publicEnabled = false,
   onEnablePublicLink,
@@ -180,6 +202,34 @@ export function ProposalStep({
     } finally {
       setSavingVersion(false)
     }
+  }
+
+  // ---- VV-3 Slice 2B: read-only version summary drawer ----
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [summary, setSummary] = useState<VersionSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+
+  const handleViewVersion = async (versionId: string) => {
+    if (!onViewVersion) return
+    setSummaryOpen(true)
+    setSummaryLoading(true)
+    setSummaryError(null)
+    setSummary(null)
+    try {
+      const res = await onViewVersion(versionId)
+      setSummary(res)
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : "Could not load the version summary.")
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
+  const closeSummary = () => {
+    setSummaryOpen(false)
+    setSummary(null)
+    setSummaryError(null)
   }
 
   // ---- Send to client (proposal email) — separate from Mark as Sent ----
@@ -486,10 +536,182 @@ export function ProposalStep({
                   {v.createdAt ? (
                     <span className="text-muted-foreground">· saved {formatSavedVersionDate(v.createdAt)}</span>
                   ) : null}
+                  {onViewVersion ? (
+                    <button
+                      type="button"
+                      onClick={() => handleViewVersion(v.id)}
+                      className="ml-auto inline-flex items-center gap-1 rounded border border-input bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`View version ${v.versionNumber} summary`}
+                    >
+                      <Eye className="h-3 w-3" aria-hidden="true" />
+                      View
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
           )}
+        </div>
+      ) : null}
+
+      {/* VV-3 Slice 2B: read-only version summary drawer. Renders ONLY the safe
+          curated summary payload from GET /quotes/:id/versions/:versionId/summary —
+          never the raw saved snapshot / raw JSON, no passengers/contact/company/
+          notes/booking/invoice/items, no per-item cost, and no restore/rollback/
+          set-accepted/send. The cost block renders purely on payload presence. */}
+      {summaryOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Version summary">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            aria-label="Close version summary"
+            onClick={closeSummary}
+          />
+          <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-background shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold text-foreground">
+                {summary ? `Version ${summary.versionNumber} summary` : "Version summary"}
+              </p>
+              <button
+                type="button"
+                onClick={closeSummary}
+                aria-label="Close"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="flex-1 px-4 py-3 text-xs">
+              {summaryLoading ? (
+                <p className="flex items-center gap-1.5 text-muted-foreground" role="status">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                  Loading summary…
+                </p>
+              ) : summaryError ? (
+                <p className="flex items-center gap-1.5 text-destructive" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {summaryError}
+                </p>
+              ) : summary ? (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Label</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.label)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Saved</dt>
+                    <dd className="text-foreground">{fmtDateOrDash(summary.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Status at snapshot</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.statusAtSnapshot)}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Quote title</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.title)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Quote number</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.quoteNumber)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Currency</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.quoteCurrency)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Travel start</dt>
+                    <dd className="text-foreground">{fmtDateOrDash(summary.travelStartDate)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Valid until</dt>
+                    <dd className="text-foreground">{fmtDateOrDash(summary.validUntil)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Nights</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.nightCount)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Rooms</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.roomCount)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Adults</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.adults)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Children</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.children)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Total sell</dt>
+                    <dd className="text-foreground">{fmtMoney(summary.quoteCurrency, summary.totalSell)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Price per pax</dt>
+                    <dd className="text-foreground">{fmtMoney(summary.quoteCurrency, summary.pricePerPax)}</dd>
+                  </div>
+                  {summary.fixedPricePerPerson != null ? (
+                    <div>
+                      <dt className="text-muted-foreground">Fixed price / person</dt>
+                      <dd className="text-foreground">{fmtMoney(summary.quoteCurrency, summary.fixedPricePerPerson)}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt className="text-muted-foreground">Items</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.itemCount)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Days</dt>
+                    <dd className="text-foreground">{fmtOrDash(summary.dayCount)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Inclusions</dt>
+                    <dd className="text-foreground">{summary.hasInclusions ? "Yes" : "No"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Exclusions</dt>
+                    <dd className="text-foreground">{summary.hasExclusions ? "Yes" : "No"}</dd>
+                  </div>
+                  <div className="col-span-2 mt-1 border-t border-border pt-2">
+                    <dt className="text-muted-foreground">Completeness</dt>
+                    <dd className="mt-0.5">
+                      {summary.completeness.ok ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          <Check className="h-3 w-3" aria-hidden="true" /> Ready to accept
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Incomplete
+                        </span>
+                      )}
+                      <span className="ml-2 text-muted-foreground">
+                        acceptWillSucceed: {summary.acceptWillSucceed ? "true" : "false"}
+                      </span>
+                      {summary.completeness.reasons.length > 0 ? (
+                        <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                          {summary.completeness.reasons.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </dd>
+                  </div>
+                  {summary.cost ? (
+                    <div className="col-span-2 mt-1 border-t border-border pt-2">
+                      <dt className="text-muted-foreground">Cost (internal)</dt>
+                      <dd className="mt-0.5 flex flex-wrap gap-x-4 text-foreground">
+                        <span>Net cost: {fmtMoney(summary.quoteCurrency, summary.cost.totalCost)}</span>
+                        <span>Margin: {fmtMoney(summary.quoteCurrency, summary.cost.margin)}</span>
+                        <span>
+                          Margin %: {summary.cost.marginPercent != null ? `${summary.cost.marginPercent}%` : "—"}
+                        </span>
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 

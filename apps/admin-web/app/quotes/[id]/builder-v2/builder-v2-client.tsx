@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
-import type { PricingApplyAuditEntry, Quote, VersionReadiness, SavedVersionSummary } from "../../../../lib/quote-types"
+import type { PricingApplyAuditEntry, Quote, VersionReadiness, SavedVersionSummary, VersionSummary } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
@@ -330,6 +330,32 @@ export function BuilderV2Client({
     void refreshVersionReadiness()
     void refreshSavedVersions()
     return { versionNumber: typeof parsed?.versionNumber === "number" ? parsed.versionNumber : null }
+  }
+
+  // VV-3 Slice 2B: fetch ONE version's SAFE summary via the Slice 2A proxy
+  // (GET /api/quotes/:id/versions/:versionId/summary → GET /quotes/:id/versions/:versionId/summary).
+  // This is the ONLY version-detail read path used by V2 — the raw detail endpoint
+  // (/versions/:versionId, which returns snapshotJson) is never called here. The
+  // payload is already whitelist-curated + cost-gated by the backend; the drawer
+  // renders it verbatim (never snapshotJson). Read-only.
+  const handleViewVersionSummary = async (q: Quote, versionId: string): Promise<VersionSummary> => {
+    const res = await fetch(`/api/quotes/${q.id}/versions/${versionId}/summary`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+      throw new Error(message?.slice(0, 300) || `Could not load the version summary (${res.status}).`)
+    }
+    return parsed as VersionSummary
   }
 
   // Send the proposal email to the client (PR #576 UI → PR #575 backend).
@@ -862,6 +888,7 @@ export function BuilderV2Client({
       savedVersions={savedVersions}
       savedVersionsLoading={savedVersionsLoading}
       savedVersionsError={savedVersionsError}
+      onViewVersion={canSaveVersion ? (versionId: string) => handleViewVersionSummary(quote!, versionId) : undefined}
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}

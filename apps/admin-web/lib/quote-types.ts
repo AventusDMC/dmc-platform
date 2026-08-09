@@ -362,6 +362,41 @@ export interface SavedVersionSummary {
   createdAt: string | null
 }
 
+/**
+ * VV-3 Slice 2B: the safe, whitelist-curated version summary (from the backend
+ * GET /quotes/:id/versions/:versionId/summary — Slice 2A). Client-facing fields
+ * only; NEVER snapshotJson / PII / contact / company / notes / booking / invoice.
+ * The `cost` block is present ONLY when the backend included it (finance roles);
+ * the UI renders it purely on presence and never computes cost.
+ */
+export interface VersionSummary {
+  id: string
+  quoteId: string
+  versionNumber: number
+  label: string | null
+  createdAt: string | null
+  title: string | null
+  statusAtSnapshot: string | null
+  quoteNumber: string | null
+  travelStartDate: string | null
+  validUntil: string | null
+  nightCount: number | null
+  roomCount: number | null
+  adults: number | null
+  children: number | null
+  quoteCurrency: string | null
+  totalSell: number | null
+  pricePerPax: number | null
+  fixedPricePerPerson: number | null
+  itemCount: number
+  dayCount: number
+  hasInclusions: boolean
+  hasExclusions: boolean
+  completeness: { ok: boolean; reasons: string[] }
+  acceptWillSucceed: boolean
+  cost?: { totalCost: number | null; margin: number | null; marginPercent: number | null }
+}
+
 /** High-level descriptive metadata for the quote. */
 export interface QuoteMeta {
   title: string
