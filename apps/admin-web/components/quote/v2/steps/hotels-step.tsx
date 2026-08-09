@@ -11,8 +11,24 @@ import { ClassicGuidance } from "./classic-guidance"
 import { PricingPreviewModal } from "./pricing-preview-modal"
 import { cn } from "../../../../lib/utils"
 import { formatCurrency } from "../../../../lib/quote-helpers"
-import type { ApplyItemPricingHandler, HotelSelection, HotelCityBlock, PreviewItemHandler } from "../../../../lib/quote-types"
-import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown, Calculator } from "lucide-react"
+import type { ApplyItemPricingHandler, HotelSelection, HotelCityBlock, PreviewItemHandler, ViewHotelContractHandler, HotelContractSummary } from "../../../../lib/quote-types"
+import { Star, Check, Tent, Moon, Building2, Loader2, AlertTriangle, Info, ChevronDown, Calculator, Eye, X } from "lucide-react"
+
+/** HC-2: display helpers for the read-only hotel contract/rate drawer. */
+function hcOrDash(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "—"
+  return String(v)
+}
+function hcDate(v: string | null | undefined): string {
+  if (!v) return "—"
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return v
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+}
+function hcMoney(currency: string | null | undefined, amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "—"
+  return `${currency ? `${currency} ` : ""}${amount}`
+}
 
 /** Short read-only label for the diagnostics contract state (distinct from the badge). */
 function contractStateLabel(state?: string): string | null {
@@ -50,6 +66,106 @@ function CategoryMark({ category }: { category: HotelSelection["category"] }) {
   )
 }
 
+/**
+ * HC-2: read-only hotel contract/rate summary drawer. Renders ONLY the safe curated
+ * payload from GET /quotes/:id/v2/items/:itemId/hotel-contract-summary — never a raw
+ * hotel/contract/rate object, raw JSON, ratePolicies, verificationNotes, supplier
+ * contact, notes, PII, booking, invoice, publicToken, or supplement amounts. The cost
+ * block renders purely on payload presence. No edit/apply/send/lifecycle actions.
+ */
+function HotelContractDrawer({
+  title,
+  summary,
+  loading,
+  error,
+  onClose,
+}: {
+  title: string
+  summary: HotelContractSummary | null
+  loading: boolean
+  error: string | null
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Hotel contract summary">
+      <button type="button" className="absolute inset-0 bg-black/30" aria-label="Close hotel contract summary" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-background shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">Contract &amp; rate — {title}</p>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="flex-1 px-4 py-3 text-xs">
+          {loading ? (
+            <p className="flex items-center gap-1.5 text-muted-foreground" role="status">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+              Loading contract summary…
+            </p>
+          ) : error ? (
+            <p className="flex items-center gap-1.5 text-destructive" role="alert">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          ) : summary ? (
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <div className="col-span-2"><dt className="text-muted-foreground">Hotel</dt><dd className="text-foreground">{hcOrDash(summary.hotel.name)}</dd></div>
+              <div><dt className="text-muted-foreground">City</dt><dd className="text-foreground">{hcOrDash(summary.hotel.city)}</dd></div>
+              <div><dt className="text-muted-foreground">Category</dt><dd className="text-foreground">{hcOrDash(summary.hotel.category)}</dd></div>
+              {summary.hotel.preferenceRank != null ? (
+                <div><dt className="text-muted-foreground">Preference rank</dt><dd className="text-foreground">{summary.hotel.preferenceRank}</dd></div>
+              ) : null}
+              <div className="col-span-2 mt-1 border-t border-border pt-2"><dt className="text-muted-foreground">Contract status</dt><dd className="text-foreground">{hcOrDash(summary.contract.status)}</dd></div>
+              {summary.contract.name ? (
+                <div className="col-span-2"><dt className="text-muted-foreground">Contract</dt><dd className="text-foreground">{summary.contract.name}</dd></div>
+              ) : null}
+              <div><dt className="text-muted-foreground">Valid from</dt><dd className="text-foreground">{hcDate(summary.contract.validFrom)}</dd></div>
+              <div><dt className="text-muted-foreground">Valid to</dt><dd className="text-foreground">{hcDate(summary.contract.validTo)}</dd></div>
+              <div><dt className="text-muted-foreground">Currency</dt><dd className="text-foreground">{hcOrDash(summary.contract.currency)}</dd></div>
+              <div><dt className="text-muted-foreground">Confidence</dt><dd className="text-foreground">{hcOrDash(summary.contract.confidence)}</dd></div>
+              <div><dt className="text-muted-foreground">Last verified</dt><dd className="text-foreground">{hcDate(summary.contract.lastVerifiedAt)}</dd></div>
+              <div className="col-span-2 mt-1 border-t border-border pt-2"><dt className="text-muted-foreground">Room category</dt><dd className="text-foreground">{hcOrDash(summary.room.categoryName)}</dd></div>
+              <div><dt className="text-muted-foreground">Meal plan</dt><dd className="text-foreground">{hcOrDash(summary.room.mealPlan)}</dd></div>
+              <div><dt className="text-muted-foreground">Occupancy</dt><dd className="text-foreground">{hcOrDash(summary.room.occupancyType)}</dd></div>
+              <div><dt className="text-muted-foreground">Season</dt><dd className="text-foreground">{hcOrDash(summary.room.seasonName)}</dd></div>
+              <div className="col-span-2 mt-1 border-t border-border pt-2"><dt className="text-muted-foreground">Cancellation policy</dt><dd className="text-foreground">{summary.policies.hasCancellationPolicy ? "Yes" : "No"}</dd></div>
+              <div><dt className="text-muted-foreground">Child policy</dt><dd className="text-foreground">{summary.policies.hasChildPolicy ? "Yes" : "No"}</dd></div>
+              <div><dt className="text-muted-foreground">Supplements</dt><dd className="text-foreground">{summary.policies.supplementsCount}</dd></div>
+              <div className="col-span-2"><dt className="text-muted-foreground">Meal plan codes</dt><dd className="text-foreground">{summary.policies.mealPlanCodes.length ? summary.policies.mealPlanCodes.join(", ") : "—"}</dd></div>
+              {summary.warnings.length > 0 ? (
+                <div className="col-span-2 mt-1 border-t border-border pt-2">
+                  <dt className="text-muted-foreground">Warnings</dt>
+                  <dd className="mt-0.5">
+                    <ul className="flex flex-wrap gap-1">
+                      {summary.warnings.map((w, i) => (
+                        <li key={i} className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          <AlertTriangle className="h-3 w-3" aria-hidden="true" />{w}
+                        </li>
+                      ))}
+                    </ul>
+                  </dd>
+                </div>
+              ) : null}
+              {summary.cost ? (
+                <div className="col-span-2 mt-1 border-t border-border pt-2">
+                  <dt className="text-muted-foreground">Cost (internal)</dt>
+                  <dd className="mt-0.5 flex flex-wrap gap-x-4 text-foreground">
+                    <span>Net: {hcMoney(summary.cost.costCurrency, summary.cost.baseCost)}</span>
+                    <span>Base: {hcMoney(summary.cost.costCurrency, summary.cost.costBaseAmount)}</span>
+                    <span>Sales tax: {summary.cost.salesTaxPercent != null ? `${summary.cost.salesTaxPercent}%` : "—"}</span>
+                    <span>Service: {summary.cost.serviceChargePercent != null ? `${summary.cost.serviceChargePercent}%` : "—"}</span>
+                    <span>Tourism fee: {hcMoney(summary.cost.tourismFeeCurrency, summary.cost.tourismFeeAmount)}</span>
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HotelOption({
   hotel,
   currency,
@@ -61,6 +177,7 @@ function HotelOption({
   hotelPreviewEnabled,
   onApplyItemPricing,
   hotelApplyEnabled,
+  onViewHotelContract,
 }: {
   hotel: HotelSelection
   currency: string
@@ -79,9 +196,35 @@ function HotelOption({
   onApplyItemPricing?: ApplyItemPricingHandler
   /** Hotel pricing apply is behind a separate flag (default OFF). */
   hotelApplyEnabled?: boolean
+  /** HC-2: fetch this line's safe contract/rate summary for the read-only drawer. */
+  onViewHotelContract?: ViewHotelContractHandler
 }) {
   const [showWhy, setShowWhy] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  // HC-2: read-only contract/rate drawer state.
+  const [contractOpen, setContractOpen] = useState(false)
+  const [contractSummary, setContractSummary] = useState<HotelContractSummary | null>(null)
+  const [contractLoading, setContractLoading] = useState(false)
+  const [contractError, setContractError] = useState<string | null>(null)
+  // "View contract/rate" is offered ONLY for a matched priced hotel line (stable
+  // pricedQuoteItemId). Ambiguous/unmatched rows have none → no button (they keep the
+  // existing "resolve in Classic" note).
+  const canViewContract = Boolean(onViewHotelContract && hotel.pricedQuoteItemId)
+  const handleViewContract = async () => {
+    if (!onViewHotelContract || !hotel.pricedQuoteItemId) return
+    setContractOpen(true)
+    setContractLoading(true)
+    setContractError(null)
+    setContractSummary(null)
+    try {
+      const res = await onViewHotelContract(hotel.pricedQuoteItemId)
+      setContractSummary(res)
+    } catch (e) {
+      setContractError(e instanceof Error ? e.message : "Could not load the contract summary.")
+    } finally {
+      setContractLoading(false)
+    }
+  }
   const diagnostics = hotel.diagnostics
   const reasons = diagnostics?.reasons ?? []
   const stateLabel = contractStateLabel(diagnostics?.contractState)
@@ -151,6 +294,19 @@ function HotelOption({
             {canApply ? "Preview & apply hotel pricing" : "Preview hotel pricing"}
           </Button>
         ) : null}
+        {/* HC-2: read-only "View contract/rate" — only for a matched priced hotel line. */}
+        {canViewContract ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleViewContract}
+            title="View this hotel line's contract & rate summary — read-only"
+          >
+            <Eye className="size-3.5" aria-hidden="true" />
+            View contract/rate
+          </Button>
+        ) : null}
         {hotel.selected ? (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -199,6 +355,21 @@ function HotelOption({
           onApply={canApply ? onApplyItemPricing : undefined}
           applyEnabled={canApply}
           applyLabel="Apply hotel price"
+        />
+      ) : null}
+
+      {/* HC-2: read-only contract/rate summary drawer. */}
+      {contractOpen ? (
+        <HotelContractDrawer
+          title={`${hotel.name} — ${hotel.city}`}
+          summary={contractSummary}
+          loading={contractLoading}
+          error={contractError}
+          onClose={() => {
+            setContractOpen(false)
+            setContractSummary(null)
+            setContractError(null)
+          }}
         />
       ) : null}
 
@@ -262,6 +433,12 @@ export interface HotelsStepProps {
    * When false, hotels stay preview-only — no apply control is ever shown.
    */
   hotelApplyEnabled?: boolean
+  /**
+   * HC-2: fetch a priced hotel line's SAFE contract/rate summary for the read-only
+   * "View contract/rate" drawer. When omitted, no View button is shown. Only rows
+   * with a matched pricedQuoteItemId expose the button. Read-only; never edits.
+   */
+  onViewHotelContract?: ViewHotelContractHandler
 }
 
 /**
@@ -279,7 +456,7 @@ function eligibleOptionSetIds(block: HotelCityBlock): Set<string> {
   return eligible
 }
 
-export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPreviewItem, hotelPreviewEnabled, onApplyItemPricing, hotelApplyEnabled }: HotelsStepProps) {
+export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPreviewItem, hotelPreviewEnabled, onApplyItemPricing, hotelApplyEnabled, onViewHotelContract }: HotelsStepProps) {
   const canEdit = Boolean(onSetPrimary)
   // Only claim "Set primary only" when at least one city actually exposes a
   // "Set as primary" action (2+ editable real options in the same set). Fallback
@@ -404,6 +581,7 @@ export function HotelsStep({ cities, currency, onSetPrimary, classicHref, onPrev
                           hotelPreviewEnabled={hotelPreviewEnabled}
                           onApplyItemPricing={onApplyItemPricing}
                           hotelApplyEnabled={hotelApplyEnabled}
+                          onViewHotelContract={onViewHotelContract}
                         />
                         {error && error.id === hotel.id ? (
                           <p
