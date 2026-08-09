@@ -31,7 +31,7 @@ import {
   getReadiness,
 } from "../../../lib/quote-helpers"
 import { buildV2ReadinessAudit } from "../../../lib/quote-v2-readiness"
-import type { Quote, StepId, VersionReadiness } from "../../../lib/quote-types"
+import type { Quote, StepId, VersionReadiness, SavedVersionSummary } from "../../../lib/quote-types"
 
 export interface QuoteBuilderV2Props {
   /** The quote to render. When omitted (and not loading), the empty state shows. */
@@ -56,6 +56,12 @@ export interface QuoteBuilderV2Props {
   versionReadinessLoading?: boolean
   /** Non-blocking error from the last version-readiness fetch. */
   versionReadinessError?: string | null
+  /** VV-3 Slice 1: read-only saved-versions metadata list (no snapshotJson). */
+  savedVersions?: SavedVersionSummary[]
+  /** True while the saved-versions list fetch is in flight. */
+  savedVersionsLoading?: boolean
+  /** Non-blocking error from the last saved-versions fetch. */
+  savedVersionsError?: string | null
   /** Download the client-facing proposal PDF in the given language. */
   onDownloadPdf?: (quote: Quote, language: string) => void | Promise<void>
   /** Open the client-facing proposal preview (HTML) in the given language. */
@@ -250,6 +256,9 @@ export function QuoteBuilderV2({
   versionReadiness = null,
   versionReadinessLoading = false,
   versionReadinessError = null,
+  savedVersions = [],
+  savedVersionsLoading = false,
+  savedVersionsError = null,
   onDownloadPdf,
   onPreview,
   onSetPrimaryHotel,
@@ -491,6 +500,9 @@ export function QuoteBuilderV2({
             versionReadiness={versionReadiness}
             versionReadinessLoading={versionReadinessLoading}
             versionReadinessError={versionReadinessError}
+            savedVersions={savedVersions}
+            savedVersionsLoading={savedVersionsLoading}
+            savedVersionsError={savedVersionsError}
             onNavigate={setCurrent}
             itineraryDays={quote.itinerary}
             publicToken={quote.meta.publicToken}

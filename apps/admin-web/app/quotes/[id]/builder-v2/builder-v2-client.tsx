@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
-import type { PricingApplyAuditEntry, Quote, VersionReadiness } from "../../../../lib/quote-types"
+import type { PricingApplyAuditEntry, Quote, VersionReadiness, SavedVersionSummary } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
@@ -227,6 +227,48 @@ export function BuilderV2Client({
     void refreshVersionReadiness()
   }, [refreshVersionReadiness])
 
+  // VV-3 Slice 1: read-only "Saved versions" metadata list. Uses the hardened
+  // GET /api/quotes/:id/versions list route (metadata only — never the raw detail
+  // endpoint, never snapshotJson). Fetched on load (only when the Save-version
+  // affordance is available, matching the backend role gate) and refreshed after a
+  // successful Save version. Read-only; no lifecycle side effects.
+  const [savedVersions, setSavedVersions] = useState<SavedVersionSummary[]>([])
+  const [savedVersionsLoading, setSavedVersionsLoading] = useState(false)
+  const [savedVersionsError, setSavedVersionsError] = useState<string | null>(null)
+
+  const refreshSavedVersions = useCallback(async () => {
+    if (!quote?.id || !canSaveVersion) return
+    setSavedVersionsLoading(true)
+    setSavedVersionsError(null)
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}/versions`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      })
+      if (!res.ok) throw new Error(`saved_versions_failed_${res.status}`)
+      const data = (await res.json()) as unknown
+      // Defensive: map to METADATA ONLY (never surface snapshotJson even if present).
+      const rows: SavedVersionSummary[] = Array.isArray(data)
+        ? data.map((r: any) => ({
+            id: String(r?.id ?? ""),
+            versionNumber: typeof r?.versionNumber === "number" ? r.versionNumber : 0,
+            label: typeof r?.label === "string" ? r.label : null,
+            createdAt: typeof r?.createdAt === "string" ? r.createdAt : null,
+          }))
+        : []
+      setSavedVersions(rows)
+    } catch {
+      setSavedVersionsError("Could not load saved versions.")
+    } finally {
+      setSavedVersionsLoading(false)
+    }
+  }, [quote?.id, canSaveVersion])
+
+  useEffect(() => {
+    void refreshSavedVersions()
+  }, [refreshSavedVersions])
+
   // PHASE B: replace with your "save draft" server action / API call.
   const handleSave = async (q: Quote) => {
     console.log("[v0] save draft (stub)", q.id)
@@ -282,9 +324,11 @@ export function BuilderV2Client({
       const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
       throw new Error(message?.slice(0, 300) || `Could not save the proposal version (${res.status}).`)
     }
-    // VV-2: refresh the readiness advisory after a successful save (fire-and-forget
-    // so the caller still gets the version number promptly). Only runs on success.
+    // VV-2/VV-3: refresh the readiness advisory + the saved-versions list after a
+    // successful save (fire-and-forget so the caller still gets the version number
+    // promptly). Only runs on success.
     void refreshVersionReadiness()
+    void refreshSavedVersions()
     return { versionNumber: typeof parsed?.versionNumber === "number" ? parsed.versionNumber : null }
   }
 
@@ -815,6 +859,9 @@ export function BuilderV2Client({
       versionReadiness={versionReadiness}
       versionReadinessLoading={versionReadinessLoading}
       versionReadinessError={versionReadinessError}
+      savedVersions={savedVersions}
+      savedVersionsLoading={savedVersionsLoading}
+      savedVersionsError={savedVersionsError}
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}

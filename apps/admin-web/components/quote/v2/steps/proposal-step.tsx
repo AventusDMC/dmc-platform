@@ -17,10 +17,19 @@ import type {
   ProposalContent,
   ProposalReadinessItem,
   VersionReadiness,
+  SavedVersionSummary,
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
 import { Check, X, FileText, Download, Send, AlertTriangle, ArrowRight, Loader2, Link2, Copy, Info, ExternalLink, Mail, Save } from "lucide-react"
+
+/** VV-3 Slice 1: format a saved-version createdAt for display. Defensive — returns
+ *  the raw string if it isn't a parseable date. Metadata only. */
+function formatSavedVersionDate(value: string): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+}
 
 export interface ProposalStepProps {
   meta: QuoteMeta
@@ -59,6 +68,13 @@ export interface ProposalStepProps {
   versionReadiness?: VersionReadiness | null
   versionReadinessLoading?: boolean
   versionReadinessError?: string | null
+  /**
+   * VV-3 Slice 1: read-only saved-versions metadata list (versionNumber / label /
+   * createdAt). Display only — no snapshotJson, no cost/PII, no lifecycle actions.
+   */
+  savedVersions?: SavedVersionSummary[]
+  savedVersionsLoading?: boolean
+  savedVersionsError?: string | null
   /** Current public-link state (display-only seed for the Share section). */
   publicToken?: string | null
   publicEnabled?: boolean
@@ -114,6 +130,9 @@ export function ProposalStep({
   versionReadiness = null,
   versionReadinessLoading = false,
   versionReadinessError = null,
+  savedVersions = [],
+  savedVersionsLoading = false,
+  savedVersionsError = null,
   publicToken,
   publicEnabled = false,
   onEnablePublicLink,
@@ -437,6 +456,41 @@ export function ProposalStep({
           <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {versionReadinessError}
         </p>
+      ) : null}
+
+      {/* VV-3 Slice 1: read-only "Saved versions" metadata list. Uses the hardened
+          GET /quotes/:id/versions list route (metadata only). Shows versionNumber /
+          label / createdAt, newest-first as returned. NO snapshotJson, no cost/PII,
+          no restore/rollback/set-accepted/send — display only. */}
+      {canSaveVersion ? (
+        <div className="mb-4 rounded-md border border-border bg-muted/30 px-4 py-3" role="region" aria-label="Saved versions">
+          <p className="mb-2 text-xs font-medium text-foreground">Saved versions</p>
+          {savedVersionsLoading && savedVersions.length === 0 ? (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+              Loading saved versions…
+            </p>
+          ) : savedVersionsError ? (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {savedVersionsError}
+            </p>
+          ) : savedVersions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No saved versions yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {savedVersions.map((v) => (
+                <li key={v.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+                  <span className="font-medium text-foreground">Version {v.versionNumber}</span>
+                  {v.label ? <span className="text-muted-foreground">— {v.label}</span> : null}
+                  {v.createdAt ? (
+                    <span className="text-muted-foreground">· saved {formatSavedVersionDate(v.createdAt)}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : null}
 
       {/* Clarify what "Mark as Sent" does — it is a status-only change. READY

@@ -349,6 +349,19 @@ export interface VersionReadiness {
   reasons: string[]
 }
 
+/**
+ * VV-3 Slice 1: one row of the read-only "Saved versions" metadata list
+ * (from the hardened GET /quotes/:id/versions list route). METADATA ONLY —
+ * intentionally NO snapshotJson, no cost/margin, no PII. Matches the backend
+ * list projection.
+ */
+export interface SavedVersionSummary {
+  id: string
+  versionNumber: number
+  label: string | null
+  createdAt: string | null
+}
+
 /** High-level descriptive metadata for the quote. */
 export interface QuoteMeta {
   title: string
