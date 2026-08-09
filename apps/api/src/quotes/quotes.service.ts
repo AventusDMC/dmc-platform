@@ -6833,6 +6833,143 @@ export class QuotesService {
     return summary;
   }
 
+  /**
+   * HC-1: safe, read-only, WHITELIST-CURATED hotel contract/rate summary for ONE
+   * priced hotel QuoteItem (anchored on the item's direct hotel / contract /
+   * roomCategory relations). NEVER spreads or returns raw Hotel/HotelContract/
+   * HotelRate/HotelRoomCategory/QuoteItem/Supplier rows, `ratePolicies`,
+   * `verificationNotes`, supplier contact, audit logs, or PII. Money is exposed ONLY
+   * in the optional `cost` block, gated by {@link canActorViewCost}
+   * (admin/super_admin/finance) — omitted entirely (never zeroed/null) for everyone
+   * else, and NO public rate amount is surfaced to non-finance roles. Performs NO
+   * writes. Returns null when the item does not exist, belongs to another quote, or
+   * is not a hotel line (→ controller 404).
+   */
+  async getHotelContractSummary(quoteId: string, itemId: string, actor?: CompanyScopedActor) {
+    const item = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        quoteId,
+      },
+      select: {
+        id: true,
+        quoteId: true,
+        hotelId: true,
+        contractId: true,
+        mealPlan: true,
+        occupancyType: true,
+        seasonName: true,
+        baseCost: true,
+        costBaseAmount: true,
+        costCurrency: true,
+        salesTaxPercent: true,
+        serviceChargePercent: true,
+        tourismFeeAmount: true,
+        tourismFeeCurrency: true,
+        hotel: { select: { name: true, city: true, category: true, preferenceRank: true } },
+        roomCategory: { select: { name: true } },
+        contract: {
+          select: {
+            name: true,
+            validFrom: true,
+            validTo: true,
+            currency: true,
+            confidence: true,
+            lastVerifiedAt: true,
+            cancellationPolicy: { select: { id: true } },
+            childPolicy: { select: { id: true } },
+            mealPlans: { select: { code: true, isActive: true } },
+            _count: { select: { supplements: true } },
+          },
+        },
+      },
+    });
+
+    // Missing item, cross-quote item, or non-hotel line → 404 (null to the controller).
+    if (!item || !item.hotelId) {
+      return null;
+    }
+
+    const contract = item.contract;
+
+    const summary: Record<string, unknown> = {
+      itemId: item.id,
+      quoteId: item.quoteId,
+      hotel: {
+        name: item.hotel?.name ?? null,
+        city: item.hotel?.city ?? null,
+        category: item.hotel?.category ?? null,
+        preferenceRank: item.hotel?.preferenceRank ?? null,
+      },
+      contract: {
+        status: item.contractId ? 'contracted' : 'on-request',
+        name: contract?.name ?? null,
+        validFrom: contract?.validFrom ?? null,
+        validTo: contract?.validTo ?? null,
+        currency: contract?.currency ?? null,
+        confidence: contract?.confidence ?? null,
+        lastVerifiedAt: contract?.lastVerifiedAt ?? null,
+      },
+      room: {
+        categoryName: item.roomCategory?.name ?? null,
+        mealPlan: item.mealPlan ?? null,
+        occupancyType: item.occupancyType ?? null,
+        seasonName: item.seasonName ?? null,
+      },
+      policies: {
+        hasCancellationPolicy: Boolean(contract?.cancellationPolicy),
+        hasChildPolicy: Boolean(contract?.childPolicy),
+        supplementsCount: contract?._count?.supplements ?? 0,
+        mealPlanCodes: (contract?.mealPlans ?? [])
+          .filter((m) => m.isActive !== false)
+          .map((m) => m.code),
+      },
+      warnings: this.buildHotelContractWarnings(contract),
+    };
+
+    // Money ONLY for cost-visible roles; omitted entirely otherwise (never zeroed/null).
+    if (this.canActorViewCost(actor)) {
+      summary.cost = {
+        baseCost: item.baseCost ?? null,
+        costBaseAmount: item.costBaseAmount ?? null,
+        costCurrency: item.costCurrency ?? null,
+        salesTaxPercent: item.salesTaxPercent ?? null,
+        serviceChargePercent: item.serviceChargePercent ?? null,
+        tourismFeeAmount: item.tourismFeeAmount ?? null,
+        tourismFeeCurrency: item.tourismFeeCurrency ?? null,
+      };
+    }
+
+    return summary;
+  }
+
+  /**
+   * HC-1: safe, code-only contract warnings. Reuses the Catalog V2 warning
+   * vocabulary (EXPIRED_CONTRACT / EXPIRING_SOON / UNVERIFIED_HOTEL_CONTRACT) via a
+   * small local helper — no internal notes are ever surfaced as warnings.
+   */
+  private buildHotelContractWarnings(
+    contract: { validTo?: Date | null; confidence?: string | null } | null | undefined,
+  ): string[] {
+    const warnings: string[] = [];
+    if (!contract) {
+      return warnings;
+    }
+    const validTo = contract.validTo ? new Date(contract.validTo).getTime() : null;
+    if (validTo != null) {
+      const now = Date.now();
+      if (validTo < now) {
+        warnings.push('EXPIRED_CONTRACT');
+      } else if (validTo - now <= 30 * 24 * 60 * 60 * 1000) {
+        warnings.push('EXPIRING_SOON');
+      }
+    }
+    if (contract.confidence && contract.confidence !== 'VERIFIED') {
+      warnings.push('UNVERIFIED_HOTEL_CONTRACT');
+    }
+    return warnings;
+  }
+
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
     const hasExternalPackageFields = Boolean(data.packageName || data.country || data.netCost !== undefined);
     const hasSyntheticExternalPackageServiceId = Boolean(
