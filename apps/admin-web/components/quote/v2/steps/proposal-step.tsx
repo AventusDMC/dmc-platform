@@ -16,6 +16,7 @@ import type {
   PricingBreakdown,
   ProposalContent,
   ProposalReadinessItem,
+  VersionReadiness,
   ItineraryDay,
   StepId,
 } from "../../../../lib/quote-types"
@@ -50,6 +51,14 @@ export interface ProposalStepProps {
   onSaveVersion?: (label?: string) => Promise<{ versionNumber?: number | null }>
   /** Whether the Save-proposal-version affordance is available (role + editable status). */
   canSaveVersion?: boolean
+  /**
+   * VV-2: read-only version-readiness for the non-blocking advisory. Warns when the
+   * quote has no saved version, or none that would pass the same completeness rule
+   * Accept enforces. NEVER disables Mark-as-Sent; advisory only.
+   */
+  versionReadiness?: VersionReadiness | null
+  versionReadinessLoading?: boolean
+  versionReadinessError?: string | null
   /** Current public-link state (display-only seed for the Share section). */
   publicToken?: string | null
   publicEnabled?: boolean
@@ -102,6 +111,9 @@ export function ProposalStep({
   onSend,
   onSaveVersion,
   canSaveVersion = false,
+  versionReadiness = null,
+  versionReadinessLoading = false,
+  versionReadinessError = null,
   publicToken,
   publicEnabled = false,
   onEnablePublicLink,
@@ -370,6 +382,60 @@ export function ProposalStep({
         <p className="mb-2 flex items-center gap-1.5 text-xs text-destructive" role="alert">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {versionError}
+        </p>
+      ) : null}
+
+      {/* VV-2: non-blocking version-readiness advisory. Warns when the quote has no
+          saved proposal version, or none that would pass the SAME completeness rule
+          Accept enforces (backend GET /quotes/:id/version-readiness). It NEVER
+          disables Mark-as-Sent — the Send button above is unaffected. "Save a version
+          now" reuses the VV-1 save handler; readiness re-fetches after a save. */}
+      {canSaveVersion && versionReadiness ? (
+        versionReadiness.acceptWillSucceed ? (
+          <p className="mb-4 flex items-center gap-1.5 text-xs text-emerald-600" role="status">
+            <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            A saved proposal version is ready for the client to Accept
+            {versionReadiness.latestVersionComplete && versionReadiness.latestVersionNumber != null
+              ? ` (version ${versionReadiness.latestVersionNumber})`
+              : ""}
+            .
+          </p>
+        ) : (
+          <div
+            className="mb-4 flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 sm:flex-row sm:items-start sm:justify-between dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+            role="note"
+          >
+            <div className="flex items-start gap-2 text-xs">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                {!versionReadiness.hasSavedVersion
+                  ? "This quote has no saved proposal version. The client will not be able to Accept until one is saved."
+                  : "Saved versions do not yet pass completeness. Accept may fail until a complete version is saved."}
+              </span>
+            </div>
+            {onSaveVersion ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSaveVersion}
+                disabled={savingVersion}
+                className="shrink-0"
+              >
+                {savingVersion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {savingVersion ? "Saving…" : "Save a version now"}
+              </Button>
+            ) : null}
+          </div>
+        )
+      ) : canSaveVersion && versionReadinessLoading ? (
+        <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          Checking version readiness…
+        </p>
+      ) : canSaveVersion && versionReadinessError ? (
+        <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {versionReadinessError}
         </p>
       ) : null}
 

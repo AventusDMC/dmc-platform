@@ -334,6 +334,21 @@ export interface ProposalReadinessItem {
   step: StepId
 }
 
+/**
+ * VV-2: read-only proposal version-readiness (from GET /quotes/:id/version-readiness).
+ * Advisory-only — reports whether a saved version would satisfy the SAME completeness
+ * rule Accept enforces. Never carries snapshotJson or cost/margin fields.
+ */
+export interface VersionReadiness {
+  versionCount: number
+  hasSavedVersion: boolean
+  hasCompleteVersion: boolean
+  latestVersionNumber: number | null
+  latestVersionComplete: boolean
+  acceptWillSucceed: boolean
+  reasons: string[]
+}
+
 /** High-level descriptive metadata for the quote. */
 export interface QuoteMeta {
   title: string

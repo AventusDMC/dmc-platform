@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, X } from "lucide-react"
 import { QuoteBuilderV2 } from "../../../../components/quote/v2/quote-builder-v2"
-import type { PricingApplyAuditEntry, Quote } from "../../../../lib/quote-types"
+import type { PricingApplyAuditEntry, Quote, VersionReadiness } from "../../../../lib/quote-types"
 import { getDefaultProposalPreviewHref, getDefaultProposalPdfHref } from "../proposal-paths"
 
 /**
@@ -193,6 +193,40 @@ export function BuilderV2Client({
   // else on screen changes.
   const [applyToast, setApplyToast] = useState<{ text: string } | null>(null)
 
+  // VV-2 Slice B: read-only version-readiness advisory state. Fetched from the
+  // GET /api/quotes/:id/version-readiness proxy (backend PR #795) on load and after
+  // a successful Save version. Advisory only — it NEVER blocks Mark-as-Sent and has
+  // no lifecycle/financial effect. Only fetched when the Save-version affordance is
+  // available (same role/status gate the backend enforces), to avoid noisy 403s.
+  const [versionReadiness, setVersionReadiness] = useState<VersionReadiness | null>(null)
+  const [versionReadinessLoading, setVersionReadinessLoading] = useState(false)
+  const [versionReadinessError, setVersionReadinessError] = useState<string | null>(null)
+
+  const refreshVersionReadiness = useCallback(async () => {
+    if (!quote?.id || !canSaveVersion) return
+    setVersionReadinessLoading(true)
+    setVersionReadinessError(null)
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}/version-readiness`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      })
+      if (!res.ok) throw new Error(`version_readiness_failed_${res.status}`)
+      const data = (await res.json()) as VersionReadiness
+      setVersionReadiness(data)
+    } catch {
+      // Non-blocking: the advisory simply won't render. Mark-as-Sent is unaffected.
+      setVersionReadinessError("Could not check version readiness.")
+    } finally {
+      setVersionReadinessLoading(false)
+    }
+  }, [quote?.id, canSaveVersion])
+
+  useEffect(() => {
+    void refreshVersionReadiness()
+  }, [refreshVersionReadiness])
+
   // PHASE B: replace with your "save draft" server action / API call.
   const handleSave = async (q: Quote) => {
     console.log("[v0] save draft (stub)", q.id)
@@ -248,6 +282,9 @@ export function BuilderV2Client({
       const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
       throw new Error(message?.slice(0, 300) || `Could not save the proposal version (${res.status}).`)
     }
+    // VV-2: refresh the readiness advisory after a successful save (fire-and-forget
+    // so the caller still gets the version number promptly). Only runs on success.
+    void refreshVersionReadiness()
     return { versionNumber: typeof parsed?.versionNumber === "number" ? parsed.versionNumber : null }
   }
 
@@ -775,6 +812,9 @@ export function BuilderV2Client({
       onSend={handleSend}
       onSaveVersion={canSaveVersion ? (label?: string) => handleSaveVersion(quote!, label) : undefined}
       canSaveVersion={canSaveVersion}
+      versionReadiness={versionReadiness}
+      versionReadinessLoading={versionReadinessLoading}
+      versionReadinessError={versionReadinessError}
       onDownloadPdf={handleDownloadPdf}
       onPreview={handlePreview}
       onSetPrimaryHotel={handleSetPrimaryHotel}
