@@ -31,6 +31,7 @@ import {
   type StatusVariant,
 } from './ops-status-map';
 import { isPreviewableVoucherStatus } from './ops-voucher-preview-vm';
+import { serviceTypeLabel } from './ops-service-type-display';
 
 /** Raw operations-grid response (structural subset we read). */
 export type RawOperationsGrid = {
@@ -47,6 +48,14 @@ export type RawGridRow = OpsGridRow & {
   dayTitle?: string | null;
   /** operationStatus, surfaced as the row's "Status" badge. */
   status?: string | null;
+  // Ops-DG-1: already present in the operations-grid payload — allowlisted, display-safe
+  // operational fields (never cost/sell/payable/PII). `driverPhone` and any contact
+  // field are deliberately NOT read here.
+  mealPlan?: string | null;
+  nights?: number | null;
+  pickupLocation?: string | null;
+  dropoffLocation?: string | null;
+  operationalTime?: string | null;
 };
 
 /** Booking-detail subset used only for the rooming badge + status pill. */
@@ -61,6 +70,14 @@ export type BadgeVM = { label: string; variant: StatusVariant };
 export type OpsRowVM = {
   id: string;
   serviceType: string;
+  /** Ops-DG-1: curated friendly label for the serviceType/operationType. */
+  typeLabel: string;
+  /**
+   * Ops-DG-1: short, display-safe secondary detail derived ONLY from allowlisted
+   * operational fields already in the payload (mealPlan/nights/pickup/dropoff/time).
+   * Null when there is nothing safe to show. Never cost/PII.
+   */
+  detail: string | null;
   description: string;
   dayLabel: string | null;
   supplierLabel: string | null;
@@ -173,6 +190,29 @@ function voucherEligibility(
   return { canGenerateVoucher: reason === null, voucherIneligibleReason: reason };
 }
 
+/**
+ * Ops-DG-1: build a short, display-safe secondary detail string from allowlisted
+ * operational fields already in the grid payload. Reads ONLY mealPlan/nights/
+ * pickupLocation/operationalTime/dropoffLocation — never cost/sell/payable/PII/
+ * driverPhone. Empty parts are dropped cleanly; returns null when nothing safe exists
+ * (never "undefined"/"null").
+ */
+function buildRowDetail(row: RawGridRow): string | null {
+  const parts: string[] = [];
+  const meal = typeof row.mealPlan === 'string' ? row.mealPlan.trim() : '';
+  if (meal) parts.push(meal);
+  if (typeof row.nights === 'number' && Number.isFinite(row.nights) && row.nights > 0) {
+    parts.push(`${row.nights} night${row.nights === 1 ? '' : 's'}`);
+  }
+  const pickup = typeof row.pickupLocation === 'string' ? row.pickupLocation.trim() : '';
+  if (pickup) parts.push(pickup);
+  const time = typeof row.operationalTime === 'string' ? row.operationalTime.trim() : '';
+  if (time) parts.push(time);
+  const dropoff = typeof row.dropoffLocation === 'string' ? row.dropoffLocation.trim() : '';
+  if (dropoff) parts.push(`→ ${dropoff}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 function mapRow(row: RawGridRow): OpsRowVM {
   const { readiness, severity, reasons } = getRowReadiness(row);
   const confirmation = row.supplierConfirmationStatus || 'NOT_SENT';
@@ -187,6 +227,8 @@ function mapRow(row: RawGridRow): OpsRowVM {
   return {
     id: row.id,
     serviceType: String(row.serviceType || 'SERVICE'),
+    typeLabel: serviceTypeLabel(row.serviceType),
+    detail: buildRowDetail(row),
     description: row.description || humanizeStatus(row.serviceType) || 'Service',
     dayLabel: dayLabel(row),
     supplierLabel: row.assignedSupplierName || row.supplierName || null,
