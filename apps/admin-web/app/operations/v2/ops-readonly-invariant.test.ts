@@ -38,11 +38,29 @@ const VOUCHER_GENERATE_ALLOWLIST = new Set(['voucher-generate-control.tsx', 'ops
 // mutation. Its control legitimately contains the ONE typed-SEND <input> (the blanket
 // ban forbids <input>), so it is allowlisted and held to the narrower VOUCHER_SEND_FORBIDDEN.
 const VOUCHER_SEND_ALLOWLIST = new Set(['voucher-send-control.tsx', 'ops-voucher-send-request.ts']);
+// Ops V2 passenger editing (flag-gated, shipped a907d064): passenger CRUD via the V2
+// proxy /api/bookings/:id/v2/passengers. The editor control legitimately contains form
+// inputs and the request builder issues POST/PATCH/DELETE — both tripped by the blanket
+// ban — so the two files are allowlisted and held to the narrower PASSENGER_FORBIDDEN
+// (must stay within /v2/passengers; no other surface / send / document / finance).
+const PASSENGER_ALLOWLIST = new Set(['passenger-editor.tsx', 'ops-passenger-request.ts']);
+// Ops V2 rooming editing (flag-gated, shipped 35a7ab56): rooming CRUD via the V2 proxy
+// /api/bookings/:id/v2/rooming. Same shape as passengers (inputs + a status <select> +
+// POST/PATCH/DELETE); held to the narrower ROOMING_FORBIDDEN.
+const ROOMING_ALLOWLIST = new Set(['rooming-editor.tsx', 'ops-rooming-request.ts']);
+// Supplier Voucher Packet V2 (S6, shipped 8c587be3): regenerate a STALE generated packet
+// in place via a NO-BODY POST to .../voucher-packets/:packetId/regenerate. It rebuilds the
+// packet snapshot/items/contentHash in place — no supplier-send/allowlist action, no status
+// transition, no document/finance. Held to VOUCHER_PACKET_REGENERATE_FORBIDDEN.
+const VOUCHER_PACKET_REGENERATE_ALLOWLIST = new Set(['voucher-packet-regenerate-control.tsx']);
 const MUTATION_ALLOWLIST = new Set([
   ...ASSIGN_ALLOWLIST,
   ...CONFIRM_ALLOWLIST,
   ...VOUCHER_GENERATE_ALLOWLIST,
   ...VOUCHER_SEND_ALLOWLIST,
+  ...PASSENGER_ALLOWLIST,
+  ...ROOMING_ALLOWLIST,
+  ...VOUCHER_PACKET_REGENERATE_ALLOWLIST,
 ]);
 
 // Phase 2D voucher preview is READ-ONLY (a GET). It is NOT a mutation — it stays
@@ -298,6 +316,106 @@ const VOUCHER_SEND_FORBIDDEN: Array<{ pattern: string; why: string }> = [
   { pattern: 'name="to"', why: 'no client recipient input' },
 ];
 
+// Narrower ban for the passenger-editing surface. Passenger edit inputs + the
+// sanctioned /v2/passengers POST/PATCH/DELETE ARE permitted; everything that could
+// leave the passengers scope — any OTHER surface's endpoint, send/email, document
+// download/print/export, status transitions, finance, dispatch, or a form submit —
+// stays forbidden.
+const PASSENGER_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<select', why: 'no select in the passenger editor' },
+  { pattern: '<textarea', why: 'no free-text textarea' },
+  { pattern: 'method="POST"', why: 'no POST form (use the gated fetch)' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob download' },
+  { pattern: 'download=', why: 'no download' },
+  { pattern: '.pdf', why: 'no PDF' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: '/send', why: 'no send/email' },
+  { pattern: 'send-document-email', why: 'no document email' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: 'assign-transport', why: 'no transport-resource assignment' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send/preview' },
+  { pattern: '/voucher', why: 'no voucher endpoints' },
+  { pattern: 'voucher-packets', why: 'no voucher-packet endpoints' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/operational', why: 'no operational-timing PATCH' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+];
+
+// Narrower ban for the rooming-editing surface — identical scope to passengers, but a
+// status <select> IS permitted (the rooming picker). Must stay within /v2/rooming.
+const ROOMING_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<textarea', why: 'no free-text textarea' },
+  { pattern: 'method="POST"', why: 'no POST form (use the gated fetch)' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob download' },
+  { pattern: 'download=', why: 'no download' },
+  { pattern: '.pdf', why: 'no PDF' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: '/send', why: 'no send/email' },
+  { pattern: 'send-document-email', why: 'no document email' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: 'assign-transport', why: 'no transport-resource assignment' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send/preview' },
+  { pattern: '/voucher', why: 'no voucher endpoints' },
+  { pattern: 'voucher-packets', why: 'no voucher-packet endpoints' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/operational', why: 'no operational-timing PATCH' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+];
+
+// Narrower ban for the voucher-packet REGENERATE surface. Only the no-body POST to
+// .../voucher-packets/:id/regenerate is permitted; it has no form controls, no other
+// method, no download/print/export, no send/status transition, no other-surface
+// endpoint, and no finance/dispatch.
+const VOUCHER_PACKET_REGENERATE_FORBIDDEN: Array<{ pattern: string; why: string }> = [
+  { pattern: '<form', why: 'no HTML form submit (use the gated fetch only)' },
+  { pattern: '<input', why: 'no free-text input (regenerate takes no body)' },
+  { pattern: '<select', why: 'no select' },
+  { pattern: '<textarea', why: 'no free-text textarea' },
+  { pattern: "method: 'PATCH'", why: 'regenerate is POST-only' },
+  { pattern: "method: 'PUT'", why: 'regenerate is POST-only' },
+  { pattern: "method: 'DELETE'", why: 'regenerate is POST-only' },
+  { pattern: 'method="POST"', why: 'no POST form (use the gated fetch)' },
+  { pattern: 'action="/api', why: 'no form posting to the API' },
+  { pattern: 'window.print', why: 'no print' },
+  { pattern: 'createObjectURL', why: 'no blob download' },
+  { pattern: 'download=', why: 'no download' },
+  { pattern: '.pdf', why: 'no PDF' },
+  { pattern: '/export', why: 'no export' },
+  { pattern: '/send', why: 'no send/email — regenerate never sends' },
+  { pattern: 'send-document-email', why: 'no document email' },
+  { pattern: 'supplier-confirmation', why: 'no supplier-confirmation send' },
+  { pattern: 'assign-supplier', why: 'Phase 2A endpoint — not this surface' },
+  { pattern: '/confirmation', why: 'Phase 2B endpoint — not this surface' },
+  { pattern: 'voucher/generate', why: 'Phase 2C endpoint — not this surface' },
+  { pattern: '/vouchers/', why: 'no direct /vouchers/:id routes' },
+  { pattern: '/status', why: 'no status transition (regenerate keeps the packet status)' },
+  { pattern: '/invoices', why: 'no finance/invoice endpoints' },
+  { pattern: '/payments', why: 'no payment endpoints' },
+  { pattern: '/reconciliation', why: 'no reconciliation endpoints' },
+  { pattern: '/dispatch', why: 'no dispatch action' },
+  { pattern: '/start', why: 'no start action' },
+  { pattern: '/complete', why: 'no complete action' },
+  { pattern: '/issue', why: 'no issue action' },
+];
+
 function scan(files: string[], forbidden: typeof FORBIDDEN): string[] {
   const violations: string[] = [];
   for (const file of files) {
@@ -405,8 +523,39 @@ describe('Booking Operations V2 — read-only invariant', () => {
     assert.deepEqual(scan(sendFiles, VOUCHER_SEND_FORBIDDEN), [], 'send surface exceeded its scope');
   });
 
-  it('the mutation allowlist is exactly the four sanctioned mutations (preview + download excluded)', () => {
-    assert.equal(MUTATION_ALLOWLIST.size, 8, 'exactly four mutation surfaces × 2 files');
+  it('the passenger-editing surface is limited to the sanctioned /v2/passengers CRUD', () => {
+    const files = all.filter((f) => PASSENGER_ALLOWLIST.has(path.basename(f)));
+    assert.equal(files.length, PASSENGER_ALLOWLIST.size, 'passenger files not found');
+    const combined = files.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('/v2/passengers'), 'passenger surface must target the v2 passengers proxy');
+    assert.ok(!combined.includes('assign-supplier'), 'passenger surface must not touch assignment');
+    assert.ok(!combined.includes('/voucher'), 'passenger surface must not touch vouchers');
+    assert.deepEqual(scan(files, PASSENGER_FORBIDDEN), [], 'passenger surface exceeded its scope');
+  });
+
+  it('the rooming-editing surface is limited to the sanctioned /v2/rooming CRUD', () => {
+    const files = all.filter((f) => ROOMING_ALLOWLIST.has(path.basename(f)));
+    assert.equal(files.length, ROOMING_ALLOWLIST.size, 'rooming files not found');
+    const combined = files.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('/v2/rooming'), 'rooming surface must target the v2 rooming proxy');
+    assert.ok(!combined.includes('assign-supplier'), 'rooming surface must not touch assignment');
+    assert.ok(!combined.includes('/voucher'), 'rooming surface must not touch vouchers');
+    assert.deepEqual(scan(files, ROOMING_FORBIDDEN), [], 'rooming surface exceeded its scope');
+  });
+
+  it('the voucher-packet-regenerate surface is a no-body POST to voucher-packets/:id/regenerate only', () => {
+    const files = all.filter((f) => VOUCHER_PACKET_REGENERATE_ALLOWLIST.has(path.basename(f)));
+    assert.equal(files.length, VOUCHER_PACKET_REGENERATE_ALLOWLIST.size, 'regenerate files not found');
+    const combined = files.map((f) => readFileSync(f, 'utf8')).join('\n');
+    assert.ok(combined.includes('voucher-packets') && combined.includes('regenerate'), 'must target voucher-packets/:id/regenerate');
+    assert.ok(!combined.includes('assign-supplier') && !combined.includes('/confirmation'), 'must not touch assignment/confirmation');
+    assert.deepEqual(scan(files, VOUCHER_PACKET_REGENERATE_FORBIDDEN), [], 'regenerate surface exceeded its scope');
+  });
+
+  it('the mutation allowlist is exactly the sanctioned mutations (preview + download excluded)', () => {
+    // 4 supplier/voucher surfaces × 2 (assign, confirm, voucher-generate, voucher-send)
+    // + passenger (×2) + rooming (×2) + voucher-packet-regenerate (×1) = 13.
+    assert.equal(MUTATION_ALLOWLIST.size, 13, 'the sanctioned mutation surfaces');
     for (const name of ['voucher-preview-control.tsx', 'voucher-download-control.tsx', 'voucher-send-preview-control.tsx']) {
       assert.ok(!MUTATION_ALLOWLIST.has(name), `${name} (read-only) must not be a mutation`);
     }
