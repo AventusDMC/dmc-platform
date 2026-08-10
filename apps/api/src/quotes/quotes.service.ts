@@ -83,6 +83,7 @@ import {
   verifyPreviewToken,
 } from './quote-preview-token';
 import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
+import { computeHotelOptionPricedMatch } from './hotel-option-priced-match';
 
 
 const GUIDE_RATES = {
@@ -12980,8 +12981,16 @@ export class QuotesService {
       })),
       quoteOptions: quoteOptions.map((option: any) => {
         const optionQuoteItems = (option.quoteItems || []).map((item: any) => this.hydrateOneOffExternalPackageItem(item));
+        // H-A1: attach read-only, additive hotel option → priced QuoteItem match
+        // metadata (safe, non-cost/non-PII). Candidate pool is this option set's own
+        // priced items only. Pure compute — no writes, no pricing/resolver change.
+        const hotelOptions = (option.hotelOptions || []).map((ho: any) => ({
+          ...ho,
+          ...computeHotelOptionPricedMatch(ho, optionQuoteItems),
+        }));
         return {
           ...option,
+          hotelOptions,
           quoteItems: optionQuoteItems,
           ...this.calculateOptionTotals({ ...option, quoteItems: optionQuoteItems }, quote.adults + quote.children),
         };
