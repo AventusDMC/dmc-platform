@@ -386,6 +386,22 @@ export class BookingsController {
     return grid;
   }
 
+  // Ops-DG-2: V2-scoped, REDACTED operations grid for the Ops V2 board. Same data as the
+  // shared route above but rows are projected to the V2-safe allowlist (no driver/vehicle/
+  // notes/contact/PII). The shared route above is left unchanged (Classic dispatch still
+  // consumes driver/vehicle/notes). Read-only.
+  @Get(':id/v2/operations-grid')
+  @Roles('admin', 'operations')
+  async getOperationalServiceGridV2(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const grid = await this.bookingsService.getOperationalServiceGridV2(id, actor);
+
+    if (!grid) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return grid;
+  }
+
   // Supplier Voucher Packet V2 — S2. READ-ONLY: computes supplier packet groups
   // from the booking's services and returns them. No writes, no generate/PDF/send.
   @Get(':id/voucher-packets/groups')
