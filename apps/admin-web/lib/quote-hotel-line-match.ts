@@ -39,6 +39,40 @@ export type HotelLineMatch =
   | { status: "ambiguous"; candidates: number }
   | { status: "none" }
 
+/** H-A: the backend-computed match metadata a hotel row may carry (subset). */
+export interface BackendHotelMatchMeta {
+  pricingMatchStatus?: "matched" | "ambiguous" | "none" | null
+  matchedPricedQuoteItemId?: string | null
+}
+
+/**
+ * H-A: decide the preview/apply target from the backend-computed match metadata
+ * (authoritative when present). Returns `{ source: "heuristic" }` when the backend
+ * metadata is absent so the caller falls back to the legacy FE matcher (older
+ * payloads never regress). Never guesses: ambiguous/none keep the id undefined so
+ * the UI preserves the "resolve in Classic" fallback.
+ */
+export type BackendHotelMatchResolution =
+  | { source: "backend"; pricedQuoteItemId: string | undefined; pricingMatchAmbiguous: boolean }
+  | { source: "heuristic" }
+
+export function resolveBackendHotelOptionMatch(meta: BackendHotelMatchMeta): BackendHotelMatchResolution {
+  if (!meta.pricingMatchStatus) return { source: "heuristic" }
+  if (
+    meta.pricingMatchStatus === "matched" &&
+    typeof meta.matchedPricedQuoteItemId === "string" &&
+    meta.matchedPricedQuoteItemId
+  ) {
+    return { source: "backend", pricedQuoteItemId: meta.matchedPricedQuoteItemId, pricingMatchAmbiguous: false }
+  }
+  if (meta.pricingMatchStatus === "ambiguous") {
+    return { source: "backend", pricedQuoteItemId: undefined, pricingMatchAmbiguous: true }
+  }
+  // "none" — or a defensive "matched" that arrived without a usable id → no target,
+  // not flagged ambiguous (the "Why?" diagnostics path, not the ambiguous note).
+  return { source: "backend", pricedQuoteItemId: undefined, pricingMatchAmbiguous: false }
+}
+
 const norm = (s?: string | null): string => (s || "").trim().toLowerCase()
 
 /**

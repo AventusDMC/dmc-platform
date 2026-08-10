@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { matchPricedHotelLine, type PricedHotelLine } from "./quote-hotel-line-match"
+import { matchPricedHotelLine, resolveBackendHotelOptionMatch, type PricedHotelLine } from "./quote-hotel-line-match"
 
 function line(over: Partial<PricedHotelLine>): PricedHotelLine {
   return {
@@ -86,5 +86,42 @@ describe("matchPricedHotelLine — stable-id hotel row mapping (PR #583)", () =>
     const r = matchPricedHotelLine({ hotelId: "h1", name: "Grand Hotel" }, lines)
     assert.equal(r.status, "matched")
     assert.equal(r.status === "matched" && r.line.quoteItemId, "A")
+  })
+})
+
+describe("resolveBackendHotelOptionMatch — H-A consume backend match metadata", () => {
+  it("backend matched + id → backend source, pricedQuoteItemId set, not ambiguous", () => {
+    const r = resolveBackendHotelOptionMatch({ pricingMatchStatus: "matched", matchedPricedQuoteItemId: "item-42" })
+    assert.equal(r.source, "backend")
+    assert.equal(r.source === "backend" && r.pricedQuoteItemId, "item-42")
+    assert.equal(r.source === "backend" && r.pricingMatchAmbiguous, false)
+  })
+
+  it("backend ambiguous → backend source, no id, pricingMatchAmbiguous true (resolve in Classic)", () => {
+    const r = resolveBackendHotelOptionMatch({ pricingMatchStatus: "ambiguous", matchedPricedQuoteItemId: null })
+    assert.equal(r.source, "backend")
+    assert.equal(r.source === "backend" && r.pricedQuoteItemId, undefined)
+    assert.equal(r.source === "backend" && r.pricingMatchAmbiguous, true)
+  })
+
+  it("backend none (e.g. no_contract_linked) → backend source, no id, not flagged ambiguous", () => {
+    const r = resolveBackendHotelOptionMatch({ pricingMatchStatus: "none", matchedPricedQuoteItemId: null })
+    assert.equal(r.source, "backend")
+    assert.equal(r.source === "backend" && r.pricedQuoteItemId, undefined)
+    assert.equal(r.source === "backend" && r.pricingMatchAmbiguous, false)
+  })
+
+  it("no backend metadata → falls back to the heuristic matcher", () => {
+    assert.equal(resolveBackendHotelOptionMatch({}).source, "heuristic")
+    assert.equal(resolveBackendHotelOptionMatch({ pricingMatchStatus: null }).source, "heuristic")
+  })
+
+  it("defensive: matched status without a usable id → no target, not ambiguous (keeps Classic fallback)", () => {
+    const r1 = resolveBackendHotelOptionMatch({ pricingMatchStatus: "matched", matchedPricedQuoteItemId: null })
+    assert.equal(r1.source, "backend")
+    assert.equal(r1.source === "backend" && r1.pricedQuoteItemId, undefined)
+    assert.equal(r1.source === "backend" && r1.pricingMatchAmbiguous, false)
+    const r2 = resolveBackendHotelOptionMatch({ pricingMatchStatus: "matched", matchedPricedQuoteItemId: "" })
+    assert.equal(r2.source === "backend" && r2.pricedQuoteItemId, undefined)
   })
 })

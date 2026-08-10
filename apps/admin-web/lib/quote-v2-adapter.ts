@@ -45,7 +45,7 @@ import { demoQuote } from "./quote-demo-data"
 import { formatQuoteDate } from "./quote-helpers"
 import { classifyItemApplyKind, entranceDisplayLabel } from "./quote-item-apply-kind"
 import { buildHotelDiagnostics, type MatchedHotelLine } from "./quote-hotel-diagnostics"
-import { matchPricedHotelLine, type PricedHotelLine } from "./quote-hotel-line-match"
+import { matchPricedHotelLine, resolveBackendHotelOptionMatch, type PricedHotelLine } from "./quote-hotel-line-match"
 import { resolveDayTransportAndVisits } from "./quote-v2-itinerary-transport"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
 
@@ -763,11 +763,30 @@ interface ApiHotelOption {
   mealPlan?: string | null
   nights?: number | null
   isPrimary?: boolean | null
+  // H-A1: backend-computed hotel option → priced QuoteItem match metadata
+  // (loadQuoteState, read-only). Authoritative when present; when absent we fall
+  // back to the legacy FE heuristic matcher. Safe, non-cost/non-PII only.
+  matchedPricedQuoteItemId?: string | null
+  pricingMatchStatus?: "matched" | "ambiguous" | "none" | null
+  pricingMatchReason?: string | null
+  matchedDiscriminators?: {
+    roomCategoryId?: string | null
+    mealPlan?: string | null
+    mealPlanCode?: string | null
+    occupancyType?: string | null
+    seasonName?: string | null
+    serviceDate?: string | null
+    optionId?: string | null
+  } | null
 }
 interface ApiQuoteOption {
   id?: string | null
   hotelCategory?: { name?: string | null } | null
   hotelOptions?: ApiHotelOption[] | null
+  // Priced items scoped to this option set (returned by the GET include). Used to
+  // resolve the diagnostics detail for a backend-matched hotel option (the top-level
+  // priced-line index excludes option-scoped items).
+  quoteItems?: ApiQuoteItem[] | null
 }
 interface ApiQuote {
   id?: string | null
@@ -974,12 +993,13 @@ function mapErpQuoteToRaw(
   // collapsing by name — duplicates are kept so matchPricedHotelLine can resolve
   // by stable id (hotelId / roomCategoryId) and detect genuine ambiguity instead
   // of silently picking the first same-named item (the prior bug).
-  const pricedHotelLines: PricedHotelLine[] = []
-  for (const it of q.quoteItems ?? []) {
-    if (!it.hotelId || !it.id) continue
+  // Build one priced hotel line (contract / room / rate diagnostics inputs) from a
+  // hotel QuoteItem. Reused for the top-level heuristic index AND for resolving the
+  // diagnostics detail of a backend-matched option-scoped item (H-A). Read-only.
+  const buildPricedHotelLine = (it: ApiQuoteItem): PricedHotelLine => {
     const cost = it.totalCost ?? it.totalSell ?? it.sellPrice ?? 0
-    pricedHotelLines.push({
-      quoteItemId: it.id,
+    return {
+      quoteItemId: it.id as string,
       hotelId: it.hotelId ?? null,
       roomCategoryId: it.roomCategoryId ?? null,
       name: it.hotel?.name ?? null,
@@ -988,7 +1008,12 @@ function mapErpQuoteToRaw(
       roomCategory: it.roomCategory?.name ?? null,
       hasRate: Number(cost) > 0,
       pricingSummary: it.pricingDescription ?? null,
-    })
+    }
+  }
+  const pricedHotelLines: PricedHotelLine[] = []
+  for (const it of q.quoteItems ?? []) {
+    if (!it.hotelId || !it.id) continue
+    pricedHotelLines.push(buildPricedHotelLine(it))
   }
   // Resolve a Hotels-step row to its priced line by stable id (name only as a
   // unique fallback). Returns { line, ambiguous } — ambiguous rows MUST NOT
@@ -1013,8 +1038,30 @@ function mapErpQuoteToRaw(
       // QuoteItem has a linked supplier contract (the only case the diagnostics
       // promote) — otherwise keep the prior default. Uses data already in the GET.
       const optDefaultContract = ho.isPrimary ? "on-request" : "no-contract"
-      const optMatch = matchHotelRow({ hotelId: ho.hotelId, roomCategoryId: ho.roomCategoryId, name: ho.hotelNameSnapshot })
-      const optMatched = optMatch.line
+      // H-A: prefer the backend-computed match metadata (authoritative) when the
+      // GET returns it; fall back to the legacy FE heuristic matcher for older
+      // payloads. Never guesses — ambiguous/none keep pricedQuoteItemId undefined so
+      // the UI preserves the "resolve in Classic" fallback.
+      let optPricedQuoteItemId: string | undefined
+      let optAmbiguous: boolean
+      let optMatched: MatchedHotelLine | null
+      const backendMatch = resolveBackendHotelOptionMatch(ho)
+      if (backendMatch.source === "backend") {
+        optPricedQuoteItemId = backendMatch.pricedQuoteItemId
+        optAmbiguous = backendMatch.pricingMatchAmbiguous
+        // Diagnostics detail comes from the matched item in THIS option set (the
+        // top-level index excludes option-scoped items). A backend "matched" always
+        // has a linked contract, so this reads as contract-on-file.
+        const matchedItem = optPricedQuoteItemId
+          ? (opt.quoteItems ?? []).find((it) => it.id === optPricedQuoteItemId && it.hotelId)
+          : undefined
+        optMatched = matchedItem ? buildPricedHotelLine(matchedItem) : null
+      } else {
+        const optMatch = matchHotelRow({ hotelId: ho.hotelId, roomCategoryId: ho.roomCategoryId, name: ho.hotelNameSnapshot })
+        optPricedQuoteItemId = optMatch.ambiguous ? undefined : optMatch.line?.quoteItemId ?? undefined
+        optAmbiguous = optMatch.ambiguous
+        optMatched = optMatch.line
+      }
       const optDiagnostics = buildHotelDiagnostics({
         selected: Boolean(ho.isPrimary),
         editable: true,
@@ -1041,12 +1088,14 @@ function mapErpQuoteToRaw(
         optionId: opt.id,
         editable: true,
         // Matched priced hotel QuoteItem id — target for the hotel pricing
-        // preview/apply (flag-gated). Set ONLY on an unambiguous stable-id match;
-        // absent when ambiguous so the UI hides apply. Read-only; never written.
-        pricedQuoteItemId: optMatch.ambiguous ? undefined : optMatched?.quoteItemId ?? undefined,
-        // True when multiple priced lines matched this row and we could not pick
-        // one safely → the UI shows helper text and offers no preview/apply.
-        pricingMatchAmbiguous: optMatch.ambiguous,
+        // preview/apply (flag-gated). Set ONLY on an unambiguous match (backend
+        // metadata when present, else the FE heuristic); absent when ambiguous/none
+        // so the UI hides apply. Read-only; never written.
+        pricedQuoteItemId: optPricedQuoteItemId,
+        // True when the row could not be resolved to one priced line (backend
+        // "ambiguous" or the heuristic's ambiguous) → the UI shows helper text and
+        // offers no preview/apply.
+        pricingMatchAmbiguous: optAmbiguous,
         diagnostics: optDiagnostics,
       })
     }
