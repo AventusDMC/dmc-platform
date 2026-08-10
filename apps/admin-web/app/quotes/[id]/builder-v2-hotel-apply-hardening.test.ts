@@ -56,9 +56,10 @@ describe('Hotel Apply UX + row-mapping hardening (PR #583)', () => {
       'const pricedHotelLines: PricedHotelLine[] = []',
       'matchPricedHotelLine(key, pricedHotelLines)',
       'matchHotelRow({ hotelId: ho.hotelId, roomCategoryId: ho.roomCategoryId, name: ho.hotelNameSnapshot })',
-      // ambiguous rows get NO preview/apply target
-      'pricedQuoteItemId: optMatch.ambiguous ? undefined : optMatched?.quoteItemId ?? undefined',
-      'pricingMatchAmbiguous: optMatch.ambiguous',
+      // ambiguous rows get NO preview/apply target (resolved from backend metadata
+      // when present, else the heuristic; both feed optPricedQuoteItemId/optAmbiguous)
+      'pricedQuoteItemId: optPricedQuoteItemId',
+      'pricingMatchAmbiguous: optAmbiguous',
     ]);
     // The old name-only collapsing map must be gone.
     excludes(adapterSrc, ['const hotelLineByName = new Map', 'hotelLineByName.set(', 'matchHotelLine(']);

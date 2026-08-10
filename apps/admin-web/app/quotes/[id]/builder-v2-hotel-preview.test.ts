@@ -44,8 +44,10 @@ describe('Quote Builder V2 — hotel pricing preview (PR #569, preview-only)', (
 
   it('adapter carries the matched priced hotel QuoteItem id (both paths) for the preview target', () => {
     contains(adapterSrc, [
-      'quoteItemId: it.id,',
-      'pricedQuoteItemId: optMatch.ambiguous ? undefined : optMatched?.quoteItemId ?? undefined',
+      // Option-set path: id resolved from backend metadata (H-A) or the heuristic.
+      'quoteItemId: it.id as string,',
+      'pricedQuoteItemId: optPricedQuoteItemId',
+      // Itinerary-fallback path (unchanged): heuristic name match.
       'pricedQuoteItemId: fbMatch.ambiguous ? undefined : fbMatched?.quoteItemId ?? undefined',
     ]);
     contains(typesSrc, ['pricedQuoteItemId?: string']);
