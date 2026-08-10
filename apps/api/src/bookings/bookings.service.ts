@@ -215,6 +215,52 @@ const VOUCHER_STATUS_SENT: VoucherLifecycleStatusValue = 'SENT';
 const HOTEL_RESERVATION_STATUSES = ['Requested', 'Blocked', 'Waitlist', 'Tentative', 'Confirmed', 'Released', 'Cancelled'] as const;
 type HotelReservationStatusValue = (typeof HOTEL_RESERVATION_STATUSES)[number];
 
+/**
+ * Ops-DG-2: the ALLOWLIST of operations-grid row fields the V2 board is permitted to
+ * receive. The shared/Classic operations-grid row carries additional operational fields
+ * (driver/vehicle/notes/assignedBy/confirmedBy/…) that Classic dispatch needs but V2 does
+ * not — those must NOT be shipped to the V2 board.
+ */
+const OPS_GRID_V2_ROW_FIELDS = [
+  'id',
+  'order',
+  'serviceType',
+  'description',
+  'dayNumber',
+  'dayTitle',
+  'status',
+  'operationalDate',
+  'operationalTime',
+  'supplierId',
+  'supplierName',
+  'assignedSupplierId',
+  'assignedSupplierName',
+  'assignmentStatus',
+  'supplierConfirmationStatus',
+  'voucherStatus',
+  'mealPlan',
+  'nights',
+  'pickupLocation',
+  'dropoffLocation',
+] as const;
+
+/**
+ * Ops-DG-2: project ONE Classic operations-grid row down to the V2-safe allowlist.
+ * EXPLICIT allowlist copy — never spreads the raw row — so contact/PII/dispatch fields
+ * (driverPhone, driverName, driver/vehicle ids, plate, notes, assignedBy, confirmedBy,
+ * confirmation code/reference/timestamps, voucherGeneratedAt, specialRequests) are never
+ * emitted. Pure; does not mutate the input (so the Classic shape is untouched).
+ */
+export function projectOperationsGridRowV2(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of OPS_GRID_V2_ROW_FIELDS) {
+    if (row && Object.prototype.hasOwnProperty.call(row, key)) {
+      out[key] = (row as Record<string, unknown>)[key];
+    }
+  }
+  return out;
+}
+
 @Injectable()
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
   private reminderAutomationTimer: NodeJS.Timeout | null = null;
@@ -1126,6 +1172,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       },
       passengerManifest,
       rows,
+    };
+  }
+
+  /**
+   * Ops-DG-2: V2-scoped, REDACTED operations grid. Reuses the shared builder
+   * ({@link getOperationalServiceGrid}) unchanged, then projects each row to the V2-safe
+   * allowlist ({@link projectOperationsGridRowV2}) so the V2 board never receives
+   * driver/vehicle/notes/contact/PII fields. The booking header + passenger-manifest
+   * SUMMARY (counts/flags only, no PII) are carried through. The Classic/shared route is
+   * unaffected. Read-only.
+   */
+  async getOperationalServiceGridV2(id: string, actor?: CompanyScopedActor) {
+    const grid = await this.getOperationalServiceGrid(id, actor);
+
+    if (!grid) {
+      return null;
+    }
+
+    return {
+      booking: grid.booking,
+      passengerManifest: grid.passengerManifest,
+      rows: (grid.rows ?? []).map((row) => projectOperationsGridRowV2(row as Record<string, unknown>)),
     };
   }
 

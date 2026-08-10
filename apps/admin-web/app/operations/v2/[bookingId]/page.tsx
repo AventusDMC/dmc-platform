@@ -54,8 +54,11 @@ function resolveTab(value: string | undefined): OpsTabId {
 }
 
 // Operations-grid is the core data; failure → error region (caller catches).
+// Ops-DG-2: the V2 board reads the V2-SCOPED redacted grid (rows allowlist-projected on
+// the backend — no driver/vehicle/notes/contact/PII). The Classic proxy/endpoint is
+// unchanged. Same response envelope (booking / passengerManifest / rows), so no VM change.
 async function loadOperationsGrid(id: string): Promise<RawOperationsGrid> {
-  return adminPageFetchJson<RawOperationsGrid>(`/api/bookings/${id}/operations-grid`, 'Booking operations (V2)', {
+  return adminPageFetchJson<RawOperationsGrid>(`/api/bookings/${id}/v2/operations-grid`, 'Booking operations (V2)', {
     cache: 'no-store',
   });
 }
