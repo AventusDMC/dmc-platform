@@ -43,7 +43,15 @@ export function ServiceRow({ row, bookingId }: { row: OpsRowVM; bookingId: strin
           <div className="flex items-center gap-2">
             <ServiceTypeIcon serviceType={row.serviceType} />
             <span className="truncate text-sm font-medium text-foreground">{row.description}</span>
+            {/* Ops-DG-1: curated serviceType/operationType label (display-only). */}
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {row.typeLabel}
+            </span>
           </div>
+          {/* Ops-DG-1: short, display-safe operational detail (mealPlan · nights /
+              pickup · time) from already-present payload fields. Rendered only when
+              present; never cost/PII. */}
+          {row.detail ? <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p> : null}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {row.dayLabel ? <span>{row.dayLabel}</span> : null}
             <span>{row.supplierLabel ?? 'Unassigned'}</span>
