@@ -23,18 +23,25 @@ export type QuoteItemCreateActor = {
 } | null;
 
 export type AddActivityItemInput = {
-  // Discriminator. Scope is ACTIVITY + GUIDE — anything else is rejected out_of_scope.
-  // Absent is treated as 'activity' (activity remains the default for back-compat).
+  // Discriminator. Scope is ACTIVITY + GUIDE + MEAL — anything else is rejected
+  // out_of_scope. Absent is treated as 'activity' (activity remains the default).
   itemType?: string | null;
   dayId?: string | null;
   // Activity fields (itemType='activity').
   activityId?: string | null;
   activityRateVariantId?: string | null;
   // Guide fields (itemType='guide'). serviceId is a GUIDE-type SERVICE (not a person).
+  // serviceId is shared with Meal (itemType='meal' → a MEAL-type SERVICE).
   serviceId?: string | null;
   guideType?: string | null;
   guideDuration?: string | null;
   guideOvernight?: boolean | null;
+  // Meal fields (itemType='meal'). customServiceName is the meal name (required).
+  // unitCost/currency are a FINANCE-ONLY cost override (defaults to the service's
+  // baseCost/currency when omitted; rejected cost_override_forbidden for non-finance).
+  customServiceName?: string | null;
+  unitCost?: number | null;
+  currency?: string | null;
   serviceDate?: string | null;
   // Optional pax override; defaults from the quote when omitted.
   adultCount?: number | null;
@@ -58,8 +65,11 @@ const EDITABLE_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
 // guide (and vice-versa) — the create verifies the kind matches the request's type.
 const CREATE_TOKEN_KIND = 'v2-activity-create';
 const GUIDE_CREATE_TOKEN_KIND = 'v2-guide-create';
-function tokenKindForItemType(itemType: 'activity' | 'guide'): string {
-  return itemType === 'guide' ? GUIDE_CREATE_TOKEN_KIND : CREATE_TOKEN_KIND;
+const MEAL_CREATE_TOKEN_KIND = 'v2-meal-create';
+function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal'): string {
+  if (itemType === 'guide') return GUIDE_CREATE_TOKEN_KIND;
+  if (itemType === 'meal') return MEAL_CREATE_TOKEN_KIND;
+  return CREATE_TOKEN_KIND;
 }
 const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
 // Money tolerance for the post-write totals compare (half a cent) — guards against
@@ -67,7 +77,7 @@ const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
 const TOTALS_EPSILON = 0.005;
 
 type ResolvedCreateContext = {
-  itemType: 'activity' | 'guide';
+  itemType: 'activity' | 'guide' | 'meal';
   requiredActor: NonNullable<QuoteItemCreateActor>;
   quote: { id: string; quoteCurrency: string | null; adults: number | null; children: number | null };
   dayId: string;
@@ -77,11 +87,17 @@ type ResolvedCreateContext = {
   // Activity-only (present when itemType='activity').
   activityId?: string;
   activityRateVariantId?: string;
-  // Guide-only (present when itemType='guide').
+  // Guide-only (present when itemType='guide'); serviceId is shared with Meal.
   serviceId?: string;
   guideType?: string;
   guideDuration?: string;
   guideOvernight?: boolean;
+  // Meal-only (present when itemType='meal'). unitCost/currency are set ONLY when a
+  // finance-visible actor supplied an override; otherwise undefined → the shared
+  // resolver falls back to the service's baseCost/currency.
+  customServiceName?: string;
+  unitCost?: number;
+  currency?: string;
 };
 
 // Quote Builder V2 — Phase B, Slice 2 + Slice 2B-1. Adds ONE Activity item from V2,
@@ -142,13 +158,13 @@ export class QuoteExperiencesV2Service {
     return quote;
   }
 
-  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY + GUIDE only.
-  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' {
+  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY + GUIDE + MEAL.
+  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' | 'meal' {
     const raw = String(input.itemType ?? 'activity').trim().toLowerCase() || 'activity';
-    if (raw !== 'activity' && raw !== 'guide') {
+    if (raw !== 'activity' && raw !== 'guide' && raw !== 'meal') {
       throw new BadRequestException({
         code: 'out_of_scope',
-        message: 'Only activity and guide items can be added from V2 in this version.',
+        message: 'Only activity, guide and meal items can be added from V2 in this version.',
       });
     }
     return raw;
@@ -229,6 +245,49 @@ export class QuoteExperiencesV2Service {
       return { ...base, serviceId, guideType, guideDuration, guideOvernight: input.guideOvernight === true };
     }
 
+    if (itemType === 'meal') {
+      // ── Meal-specific validation ──
+      const serviceId = (input.serviceId ?? '').trim();
+      const customServiceName = (input.customServiceName ?? '').trim();
+      const missing = [
+        ['serviceId', serviceId],
+        ['customServiceName', customServiceName],
+      ].filter(([, v]) => !v).map(([k]) => k);
+      if (missing.length > 0) {
+        throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
+      }
+      // The service must exist AND resolve to the MEAL taxonomy group — the same
+      // helper the shared resolver's meal branch keys on (reject non-meal services).
+      const service = await this.prisma.supplierService.findUnique({
+        where: { id: serviceId },
+        select: { id: true, category: true, serviceType: { select: { name: true, code: true } } },
+      });
+      if (!service) {
+        throw new BadRequestException({ code: 'service_not_found', message: 'Service not found.' });
+      }
+      if (resolveServiceTaxonomyGroup(service) !== 'meal') {
+        throw new BadRequestException({ code: 'not_meal_service', message: 'The selected service is not a meal service.' });
+      }
+      // Cost-override guard: meal cost is user-entered, so a unitCost/currency override
+      // is FINANCE-ONLY. Operations (and other non-cost-visible roles) may create a
+      // meal ONLY at the service's baseCost/currency — a supplied override fails closed.
+      const canViewCost = canViewQuoteCostMargin(actor?.role ?? null);
+      const unitCostSupplied = input.unitCost !== undefined && input.unitCost !== null;
+      const currencySupplied = typeof input.currency === 'string' && input.currency.trim() !== '';
+      if ((unitCostSupplied || currencySupplied) && !canViewCost) {
+        throw new ForbiddenException({
+          code: 'cost_override_forbidden',
+          message: 'Only finance-visible roles may set a meal unit cost or currency override.',
+        });
+      }
+      // Bind the override ONLY when allowed + supplied; otherwise undefined so the
+      // shared resolver falls back to the service baseCost/currency. The unitCost VALUE
+      // validity (finite, ≥ 0) is enforced by the shared resolver → not_resolvable.
+      const unitCost = canViewCost && unitCostSupplied ? Number(input.unitCost) : undefined;
+      const currency = canViewCost && currencySupplied ? String(input.currency).trim().toUpperCase() : undefined;
+      return { ...base, serviceId, customServiceName, unitCost, currency };
+    }
+
     // ── Activity-specific validation (unchanged behavior) ──
     const activityId = (input.activityId ?? '').trim();
     const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
@@ -280,6 +339,25 @@ export class QuoteExperiencesV2Service {
         markupPercent: GUIDE_DEFAULT_MARKUP,
       };
     }
+    if (ctx.itemType === 'meal') {
+      // Meal prices via the shared resolver's meal branch: cost = unitCost ??
+      // service.baseCost, currency = currency ?? service.currency, PER_PERSON on
+      // the SupplierService unitType. No new pricing math. Interim markup =
+      // EXPERIENCE_DEFAULT_MARKUP (pending team confirmation of a meal markup).
+      return {
+        quoteId: ctx.quote.id,
+        serviceId: ctx.serviceId,
+        itineraryId: ctx.dayId,
+        serviceDate: ctx.serviceDate,
+        customServiceName: ctx.customServiceName,
+        unitCost: ctx.unitCost,
+        currency: ctx.currency,
+        adultCount: ctx.adultCount,
+        childCount: ctx.childCount,
+        quantity: 1,
+        markupPercent: EXPERIENCE_DEFAULT_MARKUP,
+      };
+    }
     return {
       quoteId: ctx.quote.id,
       activityId: ctx.activityId,
@@ -301,6 +379,16 @@ export class QuoteExperiencesV2Service {
         guideType: ctx.guideType,
         guideDuration: ctx.guideDuration,
         guideOvernight: ctx.guideOvernight === true,
+      };
+    }
+    if (ctx.itemType === 'meal') {
+      // Bind the meal identity INCLUDING the override state — a changed
+      // customServiceName or unitCost/currency after preview invalidates the token.
+      return {
+        serviceId: ctx.serviceId,
+        customServiceName: ctx.customServiceName,
+        unitCost: ctx.unitCost ?? null,
+        currency: ctx.currency ?? null,
       };
     }
     return {
@@ -429,8 +517,13 @@ export class QuoteExperiencesV2Service {
           payload.guideType === ctx.guideType &&
           payload.guideDuration === ctx.guideDuration &&
           payload.guideOvernight === (ctx.guideOvernight === true)
-        : payload.activityId === ctx.activityId &&
-          payload.activityRateVariantId === ctx.activityRateVariantId;
+        : ctx.itemType === 'meal'
+          ? payload.serviceId === ctx.serviceId &&
+            payload.customServiceName === ctx.customServiceName &&
+            (payload.unitCost ?? null) === (ctx.unitCost ?? null) &&
+            (payload.currency ?? null) === (ctx.currency ?? null)
+          : payload.activityId === ctx.activityId &&
+            payload.activityRateVariantId === ctx.activityRateVariantId;
     if (!commonMatches || !typeMatches) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
     }

@@ -3,6 +3,7 @@ import * as assert from 'node:assert/strict';
 import { QuoteExperiencesV2Service } from './quote-experiences-v2.service';
 import { buildCreatePreviewToken } from './quote-create-preview-token';
 import { getPreviewTokenSecret } from './quote-preview-token';
+import { EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
 
 // Fakes for PrismaService + the delegated QuotesService (createItem / removeItem /
 // previewCreateItemValues) + AuditService. A small MUTABLE state mimics the real
@@ -56,6 +57,10 @@ const OPS_ACTOR = { id: 'user-2', companyId: 'company-A', auditLabel: 'Omar', ro
 const GOOD = { itemType: 'activity', dayId: DAY, activityId: ACT, activityRateVariantId: VAR, serviceDate: '2026-08-07' };
 const SVC = 'svc-1';
 const GOOD_GUIDE = { itemType: 'guide', dayId: DAY, serviceId: SVC, guideType: 'local', guideDuration: 'full_day', serviceDate: '2026-08-07' };
+// Meal fixtures (M-1a). serviceId is a MEAL-taxonomy SupplierService; customServiceName
+// is the required meal name. unitCost/currency are a finance-only override.
+const GOOD_MEAL = { itemType: 'meal', dayId: DAY, serviceId: SVC, customServiceName: 'Welcome Dinner', serviceDate: '2026-08-07' };
+const MEAL_SERVICE = { id: SVC, category: 'meal', serviceType: { name: 'Meal', code: 'MEAL' } };
 
 function build(opts: Options = {}) {
   const calls: Record<string, any[]> = { createItem: [], removeItem: [], previewValues: [], auditLog: [] };
@@ -172,9 +177,9 @@ test('addActivityItem is blocked (feature_disabled) when the flag is OFF and wri
   assert.equal(calls.auditLog.length, 0);
 });
 
-test('a non-activity itemType is rejected out_of_scope', async () => {
+test('an unknown itemType is rejected out_of_scope (activity/guide/meal are the only scopes)', async () => {
   const { service, calls } = build({ flag: true });
-  await expectRejects(service.addActivityItem(QID, { ...GOOD, itemType: 'meal' }, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'out_of_scope');
+  await expectRejects(service.addActivityItem(QID, { ...GOOD, itemType: 'transport' }, ACTOR, { previewToken: 'x', acknowledgedDelta: true }), 'out_of_scope');
   assert.equal(calls.createItem.length, 0);
 });
 
@@ -533,4 +538,163 @@ test('guide: restricted role (operations) create response redacts cost, keeps se
   assert.equal(result.quote.totalCost, null);
   assert.equal(result.sell, 144);
   assert.equal(result.quote.totalSell, 384);
+});
+
+// ---------------------------------------------------------------------------
+// M-1a — MEAL create (same guarded flow; ACTIVITY + GUIDE behavior unchanged)
+// ---------------------------------------------------------------------------
+
+test('meal create-preview projects the price and returns a token (itemType meal), writing nothing', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const res: any = await service.previewActivityItem(QID, GOOD_MEAL, ACTOR);
+  assert.equal(res.itemType, 'meal');
+  assert.equal(res.projected.sell, 144);
+  assert.equal(typeof res.previewToken, 'string');
+  assert.equal(calls.createItem.length, 0);
+  assert.equal(calls.auditLog.length, 0);
+});
+
+test('meal happy path: preview → create commits with the meal create-input shape', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, GOOD_MEAL);
+  const result: any = await service.addActivityItem(QID, GOOD_MEAL, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(result.itemId, 'item-new');
+  assert.equal(result.itemType, 'meal');
+  assert.equal(calls.createItem.length, 1);
+  const data = calls.createItem[0].data;
+  assert.equal(data.serviceId, SVC);
+  assert.equal(data.customServiceName, 'Welcome Dinner');
+  assert.equal(data.quantity, 1);
+  assert.equal(data.markupPercent, EXPERIENCE_DEFAULT_MARKUP);
+  // No override supplied → unitCost/currency undefined → shared resolver falls back
+  // to the service baseCost/currency (no forced cost).
+  assert.equal(data.unitCost, undefined);
+  assert.equal(data.currency, undefined);
+  // audited as a meal create
+  assert.equal(calls.auditLog.length, 1);
+  assert.equal(calls.auditLog[0].metadata.itemType, 'meal');
+  assert.equal(calls.auditLog[0].metadata.serviceId, SVC);
+});
+
+test('meal: missing serviceId / customServiceName is rejected (missing_field)', async () => {
+  for (const field of ['serviceId', 'customServiceName']) {
+    const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+    const bad: any = { ...GOOD_MEAL, [field]: '' };
+    await expectRejects(service.previewActivityItem(QID, bad, ACTOR), 'missing_field');
+    assert.equal(calls.createItem.length, 0);
+  }
+});
+
+test('meal: a non-meal service is rejected (not_meal_service)', async () => {
+  const { service, calls } = build({ flag: true, service: { id: SVC, category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' } } });
+  await expectRejects(service.previewActivityItem(QID, GOOD_MEAL, ACTOR), 'not_meal_service');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: a missing service is rejected (service_not_found)', async () => {
+  const { service } = build({ flag: true, service: null });
+  await expectRejects(service.previewActivityItem(QID, GOOD_MEAL, ACTOR), 'service_not_found');
+});
+
+test('meal: a cost-visible (admin) actor MAY supply a unitCost + currency override', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const input = { ...GOOD_MEAL, unitCost: 45, currency: 'eur' };
+  const token = await previewToken(service, input, ACTOR);
+  await service.addActivityItem(QID, input, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  const data = calls.createItem[0].data;
+  assert.equal(data.unitCost, 45);
+  assert.equal(data.currency, 'EUR'); // normalized upper-case
+});
+
+test('meal: operations WITHOUT override can preview + create at the service base cost', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const preview: any = await service.previewActivityItem(QID, GOOD_MEAL, OPS_ACTOR);
+  assert.equal(preview.projected.cost, null); // cost redacted for ops
+  assert.equal(preview.projected.sell, 144);
+  const result: any = await service.addActivityItem(QID, GOOD_MEAL, OPS_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  assert.equal(result.itemType, 'meal');
+  assert.equal(result.cost, null); // create response cost redacted for ops
+  assert.equal(result.quote.totalCost, null);
+  assert.equal(result.sell, 144);
+  // no override → resolver defaults to service baseCost/currency
+  assert.equal(calls.createItem[0].data.unitCost, undefined);
+  assert.equal(calls.createItem[0].data.currency, undefined);
+});
+
+test('meal: operations supplying a unitCost override is rejected (cost_override_forbidden)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_MEAL, unitCost: 45 }, OPS_ACTOR), 'cost_override_forbidden');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: operations supplying a currency override is rejected (cost_override_forbidden)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_MEAL, currency: 'EUR' }, OPS_ACTOR), 'cost_override_forbidden');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: confirmation_required when the add changes pricing and acknowledgedDelta is not true', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, GOOD_MEAL);
+  await expectRejects(service.addActivityItem(QID, GOOD_MEAL, ACTOR, { previewToken: token, acknowledgedDelta: false }), 'confirmation_required');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: stale_preview when the quote changes after the preview', async () => {
+  const { service, calls, state } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, GOOD_MEAL);
+  state.totals.totalCost += 50;
+  await expectRejects(service.addActivityItem(QID, GOOD_MEAL, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'stale_preview');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: injected drift after preview triggers rate_changed AND a compensating removeItem', async () => {
+  const { service, calls, state } = build({ flag: true, service: MEAL_SERVICE, driftCost: 40 });
+  const token = await previewToken(service, GOOD_MEAL);
+  await expectRejects(service.addActivityItem(QID, GOOD_MEAL, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'rate_changed');
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1);
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+test('meal token kind is v2-meal-create (decodes from the preview token)', async () => {
+  const { service } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, GOOD_MEAL);
+  const decoded = require('./quote-create-preview-token').verifyCreatePreviewToken(token, getPreviewTokenSecret());
+  assert.equal(decoded.kind, 'v2-meal-create');
+  assert.equal(decoded.itemType, 'meal');
+});
+
+test('cross-type replay: a MEAL token cannot create an ACTIVITY (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const mealToken = await previewToken(service, GOOD_MEAL);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: mealToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('cross-type replay: an ACTIVITY token cannot create a MEAL (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const activityToken = await previewToken(service, GOOD); // activity kind
+  await expectRejects(service.addActivityItem(QID, GOOD_MEAL, ACTOR, { previewToken: activityToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: a changed customServiceName after preview invalidates the token (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, GOOD_MEAL); // name "Welcome Dinner"
+  await expectRejects(
+    service.addActivityItem(QID, { ...GOOD_MEAL, customServiceName: 'Farewell Lunch' }, ACTOR, { previewToken: token, acknowledgedDelta: true }),
+    'invalid_preview_token',
+  );
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('meal: a changed unitCost after preview invalidates the token (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: MEAL_SERVICE });
+  const token = await previewToken(service, { ...GOOD_MEAL, unitCost: 45 }, ACTOR);
+  await expectRejects(
+    service.addActivityItem(QID, { ...GOOD_MEAL, unitCost: 50 }, ACTOR, { previewToken: token, acknowledgedDelta: true }),
+    'invalid_preview_token',
+  );
+  assert.equal(calls.createItem.length, 0);
 });

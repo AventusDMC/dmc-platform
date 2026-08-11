@@ -9,11 +9,16 @@ type AddItemBody = {
   // Activity fields.
   activityId?: string | null;
   activityRateVariantId?: string | null;
-  // Guide fields.
+  // Guide fields. serviceId is shared with Meal (both reference a SupplierService).
   serviceId?: string | null;
   guideType?: string | null;
   guideDuration?: string | null;
   guideOvernight?: boolean | null;
+  // Meal fields (itemType='meal'). customServiceName is the meal name (required);
+  // unitCost/currency are a FINANCE-ONLY cost override (rejected for other roles).
+  customServiceName?: string | null;
+  unitCost?: number | string | null;
+  currency?: string | null;
   serviceDate?: string | null;
   adultCount?: number | string | null;
   childCount?: number | string | null;
@@ -72,6 +77,11 @@ export class QuoteExperiencesV2Controller {
       guideType: body?.guideType ?? null,
       guideDuration: body?.guideDuration ?? null,
       guideOvernight: body?.guideOvernight === true,
+      customServiceName: body?.customServiceName ?? null,
+      // Blank/absent → undefined so "no override supplied" is distinguishable from
+      // an explicit value (the service's cost-override guard keys on this).
+      unitCost: toNum(body?.unitCost),
+      currency: (body?.currency ?? '').trim() || undefined,
       serviceDate: body?.serviceDate ?? null,
       adultCount: toNum(body?.adultCount),
       childCount: toNum(body?.childCount),
