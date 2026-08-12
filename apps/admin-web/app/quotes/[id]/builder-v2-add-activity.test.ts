@@ -37,7 +37,9 @@ describe('Quote Builder V2 — add Activity item (Phase B, Slice 2)', () => {
       '`/api/quotes/${quote.id}/v2/experiences/item`',
       '"feature_disabled"',
       '"out_of_scope"',
-      'Activity added successfully',
+      // Success toast is generalized to the created item type (M-1b) — for activity
+      // this still renders "Activity added successfully" at runtime (label from itemType).
+      '`${label} added successfully',
     ]);
   });
 

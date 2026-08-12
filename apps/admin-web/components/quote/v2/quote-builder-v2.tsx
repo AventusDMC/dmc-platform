@@ -453,6 +453,7 @@ export function QuoteBuilderV2({
             onPreviewAddItem={onPreviewAddItem}
             onAddItem={onAddItem}
             itineraryDays={quote.itinerary}
+            mealCostOverrideEnabled={canViewCostMargin}
           />
         )
       case "transport":
