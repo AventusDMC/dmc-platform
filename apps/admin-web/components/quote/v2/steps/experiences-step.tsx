@@ -966,6 +966,249 @@ function AddMealPanel({
   )
 }
 
+// M-2b: inline "Add entrance/ticket" form. ENTRANCE ONLY. Explicit day + entrance
+// SERVICE (a SupplierService with a linked EntranceFee) + OPTIONAL ticket rate variant
+// + service date. Reuses the SAME guarded onPreviewAddItem/onAddItem handlers and the
+// SAME preview→confirm pattern showing the CLIENT-SAFE selling price only. There is NO
+// user-entered cost, markup, currency, or Jordan Pass input — the shared resolver
+// derives cost (ticket variant / base EntranceFee.foreignerFeeJod), Jordan Pass
+// coverage, and entranceFeeId server-side. ticketRateVariantId is OPTIONAL (base-fee
+// fallback when omitted — mandatory since staging catalogs may have zero variants).
+type EntranceTicketVariant = { id: string; label?: string | null; active?: boolean | null }
+function isEntranceService(s: {
+  category?: string | null
+  serviceType?: { name?: string | null; code?: string | null } | null
+  ticketRateVariants?: EntranceTicketVariant[] | null
+}): boolean {
+  const hay = `${s.serviceType?.code ?? ""} ${s.serviceType?.name ?? ""} ${s.category ?? ""}`.toLowerCase()
+  if (/entrance|entry|ticket|museum|park_entry|site_entry|site_access|resort_access/.test(hay)) return true
+  // Fallback: services that carry ticket rate variants are ticketing/entrance catalog
+  // rows. The backend stays source of truth (rejects non-entrance with not_entrance_service).
+  return Array.isArray(s.ticketRateVariants) && s.ticketRateVariants.length > 0
+}
+
+function AddEntrancePanel({
+  onAddItem,
+  onPreviewAddItem,
+  itineraryDays,
+}: {
+  onAddItem: AddItemHandler
+  onPreviewAddItem: PreviewAddHandler
+  itineraryDays: ItineraryDay[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [services, setServices] = useState<Array<{ id: string; name: string; category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null; ticketRateVariants?: EntranceTicketVariant[] | null }>>([])
+  const [dayId, setDayId] = useState("")
+  const [serviceId, setServiceId] = useState("")
+  const [variantId, setVariantId] = useState("")
+  const [serviceDate, setServiceDate] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{ sell: number | null; currency: string | null; previewToken: string } | null>(null)
+
+  const openForm = async () => {
+    setOpen(true)
+    setError(null)
+    if (services.length > 0 || loadingCatalog) return
+    setLoadingCatalog(true)
+    setCatalogError(null)
+    try {
+      // Reuse the existing services proxy — read-only. ENTRANCE/TICKET services only,
+      // filtered client-side; the backend is the source of truth (rejects non-entrance
+      // with not_entrance_service).
+      const res = await fetch("/api/services", { cache: "no-store" })
+      if (!res.ok) throw new Error(`Could not load entrance services (${res.status}).`)
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
+      setServices(list.filter(isEntranceService))
+    } catch (e) {
+      setCatalogError(e instanceof Error ? e.message : "Could not load entrance services.")
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }
+
+  const reset = () => {
+    setDayId("")
+    setServiceId("")
+    setVariantId("")
+    setServiceDate("")
+    setError(null)
+    setPreview(null)
+  }
+  const cancel = () => {
+    setOpen(false)
+    reset()
+  }
+
+  const onDayChange = (id: string) => {
+    setDayId(id)
+    setPreview(null)
+    const day = itineraryDays.find((d) => d.id === id)
+    if (day?.date && !serviceDate) {
+      const match = /^\d{4}-\d{2}-\d{2}/.exec(day.date)
+      if (match) setServiceDate(match[0])
+    }
+  }
+
+  const selectedService = services.find((s) => s.id === serviceId)
+  // Active variants only. When a service has none, the create uses the base entrance
+  // fee (ticketRateVariantId omitted) — variant selection is NEVER required.
+  const variants = (selectedService?.ticketRateVariants ?? []).filter((v) => v.active !== false)
+
+  const canSubmit = Boolean(dayId && serviceId && serviceDate) && !submitting
+  const currentPayload = () => ({
+    itemType: "entrance",
+    dayId,
+    serviceId,
+    serviceDate,
+    // Optional — sent ONLY when a variant is chosen; omitted → base-fee fallback.
+    ...(variantId ? { ticketRateVariantId: variantId } : {}),
+  })
+
+  // Step 1 — preview: project the price (no write) and hold the token for confirm.
+  const doPreview = async () => {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await onPreviewAddItem(currentPayload())
+      const token = res?.previewToken
+      if (!token) throw new Error("Could not preview the entrance price. Please try again.")
+      setPreview({
+        sell: typeof res?.projected?.sell === "number" ? res.projected.sell : null,
+        currency: res?.projected?.currency ?? null,
+        previewToken: token,
+      })
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not preview the entrance.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Step 2 — confirm: create with the previewed token + acknowledgedDelta.
+  const doConfirm = async () => {
+    if (!preview || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onAddItem(currentPayload(), preview.previewToken, true)
+      setOpen(false)
+      reset()
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not add the entrance. Please preview again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mb-3">
+        <Button size="sm" className="gap-1.5" onClick={openForm}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add entrance
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="mb-3 space-y-2 p-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add entrance / ticket</div>
+      {catalogError ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {catalogError}
+        </p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Itinerary day</span>
+          <select value={dayId} onChange={(e) => onDayChange(e.target.value)} disabled={submitting} className={FIELD_CLASS}>
+            <option value="">Select a day…</option>
+            {itineraryDays.map((d) => (
+              <option key={d.id} value={d.id}>
+                Day {d.day}: {d.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Service date</span>
+          <input type="date" value={serviceDate} onChange={(e) => { setServiceDate(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Entrance / ticket service</span>
+          <select value={serviceId} onChange={(e) => { setServiceId(e.target.value); setVariantId(""); setPreview(null) }} disabled={submitting || loadingCatalog} className={FIELD_CLASS}>
+            <option value="">{loadingCatalog ? "Loading…" : "Select an entrance service…"}</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Ticket rate (optional)</span>
+          {serviceId && variants.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-muted-foreground">Uses the base entrance fee.</p>
+          ) : (
+            <select value={variantId} onChange={(e) => { setVariantId(e.target.value); setPreview(null) }} disabled={submitting || !serviceId} className={FIELD_CLASS}>
+              <option value="">Base entrance fee</option>
+              {variants.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label ?? "Ticket rate"}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+      </div>
+      {error ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </p>
+      ) : null}
+      {preview ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Projected selling price: </span>
+          <span className="font-semibold text-foreground">
+            {preview.sell != null ? `${preview.currency ?? ""} ${Math.round(preview.sell)}`.trim() : "—"}
+          </span>
+          <span className="text-muted-foreground"> — confirm to add.</span>
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        {preview ? (
+          <Button size="sm" className="gap-1.5" onClick={doConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Adding…" : "Confirm & add"}
+          </Button>
+        ) : (
+          <Button size="sm" className="gap-1.5" onClick={doPreview} disabled={!canSubmit}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Previewing…" : "Preview price"}
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={cancel} disabled={submitting}>
+          Cancel
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Adds one entrance/ticket to the selected day at cost (Jordan Pass coverage is applied automatically). No cost
+        entry — the fee and any Jordan Pass discount are computed. Editing/removing/reordering stay in Classic.
+      </p>
+    </Card>
+  )
+}
+
 export interface ExperiencesStepProps {
   experiences: Experience[]
   currency: string
@@ -1061,6 +1304,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
           <AddActivityPanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
           <AddGuidePanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
           <AddMealPanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} canEnterCostOverride={Boolean(mealCostOverrideEnabled)} />
+          <AddEntrancePanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
         </>
       ) : null}
 
