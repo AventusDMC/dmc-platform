@@ -1,7 +1,9 @@
 import { test, afterEach } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { QuoteExperiencesV2Service } from './quote-experiences-v2.service';
-import { buildCreatePreviewToken } from './quote-create-preview-token';
+import { buildCreatePreviewToken, verifyCreatePreviewToken } from './quote-create-preview-token';
 import { getPreviewTokenSecret } from './quote-preview-token';
 import { EXPERIENCE_DEFAULT_MARKUP } from '../common/pricing-constants';
 
@@ -870,5 +872,224 @@ test('entrance: restricted role (operations) preview + create responses redact c
   assert.equal(result.itemType, 'entrance');
   assert.equal(result.cost, null);
   assert.equal(result.quote.totalCost, null);
+  assert.equal(result.sell, 144);
+});
+
+// ---------------------------------------------------------------------------
+// M-3a — EXTERNAL PACKAGE create (finance-only, one-off / service-less, flat net
+// cost). Same guarded flow; activity/guide/meal/entrance behavior above unchanged.
+// ---------------------------------------------------------------------------
+
+// Cost-visible actors (admin already = ACTOR). finance + super_admin can create.
+const FINANCE_ACTOR = { id: 'user-f', companyId: 'company-A', auditLabel: 'Fiona', role: 'finance' as const };
+const SUPER_ACTOR = { id: 'user-s', companyId: 'company-A', auditLabel: 'Sam', role: 'super_admin' as const };
+// agent_admin coalesces into @Roles('admin') at the route but is NOT cost-visible →
+// must fail closed at the service-level finance guard.
+const AGENT_ADMIN_ACTOR = { id: 'user-aa', companyId: 'company-A', auditLabel: 'Ava', role: 'agent_admin' as const };
+// One-off / SERVICE-LESS external package: no serviceId. netCost/currency/country/
+// clientDescription required; pricingBasis defaults PER_PERSON.
+const GOOD_EXTERNAL = {
+  itemType: 'external_package',
+  dayId: DAY,
+  serviceDate: '2026-08-07',
+  netCost: 100,
+  currency: 'USD',
+  country: 'Egypt',
+  clientDescription: 'Cairo 3-night package',
+};
+
+test('external_package: resolveItemType accepts it — preview returns itemType external_package + a token, writing nothing', async () => {
+  const { service, calls } = build({ flag: true });
+  const res: any = await service.previewActivityItem(QID, GOOD_EXTERNAL, ACTOR);
+  assert.equal(res.itemType, 'external_package');
+  assert.equal(res.projected.sell, 144);
+  assert.equal(typeof res.previewToken, 'string');
+  assert.equal(calls.createItem.length, 0);
+  assert.equal(calls.auditLog.length, 0);
+});
+
+test('external_package: an unknown itemType is still rejected out_of_scope', async () => {
+  const { service, calls } = build({ flag: true });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_EXTERNAL, itemType: 'transport' }, ACTOR), 'out_of_scope');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('external_package: the route @Roles is widened to include finance (admin, operations, finance)', () => {
+  const src = readFileSync(join(__dirname, 'quote-experiences-v2.controller.ts'), 'utf8');
+  assert.ok(src.includes("@Roles('admin', 'operations', 'finance')"), 'route must admit finance');
+  // Both endpoints (preview + create) carry the widened roles.
+  const count = src.split("@Roles('admin', 'operations', 'finance')").length - 1;
+  assert.equal(count, 2, 'both item + item/preview routes widened');
+});
+
+for (const actor of [ACTOR, FINANCE_ACTOR, SUPER_ACTOR]) {
+  test(`external_package: cost-visible role ${actor.role} can preview + create`, async () => {
+    const { service, calls } = build({ flag: true });
+    const preview: any = await service.previewActivityItem(QID, GOOD_EXTERNAL, actor);
+    assert.equal(preview.itemType, 'external_package');
+    const result: any = await service.addActivityItem(QID, GOOD_EXTERNAL, actor, { previewToken: preview.previewToken, acknowledgedDelta: true });
+    assert.equal(result.itemId, 'item-new');
+    assert.equal(result.itemType, 'external_package');
+    // Cost-visible → cost present on the response.
+    assert.equal(result.cost, 120);
+    assert.equal(calls.createItem.length, 1);
+    assert.equal(calls.auditLog.length, 1);
+    assert.equal(calls.auditLog[0].metadata.itemType, 'external_package');
+  });
+}
+
+for (const actor of [OPS_ACTOR, AGENT_ADMIN_ACTOR]) {
+  test(`external_package: non-cost-visible role ${actor.role} fails closed (external_package_finance_only) on preview and create`, async () => {
+    const { service, calls } = build({ flag: true });
+    await expectRejects(service.previewActivityItem(QID, GOOD_EXTERNAL, actor), 'external_package_finance_only');
+    await expectRejects(
+      service.addActivityItem(QID, GOOD_EXTERNAL, actor, { previewToken: 'x', acknowledgedDelta: true }),
+      'external_package_finance_only',
+    );
+    assert.equal(calls.createItem.length, 0);
+    assert.equal(calls.auditLog.length, 0);
+  });
+}
+
+for (const field of ['netCost', 'currency', 'country', 'clientDescription']) {
+  test(`external_package: missing ${field} is rejected (missing_field) and does not create`, async () => {
+    const { service, calls } = build({ flag: true });
+    const bad: any = { ...GOOD_EXTERNAL, [field]: '' };
+    await expectRejects(service.previewActivityItem(QID, bad, FINANCE_ACTOR), 'missing_field');
+    assert.equal(calls.createItem.length, 0);
+  });
+}
+
+test('external_package: invalid / negative netCost is rejected (invalid_external_package_cost)', async () => {
+  const { service, calls } = build({ flag: true });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_EXTERNAL, netCost: -5 }, FINANCE_ACTOR), 'invalid_external_package_cost');
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_EXTERNAL, netCost: 'abc' as any }, FINANCE_ACTOR), 'invalid_external_package_cost');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('external_package: an invalid pricingBasis is rejected (invalid_pricing_basis)', async () => {
+  const { service } = build({ flag: true });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_EXTERNAL, pricingBasis: 'PER_ROOM' }, FINANCE_ACTOR), 'invalid_pricing_basis');
+});
+
+test('external_package: one-off / service-less create payload — no serviceId, flat net cost, markup = EXPERIENCE_DEFAULT_MARKUP (20)', async () => {
+  const { service, calls } = build({ flag: true });
+  const preview: any = await service.previewActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR);
+  await service.addActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  const data = calls.createItem[0].data;
+  assert.equal('serviceId' in data, false, 'external package is service-less (no serviceId)');
+  assert.equal(data.netCost, 100);
+  assert.equal(data.currency, 'USD');
+  assert.equal(data.country, 'Egypt');
+  assert.equal(data.clientDescription, 'Cairo 3-night package');
+  assert.equal(data.pricingBasis, 'PER_PERSON', 'defaults to PER_PERSON when omitted');
+  assert.equal(data.markupPercent, EXPERIENCE_DEFAULT_MARKUP);
+  assert.equal(data.markupPercent, 20);
+  // This slice never sends matrix / single supplement / sell override / day range.
+  for (const forbidden of ['pricingMatrixJson', 'singleSupplement', 'sellPrice', 'sellPriceOverrideExplicit', 'startDay', 'endDay']) {
+    assert.equal(forbidden in data, false, `create input must not carry ${forbidden}`);
+  }
+});
+
+test('external_package: PER_GROUP basis is honored in the create payload', async () => {
+  const { service, calls } = build({ flag: true });
+  const input = { ...GOOD_EXTERNAL, pricingBasis: 'PER_GROUP' };
+  const preview: any = await service.previewActivityItem(QID, input, FINANCE_ACTOR);
+  await service.addActivityItem(QID, input, FINANCE_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  assert.equal(calls.createItem[0].data.pricingBasis, 'PER_GROUP');
+});
+
+test('external_package: optional text fields are mapped into the create payload', async () => {
+  const { service, calls } = build({ flag: true });
+  const input = {
+    ...GOOD_EXTERNAL,
+    packageName: 'Nile Explorer',
+    includes: 'Flights, hotels',
+    excludes: 'Tips',
+    hotelsOrSimilar: 'Steigenberger or similar',
+    internalNotes: 'Partner: Cairo DMC',
+  };
+  const preview: any = await service.previewActivityItem(QID, input, FINANCE_ACTOR);
+  await service.addActivityItem(QID, input, FINANCE_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  const data = calls.createItem[0].data;
+  assert.equal(data.packageName, 'Nile Explorer');
+  assert.equal(data.includes, 'Flights, hotels');
+  assert.equal(data.excludes, 'Tips');
+  assert.equal(data.hotelsOrSimilar, 'Steigenberger or similar');
+  assert.equal(data.internalNotes, 'Partner: Cairo DMC');
+});
+
+test('external_package: the preview token kind is v2-external-package-create', async () => {
+  const { service } = build({ flag: true });
+  const token = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+  const payload: any = verifyCreatePreviewToken(token, getPreviewTokenSecret());
+  assert.equal(payload.kind, 'v2-external-package-create');
+});
+
+test('external_package: cross-type token replay is blocked in both directions (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true });
+  // An external-package token cannot create an activity...
+  const extToken = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: extToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  // ...and an activity token cannot create an external package.
+  const actToken = await previewToken(service, GOOD, ACTOR);
+  await expectRejects(service.addActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR, { previewToken: actToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+for (const change of [{ netCost: 999 }, { currency: 'EUR' }, { country: 'Jordan' }, { clientDescription: 'Different text' }, { pricingBasis: 'PER_GROUP' }]) {
+  test(`external_package: changing ${Object.keys(change)[0]} after preview invalidates the token (invalid_preview_token)`, async () => {
+    const { service, calls } = build({ flag: true });
+    const token = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+    await expectRejects(
+      service.addActivityItem(QID, { ...GOOD_EXTERNAL, ...change }, FINANCE_ACTOR, { previewToken: token, acknowledgedDelta: true }),
+      'invalid_preview_token',
+    );
+    assert.equal(calls.createItem.length, 0);
+  });
+}
+
+test('external_package: confirmation_required when the add changes pricing and acknowledgedDelta is not true', async () => {
+  const { service, calls } = build({ flag: true });
+  const token = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+  await expectRejects(service.addActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR, { previewToken: token, acknowledgedDelta: false }), 'confirmation_required');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('external_package: stale_preview when the quote changes after the preview', async () => {
+  const { service, calls, state } = build({ flag: true });
+  const token = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+  state.totals.totalCost += 50;
+  await expectRejects(service.addActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR, { previewToken: token, acknowledgedDelta: true }), 'stale_preview');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('external_package: injected drift after preview triggers rate_changed AND a compensating removeItem', async () => {
+  const { service, calls, state } = build({ flag: true, driftCost: 40 });
+  const token = await previewToken(service, GOOD_EXTERNAL, FINANCE_ACTOR);
+  await expectRejects(service.addActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR, { previewToken: token, acknowledgedDelta: true }), 'rate_changed');
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1);
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+test('external_package is blocked (feature_disabled) when the flag is OFF and writes nothing', async () => {
+  const { service, calls } = build({ flag: false });
+  await expectRejects(service.previewActivityItem(QID, GOOD_EXTERNAL, FINANCE_ACTOR), 'feature_disabled');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('external_package: preview + create responses never expose externalNetCost / externalInternalNotes / externalSupplierName', async () => {
+  const { service } = build({ flag: true });
+  const input = { ...GOOD_EXTERNAL, internalNotes: 'Partner: Cairo DMC' };
+  const preview: any = await service.previewActivityItem(QID, input, FINANCE_ACTOR);
+  const result: any = await service.addActivityItem(QID, input, FINANCE_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  for (const leak of ['externalNetCost', 'externalInternalNotes', 'externalSupplierName', 'netCost', 'internalNotes', 'supplierName']) {
+    assert.equal(leak in preview, false, `preview response must not include ${leak}`);
+    assert.equal(leak in result, false, `create response must not include ${leak}`);
+    assert.equal(leak in (preview.projected ?? {}), false, `preview.projected must not include ${leak}`);
+  }
+  // The narrow response shape is preserved (cost/sell/currency/quote totals only).
+  assert.equal(result.itemType, 'external_package');
   assert.equal(result.sell, 144);
 });

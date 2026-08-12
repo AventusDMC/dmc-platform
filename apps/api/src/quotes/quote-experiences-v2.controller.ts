@@ -23,6 +23,18 @@ type AddItemBody = {
   // with a linked EntranceFee; ticketRateVariantId is OPTIONAL (base-fee fallback).
   // entranceFeeId / Jordan Pass values are NEVER accepted from the client — computed.
   ticketRateVariantId?: string | null;
+  // External-package fields (itemType='external_package'). ONE-OFF / SERVICE-LESS
+  // (no serviceId). netCost/currency are the manual price (FINANCE-ONLY item); country
+  // + clientDescription required; the rest optional. No matrix/supplement/sell override.
+  netCost?: number | string | null;
+  country?: string | null;
+  clientDescription?: string | null;
+  packageName?: string | null;
+  pricingBasis?: string | null;
+  includes?: string | null;
+  excludes?: string | null;
+  hotelsOrSimilar?: string | null;
+  internalNotes?: string | null;
   serviceDate?: string | null;
   adultCount?: number | string | null;
   childCount?: number | string | null;
@@ -31,13 +43,16 @@ type AddItemBody = {
   acknowledgedDelta?: boolean;
 };
 
-// Quote Builder V2 — Phase B, Slice 2/3: add ONE Activity OR Guide item. NEW,
-// V2-SCOPED route under /quotes/:quoteId/v2/experiences so it never touches the shared
-// Classic item-create endpoint (POST /quotes/:id/items). Gated by the QUOTE_ITEM_CREATE
-// flag inside the service (fail-closed) and restricted to admin/operations. The service
-// enforces access/company isolation, editable status, day-belongs-to-quote, per-type
-// integrity (activity/variant, or guide-service/type/duration), and ACTIVITY+GUIDE-only
-// scope; it delegates the actual create + recalculation to the existing
+// Quote Builder V2 — Phase B: add ONE item (Activity/Guide/Meal/Entrance/External
+// Package). NEW, V2-SCOPED route under /quotes/:quoteId/v2/experiences so it never
+// touches the shared Classic item-create endpoint (POST /quotes/:id/items). Gated by the
+// QUOTE_ITEM_CREATE flag inside the service (fail-closed). The route admits admin/
+// operations/finance (plus super_admin/agent_admin via RolesGuard coalescing); finance
+// is required because external_package create is finance-only and is additionally gated
+// at the SERVICE level (cost-visible roles only — operations/agent_admin fail closed with
+// external_package_finance_only). The service enforces access/company isolation, editable
+// status, day-belongs-to-quote, per-type integrity, and ACTIVITY+GUIDE+MEAL+ENTRANCE+
+// EXTERNAL_PACKAGE scope; it delegates the actual create + recalculation to the existing
 // QuotesService.createItem behind a determinism guard and writes a sanitized audit row.
 @Controller('quotes/:quoteId/v2/experiences')
 export class QuoteExperiencesV2Controller {
@@ -47,7 +62,7 @@ export class QuoteExperiencesV2Controller {
   // writes and returns a signed previewToken the client must replay on create.
   // Same flag/role/status gating as create (enforced in the service).
   @Post('item/preview')
-  @Roles('admin', 'operations')
+  @Roles('admin', 'operations', 'finance')
   async previewItem(
     @Param('quoteId') quoteId: string,
     @Body() body: AddItemBody,
@@ -57,7 +72,7 @@ export class QuoteExperiencesV2Controller {
   }
 
   @Post('item')
-  @Roles('admin', 'operations')
+  @Roles('admin', 'operations', 'finance')
   async addItem(
     @Param('quoteId') quoteId: string,
     @Body() body: AddItemBody,
@@ -88,6 +103,18 @@ export class QuoteExperiencesV2Controller {
       currency: (body?.currency ?? '').trim() || undefined,
       // Blank/absent → null so the entrance base-fee fallback path is taken.
       ticketRateVariantId: (body?.ticketRateVariantId ?? '').trim() || null,
+      // External-package fields. Blank/absent → undefined (netCost) / null (text) so the
+      // service's required-field guard can distinguish "not supplied". serviceId is NOT
+      // accepted for external packages (one-off / service-less).
+      netCost: toNum(body?.netCost),
+      country: (body?.country ?? '').trim() || null,
+      clientDescription: (body?.clientDescription ?? '').trim() || null,
+      packageName: (body?.packageName ?? '').trim() || null,
+      pricingBasis: (body?.pricingBasis ?? '').trim() || null,
+      includes: (body?.includes ?? '').trim() || null,
+      excludes: (body?.excludes ?? '').trim() || null,
+      hotelsOrSimilar: (body?.hotelsOrSimilar ?? '').trim() || null,
+      internalNotes: (body?.internalNotes ?? '').trim() || null,
       serviceDate: body?.serviceDate ?? null,
       adultCount: toNum(body?.adultCount),
       childCount: toNum(body?.childCount),
