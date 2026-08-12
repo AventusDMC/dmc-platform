@@ -643,7 +643,7 @@ export function BuilderV2Client({
       case "feature_disabled":
         return "Adding items from V2 is not available."
       case "out_of_scope":
-        return "Only activities, guides and meals can be added from V2 in this version."
+        return "Only activities, guides, meals and entrances can be added from V2 in this version."
       case "missing_field":
         return "Please fill in all required fields before previewing."
       case "service_not_found":
@@ -654,6 +654,10 @@ export function BuilderV2Client({
         return "The selected service is not a meal service. Please pick a meal service."
       case "cost_override_forbidden":
         return "Only finance roles can set a meal unit cost or currency. Remove the override to add at the service base cost."
+      case "not_entrance_service":
+        return "The selected service is not an entrance/ticket service. Please pick an entrance service."
+      case "invalid_ticket_rate_variant":
+        return "The selected ticket rate is invalid or unavailable. Pick another, or leave it blank to use the base entrance fee."
       case "invalid_preview_token":
         return "This preview expired. Please preview the item again."
       case "stale_preview":
