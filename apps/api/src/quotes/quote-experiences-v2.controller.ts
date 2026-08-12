@@ -19,6 +19,10 @@ type AddItemBody = {
   customServiceName?: string | null;
   unitCost?: number | string | null;
   currency?: string | null;
+  // Entrance fields (itemType='entrance'). serviceId (shared) is an ENTRANCE service
+  // with a linked EntranceFee; ticketRateVariantId is OPTIONAL (base-fee fallback).
+  // entranceFeeId / Jordan Pass values are NEVER accepted from the client — computed.
+  ticketRateVariantId?: string | null;
   serviceDate?: string | null;
   adultCount?: number | string | null;
   childCount?: number | string | null;
@@ -82,6 +86,8 @@ export class QuoteExperiencesV2Controller {
       // an explicit value (the service's cost-override guard keys on this).
       unitCost: toNum(body?.unitCost),
       currency: (body?.currency ?? '').trim() || undefined,
+      // Blank/absent → null so the entrance base-fee fallback path is taken.
+      ticketRateVariantId: (body?.ticketRateVariantId ?? '').trim() || null,
       serviceDate: body?.serviceDate ?? null,
       adultCount: toNum(body?.adultCount),
       childCount: toNum(body?.childCount),

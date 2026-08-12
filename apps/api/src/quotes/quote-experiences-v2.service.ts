@@ -42,6 +42,11 @@ export type AddActivityItemInput = {
   customServiceName?: string | null;
   unitCost?: number | null;
   currency?: string | null;
+  // Entrance fields (itemType='entrance'). serviceId (shared) is an ENTRANCE service
+  // with a linked EntranceFee; ticketRateVariantId is OPTIONAL (base-fee fallback when
+  // omitted). entranceFeeId + Jordan Pass values are computed by the resolver, never
+  // accepted from the client.
+  ticketRateVariantId?: string | null;
   serviceDate?: string | null;
   // Optional pax override; defaults from the quote when omitted.
   adultCount?: number | null;
@@ -66,9 +71,11 @@ const EDITABLE_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
 const CREATE_TOKEN_KIND = 'v2-activity-create';
 const GUIDE_CREATE_TOKEN_KIND = 'v2-guide-create';
 const MEAL_CREATE_TOKEN_KIND = 'v2-meal-create';
-function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal'): string {
+const ENTRANCE_CREATE_TOKEN_KIND = 'v2-entrance-create';
+function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal' | 'entrance'): string {
   if (itemType === 'guide') return GUIDE_CREATE_TOKEN_KIND;
   if (itemType === 'meal') return MEAL_CREATE_TOKEN_KIND;
+  if (itemType === 'entrance') return ENTRANCE_CREATE_TOKEN_KIND;
   return CREATE_TOKEN_KIND;
 }
 const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
@@ -77,7 +84,7 @@ const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
 const TOTALS_EPSILON = 0.005;
 
 type ResolvedCreateContext = {
-  itemType: 'activity' | 'guide' | 'meal';
+  itemType: 'activity' | 'guide' | 'meal' | 'entrance';
   requiredActor: NonNullable<QuoteItemCreateActor>;
   quote: { id: string; quoteCurrency: string | null; adults: number | null; children: number | null };
   dayId: string;
@@ -98,6 +105,10 @@ type ResolvedCreateContext = {
   customServiceName?: string;
   unitCost?: number;
   currency?: string;
+  // Entrance-only (present when itemType='entrance'). ticketRateVariantId is set only
+  // when a valid variant was supplied; otherwise undefined → the shared resolver uses
+  // the default active variant, else the EntranceFee base-fee fallback.
+  ticketRateVariantId?: string;
 };
 
 // Quote Builder V2 — Phase B, Slice 2 + Slice 2B-1. Adds ONE Activity item from V2,
@@ -158,13 +169,13 @@ export class QuoteExperiencesV2Service {
     return quote;
   }
 
-  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY + GUIDE + MEAL.
-  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' | 'meal' {
+  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY+GUIDE+MEAL+ENTRANCE.
+  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' | 'meal' | 'entrance' {
     const raw = String(input.itemType ?? 'activity').trim().toLowerCase() || 'activity';
-    if (raw !== 'activity' && raw !== 'guide' && raw !== 'meal') {
+    if (raw !== 'activity' && raw !== 'guide' && raw !== 'meal' && raw !== 'entrance') {
       throw new BadRequestException({
         code: 'out_of_scope',
-        message: 'Only activity, guide and meal items can be added from V2 in this version.',
+        message: 'Only activity, guide, meal and entrance items can be added from V2 in this version.',
       });
     }
     return raw;
@@ -288,6 +299,46 @@ export class QuoteExperiencesV2Service {
       return { ...base, serviceId, customServiceName, unitCost, currency };
     }
 
+    if (itemType === 'entrance') {
+      // ── Entrance-specific validation ──
+      const serviceId = (input.serviceId ?? '').trim();
+      if (!serviceId) {
+        throw new BadRequestException({ code: 'missing_field', message: 'Missing required field(s): serviceId' });
+      }
+      // The linked EntranceFee relation is the backend SOURCE OF TRUTH for "is this an
+      // entrance item" — it is exactly what the shared resolver's entrance branch keys
+      // on (effectiveService.entranceFee && !activity). A service without one is rejected.
+      const service = await this.prisma.supplierService.findUnique({
+        where: { id: serviceId },
+        select: { id: true, entranceFee: { select: { id: true } } },
+      });
+      if (!service) {
+        throw new BadRequestException({ code: 'service_not_found', message: 'Service not found.' });
+      }
+      if (!service.entranceFee) {
+        throw new BadRequestException({ code: 'not_entrance_service', message: 'The selected service is not an entrance/ticket service.' });
+      }
+      // ticketRateVariantId is OPTIONAL — omitted → base-fee fallback (EntranceFee.
+      // foreignerFeeJod / default active variant, resolved server-side). When supplied,
+      // it must belong to THIS service and be active; otherwise fail closed.
+      const ticketRateVariantIdRaw = (input.ticketRateVariantId ?? '').trim();
+      let ticketRateVariantId: string | undefined;
+      if (ticketRateVariantIdRaw) {
+        const variant = await this.prisma.ticketRateVariant.findUnique({
+          where: { id: ticketRateVariantIdRaw },
+          select: { id: true, serviceId: true, active: true },
+        });
+        if (!variant || variant.serviceId !== serviceId || variant.active === false) {
+          throw new BadRequestException({
+            code: 'invalid_ticket_rate_variant',
+            message: 'The selected ticket rate variant is invalid, inactive, or does not belong to this service.',
+          });
+        }
+        ticketRateVariantId = variant.id;
+      }
+      return { ...base, serviceId, ticketRateVariantId };
+    }
+
     // ── Activity-specific validation (unchanged behavior) ──
     const activityId = (input.activityId ?? '').trim();
     const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
@@ -358,6 +409,24 @@ export class QuoteExperiencesV2Service {
         markupPercent: EXPERIENCE_DEFAULT_MARKUP,
       };
     }
+    if (ctx.itemType === 'entrance') {
+      // Entrance prices via the shared resolver's entrance branch (keyed on the
+      // service's linked EntranceFee): unit cost = ticket variant costPrice ??
+      // EntranceFee.foreignerFeeJod, with Jordan Pass coverage computed server-side.
+      // entranceFeeId + jordanPassCovered/savings are DERIVED — never passed. No
+      // pricing math. Entrance default markup = 0 (at-cost, pending team confirmation).
+      return {
+        quoteId: ctx.quote.id,
+        serviceId: ctx.serviceId,
+        itineraryId: ctx.dayId,
+        serviceDate: ctx.serviceDate,
+        ticketRateVariantId: ctx.ticketRateVariantId,
+        adultCount: ctx.adultCount,
+        childCount: ctx.childCount,
+        quantity: 1,
+        markupPercent: 0,
+      };
+    }
     return {
       quoteId: ctx.quote.id,
       activityId: ctx.activityId,
@@ -389,6 +458,14 @@ export class QuoteExperiencesV2Service {
         customServiceName: ctx.customServiceName,
         unitCost: ctx.unitCost ?? null,
         currency: ctx.currency ?? null,
+      };
+    }
+    if (ctx.itemType === 'entrance') {
+      // Bind the entrance identity INCLUDING the (possibly omitted) ticket variant — a
+      // changed serviceId or ticketRateVariantId after preview invalidates the token.
+      return {
+        serviceId: ctx.serviceId,
+        ticketRateVariantId: ctx.ticketRateVariantId ?? null,
       };
     }
     return {
@@ -522,8 +599,11 @@ export class QuoteExperiencesV2Service {
             payload.customServiceName === ctx.customServiceName &&
             (payload.unitCost ?? null) === (ctx.unitCost ?? null) &&
             (payload.currency ?? null) === (ctx.currency ?? null)
-          : payload.activityId === ctx.activityId &&
-            payload.activityRateVariantId === ctx.activityRateVariantId;
+          : ctx.itemType === 'entrance'
+            ? payload.serviceId === ctx.serviceId &&
+              (payload.ticketRateVariantId ?? null) === (ctx.ticketRateVariantId ?? null)
+            : payload.activityId === ctx.activityId &&
+              payload.activityRateVariantId === ctx.activityRateVariantId;
     if (!commonMatches || !typeMatches) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
     }

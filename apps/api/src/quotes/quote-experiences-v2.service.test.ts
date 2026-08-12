@@ -21,8 +21,12 @@ type Options = {
   variant?: { id: string; activityId: string } | null;
   // Guide-type service (resolveServiceTaxonomyGroup === 'guide'). Default is a GUIDE
   // service; pass a non-guide serviceType to exercise the not_guide_service reject,
-  // or null to exercise service_not_found.
-  service?: { id: string; category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null } | null;
+  // or null to exercise service_not_found. For entrance, pass `entranceFee: { id }`
+  // (present → entrance service) or omit it (→ not_entrance_service).
+  service?: { id: string; category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null; entranceFee?: { id: string } | null } | null;
+  // Ticket rate variant lookup (entrance). undefined → a valid variant on SVC; null →
+  // not found; pass a foreign serviceId / active:false to exercise the reject.
+  ticketRateVariant?: { id: string; serviceId: string; active?: boolean } | null;
   created?: any;
   createThrows?: boolean;
   auditThrows?: boolean;
@@ -61,6 +65,11 @@ const GOOD_GUIDE = { itemType: 'guide', dayId: DAY, serviceId: SVC, guideType: '
 // is the required meal name. unitCost/currency are a finance-only override.
 const GOOD_MEAL = { itemType: 'meal', dayId: DAY, serviceId: SVC, customServiceName: 'Welcome Dinner', serviceDate: '2026-08-07' };
 const MEAL_SERVICE = { id: SVC, category: 'meal', serviceType: { name: 'Meal', code: 'MEAL' } };
+// Entrance fixtures (M-2a). serviceId is a SupplierService with a LINKED EntranceFee;
+// ticketRateVariantId is optional (omitted → base-fee fallback). TRV is a valid variant.
+const TRV = 'trv-1';
+const GOOD_ENTRANCE = { itemType: 'entrance', dayId: DAY, serviceId: SVC, serviceDate: '2026-08-07' };
+const ENTRANCE_SERVICE = { id: SVC, entranceFee: { id: 'ef-1' } };
 
 function build(opts: Options = {}) {
   const calls: Record<string, any[]> = { createItem: [], removeItem: [], previewValues: [], auditLog: [] };
@@ -101,6 +110,9 @@ function build(opts: Options = {}) {
         opts.service === undefined
           ? { id: SVC, category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' } }
           : opts.service,
+    },
+    ticketRateVariant: {
+      findUnique: async () => (opts.ticketRateVariant === undefined ? { id: TRV, serviceId: SVC, active: true } : opts.ticketRateVariant),
     },
   };
 
@@ -697,4 +709,166 @@ test('meal: a changed unitCost after preview invalidates the token (invalid_prev
     'invalid_preview_token',
   );
   assert.equal(calls.createItem.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// M-2a — ENTRANCE create (same guarded flow; ACTIVITY+GUIDE+MEAL unchanged)
+// ---------------------------------------------------------------------------
+
+test('entrance create-preview projects the price and returns a token (itemType entrance), writing nothing', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const res: any = await service.previewActivityItem(QID, GOOD_ENTRANCE, ACTOR);
+  assert.equal(res.itemType, 'entrance');
+  assert.equal(res.projected.sell, 144);
+  assert.equal(typeof res.previewToken, 'string');
+  assert.equal(calls.createItem.length, 0);
+  assert.equal(calls.auditLog.length, 0);
+});
+
+test('entrance happy path (no variant): create commits via base-fee fallback with the entrance input shape', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const token = await previewToken(service, GOOD_ENTRANCE);
+  const result: any = await service.addActivityItem(QID, GOOD_ENTRANCE, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(result.itemId, 'item-new');
+  assert.equal(result.itemType, 'entrance');
+  assert.equal(calls.createItem.length, 1);
+  const data = calls.createItem[0].data;
+  assert.equal(data.serviceId, SVC);
+  assert.equal(data.ticketRateVariantId, undefined); // omitted -> base-fee fallback
+  assert.equal(data.quantity, 1);
+  assert.equal(data.markupPercent, 0); // entrance default markup = 0 (at-cost)
+  // entranceFeeId + Jordan Pass values are DERIVED server-side -- never passed here.
+  assert.equal('entranceFeeId' in data, false);
+  assert.equal('jordanPassCovered' in data, false);
+  assert.equal('jordanPassSavingsJod' in data, false);
+  assert.equal(calls.auditLog.length, 1);
+  assert.equal(calls.auditLog[0].metadata.itemType, 'entrance');
+  assert.equal(calls.auditLog[0].metadata.serviceId, SVC);
+});
+
+test('entrance: missing serviceId is rejected (missing_field)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_ENTRANCE, serviceId: '' }, ACTOR), 'missing_field');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: a service with NO linked EntranceFee is rejected (not_entrance_service)', async () => {
+  const { service, calls } = build({ flag: true, service: { id: SVC, category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' } } });
+  await expectRejects(service.previewActivityItem(QID, GOOD_ENTRANCE, ACTOR), 'not_entrance_service');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: a missing service is rejected (service_not_found)', async () => {
+  const { service } = build({ flag: true, service: null });
+  await expectRejects(service.previewActivityItem(QID, GOOD_ENTRANCE, ACTOR), 'service_not_found');
+});
+
+test('entrance: a valid ticketRateVariantId is accepted and carried into the create input', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE, ticketRateVariant: { id: TRV, serviceId: SVC, active: true } });
+  const input = { ...GOOD_ENTRANCE, ticketRateVariantId: TRV };
+  const token = await previewToken(service, input);
+  await service.addActivityItem(QID, input, ACTOR, { previewToken: token, acknowledgedDelta: true });
+  assert.equal(calls.createItem[0].data.ticketRateVariantId, TRV);
+});
+
+test('entrance: a not-found ticketRateVariant is rejected (invalid_ticket_rate_variant)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE, ticketRateVariant: null });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_ENTRANCE, ticketRateVariantId: TRV }, ACTOR), 'invalid_ticket_rate_variant');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: a foreign ticketRateVariant (different serviceId) is rejected (invalid_ticket_rate_variant)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE, ticketRateVariant: { id: TRV, serviceId: 'other-service', active: true } });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_ENTRANCE, ticketRateVariantId: TRV }, ACTOR), 'invalid_ticket_rate_variant');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: an inactive ticketRateVariant is rejected (invalid_ticket_rate_variant)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE, ticketRateVariant: { id: TRV, serviceId: SVC, active: false } });
+  await expectRejects(service.previewActivityItem(QID, { ...GOOD_ENTRANCE, ticketRateVariantId: TRV }, ACTOR), 'invalid_ticket_rate_variant');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance token kind is v2-entrance-create (decodes from the preview token)', async () => {
+  const { service } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const token = await previewToken(service, GOOD_ENTRANCE);
+  const decoded = require('./quote-create-preview-token').verifyCreatePreviewToken(token, getPreviewTokenSecret());
+  assert.equal(decoded.kind, 'v2-entrance-create');
+  assert.equal(decoded.itemType, 'entrance');
+});
+
+test('cross-type replay: an ENTRANCE token cannot create an ACTIVITY (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const entranceToken = await previewToken(service, GOOD_ENTRANCE);
+  await expectRejects(service.addActivityItem(QID, GOOD, ACTOR, { previewToken: entranceToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('cross-type replay: an ACTIVITY token cannot create an ENTRANCE (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const activityToken = await previewToken(service, GOOD); // activity kind
+  await expectRejects(service.addActivityItem(QID, GOOD_ENTRANCE, ACTOR, { previewToken: activityToken, acknowledgedDelta: true }), 'invalid_preview_token');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: a changed serviceId after preview invalidates the token (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const token = await previewToken(service, GOOD_ENTRANCE); // serviceId SVC
+  await expectRejects(
+    service.addActivityItem(QID, { ...GOOD_ENTRANCE, serviceId: 'other-entrance' }, ACTOR, { previewToken: token, acknowledgedDelta: true }),
+    'invalid_preview_token',
+  );
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: a changed ticketRateVariantId after preview invalidates the token (invalid_preview_token)', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE, ticketRateVariant: { id: TRV, serviceId: SVC, active: true } });
+  const token = await previewToken(service, GOOD_ENTRANCE); // no variant (base fee)
+  await expectRejects(
+    service.addActivityItem(QID, { ...GOOD_ENTRANCE, ticketRateVariantId: TRV }, ACTOR, { previewToken: token, acknowledgedDelta: true }),
+    'invalid_preview_token',
+  );
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: confirmation_required when the add changes pricing and acknowledgedDelta is not true', async () => {
+  const { service, calls } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const token = await previewToken(service, GOOD_ENTRANCE);
+  await expectRejects(service.addActivityItem(QID, GOOD_ENTRANCE, ACTOR, { previewToken: token, acknowledgedDelta: false }), 'confirmation_required');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: stale_preview when the quote changes after the preview', async () => {
+  const { service, calls, state } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const token = await previewToken(service, GOOD_ENTRANCE);
+  state.totals.totalCost += 50;
+  await expectRejects(service.addActivityItem(QID, GOOD_ENTRANCE, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'stale_preview');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: injected drift after preview triggers rate_changed AND a compensating removeItem', async () => {
+  const { service, calls, state } = build({ flag: true, service: ENTRANCE_SERVICE, driftCost: 40 });
+  const token = await previewToken(service, GOOD_ENTRANCE);
+  await expectRejects(service.addActivityItem(QID, GOOD_ENTRANCE, ACTOR, { previewToken: token, acknowledgedDelta: true }), 'rate_changed');
+  assert.equal(calls.createItem.length, 1);
+  assert.equal(calls.removeItem.length, 1);
+  assert.deepEqual(state.totals, { totalCost: 200, totalSell: 240 });
+});
+
+test('entrance is blocked (feature_disabled) when the flag is OFF and writes nothing', async () => {
+  const { service, calls } = build({ flag: false, service: ENTRANCE_SERVICE });
+  await expectRejects(service.previewActivityItem(QID, GOOD_ENTRANCE, ACTOR), 'feature_disabled');
+  assert.equal(calls.createItem.length, 0);
+});
+
+test('entrance: restricted role (operations) preview + create responses redact cost, keep sell', async () => {
+  const { service } = build({ flag: true, service: ENTRANCE_SERVICE });
+  const preview: any = await service.previewActivityItem(QID, GOOD_ENTRANCE, OPS_ACTOR);
+  assert.equal(preview.projected.cost, null);
+  assert.equal(preview.projected.sell, 144);
+  const result: any = await service.addActivityItem(QID, GOOD_ENTRANCE, OPS_ACTOR, { previewToken: preview.previewToken, acknowledgedDelta: true });
+  assert.equal(result.itemType, 'entrance');
+  assert.equal(result.cost, null);
+  assert.equal(result.quote.totalCost, null);
+  assert.equal(result.sell, 144);
 });
