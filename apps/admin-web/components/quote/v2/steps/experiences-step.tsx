@@ -726,6 +726,246 @@ function AddGuidePanel({
   )
 }
 
+// M-1b: inline "Add meal" form. MEAL ONLY. Explicit day + meal SERVICE + meal name
+// (customServiceName) + service date. Reuses the SAME guarded onPreviewAddItem/onAddItem
+// handlers as activity/guide (they POST the payload verbatim to the V2 route, which now
+// handles itemType='meal') and the SAME preview→confirm pattern showing the CLIENT-SAFE
+// selling price only. The unit-cost/currency override is FINANCE-GATED (canEnterCostOverride):
+// operations create at the service base cost and never see or send a cost — the backend
+// independently rejects a non-finance override with cost_override_forbidden.
+function isMealService(s: { category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null }): boolean {
+  const hay = `${s.serviceType?.code ?? ""} ${s.serviceType?.name ?? ""} ${s.category ?? ""}`.toLowerCase()
+  return /meal|dining|breakfast|lunch|dinner|restaurant|food/.test(hay)
+}
+
+function AddMealPanel({
+  onAddItem,
+  onPreviewAddItem,
+  itineraryDays,
+  canEnterCostOverride,
+}: {
+  onAddItem: AddItemHandler
+  onPreviewAddItem: PreviewAddHandler
+  itineraryDays: ItineraryDay[]
+  canEnterCostOverride: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [services, setServices] = useState<Array<{ id: string; name: string; category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null }>>([])
+  const [dayId, setDayId] = useState("")
+  const [serviceId, setServiceId] = useState("")
+  const [mealName, setMealName] = useState("")
+  // Finance-only cost override (rendered only when canEnterCostOverride).
+  const [unitCost, setUnitCost] = useState("")
+  const [currency, setCurrency] = useState("")
+  const [serviceDate, setServiceDate] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{ sell: number | null; currency: string | null; previewToken: string } | null>(null)
+
+  const openForm = async () => {
+    setOpen(true)
+    setError(null)
+    if (services.length > 0 || loadingCatalog) return
+    setLoadingCatalog(true)
+    setCatalogError(null)
+    try {
+      // Reuse the existing services proxy — read-only. MEAL-taxonomy services only,
+      // filtered client-side; the backend is the source of truth (rejects non-meal
+      // with not_meal_service).
+      const res = await fetch("/api/services", { cache: "no-store" })
+      if (!res.ok) throw new Error(`Could not load meal services (${res.status}).`)
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
+      setServices(list.filter(isMealService))
+    } catch (e) {
+      setCatalogError(e instanceof Error ? e.message : "Could not load meal services.")
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }
+
+  const reset = () => {
+    setDayId("")
+    setServiceId("")
+    setMealName("")
+    setUnitCost("")
+    setCurrency("")
+    setServiceDate("")
+    setError(null)
+    setPreview(null)
+  }
+  const cancel = () => {
+    setOpen(false)
+    reset()
+  }
+
+  const onDayChange = (id: string) => {
+    setDayId(id)
+    setPreview(null)
+    const day = itineraryDays.find((d) => d.id === id)
+    if (day?.date && !serviceDate) {
+      const match = /^\d{4}-\d{2}-\d{2}/.exec(day.date)
+      if (match) setServiceDate(match[0])
+    }
+  }
+
+  const canSubmit = Boolean(dayId && serviceId && mealName.trim() && serviceDate) && !submitting
+  const currentPayload = () => ({
+    itemType: "meal",
+    dayId,
+    serviceId,
+    customServiceName: mealName.trim(),
+    serviceDate,
+    // Cost override is FINANCE-ONLY and only sent when actually entered. Operations
+    // never include unitCost/currency (the fields are not rendered for them).
+    ...(canEnterCostOverride && unitCost.trim() !== "" ? { unitCost: Number(unitCost) } : {}),
+    ...(canEnterCostOverride && currency.trim() !== "" ? { currency: currency.trim() } : {}),
+  })
+
+  // Step 1 — preview: project the price (no write) and hold the token for confirm.
+  const doPreview = async () => {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await onPreviewAddItem(currentPayload())
+      const token = res?.previewToken
+      if (!token) throw new Error("Could not preview the meal price. Please try again.")
+      setPreview({
+        sell: typeof res?.projected?.sell === "number" ? res.projected.sell : null,
+        currency: res?.projected?.currency ?? null,
+        previewToken: token,
+      })
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not preview the meal.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Step 2 — confirm: create with the previewed token + acknowledgedDelta.
+  const doConfirm = async () => {
+    if (!preview || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onAddItem(currentPayload(), preview.previewToken, true)
+      setOpen(false)
+      reset()
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not add the meal. Please preview again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mb-3">
+        <Button size="sm" className="gap-1.5" onClick={openForm}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add meal
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="mb-3 space-y-2 p-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add meal</div>
+      {catalogError ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {catalogError}
+        </p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Itinerary day</span>
+          <select value={dayId} onChange={(e) => onDayChange(e.target.value)} disabled={submitting} className={FIELD_CLASS}>
+            <option value="">Select a day…</option>
+            {itineraryDays.map((d) => (
+              <option key={d.id} value={d.id}>
+                Day {d.day}: {d.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Service date</span>
+          <input type="date" value={serviceDate} onChange={(e) => { setServiceDate(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Meal service</span>
+          <select value={serviceId} onChange={(e) => { setServiceId(e.target.value); setPreview(null) }} disabled={submitting || loadingCatalog} className={FIELD_CLASS}>
+            <option value="">{loadingCatalog ? "Loading…" : "Select a meal service…"}</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted-foreground">Meal name</span>
+          <input type="text" value={mealName} onChange={(e) => { setMealName(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} placeholder="e.g. Welcome dinner" />
+        </label>
+      </div>
+      {canEnterCostOverride ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted-foreground">Unit cost override (finance)</span>
+            <input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => { setUnitCost(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} placeholder="Defaults to the service base cost" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted-foreground">Currency override (finance)</span>
+            <input type="text" value={currency} onChange={(e) => { setCurrency(e.target.value); setPreview(null) }} disabled={submitting} className={FIELD_CLASS} placeholder="Defaults to the service currency" />
+          </label>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </p>
+      ) : null}
+      {preview ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Projected selling price: </span>
+          <span className="font-semibold text-foreground">
+            {preview.sell != null ? `${preview.currency ?? ""} ${Math.round(preview.sell)}`.trim() : "—"}
+          </span>
+          <span className="text-muted-foreground"> — confirm to add.</span>
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        {preview ? (
+          <Button size="sm" className="gap-1.5" onClick={doConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Adding…" : "Confirm & add"}
+          </Button>
+        ) : (
+          <Button size="sm" className="gap-1.5" onClick={doPreview} disabled={!canSubmit}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {submitting ? "Previewing…" : "Preview price"}
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={cancel} disabled={submitting}>
+          Cancel
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Adds one meal to the selected day at the standard markup. Operations add at the service base cost; finance can
+        override the unit cost. Editing/removing/reordering stay in Classic.
+      </p>
+    </Card>
+  )
+}
+
 export interface ExperiencesStepProps {
   experiences: Experience[]
   currency: string
@@ -771,9 +1011,16 @@ export interface ExperiencesStepProps {
   onPreviewAddItem?: PreviewAddHandler
   /** Itinerary days for the day-select dropdown in the Add-activity form. */
   itineraryDays?: ItineraryDay[]
+  /**
+   * M-1b: finance-visibility gate for the Add-meal unit-cost/currency override
+   * (canAccessFinance = admin/super_admin/finance). When false, operations still add
+   * meals but never see or send a cost override (backend also rejects it). UI gate
+   * only — the backend independently enforces cost_override_forbidden.
+   */
+  mealCostOverrideEnabled?: boolean
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays, mealCostOverrideEnabled }: ExperiencesStepProps) {
   // Add-activity affordance is active only when the flag is on AND a handler +
   // itinerary days are provided (role/status-gated by the caller). Otherwise the
   // Experiences step is unchanged.
@@ -813,6 +1060,7 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
         <>
           <AddActivityPanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
           <AddGuidePanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} />
+          <AddMealPanel onAddItem={onAddItem} onPreviewAddItem={onPreviewAddItem} itineraryDays={itineraryDays} canEnterCostOverride={Boolean(mealCostOverrideEnabled)} />
         </>
       ) : null}
 

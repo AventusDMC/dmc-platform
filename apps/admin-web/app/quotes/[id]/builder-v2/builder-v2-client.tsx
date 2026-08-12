@@ -643,13 +643,17 @@ export function BuilderV2Client({
       case "feature_disabled":
         return "Adding items from V2 is not available."
       case "out_of_scope":
-        return "Only activities and guides can be added from V2 in this version."
+        return "Only activities, guides and meals can be added from V2 in this version."
       case "missing_field":
         return "Please fill in all required fields before previewing."
       case "service_not_found":
         return "The selected service could not be found. Please pick another."
       case "not_guide_service":
         return "The selected service is not a guide service. Please pick a guide service."
+      case "not_meal_service":
+        return "The selected service is not a meal service. Please pick a meal service."
+      case "cost_override_forbidden":
+        return "Only finance roles can set a meal unit cost or currency. Remove the override to add at the service base cost."
       case "invalid_preview_token":
         return "This preview expired. Please preview the item again."
       case "stale_preview":
@@ -718,11 +722,14 @@ export function BuilderV2Client({
       throw new Error(addItemErrorMessage(parsed?.code, parsed, text, res.status))
     }
     const after = parsed?.quote
+    // Generalize the success label to the created item type (activity | guide | meal).
+    const itemType = typeof parsed?.itemType === "string" && parsed.itemType ? parsed.itemType : "item"
+    const label = itemType.charAt(0).toUpperCase() + itemType.slice(1)
     setApplyToast({
       text:
         after && typeof after.totalSell === "number"
-          ? `Activity added successfully. Quote selling total is now ${Math.round(after.totalSell)}.`
-          : "Activity added successfully.",
+          ? `${label} added successfully. Quote selling total is now ${Math.round(after.totalSell)}.`
+          : `${label} added successfully.`,
     })
     router.refresh()
     return parsed
