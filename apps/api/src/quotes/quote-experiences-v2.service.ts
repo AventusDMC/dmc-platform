@@ -47,6 +47,20 @@ export type AddActivityItemInput = {
   // omitted). entranceFeeId + Jordan Pass values are computed by the resolver, never
   // accepted from the client.
   ticketRateVariantId?: string | null;
+  // External-package fields (itemType='external_package'). One-off / SERVICE-LESS
+  // (no serviceId). netCost/currency are the manual price (FINANCE-ONLY — the whole
+  // item is finance-gated, since net cost is cost data with no catalog fallback).
+  // country + clientDescription are required; the rest optional. NO pricing matrix,
+  // single supplement, sell override, or multi-day range in this slice.
+  netCost?: number | null;
+  country?: string | null;
+  clientDescription?: string | null;
+  packageName?: string | null;
+  pricingBasis?: string | null;
+  includes?: string | null;
+  excludes?: string | null;
+  hotelsOrSimilar?: string | null;
+  internalNotes?: string | null;
   serviceDate?: string | null;
   // Optional pax override; defaults from the quote when omitted.
   adultCount?: number | null;
@@ -72,10 +86,12 @@ const CREATE_TOKEN_KIND = 'v2-activity-create';
 const GUIDE_CREATE_TOKEN_KIND = 'v2-guide-create';
 const MEAL_CREATE_TOKEN_KIND = 'v2-meal-create';
 const ENTRANCE_CREATE_TOKEN_KIND = 'v2-entrance-create';
-function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal' | 'entrance'): string {
+const EXTERNAL_PACKAGE_CREATE_TOKEN_KIND = 'v2-external-package-create';
+function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package'): string {
   if (itemType === 'guide') return GUIDE_CREATE_TOKEN_KIND;
   if (itemType === 'meal') return MEAL_CREATE_TOKEN_KIND;
   if (itemType === 'entrance') return ENTRANCE_CREATE_TOKEN_KIND;
+  if (itemType === 'external_package') return EXTERNAL_PACKAGE_CREATE_TOKEN_KIND;
   return CREATE_TOKEN_KIND;
 }
 const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
@@ -84,7 +100,7 @@ const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
 const TOTALS_EPSILON = 0.005;
 
 type ResolvedCreateContext = {
-  itemType: 'activity' | 'guide' | 'meal' | 'entrance';
+  itemType: 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package';
   requiredActor: NonNullable<QuoteItemCreateActor>;
   quote: { id: string; quoteCurrency: string | null; adults: number | null; children: number | null };
   dayId: string;
@@ -109,6 +125,19 @@ type ResolvedCreateContext = {
   // when a valid variant was supplied; otherwise undefined → the shared resolver uses
   // the default active variant, else the EntranceFee base-fee fallback.
   ticketRateVariantId?: string;
+  // External-package-only (present when itemType='external_package'). One-off /
+  // service-less: no serviceId. netCost/currency/country/clientDescription are
+  // required; pricingBasis defaults PER_PERSON; the rest optional. (currency is shared
+  // with the meal branch above.)
+  netCost?: number;
+  country?: string;
+  clientDescription?: string;
+  packageName?: string;
+  pricingBasis?: 'PER_PERSON' | 'PER_GROUP';
+  includes?: string;
+  excludes?: string;
+  hotelsOrSimilar?: string;
+  internalNotes?: string;
 };
 
 // Quote Builder V2 — Phase B, Slice 2 + Slice 2B-1. Adds ONE Activity item from V2,
@@ -169,13 +198,14 @@ export class QuoteExperiencesV2Service {
     return quote;
   }
 
-  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY+GUIDE+MEAL+ENTRANCE.
-  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' | 'meal' | 'entrance' {
+  // Resolve the item type. Absent → 'activity' (back-compat). ACTIVITY+GUIDE+MEAL+
+  // ENTRANCE+EXTERNAL_PACKAGE.
+  private resolveItemType(input: AddActivityItemInput): 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package' {
     const raw = String(input.itemType ?? 'activity').trim().toLowerCase() || 'activity';
-    if (raw !== 'activity' && raw !== 'guide' && raw !== 'meal' && raw !== 'entrance') {
+    if (raw !== 'activity' && raw !== 'guide' && raw !== 'meal' && raw !== 'entrance' && raw !== 'external_package') {
       throw new BadRequestException({
         code: 'out_of_scope',
-        message: 'Only activity, guide, meal and entrance items can be added from V2 in this version.',
+        message: 'Only activity, guide, meal, entrance and external package items can be added from V2 in this version.',
       });
     }
     return raw;
@@ -339,6 +369,64 @@ export class QuoteExperiencesV2Service {
       return { ...base, serviceId, ticketRateVariantId };
     }
 
+    if (itemType === 'external_package') {
+      // ── External-package-specific validation (ONE-OFF / SERVICE-LESS) ──
+      // FINANCE-ONLY, run FIRST: netCost is manual cost data with NO catalog fallback,
+      // so the WHOLE item is gated to cost-visible roles (admin/super_admin/finance).
+      // operations — and agent_admin, which RolesGuard may coalesce into @Roles('admin')
+      // at the route — fail closed here BEFORE any pricing work.
+      if (!canViewQuoteCostMargin(actor?.role ?? null)) {
+        throw new ForbiddenException({
+          code: 'external_package_finance_only',
+          message: 'Only finance-visible roles may create an external package.',
+        });
+      }
+      const country = (input.country ?? '').trim();
+      const clientDescription = (input.clientDescription ?? '').trim();
+      const currency = (input.currency ?? '').trim().toUpperCase();
+      const netCostSupplied =
+        input.netCost !== undefined && input.netCost !== null && String(input.netCost).trim() !== '';
+      const missing = [
+        ['netCost', netCostSupplied ? 'x' : ''],
+        ['currency', currency],
+        ['country', country],
+        ['clientDescription', clientDescription],
+      ].filter(([, v]) => !v).map(([k]) => k);
+      if (missing.length > 0) {
+        throw new BadRequestException({ code: 'missing_field', message: `Missing required field(s): ${missing.join(', ')}` });
+      }
+      const netCost = Number(input.netCost);
+      if (!Number.isFinite(netCost) || netCost < 0) {
+        throw new BadRequestException({
+          code: 'invalid_external_package_cost',
+          message: 'External package net cost must be a finite number ≥ 0.',
+        });
+      }
+      // pricingBasis defaults to PER_PERSON; only PER_PERSON/PER_GROUP are supported in
+      // this slice (no matrix/tiered pricing, no single supplement, no sell override).
+      const basisRaw = (input.pricingBasis ?? '').trim().toUpperCase();
+      let pricingBasis: 'PER_PERSON' | 'PER_GROUP' = 'PER_PERSON';
+      if (basisRaw) {
+        if (basisRaw !== 'PER_PERSON' && basisRaw !== 'PER_GROUP') {
+          throw new BadRequestException({ code: 'invalid_pricing_basis', message: 'pricingBasis must be PER_PERSON or PER_GROUP.' });
+        }
+        pricingBasis = basisRaw;
+      }
+      return {
+        ...base,
+        netCost,
+        currency,
+        country,
+        clientDescription,
+        packageName: (input.packageName ?? '').trim() || undefined,
+        pricingBasis,
+        includes: (input.includes ?? '').trim() || undefined,
+        excludes: (input.excludes ?? '').trim() || undefined,
+        hotelsOrSimilar: (input.hotelsOrSimilar ?? '').trim() || undefined,
+        internalNotes: (input.internalNotes ?? '').trim() || undefined,
+      };
+    }
+
     // ── Activity-specific validation (unchanged behavior) ──
     const activityId = (input.activityId ?? '').trim();
     const activityRateVariantId = (input.activityRateVariantId ?? '').trim();
@@ -427,6 +515,32 @@ export class QuoteExperiencesV2Service {
         markupPercent: 0,
       };
     }
+    if (ctx.itemType === 'external_package') {
+      // ONE-OFF / SERVICE-LESS: NO serviceId, so the shared resolver takes its one-off
+      // external branch (detected by country/netCost) and persists serviceId null.
+      // Manual net cost is the price (no catalog rate). markup = EXPERIENCE_DEFAULT_MARKUP
+      // (owner decision: Classic parity, avoid zero-margin). No sellPrice override, no
+      // pricing matrix, no single supplement, no multi-day range — none are passed.
+      return {
+        quoteId: ctx.quote.id,
+        itineraryId: ctx.dayId,
+        serviceDate: ctx.serviceDate,
+        country: ctx.country,
+        clientDescription: ctx.clientDescription,
+        netCost: ctx.netCost,
+        currency: ctx.currency,
+        packageName: ctx.packageName,
+        pricingBasis: ctx.pricingBasis,
+        includes: ctx.includes,
+        excludes: ctx.excludes,
+        hotelsOrSimilar: ctx.hotelsOrSimilar,
+        internalNotes: ctx.internalNotes,
+        adultCount: ctx.adultCount,
+        childCount: ctx.childCount,
+        quantity: 1,
+        markupPercent: EXPERIENCE_DEFAULT_MARKUP,
+      };
+    }
     return {
       quoteId: ctx.quote.id,
       activityId: ctx.activityId,
@@ -466,6 +580,19 @@ export class QuoteExperiencesV2Service {
       return {
         serviceId: ctx.serviceId,
         ticketRateVariantId: ctx.ticketRateVariantId ?? null,
+      };
+    }
+    if (ctx.itemType === 'external_package') {
+      // Bind the one-off external-package identity — a changed net cost, currency,
+      // country, client description, pricing basis, or package name after preview
+      // invalidates the token. No serviceId (service-less).
+      return {
+        netCost: ctx.netCost ?? null,
+        currency: ctx.currency ?? null,
+        country: ctx.country ?? null,
+        clientDescription: ctx.clientDescription ?? null,
+        pricingBasis: ctx.pricingBasis ?? null,
+        packageName: ctx.packageName ?? null,
       };
     }
     return {
@@ -602,8 +729,15 @@ export class QuoteExperiencesV2Service {
           : ctx.itemType === 'entrance'
             ? payload.serviceId === ctx.serviceId &&
               (payload.ticketRateVariantId ?? null) === (ctx.ticketRateVariantId ?? null)
-            : payload.activityId === ctx.activityId &&
-              payload.activityRateVariantId === ctx.activityRateVariantId;
+            : ctx.itemType === 'external_package'
+              ? (payload.netCost ?? null) === (ctx.netCost ?? null) &&
+                (payload.currency ?? null) === (ctx.currency ?? null) &&
+                (payload.country ?? null) === (ctx.country ?? null) &&
+                (payload.clientDescription ?? null) === (ctx.clientDescription ?? null) &&
+                (payload.pricingBasis ?? null) === (ctx.pricingBasis ?? null) &&
+                (payload.packageName ?? null) === (ctx.packageName ?? null)
+              : payload.activityId === ctx.activityId &&
+                payload.activityRateVariantId === ctx.activityRateVariantId;
     if (!commonMatches || !typeMatches) {
       throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
     }
