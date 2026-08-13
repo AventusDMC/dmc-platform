@@ -643,7 +643,13 @@ export function BuilderV2Client({
       case "feature_disabled":
         return "Adding items from V2 is not available."
       case "out_of_scope":
-        return "Only activities, guides, meals and entrances can be added from V2 in this version."
+        return "Only activities, guides, meals, entrances and external packages can be added from V2 in this version."
+      case "external_package_finance_only":
+        return "Only finance roles can add an external package."
+      case "invalid_external_package_cost":
+        return "Please enter a valid net cost (a number of zero or more)."
+      case "invalid_pricing_basis":
+        return "Please choose a valid pricing basis (per person or per group)."
       case "missing_field":
         return "Please fill in all required fields before previewing."
       case "service_not_found":
@@ -726,8 +732,10 @@ export function BuilderV2Client({
       throw new Error(addItemErrorMessage(parsed?.code, parsed, text, res.status))
     }
     const after = parsed?.quote
-    // Generalize the success label to the created item type (activity | guide | meal).
-    const itemType = typeof parsed?.itemType === "string" && parsed.itemType ? parsed.itemType : "item"
+    // Generalize the success label to the created item type (activity | guide | meal |
+    // entrance | external package). Underscores → spaces so "external_package" reads
+    // "External package" in the toast.
+    const itemType = typeof parsed?.itemType === "string" && parsed.itemType ? parsed.itemType.replace(/_/g, " ") : "item"
     const label = itemType.charAt(0).toUpperCase() + itemType.slice(1)
     setApplyToast({
       text:
