@@ -74,6 +74,16 @@ export type AddActivityItemGuard = {
   acknowledgedDelta?: boolean;
 };
 
+// D-a: the guarded DELETE replays the opaque remove-preview token (the mere replay is
+// the confirmation — removing a priced line always changes totals).
+export type RemoveItemGuard = {
+  previewToken?: unknown;
+};
+
+// The five V2-removable item types (type-based eligibility — no schema marker exists).
+// Hotel/transport are explicitly EXCLUDED from this slice.
+type RemovableItemType = 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package';
+
 // Statuses on which V2 item-create is allowed (default-safe: finalized/unknown
 // statuses are rejected). Mirrors the FE preview-editable allowlist.
 const EDITABLE_STATUSES = new Set(['DRAFT', 'READY', 'REVISION_REQUESTED']);
@@ -87,6 +97,9 @@ const GUIDE_CREATE_TOKEN_KIND = 'v2-guide-create';
 const MEAL_CREATE_TOKEN_KIND = 'v2-meal-create';
 const ENTRANCE_CREATE_TOKEN_KIND = 'v2-entrance-create';
 const EXTERNAL_PACKAGE_CREATE_TOKEN_KIND = 'v2-external-package-create';
+// D-a: guarded single-item DELETE (remove) token kind. Distinct from every create
+// kind so a create token can never authorize a delete (and vice-versa).
+const DELETE_TOKEN_KIND = 'v2-item-delete';
 function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package'): string {
   if (itemType === 'guide') return GUIDE_CREATE_TOKEN_KIND;
   if (itemType === 'meal') return MEAL_CREATE_TOKEN_KIND;
@@ -855,5 +868,199 @@ export class QuoteExperiencesV2Service {
       throw new BadRequestException('Authenticated actor is required for audited writes');
     }
     return actor;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // D-a: Guarded single-item DELETE (remove). Option B — a remove-preview projects
+  // the post-remove totals with NO writes and signs an opaque `v2-item-delete` token;
+  // the guarded DELETE verifies the token + a fresh quote-state snapshot (fail closed
+  // stale_preview), then delegates to the EXISTING, DETERMINISTIC QuotesService.removeItem
+  // (delete + recalc; the QuoteItineraryDayItem day-link cascades on delete). No pricing
+  // math, no resolver, no createItem/recalc change, no post-delete rollback (the snapshot
+  // staleness check runs BEFORE the delete). Type-based eligibility: activity/guide/meal/
+  // entrance/external_package only — hotel/transport are excluded.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // The select needed to classify a persisted QuoteItem without a schema marker.
+  private readonly removableItemSelect = {
+    id: true,
+    quoteId: true,
+    activityId: true,
+    hotelId: true,
+    transportServiceTypeId: true,
+    routeId: true,
+    vehicleId: true,
+    touringRouteId: true,
+    externalPackageName: true,
+    totalCost: true,
+    totalSell: true,
+    currency: true,
+    service: { select: { category: true, serviceType: { select: { name: true, code: true } }, entranceFee: { select: { id: true } } } },
+  } as const;
+
+  // Type-based classification. EXCLUDE hotel/transport first, then allow the five
+  // V2-removable types; anything else is not removable. Uses the shared taxonomy helper
+  // plus the persisted scalar signals (mirrors how the resolver identifies each type).
+  private classifyRemovable(item: {
+    activityId?: string | null;
+    hotelId?: string | null;
+    transportServiceTypeId?: string | null;
+    routeId?: string | null;
+    vehicleId?: string | null;
+    touringRouteId?: string | null;
+    externalPackageName?: string | null;
+    service?: { category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null; entranceFee?: { id: string } | null } | null;
+  }): RemovableItemType | null {
+    const group = item.service ? resolveServiceTaxonomyGroup(item.service) : null;
+    // ── Exclusions first (denylist) ──
+    if (item.hotelId || group === 'hotel') return null;
+    if (item.transportServiceTypeId || item.routeId || item.vehicleId || item.touringRouteId || group === 'transport') return null;
+    // ── Allowlist ──
+    if (item.externalPackageName) return 'external_package';
+    if (item.activityId || group === 'activity') return 'activity';
+    if (group === 'guide') return 'guide';
+    if (group === 'meal') return 'meal';
+    if (item.service?.entranceFee || group === 'ticketing') return 'entrance';
+    return null;
+  }
+
+  // Shared load + validation for both remove-preview and the guarded DELETE. Enforces
+  // access/company isolation + editable status + latest revision (via assertQuoteAccess),
+  // acceptedVersionId == null, item-belongs-to-quote, and type eligibility. No writes.
+  private async resolveRemoveContext(quoteId: string, itemId: string, actor: QuoteItemCreateActor) {
+    this.assertEnabled();
+    const requiredActor = this.requireActor(actor);
+    const quote = await this.assertQuoteAccess(quoteId, actor);
+
+    // Accepted quotes are frozen even if the status somehow remained editable.
+    const accepted = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { acceptedVersionId: true } });
+    if (accepted?.acceptedVersionId) {
+      throw new BadRequestException({ code: 'quote_not_editable', message: 'This quote can no longer be edited.' });
+    }
+
+    const item = await this.prisma.quoteItem.findUnique({ where: { id: itemId }, select: this.removableItemSelect });
+    if (!item || item.quoteId !== quoteId) {
+      throw new BadRequestException({ code: 'item_not_found', message: 'Quote item not found for this quote.' });
+    }
+
+    const itemType = this.classifyRemovable(item);
+    if (!itemType) {
+      throw new BadRequestException({
+        code: 'item_not_removable',
+        message: 'This item type cannot be removed from V2 in this version.',
+      });
+    }
+
+    return { requiredActor, quote, item, itemType };
+  }
+
+  // Remove-preview: projects post-remove totals with NO writes and returns a signed
+  // v2-item-delete token binding the item + a pre-remove snapshot. Selling total/delta
+  // always visible; cost/margin redacted for non-finance roles.
+  async previewRemoveItem(quoteId: string, itemId: string, actor: QuoteItemCreateActor) {
+    const { item, itemType } = await this.resolveRemoveContext(quoteId, itemId, actor);
+
+    const snapshot = await this.snapshotQuoteState(quoteId);
+    const itemCost = Number(item.totalCost ?? 0);
+    const itemSell = Number(item.totalSell ?? 0);
+    const projectedTotalCost = snapshot.totalCost - itemCost;
+    const projectedTotalSell = snapshot.totalSell - itemSell;
+    const currency = item.currency ?? snapshot.currency ?? null;
+
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const exp = issuedAt + CREATE_TOKEN_TTL_SECONDS;
+    const previewToken = buildCreatePreviewToken(
+      {
+        kind: DELETE_TOKEN_KIND,
+        quoteId,
+        itemId,
+        itemType,
+        snapshotHash: snapshot.hash,
+        projected: {
+          itemCost,
+          itemSell,
+          quoteTotalCost: projectedTotalCost,
+          quoteTotalSell: projectedTotalSell,
+          currency,
+        },
+        issuedAt,
+        exp,
+      },
+      getPreviewTokenSecret(),
+    );
+
+    const showCost = canViewQuoteCostMargin(actor?.role ?? null);
+    return {
+      itemId,
+      itemType,
+      currentTotalSell: snapshot.totalSell,
+      projectedTotalSell,
+      sellDelta: projectedTotalSell - snapshot.totalSell,
+      currency,
+      currentTotalCost: showCost ? snapshot.totalCost : null,
+      projectedTotalCost: showCost ? projectedTotalCost : null,
+      costDelta: showCost ? projectedTotalCost - snapshot.totalCost : null,
+      previewToken,
+    };
+  }
+
+  // Guarded DELETE: re-validate everything, verify the opaque token + snapshot freshness
+  // (fail closed stale_preview), then delegate to the UNCHANGED removeItem (delete +
+  // recalc). Best-effort audit quote.item.removed. No post-delete rollback.
+  async removeExperienceItem(quoteId: string, itemId: string, actor: QuoteItemCreateActor, guard: RemoveItemGuard = {}) {
+    const { requiredActor, quote, item, itemType } = await this.resolveRemoveContext(quoteId, itemId, actor);
+
+    // --- Guard: verify the opaque remove-preview token + identity + freshness ---
+    const payload = verifyCreatePreviewToken(guard.previewToken, getPreviewTokenSecret());
+    if (!payload || payload.kind !== DELETE_TOKEN_KIND) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'A valid remove-preview token is required. Re-run the preview.' });
+    }
+    if (typeof payload.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'The remove-preview token has expired. Re-run the preview.' });
+    }
+    if (payload.quoteId !== quoteId || payload.itemId !== itemId || payload.itemType !== itemType) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
+    }
+
+    // Snapshot mismatch → the quote changed since the preview (fail closed BEFORE delete).
+    const snapshot = await this.snapshotQuoteState(quoteId);
+    if (snapshot.hash !== payload.snapshotHash) {
+      throw new ConflictException({ code: 'stale_preview', message: 'The quote changed since the preview; re-run the preview and try again.' });
+    }
+
+    // Resolve the day-link for the audit BEFORE the delete cascades it away.
+    const dayLink = await this.prisma.quoteItineraryDayItem.findFirst({ where: { quoteServiceId: itemId }, select: { dayId: true } });
+    const prevCost = Number(item.totalCost ?? 0);
+    const prevSell = Number(item.totalSell ?? 0);
+    const currency = item.currency ?? quote.quoteCurrency ?? null;
+
+    // --- Commit via the UNCHANGED, deterministic removeItem (delete + recalc). ---
+    await this.quotes.removeItem(itemId, { companyId: requiredActor.companyId });
+
+    const after = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { totalCost: true, totalSell: true } });
+    const actualTotalCost = Number(after?.totalCost ?? 0);
+    const actualTotalSell = Number(after?.totalSell ?? 0);
+
+    // Best-effort audit (never blocks). Sanitized metadata only.
+    try {
+      await this.audit.log({
+        actor: { id: requiredActor.id, companyId: requiredActor.companyId ?? null },
+        action: 'quote.item.removed',
+        entity: 'quoteItem',
+        entityId: itemId,
+        metadata: { quoteId, itemId, itemType, dayId: dayLink?.dayId ?? null, cost: prevCost, sell: prevSell, currency },
+      });
+    } catch (err) {
+      console.warn('[quote-experiences-v2] audit quote.item.removed failed', (err as Error)?.message);
+    }
+
+    const showCost = canViewQuoteCostMargin(actor?.role ?? null);
+    return {
+      itemId,
+      itemType,
+      removed: true,
+      quote: { totalCost: showCost ? actualTotalCost : null, totalSell: actualTotalSell },
+      currency,
+    };
   }
 }

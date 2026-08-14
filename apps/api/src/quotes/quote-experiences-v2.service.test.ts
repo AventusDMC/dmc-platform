@@ -34,6 +34,14 @@ type Options = {
   auditThrows?: boolean;
   previewThrows?: boolean;
   removeThrows?: boolean;
+  // D-a delete fixtures. removableItem = the quoteItem.findUnique result to classify
+  // (undefined → a default activity item; null → item_not_found). acceptedVersionId
+  // freezes the quote. dayItemLink is the day-link resolved for the audit. seedItems
+  // pre-populates the recalc state so removeItem can decrement totals.
+  removableItem?: any;
+  acceptedVersionId?: string | null;
+  dayItemLink?: { dayId: string } | null;
+  seedItems?: { id: string; totalCost: number; totalSell: number }[];
   // Pre-create quote totals (before the add).
   preTotals?: { totalCost: number; totalSell: number };
   // Projected new-item price (previewCreateItemValues).
@@ -54,6 +62,7 @@ const QID = 'quote-1';
 const DAY = 'day-1';
 const ACT = 'act-1';
 const VAR = 'var-1';
+const ITEM = 'item-del-1'; // D-a: the item targeted by remove-preview / DELETE
 // Default actor is a cost-visible role (admin) so the pre-2C guard tests keep
 // asserting cost values. Slice 2C redaction for restricted roles is covered by the
 // dedicated tests at the end of this file.
@@ -78,7 +87,7 @@ function build(opts: Options = {}) {
   const projected = opts.projected ?? { totalCost: 120, totalSell: 144, currency: 'USD' };
   const state = {
     totals: { ...(opts.preTotals ?? { totalCost: 200, totalSell: 240 }) },
-    items: [] as { id: string; totalCost: number; totalSell: number }[],
+    items: [...(opts.seedItems ?? [])] as { id: string; totalCost: number; totalSell: number }[],
   };
 
   const prisma = {
@@ -89,11 +98,21 @@ function build(opts: Options = {}) {
           ? { id: QID, brandCompanyId: null, status: 'DRAFT', quoteCurrency: 'USD', adults: 2, children: 0 }
           : opts.quote;
       },
-      // Reads current mutable totals (pre-create during snapshots, post-create during compare).
-      findUnique: async () => ({ totalCost: state.totals.totalCost, totalSell: state.totals.totalSell, quoteCurrency: 'USD' }),
+      // Reads current mutable totals (pre-create during snapshots, post-create during
+      // compare) + acceptedVersionId (D-a delete freeze check). Mock returns all fields;
+      // the real code selects a subset.
+      findUnique: async () => ({ totalCost: state.totals.totalCost, totalSell: state.totals.totalSell, quoteCurrency: 'USD', acceptedVersionId: opts.acceptedVersionId ?? null }),
     },
     quoteItem: {
       findMany: async () => state.items,
+      // D-a: classify the item being removed. undefined → default activity item; null → not found.
+      findUnique: async () =>
+        opts.removableItem === undefined
+          ? { id: ITEM, quoteId: QID, activityId: ACT, hotelId: null, transportServiceTypeId: null, routeId: null, vehicleId: null, touringRouteId: null, externalPackageName: null, totalCost: 120, totalSell: 144, currency: 'USD', service: null }
+          : opts.removableItem,
+    },
+    quoteItineraryDayItem: {
+      findFirst: async () => (opts.dayItemLink === undefined ? { dayId: DAY } : opts.dayItemLink),
     },
     quoteItineraryDay: {
       findUnique: async () => (opts.day === undefined ? { id: DAY, quoteId: QID } : opts.day),
@@ -917,9 +936,10 @@ test('external_package: an unknown itemType is still rejected out_of_scope', asy
 test('external_package: the route @Roles is widened to include finance (admin, operations, finance)', () => {
   const src = readFileSync(join(__dirname, 'quote-experiences-v2.controller.ts'), 'utf8');
   assert.ok(src.includes("@Roles('admin', 'operations', 'finance')"), 'route must admit finance');
-  // Both endpoints (preview + create) carry the widened roles.
+  // All V2 item-mutation endpoints carry the widened roles: create item + item/preview
+  // (M-3a) and remove/preview + DELETE (D-a) = 4.
   const count = src.split("@Roles('admin', 'operations', 'finance')").length - 1;
-  assert.equal(count, 2, 'both item + item/preview routes widened');
+  assert.equal(count, 4, 'create + create-preview + remove-preview + DELETE routes all widened');
 });
 
 for (const actor of [ACTOR, FINANCE_ACTOR, SUPER_ACTOR]) {
@@ -1092,4 +1112,243 @@ test('external_package: preview + create responses never expose externalNetCost 
   // The narrow response shape is preserved (cost/sell/currency/quote totals only).
   assert.equal(result.itemType, 'external_package');
   assert.equal(result.sell, 144);
+});
+
+// ---------------------------------------------------------------------------
+// D-a — Guarded single-item DELETE (remove). Option B: remove-preview → token → DELETE.
+// Reuses the deterministic removeItem (delete + recalc); no pricing math, no createItem.
+// ---------------------------------------------------------------------------
+
+// Item-type fixtures for classification (persisted-QuoteItem shape returned by findUnique).
+const baseItem = { id: ITEM, quoteId: QID, activityId: null, hotelId: null, transportServiceTypeId: null, routeId: null, vehicleId: null, touringRouteId: null, externalPackageName: null, totalCost: 120, totalSell: 144, currency: 'USD', service: null as any };
+const ACTIVITY_ITEM = { ...baseItem, activityId: ACT };
+const GUIDE_ITEM = { ...baseItem, service: { category: 'guide', serviceType: { name: 'Guide', code: 'GUIDE' }, entranceFee: null } };
+const MEAL_ITEM = { ...baseItem, service: { category: 'meal', serviceType: { name: 'Meal', code: 'MEAL' }, entranceFee: null } };
+const ENTRANCE_ITEM = { ...baseItem, service: { category: 'ticketing', serviceType: { name: 'Entrance', code: 'TICKET' }, entranceFee: { id: 'ef-1' } } };
+const EXTERNAL_ITEM = { ...baseItem, externalPackageName: 'Nile Explorer' };
+const HOTEL_ITEM = { ...baseItem, hotelId: 'hotel-1', service: { category: 'hotel', serviceType: { name: 'Hotel', code: 'HOTEL' }, entranceFee: null } };
+const TRANSPORT_ITEM = { ...baseItem, transportServiceTypeId: 'tst-1', service: { category: 'transport', serviceType: { name: 'Transfer', code: 'TRANSFER' }, entranceFee: null } };
+// A build() preset where the recalc state contains the removable item (so removeItem can decrement).
+const withItem = (extra: Options = {}): Options => ({ flag: true, seedItems: [{ id: ITEM, totalCost: 120, totalSell: 144 }], preTotals: { totalCost: 200, totalSell: 240 }, ...extra });
+
+async function removeToken(service: QuoteExperiencesV2Service, actor: any = ACTOR): Promise<string> {
+  const res: any = await service.previewRemoveItem(QID, ITEM, actor);
+  return res.previewToken as string;
+}
+
+test('delete is blocked (feature_disabled) when the flag is OFF and removes nothing', async () => {
+  const { service, calls } = build({ flag: false });
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: 'x' }), 'feature_disabled');
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'feature_disabled');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: quote not found fails closed', async () => {
+  const { service, calls } = build(withItem({ quote: null }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'Quote not found');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: item not found fails closed (item_not_found)', async () => {
+  const { service, calls } = build(withItem({ removableItem: null }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'item_not_found');
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: 'x' }), 'item_not_found');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: item not belonging to the quote fails closed (item_not_found)', async () => {
+  const { service, calls } = build(withItem({ removableItem: { ...ACTIVITY_ITEM, quoteId: 'other-quote' } }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'item_not_found');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a quote owned by a different company is rejected (cross-company)', async () => {
+  const { service, calls } = build(withItem({ quote: { id: QID, brandCompanyId: 'company-B', status: 'DRAFT', quoteCurrency: 'USD', adults: 2, children: 0 }, removableItem: ACTIVITY_ITEM }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'different company');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a non-editable quote status is rejected (quote_not_editable)', async () => {
+  const { service, calls } = build(withItem({ quote: { id: QID, brandCompanyId: null, status: 'SENT', quoteCurrency: 'USD', adults: 2, children: 0 }, removableItem: ACTIVITY_ITEM }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'quote_not_editable');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: an accepted quote (acceptedVersionId set) is rejected (quote_not_editable)', async () => {
+  const { service, calls } = build(withItem({ acceptedVersionId: 'ver-1', removableItem: ACTIVITY_ITEM }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'quote_not_editable');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a revised (non-latest) quote is rejected', async () => {
+  const { service, calls } = build(withItem({ newerRevision: { id: 'newer' }, removableItem: ACTIVITY_ITEM }));
+  await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'latest');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+for (const [label, item, expected] of [
+  ['activity', ACTIVITY_ITEM, 'activity'],
+  ['guide', GUIDE_ITEM, 'guide'],
+  ['meal', MEAL_ITEM, 'meal'],
+  ['entrance', ENTRANCE_ITEM, 'entrance'],
+  ['external_package', EXTERNAL_ITEM, 'external_package'],
+] as const) {
+  test(`delete: ${label} item is removable (preview classifies itemType=${expected})`, async () => {
+    const { service, calls, state } = build(withItem({ removableItem: item }));
+    const preview: any = await service.previewRemoveItem(QID, ITEM, ACTOR);
+    assert.equal(preview.itemType, expected);
+    const result: any = await service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: preview.previewToken });
+    assert.equal(result.removed, true);
+    assert.equal(result.itemType, expected);
+    assert.equal(calls.removeItem.length, 1);
+    assert.equal(calls.removeItem[0].itemId, ITEM);
+    // totals recalculated: the seeded line (120/144) is gone → 200/240 → 80/96.
+    assert.deepEqual(state.totals, { totalCost: 80, totalSell: 96 });
+    assert.equal(result.quote.totalSell, 96);
+  });
+}
+
+for (const [label, item] of [['hotel', HOTEL_ITEM], ['transport', TRANSPORT_ITEM]] as const) {
+  test(`delete: ${label} item is NOT removable (item_not_removable) and removes nothing`, async () => {
+    const { service, calls } = build(withItem({ removableItem: item }));
+    await expectRejects(service.previewRemoveItem(QID, ITEM, ACTOR), 'item_not_removable');
+    await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: 'x' }), 'item_not_removable');
+    assert.equal(calls.removeItem.length, 0);
+  });
+}
+
+for (const actor of [ACTOR, { ...ACTOR, role: 'super_admin' as const }, OPS_ACTOR, FINANCE_ACTOR, { ...ACTOR, role: 'agent_admin' as const }]) {
+  test(`delete: service allows role ${actor.role} (no service-level role/finance gate; route RolesGuard blocks viewer/agent)`, async () => {
+    const { service, calls } = build(withItem({ removableItem: EXTERNAL_ITEM }));
+    const preview: any = await service.previewRemoveItem(QID, ITEM, actor);
+    const result: any = await service.removeExperienceItem(QID, ITEM, actor, { previewToken: preview.previewToken });
+    assert.equal(result.removed, true);
+    assert.equal(calls.removeItem.length, 1);
+  });
+}
+
+test('delete: EXTERNAL PACKAGE removal does NOT require a finance-only gate (operations can remove it)', async () => {
+  const { service, calls } = build(withItem({ removableItem: EXTERNAL_ITEM }));
+  const preview: any = await service.previewRemoveItem(QID, ITEM, OPS_ACTOR);
+  const result: any = await service.removeExperienceItem(QID, ITEM, OPS_ACTOR, { previewToken: preview.previewToken });
+  assert.equal(result.removed, true);
+  assert.equal(result.itemType, 'external_package');
+  assert.equal(calls.removeItem.length, 1);
+});
+
+test('delete preview: returns selling delta + projected totals; the DELETE token kind is v2-item-delete', async () => {
+  const { service } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const preview: any = await service.previewRemoveItem(QID, ITEM, ACTOR);
+  assert.equal(preview.currentTotalSell, 240);
+  assert.equal(preview.projectedTotalSell, 96); // 240 - 144
+  assert.equal(preview.sellDelta, -144);
+  assert.equal(preview.currency, 'USD');
+  const payload: any = verifyCreatePreviewToken(preview.previewToken, getPreviewTokenSecret());
+  assert.equal(payload.kind, 'v2-item-delete');
+  assert.equal(payload.itemId, ITEM);
+  assert.equal(payload.itemType, 'activity');
+});
+
+test('delete preview: restricted (operations) role receives NO cost/margin; selling stays visible', async () => {
+  const { service } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const priv: any = await service.previewRemoveItem(QID, ITEM, ACTOR);
+  assert.equal(priv.currentTotalCost, 200);
+  assert.equal(priv.projectedTotalCost, 80);
+  assert.equal(priv.costDelta, -120);
+  const restricted: any = await service.previewRemoveItem(QID, ITEM, OPS_ACTOR);
+  assert.equal(restricted.currentTotalCost, null);
+  assert.equal(restricted.projectedTotalCost, null);
+  assert.equal(restricted.costDelta, null);
+  assert.equal(restricted.currentTotalSell, 240);
+  assert.equal(restricted.projectedTotalSell, 96);
+});
+
+test('delete: restricted (operations) DELETE response redacts quote cost, keeps selling total', async () => {
+  const { service } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const preview: any = await service.previewRemoveItem(QID, ITEM, OPS_ACTOR);
+  const result: any = await service.removeExperienceItem(QID, ITEM, OPS_ACTOR, { previewToken: preview.previewToken });
+  assert.equal(result.quote.totalCost, null);
+  assert.equal(result.quote.totalSell, 96);
+});
+
+test('delete preview + response never expose external internals (externalNetCost / externalInternalNotes / externalSupplierName / raw item)', async () => {
+  const { service } = build(withItem({ removableItem: EXTERNAL_ITEM }));
+  const preview: any = await service.previewRemoveItem(QID, ITEM, ACTOR);
+  const result: any = await service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: preview.previewToken });
+  for (const leak of ['externalNetCost', 'externalInternalNotes', 'externalSupplierName', 'supplierName', 'internalNotes', 'service', 'hotelId', 'activityId']) {
+    assert.equal(leak in preview, false, `preview must not include ${leak}`);
+    assert.equal(leak in result, false, `delete response must not include ${leak}`);
+  }
+});
+
+test('delete: a wrong-kind token (a create token) is rejected (invalid_preview_token) and removes nothing', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const createToken = await previewToken(service, GOOD, ACTOR); // v2-activity-create kind
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: createToken }), 'invalid_preview_token');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a tampered token is rejected (invalid_preview_token)', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: 'v2c.garbage.token' }), 'invalid_preview_token');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: an expired token is rejected (invalid_preview_token)', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const expired = buildCreatePreviewToken(
+    { kind: 'v2-item-delete', quoteId: QID, itemId: ITEM, itemType: 'activity', snapshotHash: 'x', projected: {}, issuedAt: 1, exp: 2 },
+    getPreviewTokenSecret(),
+  );
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: expired }), 'invalid_preview_token');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a token for a different item is rejected (invalid_preview_token identity binding)', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const token = await removeToken(service);
+  // Same token, but target a different itemId → the mock returns the same item under a
+  // different id, so identity binding (itemId) no longer matches → invalid_preview_token.
+  await expectRejects(service.removeExperienceItem(QID, 'other-item', ACTOR, { previewToken: token }), 'invalid_preview_token');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: a changed quote after the preview returns stale_preview and removes nothing', async () => {
+  const { service, calls, state } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const token = await removeToken(service);
+  state.totals.totalCost += 50; // quote moved since the preview
+  await expectRejects(service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: token }), 'stale_preview');
+  assert.equal(calls.removeItem.length, 0);
+});
+
+test('delete: happy path delegates to removeItem exactly once and writes a sanitized quote.item.removed audit', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM }));
+  const token = await removeToken(service);
+  await service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: token });
+  assert.equal(calls.removeItem.length, 1);
+  assert.equal(calls.createItem.length, 0); // delete never creates
+  assert.equal(calls.auditLog.length, 1);
+  const audit = calls.auditLog[0];
+  assert.equal(audit.action, 'quote.item.removed');
+  assert.equal(audit.entity, 'quoteItem');
+  assert.equal(audit.entityId, ITEM);
+  assert.equal(audit.metadata.quoteId, QID);
+  assert.equal(audit.metadata.itemId, ITEM);
+  assert.equal(audit.metadata.itemType, 'activity');
+  assert.equal(audit.metadata.dayId, DAY); // resolved BEFORE the delete cascades the link
+  assert.equal(audit.metadata.cost, 120);
+  assert.equal(audit.metadata.sell, 144);
+  // Sanitized: no PII / supplier / external internals in the audit metadata.
+  for (const leak of ['externalNetCost', 'externalInternalNotes', 'externalSupplierName', 'supplierName', 'pii', 'email']) {
+    assert.equal(leak in audit.metadata, false, `audit metadata must not include ${leak}`);
+  }
+});
+
+test('delete: a failing audit write does not block a successful removal', async () => {
+  const { service, calls } = build(withItem({ removableItem: ACTIVITY_ITEM, auditThrows: true }));
+  const token = await removeToken(service);
+  const result: any = await service.removeExperienceItem(QID, ITEM, ACTOR, { previewToken: token });
+  assert.equal(result.removed, true);
+  assert.equal(calls.removeItem.length, 1);
+  assert.equal(calls.auditLog.length, 1); // attempted, threw, swallowed
 });
