@@ -230,6 +230,10 @@ export interface QuoteBuilderV2Props {
    * from the confirmed preview (the backend fails closed on stale/rate drift).
    */
   onAddItem?: (payload: Record<string, unknown>, previewToken?: string, acknowledgedDelta?: boolean) => void | Promise<unknown>
+  /** D-b: read-only remove-preview (projected selling totals + previewToken). Omitted → no Remove affordance. */
+  onPreviewRemoveItem?: (itemId: string) => Promise<{ currentTotalSell?: number; projectedTotalSell?: number; sellDelta?: number; currency?: string | null; previewToken?: string }>
+  /** D-b: guarded item DELETE (replays the previewToken). Omitted → no Remove affordance. */
+  onRemoveItem?: (itemId: string, previewToken: string) => void | Promise<unknown>
   /**
    * Booking Creation V2 (Slice 1D). When true, the "Create booking" card renders in
    * the sidebar. Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE + admin/operations +
@@ -295,6 +299,8 @@ export function QuoteBuilderV2({
   itemCreateEnabled = false,
   onPreviewAddItem,
   onAddItem,
+  onPreviewRemoveItem,
+  onRemoveItem,
   canCreateBooking = false,
   canViewCostMargin = false,
   initialStep = "setup",
@@ -452,6 +458,8 @@ export function QuoteBuilderV2({
             addItemEnabled={itemCreateEnabled}
             onPreviewAddItem={onPreviewAddItem}
             onAddItem={onAddItem}
+            onPreviewRemoveItem={onPreviewRemoveItem}
+            onRemoveItem={onRemoveItem}
             itineraryDays={quote.itinerary}
             mealCostOverrideEnabled={canViewCostMargin}
             externalPackageCreateEnabled={canViewCostMargin}
