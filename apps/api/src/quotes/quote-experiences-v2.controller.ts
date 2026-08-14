@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { AddActivityItemInput, QuoteExperiencesV2Service, QuoteItemCreateActor } from './quote-experiences-v2.service';
@@ -81,6 +81,36 @@ export class QuoteExperiencesV2Controller {
     return this.service.addActivityItem(quoteId, this.toInput(body), this.toActor(actor), {
       previewToken: body?.previewToken,
       acknowledgedDelta: body?.acknowledgedDelta === true,
+    });
+  }
+
+  // D-a: remove-preview — projects post-remove totals with NO writes and returns an
+  // opaque v2-item-delete token. Same flag/role/company/status gating as the delete
+  // (enforced in the service). Selling total/delta always visible; cost redacted for
+  // non-finance roles.
+  @Post('item/:itemId/remove/preview')
+  @Roles('admin', 'operations', 'finance')
+  async removeItemPreview(
+    @Param('quoteId') quoteId: string,
+    @Param('itemId') itemId: string,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.service.previewRemoveItem(quoteId, itemId, this.toActor(actor));
+  }
+
+  // D-a: guarded DELETE — replays the opaque remove-preview token (body), fails closed
+  // on staleness, then delegates to the UNCHANGED, deterministic removeItem. Delete
+  // exposes no cost, so there is NO extra external-package finance-only gate here.
+  @Delete('item/:itemId')
+  @Roles('admin', 'operations', 'finance')
+  async removeItem(
+    @Param('quoteId') quoteId: string,
+    @Param('itemId') itemId: string,
+    @Body() body: { previewToken?: unknown } | null,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.service.removeExperienceItem(quoteId, itemId, this.toActor(actor), {
+      previewToken: body?.previewToken,
     });
   }
 
