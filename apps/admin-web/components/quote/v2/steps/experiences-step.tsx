@@ -15,7 +15,7 @@ import { ItemPricingApplyModal } from "./item-pricing-apply-modal"
 import { PricingApplyAuditPanel } from "./pricing-apply-audit-panel"
 import { formatCurrency } from "../../../../lib/quote-helpers"
 import type { ApplyItemPricingHandler, Experience, ItineraryDay, LoadApplyAuditHandler, PreviewItemHandler } from "../../../../lib/quote-types"
-import { Ticket, Calculator, Plus, Loader2, AlertTriangle } from "lucide-react"
+import { Ticket, Calculator, Plus, Loader2, AlertTriangle, Trash2 } from "lucide-react"
 
 /** Add one Activity item (Phase B, Slice 2) via the V2 route. */
 // Slice 2B-2 step 2 — guarded create; replays the previewToken + acknowledgedDelta.
@@ -35,6 +35,13 @@ export type UpdateDisplayText = (
   patch: Record<string, string | null>,
 ) => void | Promise<void>
 
+// D-b: guarded item REMOVE. Preview projects the post-remove SELLING totals (sell-only,
+// no cost/margin) + a token; the confirm replays the token to DELETE the item.
+export type PreviewRemoveHandler = (
+  itemId: string,
+) => Promise<{ currentTotalSell?: number; projectedTotalSell?: number; sellDelta?: number; currency?: string | null; previewToken?: string }>
+export type RemoveItemHandler = (itemId: string, previewToken: string) => void | Promise<unknown>
+
 function externalPackageFields(exp: Experience): DisplayTextField[] {
   return [
     { key: "externalClientDescription", label: "Description", value: exp.externalClientDescription ?? "", multiline: true },
@@ -42,6 +49,125 @@ function externalPackageFields(exp: Experience): DisplayTextField[] {
     { key: "externalExcludes", label: "Excludes", value: exp.externalExcludes ?? "", multiline: true },
     { key: "externalHotelsOrSimilar", label: "Hotels or similar", value: exp.externalHotelsOrSimilar ?? "" },
   ]
+}
+
+// D-b: inline Remove affordance for an eligible V2 row. Click → read-only remove-preview
+// → confirm dialog showing SELLING numbers only (never cost/margin) → DELETE with the
+// signed token. Reuses the shared onPreviewRemoveItem/onRemoveItem handlers + existing
+// proxies; no new pricing UI, no bulk delete, no edit, no undo.
+function RemoveItemControl({
+  exp,
+  currency,
+  onPreviewRemoveItem,
+  onRemoveItem,
+}: {
+  exp: Experience
+  currency: string
+  onPreviewRemoveItem: PreviewRemoveHandler
+  onRemoveItem: RemoveItemHandler
+}) {
+  const [open, setOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{ currentTotalSell: number | null; projectedTotalSell: number | null; sellDelta: number | null; currency: string | null; previewToken: string } | null>(null)
+
+  // Step 1 — preview then open the confirm dialog with the projected SELLING totals.
+  const startRemove = async () => {
+    setSubmitting(true)
+    setError(null)
+    setOpen(true)
+    try {
+      const res = await onPreviewRemoveItem(exp.quoteItemId!)
+      const token = res?.previewToken
+      if (!token) throw new Error("Could not preview the removal. Please try again.")
+      setPreview({
+        currentTotalSell: typeof res?.currentTotalSell === "number" ? res.currentTotalSell : null,
+        projectedTotalSell: typeof res?.projectedTotalSell === "number" ? res.projectedTotalSell : null,
+        sellDelta: typeof res?.sellDelta === "number" ? res.sellDelta : null,
+        currency: res?.currency ?? null,
+        previewToken: token,
+      })
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not preview the removal.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Step 2 — confirm: DELETE with the previewed token. On stale/expired the backend fails
+  // closed; we clear the preview so the user re-previews.
+  const confirmRemove = async () => {
+    if (!preview || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onRemoveItem(exp.quoteItemId!, preview.previewToken)
+      setOpen(false)
+      setPreview(null)
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not remove the item. Please preview again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const cancel = () => {
+    setOpen(false)
+    setPreview(null)
+    setError(null)
+  }
+
+  const fmt = (n: number | null) => (n != null ? `${preview?.currency ?? currency ?? ""} ${Math.round(n)}`.trim() : "—")
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-destructive"
+        onClick={startRemove}
+        disabled={submitting}
+        title="Remove this item from the quote"
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+        Remove
+      </Button>
+      {open ? (
+        <div className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs" role="dialog" aria-label="Confirm remove item">
+          <p className="text-foreground">
+            Remove <span className="font-medium">{exp.name}</span>
+            {exp.type ? <span className="text-muted-foreground"> ({exp.type})</span> : null}?
+          </p>
+          {preview ? (
+            <div className="mt-1 space-y-0.5 text-muted-foreground">
+              <div>Current selling total: <span className="font-medium text-foreground">{fmt(preview.currentTotalSell)}</span></div>
+              <div>After removal: <span className="font-medium text-foreground">{fmt(preview.projectedTotalSell)}</span></div>
+              <div>Change: <span className="font-medium text-foreground">{preview.sellDelta != null ? fmt(preview.sellDelta) : "—"}</span></div>
+            </div>
+          ) : submitting ? (
+            <p className="mt-1 flex items-center gap-1.5 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Previewing…</p>
+          ) : null}
+          {error ? (
+            <p className="mt-1 flex items-center gap-1.5 text-destructive" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-2 flex items-center gap-2">
+            <Button size="sm" variant="destructive" className="h-7 gap-1.5 px-2 text-xs" onClick={confirmRemove} disabled={submitting || !preview}>
+              {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />}
+              {submitting ? "Removing…" : "Confirm remove"}
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={cancel} disabled={submitting}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 function ExperienceRow({
@@ -54,6 +180,8 @@ function ExperienceRow({
   entrancePricingEnabled,
   externalPackagePreviewEnabled,
   externalPackageApplyEnabled,
+  onPreviewRemoveItem,
+  onRemoveItem,
 }: {
   exp: Experience
   currency: string
@@ -67,7 +195,18 @@ function ExperienceRow({
   externalPackagePreviewEnabled?: boolean
   /** External-package pricing APPLY is behind its own flag (default OFF); requires preview too. */
   externalPackageApplyEnabled?: boolean
+  /** D-b: guarded remove-preview handler (present → the V2 item-mutation surface is on). */
+  onPreviewRemoveItem?: PreviewRemoveHandler
+  /** D-b: guarded item DELETE handler. */
+  onRemoveItem?: RemoveItemHandler
 }) {
+  // D-b: Remove is offered only for a V2-REMOVABLE row with a stable id — activity /
+  // guide / meal / entrance / external_package. Hotel/transport (and any unclassified
+  // row) never show Remove; the backend independently rejects them item_not_removable.
+  const canRemove = Boolean(
+    onRemoveItem && onPreviewRemoveItem && exp.quoteItemId &&
+    (exp.isActivity || exp.isGuide || exp.isMeal || exp.isEntrance || exp.isExternal),
+  )
   const [previewOpen, setPreviewOpen] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
   // Only external-package items expose editable client text; everything else is
@@ -235,6 +374,11 @@ function ExperienceRow({
           onPreview={onPreviewItem!}
           onApply={onApplyItemPricing!}
         />
+      ) : null}
+      {/* D-b: guarded Remove for eligible V2-removable rows (activity/guide/meal/
+          entrance/external_package). Hotel/transport/unclassified rows never show it. */}
+      {canRemove && onPreviewRemoveItem && onRemoveItem ? (
+        <RemoveItemControl exp={exp} currency={currency} onPreviewRemoveItem={onPreviewRemoveItem} onRemoveItem={onRemoveItem} />
       ) : null}
     </div>
   )
@@ -1510,9 +1654,17 @@ export interface ExperiencesStepProps {
    * independently fails closed external_package_finance_only.
    */
   externalPackageCreateEnabled?: boolean
+  /**
+   * D-b: guarded item REMOVE handlers (same V2 item-mutation surface as add — the caller
+   * passes them only when the item-mutation flag + role/status allow). Present → eligible
+   * rows expose a small Remove affordance with a sell-only confirm dialog. The backend
+   * independently enforces flag + role + editable status + type eligibility.
+   */
+  onPreviewRemoveItem?: PreviewRemoveHandler
+  onRemoveItem?: RemoveItemHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays, mealCostOverrideEnabled, externalPackageCreateEnabled }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays, mealCostOverrideEnabled, externalPackageCreateEnabled, onPreviewRemoveItem, onRemoveItem }: ExperiencesStepProps) {
   // Add-activity affordance is active only when the flag is on AND a handler +
   // itinerary days are provided (role/status-gated by the caller). Otherwise the
   // Experiences step is unchanged.
@@ -1619,6 +1771,8 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 entrancePricingEnabled={entrancePricingEnabled}
                 externalPackagePreviewEnabled={externalPackagePreviewEnabled}
                 externalPackageApplyEnabled={externalPackageApplyEnabled}
+                onPreviewRemoveItem={onPreviewRemoveItem}
+                onRemoveItem={onRemoveItem}
               />
             ))}
           </div>

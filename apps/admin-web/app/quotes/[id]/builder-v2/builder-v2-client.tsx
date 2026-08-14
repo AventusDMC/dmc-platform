@@ -747,6 +747,83 @@ export function BuilderV2Client({
     return parsed
   }
 
+  // ── D-b: guarded item REMOVE (delete) — V2-scoped ───────────────────────────
+  // Maps the guarded remove backend codes to safe, client-facing messages. Never
+  // surfaces cost/margin — the remove dialog shows the selling delta only.
+  const removeItemErrorMessage = (code: unknown, parsed: any, text: string, status: number): string => {
+    switch (code) {
+      case "feature_disabled":
+        return "Removing items from V2 is not available."
+      case "item_not_found":
+        return "This item could not be found. It may already have been removed."
+      case "item_not_removable":
+        return "This item cannot be removed in V2 yet. Please use Classic."
+      case "quote_not_editable":
+        return "This quote is not editable."
+      case "stale_preview":
+        return "The quote changed after preview. Please preview removal again."
+      case "invalid_preview_token":
+        return "This preview expired. Please preview the removal again."
+      case "forbidden":
+      case "Forbidden":
+        return "You don’t have permission to remove this item."
+      default: {
+        const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+        return message?.slice(0, 300) || `Could not remove the item (${status}).`
+      }
+    }
+  }
+
+  // Step 1 — READ-ONLY remove-preview. Projects the post-remove SELLING totals and
+  // returns a signed v2-item-delete previewToken the DELETE replays. No writes. Only
+  // the client-safe selling numbers are used by the confirm dialog (cost never shown).
+  const handlePreviewRemoveItem = async (itemId: string) => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item/${itemId}/remove/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      throw new Error(removeItemErrorMessage(parsed?.code, parsed, text, res.status))
+    }
+    return parsed as { currentTotalSell?: number; projectedTotalSell?: number; sellDelta?: number; currency?: string | null; previewToken?: string }
+  }
+
+  // Step 2 — guarded DELETE. Replays the previewToken from the confirmed remove-preview.
+  // On success shows a CLIENT-SAFE toast (item type label only) and refreshes.
+  const handleRemoveItem = async (itemId: string, previewToken: string) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item/${itemId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previewToken }),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      throw new Error(removeItemErrorMessage(parsed?.code, parsed, text, res.status))
+    }
+    // Generalize the success label to the removed item type (underscores → spaces so
+    // "external_package" reads "External package"). Falls back to a generic label.
+    const itemType = typeof parsed?.itemType === "string" && parsed.itemType ? parsed.itemType.replace(/_/g, " ") : "item"
+    const label = itemType.charAt(0).toUpperCase() + itemType.slice(1)
+    setApplyToast({ text: `${label} removed successfully.` })
+    router.refresh()
+    return parsed
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -964,6 +1041,8 @@ export function BuilderV2Client({
       itemCreateEnabled={canAddItem && itemCreateEnabled}
       onPreviewAddItem={canAddItem ? handlePreviewAddItem : undefined}
       onAddItem={canAddItem ? handleAddItem : undefined}
+      onPreviewRemoveItem={canAddItem ? handlePreviewRemoveItem : undefined}
+      onRemoveItem={canAddItem ? handleRemoveItem : undefined}
       canCreateBooking={canCreateBooking}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       onSendProposalEmail={
