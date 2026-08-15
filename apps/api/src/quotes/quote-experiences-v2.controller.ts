@@ -1,7 +1,12 @@
 import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
-import { AddActivityItemInput, QuoteExperiencesV2Service, QuoteItemCreateActor } from './quote-experiences-v2.service';
+import {
+  AddActivityItemInput,
+  EditExternalPackageInput,
+  QuoteExperiencesV2Service,
+  QuoteItemCreateActor,
+} from './quote-experiences-v2.service';
 
 type AddItemBody = {
   itemType?: string | null;
@@ -39,6 +44,15 @@ type AddItemBody = {
   adultCount?: number | string | null;
   childCount?: number | string | null;
   // Slice 2B-1 determinism guard — replayed from the create-preview response.
+  previewToken?: unknown;
+  acknowledgedDelta?: boolean;
+};
+
+// E-a: external-package EDIT body. Only netCost + pricingBasis are read (see toEditInput);
+// previewToken + acknowledgedDelta drive the guarded apply. Any other property is ignored.
+type EditExternalPackageBody = {
+  netCost?: number | string | null;
+  pricingBasis?: string | null;
   previewToken?: unknown;
   acknowledgedDelta?: boolean;
 };
@@ -112,6 +126,52 @@ export class QuoteExperiencesV2Controller {
     return this.service.removeExperienceItem(quoteId, itemId, this.toActor(actor), {
       previewToken: body?.previewToken,
     });
+  }
+
+  // E-a: external-package EDIT preview — projects the repriced item + quote totals with
+  // NO writes and returns an opaque `v2e` edit token. Gated by QUOTE_EXTERNAL_PACKAGE_EDIT
+  // (OFF by default) and finance-only, both enforced in the service. `finance` is on the
+  // @Roles allowlist because the edit is finance-only; agent_admin/operations that
+  // RolesGuard may coalesce onto the route fail closed at the service.
+  @Post('item/:itemId/edit/preview')
+  @Roles('admin', 'finance')
+  async editExternalPackagePreview(
+    @Param('quoteId') quoteId: string,
+    @Param('itemId') itemId: string,
+    @Body() body: EditExternalPackageBody | null,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.service.previewExternalPackageEdit(quoteId, itemId, this.toEditInput(body), this.toActor(actor));
+  }
+
+  // E-a: guarded external-package EDIT apply — replays the opaque `v2e` edit token (body),
+  // fails closed on staleness, requires a selling-delta acknowledgement, then delegates to
+  // the UNCHANGED updateItem with a server-built {netCost, pricingBasis} patch. Never
+  // touches the pricing-apply flow.
+  @Post('item/:itemId/edit')
+  @Roles('admin', 'finance')
+  async editExternalPackage(
+    @Param('quoteId') quoteId: string,
+    @Param('itemId') itemId: string,
+    @Body() body: EditExternalPackageBody | null,
+    @Actor() actor: AuthenticatedActor | null,
+  ) {
+    return this.service.applyExternalPackageEdit(quoteId, itemId, this.toEditInput(body), this.toActor(actor), {
+      previewToken: body?.previewToken,
+      acknowledgedDelta: body?.acknowledgedDelta === true,
+    });
+  }
+
+  // Strict allowlist projection: ONLY netCost + pricingBasis reach the service. Every other
+  // property on the body (currency, markup, sell/override, packageName, …) is dropped here
+  // and never forwarded — the immutable fields cannot be edited through this route.
+  private toEditInput(body: EditExternalPackageBody | null): EditExternalPackageInput {
+    const netCost =
+      body?.netCost === undefined || body?.netCost === null || String(body?.netCost).trim() === ''
+        ? undefined
+        : Number(body.netCost);
+    const pricingBasis = (body?.pricingBasis ?? '').toString().trim() || undefined;
+    return { netCost, pricingBasis };
   }
 
   private toInput(body: AddItemBody): AddActivityItemInput {
