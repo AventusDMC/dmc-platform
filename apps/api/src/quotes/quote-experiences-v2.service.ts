@@ -7,6 +7,12 @@ import { EXPERIENCE_DEFAULT_MARKUP, GUIDE_DEFAULT_MARKUP } from '../common/prici
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildCreatePreviewToken, verifyCreatePreviewToken } from './quote-create-preview-token';
+import {
+  EXTERNAL_PACKAGE_EDIT_TOKEN_KIND,
+  buildExternalPackageEditToken,
+  verifyExternalPackageEditToken,
+} from './quote-external-package-edit-preview-token';
+import { isQuoteExternalPackageEditEnabled } from './quote-external-package-edit.flags';
 import { isQuoteItemCreateEnabled } from './quote-item-create.flags';
 import { getPreviewTokenSecret, normalizePayloadHash } from './quote-preview-token';
 import { QuotesService } from './quotes.service';
@@ -80,6 +86,23 @@ export type RemoveItemGuard = {
   previewToken?: unknown;
 };
 
+// E-a: guarded external-package COMMERCIAL EDIT input. The ONLY two editable fields are
+// netCost + pricingBasis; at least one must be supplied (one-field patches allowed). Any
+// other field (currency, markup, sell/override, packageName, country, quantity/pax, …) is
+// IMMUTABLE in this slice and is neither accepted here nor forwarded to updateItem — the
+// server reconstructs the complete target from persisted, trusted state.
+export type EditExternalPackageInput = {
+  netCost?: number | null;
+  pricingBasis?: string | null;
+};
+
+// E-a: the guarded EDIT-apply replays the opaque `v2e` edit-preview token; a selling-
+// price change additionally requires an explicit delta acknowledgement.
+export type EditExternalPackageGuard = {
+  previewToken?: unknown;
+  acknowledgedDelta?: boolean;
+};
+
 // The five V2-removable item types (type-based eligibility — no schema marker exists).
 // Hotel/transport are explicitly EXCLUDED from this slice.
 type RemovableItemType = 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package';
@@ -108,9 +131,18 @@ function tokenKindForItemType(itemType: 'activity' | 'guide' | 'meal' | 'entranc
   return CREATE_TOKEN_KIND;
 }
 const CREATE_TOKEN_TTL_SECONDS = 600; // 10 minutes
+// E-a: guarded external-package edit-preview token TTL (~15 minutes). Independent of the
+// create/delete TTL and of the pricing-apply token TTL.
+const EDIT_TOKEN_TTL_SECONDS = 900;
 // Money tolerance for the post-write totals compare (half a cent) — guards against
 // float rounding while still catching any real rate/recalc drift.
 const TOTALS_EPSILON = 0.005;
+
+// E-a: 2-dp money rounding for the edit-preview/apply response + audit deltas (display
+// hygiene only — the token binds the raw projected totals for the drift compare).
+function round(n: number): number {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
 type ResolvedCreateContext = {
   itemType: 'activity' | 'guide' | 'meal' | 'entrance' | 'external_package';
@@ -1061,6 +1093,445 @@ export class QuoteExperiencesV2Service {
       removed: true,
       quote: { totalCost: showCost ? actualTotalCost : null, totalSell: actualTotalSell },
       currency,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // E-a: Guarded external-package COMMERCIAL EDIT. FULLY ISOLATED from the
+  // production-enabled pricing-apply flow: its own OFF-by-default gate
+  // (QUOTE_EXTERNAL_PACKAGE_EDIT), its own opaque `v2e` token (kind
+  // external-package-edit — a `v2s` apply token or a `v2c` create/delete token can
+  // never authorize an edit, and this token can never be replayed against them), and
+  // it NEVER calls applyPreviewQuoteItem / emits quote.pricing.apply. The ONLY two
+  // editable fields are netCost + pricingBasis; the server reconstructs the complete
+  // target from persisted, trusted state and delegates to the EXISTING, UNCHANGED
+  // QuotesService.previewUpdateQuoteItem (pure projection) + updateItem (write +
+  // recalc) — no pricing math is forked. Eligibility is positively-classified,
+  // service-less, matrix-less, override-free external packages on a strict-DRAFT quote,
+  // accessible to finance-visible roles only.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Persisted fields needed to classify + reconstruct the edit target without trusting
+  // the client body.
+  private readonly editableExternalSelect = {
+    id: true,
+    quoteId: true,
+    serviceId: true,
+    activityId: true,
+    hotelId: true,
+    transportServiceTypeId: true,
+    routeId: true,
+    vehicleId: true,
+    touringRouteId: true,
+    externalPackageName: true,
+    externalPricingBasis: true,
+    externalNetCost: true,
+    externalPackagePricingMatrixJson: true,
+    useOverride: true,
+    sellPrice: true,
+    markupPercent: true,
+    currency: true,
+    totalCost: true,
+    totalSell: true,
+    service: { select: { category: true, serviceType: { select: { name: true, code: true } }, entranceFee: { select: { id: true } } } },
+  } as const;
+
+  private assertEditEnabled(): void {
+    if (!isQuoteExternalPackageEditEnabled()) {
+      throw new BadRequestException({
+        code: 'feature_disabled',
+        message: 'Editing external packages from V2 is not available in this version.',
+      });
+    }
+  }
+
+  private isEmptyExternalMatrix(json: unknown): boolean {
+    if (json == null) return true;
+    if (typeof json === 'string') {
+      const t = json.trim();
+      return t === '' || t === '[]' || t === '{}';
+    }
+    if (Array.isArray(json)) return json.length === 0;
+    if (typeof json === 'object') return Object.keys(json as object).length === 0;
+    return false;
+  }
+
+  // Strict-DRAFT access — narrower than assertQuoteAccess (which admits READY/
+  // REVISION_REQUESTED). A commercial edit is only allowed on an unaccepted, latest-
+  // revision DRAFT owned by the actor's company.
+  private async assertStrictDraftEditAccess(quoteId: string, actor: QuoteItemCreateActor) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: { id: quoteId },
+      select: { id: true, brandCompanyId: true, status: true, quoteCurrency: true, acceptedVersionId: true },
+    });
+    if (!quote) {
+      throw new BadRequestException({ code: 'quote_not_found', message: 'Quote not found.' });
+    }
+    if (quote.brandCompanyId && quote.brandCompanyId !== companyId) {
+      throw new ForbiddenException('Quote belongs to a different company');
+    }
+    if (String(quote.status || '').toUpperCase() !== 'DRAFT') {
+      throw new BadRequestException({ code: 'quote_not_editable', message: 'External packages can only be edited while the quote is a draft.' });
+    }
+    if (quote.acceptedVersionId) {
+      throw new BadRequestException({ code: 'quote_not_editable', message: 'This quote can no longer be edited.' });
+    }
+    const newerRevision = await this.prisma.quote.findFirst({ where: { revisedFromId: quoteId }, select: { id: true } });
+    if (newerRevision && newerRevision.id !== quoteId) {
+      throw new BadRequestException({ code: 'quote_not_editable', message: 'Only the latest quote revision can be changed.' });
+    }
+    return quote;
+  }
+
+  // Positive external-package eligibility (fail closed). Deny hotel/transport FIRST,
+  // then require a one-off, service-less, named external package; then reject matrix-
+  // priced, override/sell-pinned, and non-standard-markup rows with specific codes.
+  private assertEditableExternalPackage(item: {
+    serviceId?: string | null;
+    activityId?: string | null;
+    hotelId?: string | null;
+    transportServiceTypeId?: string | null;
+    routeId?: string | null;
+    vehicleId?: string | null;
+    touringRouteId?: string | null;
+    externalPackageName?: string | null;
+    externalPackagePricingMatrixJson?: unknown;
+    useOverride?: boolean | null;
+    sellPrice?: number | null;
+    markupPercent?: number | null;
+    service?: { category?: string | null; serviceType?: { name?: string | null; code?: string | null } | null; entranceFee?: { id: string } | null } | null;
+  }): void {
+    const group = item.service ? resolveServiceTaxonomyGroup(item.service) : null;
+    // ── Exclusions first (denylist): hotel + transport are never edit-eligible. ──
+    if (item.hotelId || group === 'hotel') {
+      throw new BadRequestException({ code: 'not_external_package', message: 'This item is not an editable external package.' });
+    }
+    if (item.transportServiceTypeId || item.routeId || item.vehicleId || item.touringRouteId || group === 'transport') {
+      throw new BadRequestException({ code: 'not_external_package', message: 'This item is not an editable external package.' });
+    }
+    // ── Positive classification: named, one-off, service-less (no catalog service,
+    // no activity). A catalog-typed row (group truthy) or a serviceId/activityId is
+    // NOT a one-off external package. ──
+    if (!item.externalPackageName || item.serviceId || item.activityId || group) {
+      throw new BadRequestException({ code: 'not_external_package', message: 'This item is not an editable external package.' });
+    }
+    // ── Matrix-priced external packages are out of scope (per-cell / non-constant). ──
+    if (!this.isEmptyExternalMatrix(item.externalPackagePricingMatrixJson)) {
+      throw new BadRequestException({ code: 'matrix_pricing_unsupported', message: 'Matrix-priced external packages cannot be edited from V2 in this version.' });
+    }
+    // ── Cost/sell override rows are out of scope (an edit must not silently reprice an
+    // override). sellPrice is persisted ONLY on an explicit sell override. ──
+    if (item.useOverride === true || item.sellPrice != null) {
+      throw new BadRequestException({ code: 'override_pricing_unsupported', message: 'Override-priced external packages cannot be edited from V2 in this version.' });
+    }
+    // ── Only the established constant markup is editable. ──
+    if (Number(item.markupPercent) !== EXPERIENCE_DEFAULT_MARKUP) {
+      throw new BadRequestException({ code: 'item_not_editable', message: 'This external package uses a non-standard markup and cannot be edited from V2.' });
+    }
+  }
+
+  // Shared load + validation for both edit-preview and edit-apply: gate → finance →
+  // strict-DRAFT lifecycle → item-belongs-to-quote → external-package eligibility. No
+  // writes.
+  private async resolveEditableExternalPackage(quoteId: string, itemId: string, actor: QuoteItemCreateActor) {
+    this.assertEditEnabled();
+    const requiredActor = this.requireActor(actor);
+    // Finance enforcement at the SERVICE (not @Roles alone): netCost/margin are cost
+    // data, so agent_admin/operations/agent/viewer fail closed here even if RolesGuard
+    // coalesced them onto the route.
+    if (!canViewQuoteCostMargin(actor?.role ?? null)) {
+      throw new ForbiddenException({ code: 'external_package_finance_only', message: 'Only finance-visible roles may edit an external package.' });
+    }
+    const quote = await this.assertStrictDraftEditAccess(quoteId, actor);
+    const item = await this.prisma.quoteItem.findUnique({ where: { id: itemId }, select: this.editableExternalSelect });
+    if (!item || item.quoteId !== quoteId) {
+      throw new BadRequestException({ code: 'item_not_found', message: 'Quote item not found for this quote.' });
+    }
+    this.assertEditableExternalPackage(item);
+    return { requiredActor, quote, item };
+  }
+
+  // Strict field allowlist. Accept ONLY netCost + pricingBasis (≥1 required). Return a
+  // MINIMAL patch (only supplied fields — the resolver fills the rest from persisted,
+  // trusted state) plus the COMPLETE effective target (for the token hash binding).
+  private buildEditTarget(
+    item: { externalNetCost?: number | null; externalPricingBasis?: string | null },
+    input: EditExternalPackageInput,
+  ): { patch: { netCost?: number; pricingBasis?: string }; effectiveNetCost: number; effectivePricingBasis: string | null; changedFields: string[] } {
+    const netCostProvided = input.netCost !== undefined && input.netCost !== null && String(input.netCost).trim() !== '';
+    const pricingBasisProvided =
+      input.pricingBasis !== undefined && input.pricingBasis !== null && String(input.pricingBasis).trim() !== '';
+    if (!netCostProvided && !pricingBasisProvided) {
+      throw new BadRequestException({ code: 'no_editable_fields', message: 'Provide at least one of netCost or pricingBasis.' });
+    }
+
+    const patch: { netCost?: number; pricingBasis?: string } = {};
+    const changedFields: string[] = [];
+
+    let effectiveNetCost: number;
+    if (netCostProvided) {
+      effectiveNetCost = Number(input.netCost);
+      if (!Number.isFinite(effectiveNetCost) || effectiveNetCost < 0) {
+        throw new BadRequestException({ code: 'invalid_external_package_cost', message: 'External package net cost must be a finite number ≥ 0.' });
+      }
+      patch.netCost = effectiveNetCost;
+      changedFields.push('netCost');
+    } else {
+      effectiveNetCost = Number(item.externalNetCost ?? 0);
+    }
+
+    let effectivePricingBasis: string | null;
+    if (pricingBasisProvided) {
+      const basis = String(input.pricingBasis).trim().toUpperCase();
+      if (basis !== 'PER_PERSON' && basis !== 'PER_GROUP') {
+        throw new BadRequestException({ code: 'invalid_pricing_basis', message: 'pricingBasis must be PER_PERSON or PER_GROUP.' });
+      }
+      effectivePricingBasis = basis;
+      patch.pricingBasis = basis;
+      changedFields.push('pricingBasis');
+    } else {
+      effectivePricingBasis = item.externalPricingBasis ?? null;
+    }
+
+    return { patch, effectiveNetCost, effectivePricingBasis, changedFields };
+  }
+
+  // Edit-preview: projects the repriced item + quote totals with NO writes via the
+  // UNCHANGED previewUpdateQuoteItem, DISCARDS the v2s token it embeds, and returns its
+  // OWN opaque `v2e` token binding the complete target + a pre-edit snapshot. Finance-
+  // only, so cost is always visible.
+  async previewExternalPackageEdit(quoteId: string, itemId: string, input: EditExternalPackageInput, actor: QuoteItemCreateActor) {
+    const { requiredActor, quote, item } = await this.resolveEditableExternalPackage(quoteId, itemId, actor);
+    const target = this.buildEditTarget(item, input);
+
+    const data = { quoteId, ...target.patch };
+    let preview: any;
+    try {
+      preview = await this.quotes.previewUpdateQuoteItem(quoteId, itemId, data, {
+        id: requiredActor.id,
+        companyId: requiredActor.companyId,
+        role: actor?.role ?? null,
+      } as any);
+    } catch (err) {
+      throw new ConflictException({ code: 'not_resolvable', message: 'Pricing could not be resolved for this edit.' });
+    }
+    // The v2s token previewUpdateQuoteItem embeds (preview.previewToken) is DISCARDED —
+    // never returned, never used. This edit flow only mints/verifies its own v2e token.
+
+    const itemCurrentCost = Number(preview?.item?.current?.totalCost ?? item.totalCost ?? 0);
+    const itemCurrentSell = Number(preview?.item?.current?.totalSell ?? item.totalSell ?? 0);
+    const itemProjectedCost = Number(preview?.item?.projected?.totalCost ?? itemCurrentCost);
+    const itemProjectedSell = Number(preview?.item?.projected?.totalSell ?? itemCurrentSell);
+    const itemCostDelta = round(itemProjectedCost - itemCurrentCost);
+    const itemSellDelta = round(itemProjectedSell - itemCurrentSell);
+
+    const quoteCurrentCost = Number(preview?.quote?.current?.totalCost ?? 0);
+    const quoteCurrentSell = Number(preview?.quote?.current?.totalSell ?? 0);
+    const quoteProjectedCost = Number(preview?.quote?.projected?.totalCost ?? quoteCurrentCost);
+    const quoteProjectedSell = Number(preview?.quote?.projected?.totalSell ?? quoteCurrentSell);
+    const quoteCostDelta = round(quoteProjectedCost - quoteCurrentCost);
+    const quoteSellDelta = round(quoteProjectedSell - quoteCurrentSell);
+
+    // SLAB-aware discriminator: when the item selling total moves but the quote selling
+    // total is held flat, the quote sell is slab-driven (not linear in this item).
+    const isSlab = itemSellDelta !== 0 && quoteSellDelta === 0;
+    const pricingMode = isSlab ? 'slab' : 'standard';
+    const sellProjected = !isSlab;
+    const currency = item.currency ?? quote.quoteCurrency ?? null;
+
+    const snapshot = await this.snapshotQuoteState(quoteId);
+    const targetPayloadHash = normalizePayloadHash({ netCost: target.effectiveNetCost, pricingBasis: target.effectivePricingBasis });
+
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const exp = issuedAt + EDIT_TOKEN_TTL_SECONDS;
+    const previewToken = buildExternalPackageEditToken(
+      {
+        kind: EXTERNAL_PACKAGE_EDIT_TOKEN_KIND,
+        companyId: requiredActor.companyId ?? null,
+        quoteId,
+        itemId,
+        itemType: 'external_package',
+        targetPayloadHash,
+        snapshotHash: snapshot.hash,
+        pricingMode,
+        sellProjected,
+        itemSellDelta,
+        projected: {
+          itemCurrentCost,
+          itemCurrentSell,
+          itemProjectedCost,
+          itemProjectedSell,
+          quoteCurrentCost,
+          quoteCurrentSell,
+          quoteProjectedCost,
+          quoteProjectedSell,
+          currency,
+        },
+        issuedAt,
+        exp,
+      },
+      getPreviewTokenSecret(),
+    );
+
+    return {
+      itemId,
+      itemType: 'external_package' as const,
+      pricingMode,
+      sellProjected,
+      currency,
+      changedFields: target.changedFields,
+      item: {
+        current: { totalCost: round(itemCurrentCost), totalSell: round(itemCurrentSell) },
+        projected: { totalCost: round(itemProjectedCost), totalSell: round(itemProjectedSell) },
+        delta: { totalCost: itemCostDelta, totalSell: itemSellDelta },
+      },
+      quote: {
+        current: { totalCost: round(quoteCurrentCost), totalSell: round(quoteCurrentSell) },
+        projected: { totalCost: round(quoteProjectedCost), totalSell: round(quoteProjectedSell) },
+        delta: { totalCost: quoteCostDelta, totalSell: quoteSellDelta },
+      },
+      requiresAcknowledgement: itemSellDelta !== 0,
+      previewToken,
+    };
+  }
+
+  // Edit-apply: re-validate everything, verify the opaque `v2e` token (kind + identity +
+  // expiry + payload-hash), fail closed on a stale snapshot, require a selling-delta
+  // acknowledgement, then commit via the UNCHANGED updateItem with a SERVER-BUILT
+  // {netCost, pricingBasis} patch. Post-write integrity compare vs the projection; best-
+  // effort restore + surfaced error on the (deterministically unreachable) drift. Emits
+  // exactly one best-effort quote.item.updated audit. Never touches applyPreviewQuoteItem
+  // or quote.pricing.apply.
+  async applyExternalPackageEdit(
+    quoteId: string,
+    itemId: string,
+    input: EditExternalPackageInput,
+    actor: QuoteItemCreateActor,
+    guard: EditExternalPackageGuard = {},
+  ) {
+    const { requiredActor, quote, item } = await this.resolveEditableExternalPackage(quoteId, itemId, actor);
+
+    // --- Guard: verify the opaque v2e edit-preview token + identity + freshness ---
+    const payload = verifyExternalPackageEditToken(guard.previewToken, getPreviewTokenSecret());
+    if (!payload || payload.kind !== EXTERNAL_PACKAGE_EDIT_TOKEN_KIND) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'A valid edit-preview token is required. Re-run the preview.' });
+    }
+    if (typeof payload.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'The edit-preview token has expired. Re-run the preview.' });
+    }
+    if (
+      payload.quoteId !== quoteId ||
+      payload.itemId !== itemId ||
+      payload.itemType !== 'external_package' ||
+      (payload.companyId ?? null) !== (requiredActor.companyId ?? null)
+    ) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'The preview token does not match this request. Re-run the preview.' });
+    }
+
+    // Rebuild the complete target from CURRENT persisted state + the (allowlisted) input,
+    // and re-bind it to the token's hash. A changed payload → re-run the preview.
+    const target = this.buildEditTarget(item, input);
+    const targetPayloadHash = normalizePayloadHash({ netCost: target.effectiveNetCost, pricingBasis: target.effectivePricingBasis });
+    if (payload.targetPayloadHash !== targetPayloadHash) {
+      throw new BadRequestException({ code: 'invalid_preview_token', message: 'The edit changed since the preview. Re-run the preview.' });
+    }
+
+    // Snapshot mismatch → the quote moved since the preview (fail closed BEFORE the write).
+    const snapshot = await this.snapshotQuoteState(quoteId);
+    if (snapshot.hash !== payload.snapshotHash) {
+      throw new ConflictException({ code: 'stale_preview', message: 'The quote changed since the preview; re-run the preview and try again.' });
+    }
+
+    // Confirmation required when the selling price changes (SLAB-aware: item sell delta).
+    const itemSellDelta = Number(payload.itemSellDelta ?? 0);
+    if (itemSellDelta !== 0 && guard.acknowledgedDelta !== true) {
+      throw new ConflictException({ code: 'confirmation_required', message: 'This edit changes the selling price; re-submit with acknowledgedDelta=true to apply.' });
+    }
+
+    // Pre-edit commercial state, for the (unreachable) drift compensation.
+    const priorNetCost = Number(item.externalNetCost ?? 0);
+    const priorPricingBasis = item.externalPricingBasis ?? undefined;
+
+    // --- Commit via the UNCHANGED updateItem with a SERVER-BUILT patch (never the raw
+    // client body). The resolver fills every other field from persisted state. ---
+    const updated = await this.quotes.updateItem(
+      itemId,
+      { quoteId, ...target.patch } as any,
+      { id: requiredActor.id, companyId: requiredActor.companyId, role: actor?.role ?? null } as any,
+    );
+
+    // Post-write integrity compare vs the previewed projection.
+    const after = await this.prisma.quote.findUnique({ where: { id: quoteId }, select: { totalCost: true, totalSell: true } });
+    const actualTotalCost = Number(after?.totalCost ?? 0);
+    const actualTotalSell = Number(after?.totalSell ?? 0);
+    const projected = (payload.projected ?? {}) as Record<string, number>;
+    const costDrift = Math.abs(actualTotalCost - Number(projected.quoteProjectedCost ?? actualTotalCost));
+    const sellDrift = Math.abs(actualTotalSell - Number(projected.quoteProjectedSell ?? actualTotalSell));
+
+    if (costDrift > TOTALS_EPSILON || sellDrift > TOTALS_EPSILON) {
+      // Deterministic external pricing + the pre-write snapshot check make this
+      // effectively unreachable. If it ever fires, best-effort restore the prior
+      // commercial state via the UNCHANGED updateItem; surface either way.
+      console.error('[quote-experiences-v2] external-package edit post-write drift', { quoteId, itemId, costDrift, sellDrift });
+      try {
+        await this.quotes.updateItem(
+          itemId,
+          { quoteId, netCost: priorNetCost, pricingBasis: priorPricingBasis } as any,
+          { id: requiredActor.id, companyId: requiredActor.companyId, role: actor?.role ?? null } as any,
+        );
+      } catch (err) {
+        throw new ConflictException({
+          code: 'compensation_failed',
+          message: 'Pricing drifted and the automatic rollback failed; please review this quote in Classic.',
+          itemId,
+        });
+      }
+      throw new ConflictException({
+        code: 'post_write_integrity_mismatch',
+        message: 'Pricing changed at apply time; the edit was reverted. Re-run the preview and try again.',
+      });
+    }
+
+    const currency = (updated as { currency?: string })?.currency ?? item.currency ?? quote.quoteCurrency ?? null;
+    const itemCost = Number((updated as { totalCost?: number })?.totalCost ?? projected.itemProjectedCost ?? 0);
+    const itemSell = Number((updated as { totalSell?: number })?.totalSell ?? projected.itemProjectedSell ?? 0);
+
+    // Best-effort audit (never blocks). Sanitized metadata only — changed field NAMES +
+    // sanitized deltas; NO raw netCost/supplier/notes/token/snapshot/PII.
+    const dayLink = await this.prisma.quoteItineraryDayItem.findFirst({ where: { quoteServiceId: itemId }, select: { dayId: true } });
+    try {
+      await this.audit.log({
+        actor: { id: requiredActor.id, companyId: requiredActor.companyId ?? null },
+        action: 'quote.item.updated',
+        entity: 'quoteItem',
+        entityId: itemId,
+        metadata: {
+          quoteId,
+          itemId,
+          itemType: 'external_package',
+          dayId: dayLink?.dayId ?? null,
+          changedFields: target.changedFields,
+          currency,
+          itemCostDelta: round(itemCost - Number(projected.itemCurrentCost ?? itemCost)),
+          itemSellDelta: round(itemSell - Number(projected.itemCurrentSell ?? itemSell)),
+          quoteCostDelta: round(actualTotalCost - Number(projected.quoteCurrentCost ?? actualTotalCost)),
+          quoteSellDelta: round(actualTotalSell - Number(projected.quoteCurrentSell ?? actualTotalSell)),
+        },
+      });
+    } catch (err) {
+      console.warn('[quote-experiences-v2] audit quote.item.updated failed', (err as Error)?.message);
+    }
+
+    return {
+      itemId,
+      itemType: 'external_package' as const,
+      updated: true,
+      pricingMode: (payload.pricingMode as string) ?? 'standard',
+      currency,
+      changedFields: target.changedFields,
+      item: { totalCost: round(itemCost), totalSell: round(itemSell) },
+      quote: { totalCost: round(actualTotalCost), totalSell: round(actualTotalSell) },
     };
   }
 }
