@@ -42,6 +42,39 @@ export type PreviewRemoveHandler = (
 ) => Promise<{ currentTotalSell?: number; projectedTotalSell?: number; sellDelta?: number; currency?: string | null; previewToken?: string }>
 export type RemoveItemHandler = (itemId: string, previewToken: string) => void | Promise<unknown>
 
+// E-b: guarded External Package COMMERCIAL edit. The ONLY editable fields are netCost +
+// pricingBasis. Preview projects current/projected item AND quote totals (finance-only,
+// SLAB-aware) + a signed v2e previewToken; the confirm replays the exact token +
+// acknowledgement. The narrow payload NEVER carries currency/markup/sell/override/
+// packageName/description/country/day/date/supplier/notes/identity.
+export type EditExternalPayload = { netCost?: number; pricingBasis?: string }
+export type EditExternalPreviewResult = {
+  itemType?: string
+  pricingMode?: string
+  sellProjected?: boolean
+  currency?: string | null
+  changedFields?: string[]
+  item?: {
+    current?: { totalCost?: number | null; totalSell?: number | null }
+    projected?: { totalCost?: number | null; totalSell?: number | null }
+    delta?: { totalCost?: number | null; totalSell?: number | null }
+  }
+  quote?: {
+    current?: { totalCost?: number | null; totalSell?: number | null }
+    projected?: { totalCost?: number | null; totalSell?: number | null }
+    delta?: { totalCost?: number | null; totalSell?: number | null }
+  }
+  requiresAcknowledgement?: boolean
+  previewToken?: string
+}
+export type PreviewEditExternalHandler = (itemId: string, payload: EditExternalPayload) => Promise<EditExternalPreviewResult>
+export type EditExternalHandler = (
+  itemId: string,
+  payload: EditExternalPayload,
+  previewToken: string,
+  acknowledgedDelta: boolean,
+) => void | Promise<unknown>
+
 function externalPackageFields(exp: Experience): DisplayTextField[] {
   return [
     { key: "externalClientDescription", label: "Description", value: exp.externalClientDescription ?? "", multiline: true },
@@ -182,6 +215,8 @@ function ExperienceRow({
   externalPackageApplyEnabled,
   onPreviewRemoveItem,
   onRemoveItem,
+  onPreviewEditExternal,
+  onEditExternal,
 }: {
   exp: Experience
   currency: string
@@ -199,6 +234,10 @@ function ExperienceRow({
   onPreviewRemoveItem?: PreviewRemoveHandler
   /** D-b: guarded item DELETE handler. */
   onRemoveItem?: RemoveItemHandler
+  /** E-b: guarded external-package edit-preview handler (present → finance/DRAFT + gate ON). */
+  onPreviewEditExternal?: PreviewEditExternalHandler
+  /** E-b: guarded external-package edit-apply handler. */
+  onEditExternal?: EditExternalHandler
 }) {
   // D-b: Remove is offered only for a V2-REMOVABLE row with a stable id — activity /
   // guide / meal / entrance / external_package. Hotel/transport (and any unclassified
@@ -206,6 +245,13 @@ function ExperienceRow({
   const canRemove = Boolean(
     onRemoveItem && onPreviewRemoveItem && exp.quoteItemId &&
     (exp.isActivity || exp.isGuide || exp.isMeal || exp.isEntrance || exp.isExternal),
+  )
+  // E-b: commercial edit is offered ONLY on external_package rows with a stable id, and
+  // only when the caller supplied the handlers (finance role + gate ON + DRAFT status —
+  // the caller decides; the backend independently re-enforces flag/finance/eligibility).
+  // Hotel/transport/activity/guide/meal/entrance/unclassified rows never receive it.
+  const canEditExternal = Boolean(
+    onPreviewEditExternal && onEditExternal && exp.quoteItemId && exp.isExternal,
   )
   const [previewOpen, setPreviewOpen] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
@@ -380,7 +426,233 @@ function ExperienceRow({
       {canRemove && onPreviewRemoveItem && onRemoveItem ? (
         <RemoveItemControl exp={exp} currency={currency} onPreviewRemoveItem={onPreviewRemoveItem} onRemoveItem={onRemoveItem} />
       ) : null}
+      {/* E-b: guarded commercial edit (net cost + pricing basis) — external_package rows
+          only, finance/DRAFT + gate gated by the caller-supplied handlers. */}
+      {canEditExternal && onPreviewEditExternal && onEditExternal ? (
+        <EditExternalPackageControl exp={exp} currency={currency} onPreviewEditExternal={onPreviewEditExternal} onEditExternal={onEditExternal} />
+      ) : null}
     </div>
+  )
+}
+
+// E-b: inline "Edit commercial terms" affordance for an eligible external-package row.
+// FINANCE-ONLY (the caller passes the handlers only for admin/finance on a DRAFT quote).
+// Two fields only — Net cost + Pricing basis. Preview-first: "Preview changes" calls the
+// read-only edit-preview (no write) and renders the backend's projected item AND quote
+// totals; nothing is computed in the browser. Confirm replays the EXACT v2e previewToken
+// + acknowledgement; Cancel writes nothing. Never renders supplier/internal/token data.
+function EditExternalPackageControl({
+  exp,
+  currency,
+  onPreviewEditExternal,
+  onEditExternal,
+}: {
+  exp: Experience
+  currency: string
+  onPreviewEditExternal: PreviewEditExternalHandler
+  onEditExternal: EditExternalHandler
+}) {
+  const [open, setOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Net cost starts EMPTY (its current value is cost data — it appears only in the
+  // finance-visible preview result, never prefilled into the DOM). Basis defaults to
+  // "(unchanged)" so submitting never silently flips the persisted basis.
+  const [netCost, setNetCost] = useState("")
+  const [pricingBasis, setPricingBasis] = useState("")
+  const [acknowledged, setAcknowledged] = useState(false)
+  // The preview response + the EXACT payload it was previewed with (replayed on confirm).
+  const [preview, setPreview] = useState<{ result: EditExternalPreviewResult; payload: EditExternalPayload } | null>(null)
+
+  // Build the narrow, allowlisted payload: netCost only if entered; pricingBasis only if
+  // the user chose one (≠ "(unchanged)"). At least one must be present.
+  const buildPayload = (): EditExternalPayload | null => {
+    const payload: EditExternalPayload = {}
+    const trimmed = netCost.trim()
+    if (trimmed !== "") {
+      const n = Number(trimmed)
+      if (!Number.isFinite(n) || n < 0) return null
+      payload.netCost = n
+    }
+    if (pricingBasis) payload.pricingBasis = pricingBasis
+    return payload.netCost === undefined && payload.pricingBasis === undefined ? null : payload
+  }
+
+  // Changing an input invalidates any existing projection — force a re-preview.
+  const invalidatePreview = () => {
+    setPreview(null)
+    setAcknowledged(false)
+    setError(null)
+  }
+
+  // Step 1 — read-only edit-preview. Renders the backend projection; writes nothing.
+  const startPreview = async () => {
+    const payload = buildPayload()
+    if (!payload) {
+      setError("Enter a valid net cost (≥ 0) or choose a new pricing basis.")
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await onPreviewEditExternal(exp.quoteItemId!, payload)
+      if (!result?.previewToken) throw new Error("Could not preview the change. Please try again.")
+      setPreview({ result, payload })
+      setAcknowledged(false)
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not preview the change.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Step 2 — confirm: apply with the EXACT previewed payload + token + acknowledgement.
+  const confirmEdit = async () => {
+    if (!preview || submitting) return
+    if (preview.result.requiresAcknowledgement && !acknowledged) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onEditExternal(exp.quoteItemId!, preview.payload, preview.result.previewToken!, acknowledged)
+      setOpen(false)
+      setPreview(null)
+      setNetCost("")
+      setPricingBasis("")
+      setAcknowledged(false)
+    } catch (e) {
+      setPreview(null)
+      setError(e instanceof Error ? e.message : "Could not apply the change. Please preview again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const cancel = () => {
+    setOpen(false)
+    setPreview(null)
+    setNetCost("")
+    setPricingBasis("")
+    setAcknowledged(false)
+    setError(null)
+  }
+
+  const cur = preview?.result.currency ?? currency
+  const fmt = (n: number | null | undefined) => (typeof n === "number" ? `${cur ?? ""} ${Math.round(n)}`.trim() : "—")
+  const requiresAck = Boolean(preview?.result.requiresAcknowledgement)
+  const isSlab = preview?.result.pricingMode === "slab" || preview?.result.sellProjected === false
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-2 h-7 gap-1 px-2 text-xs"
+        onClick={() => (open ? cancel() : setOpen(true))}
+        disabled={submitting}
+        title="Edit this external package's net cost and pricing basis — nothing is saved until you apply"
+      >
+        <Calculator className="size-3.5" aria-hidden="true" />
+        Edit commercial terms
+      </Button>
+      {open ? (
+        <div className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs" role="dialog" aria-label="Edit external package commercial terms">
+          <p className="text-foreground">
+            Edit <span className="font-medium">{exp.name}</span> — net cost and pricing basis only. Nothing else on this package changes, and nothing is sent to the client.
+          </p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-muted-foreground">New net cost{cur ? ` (${cur})` : ""}</span>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                value={netCost}
+                onChange={(e) => { setNetCost(e.target.value); invalidatePreview() }}
+                placeholder="Keep current"
+                className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="block">
+              <span className="text-muted-foreground">Pricing basis</span>
+              <select
+                value={pricingBasis}
+                onChange={(e) => { setPricingBasis(e.target.value); invalidatePreview() }}
+                className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">Keep current</option>
+                <option value="PER_PERSON">Per person</option>
+                <option value="PER_GROUP">Per group</option>
+              </select>
+            </label>
+          </div>
+
+          {!preview ? (
+            <div className="mt-2 flex items-center gap-2">
+              <Button size="sm" variant="secondary" className="h-7 gap-1.5 px-2 text-xs" onClick={startPreview} disabled={submitting}>
+                {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Calculator className="h-3.5 w-3.5" aria-hidden="true" />}
+                {submitting ? "Previewing…" : "Preview changes"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={cancel} disabled={submitting}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-2">
+              {/* Backend projection ONLY — item AND quote totals shown separately; no
+                  browser-side pricing math. */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded border border-border bg-background px-2 py-1.5">
+                  <p className="font-medium text-foreground">This package line</p>
+                  <div className="mt-0.5 space-y-0.5 text-muted-foreground">
+                    <div>Cost: <span className="text-foreground">{fmt(preview.result.item?.current?.totalCost)}</span> → <span className="font-medium text-foreground">{fmt(preview.result.item?.projected?.totalCost)}</span> <span>({fmt(preview.result.item?.delta?.totalCost)})</span></div>
+                    <div>Selling: <span className="text-foreground">{fmt(preview.result.item?.current?.totalSell)}</span> → <span className="font-medium text-foreground">{fmt(preview.result.item?.projected?.totalSell)}</span> <span>({fmt(preview.result.item?.delta?.totalSell)})</span></div>
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-background px-2 py-1.5">
+                  <p className="font-medium text-foreground">Whole quote</p>
+                  <div className="mt-0.5 space-y-0.5 text-muted-foreground">
+                    <div>Cost: <span className="text-foreground">{fmt(preview.result.quote?.current?.totalCost)}</span> → <span className="font-medium text-foreground">{fmt(preview.result.quote?.projected?.totalCost)}</span> <span>({fmt(preview.result.quote?.delta?.totalCost)})</span></div>
+                    <div>Selling: <span className="text-foreground">{fmt(preview.result.quote?.current?.totalSell)}</span> → <span className="font-medium text-foreground">{fmt(preview.result.quote?.projected?.totalSell)}</span> <span>({fmt(preview.result.quote?.delta?.totalSell)})</span></div>
+                  </div>
+                </div>
+              </div>
+              {isSlab ? (
+                <p className="mt-1 text-muted-foreground">
+                  This quote uses slab pricing — the whole-quote selling total is slab-driven and may not move by the same amount as this line. The values above are the backend&apos;s projection for each scope.
+                </p>
+              ) : null}
+              {Array.isArray(preview.result.changedFields) && preview.result.changedFields.length > 0 ? (
+                <p className="mt-1 text-muted-foreground">Changing: <span className="text-foreground">{preview.result.changedFields.join(", ")}</span></p>
+              ) : null}
+              {requiresAck ? (
+                <label className="mt-2 flex items-start gap-1.5 text-muted-foreground">
+                  <input type="checkbox" className="mt-0.5" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+                  <span>I understand this changes the selling price.</span>
+                </label>
+              ) : null}
+              <div className="mt-2 flex items-center gap-2">
+                <Button size="sm" variant="secondary" className="h-7 gap-1.5 px-2 text-xs" onClick={confirmEdit} disabled={submitting || (requiresAck && !acknowledged)}>
+                  {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Calculator className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {submitting ? "Applying…" : "Apply change"}
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={cancel} disabled={submitting}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {error ? (
+            <p className="mt-2 flex items-center gap-1.5 text-destructive" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -1662,9 +1934,19 @@ export interface ExperiencesStepProps {
    */
   onPreviewRemoveItem?: PreviewRemoveHandler
   onRemoveItem?: RemoveItemHandler
+  /**
+   * E-b: guarded External Package COMMERCIAL edit handlers (net cost + pricing basis
+   * only). The caller passes them ONLY for finance-authorized users (admin/finance) on a
+   * DRAFT quote with the dedicated NEXT_PUBLIC_QUOTE_EXTERNAL_PACKAGE_EDIT gate ON. Present
+   * → eligible external-package rows expose an "Edit commercial terms" affordance with a
+   * preview-first confirm panel. The backend independently enforces flag + finance +
+   * strict DRAFT + external/matrix-less/override-free eligibility.
+   */
+  onPreviewEditExternal?: PreviewEditExternalHandler
+  onEditExternal?: EditExternalHandler
 }
 
-export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays, mealCostOverrideEnabled, externalPackageCreateEnabled, onPreviewRemoveItem, onRemoveItem }: ExperiencesStepProps) {
+export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, classicHref, onPreviewItem, onApplyItemPricing, onLoadApplyAudit, entrancePricingEnabled, externalPackagePreviewEnabled, externalPackageApplyEnabled, addItemEnabled, onAddItem, onPreviewAddItem, itineraryDays, mealCostOverrideEnabled, externalPackageCreateEnabled, onPreviewRemoveItem, onRemoveItem, onPreviewEditExternal, onEditExternal }: ExperiencesStepProps) {
   // Add-activity affordance is active only when the flag is on AND a handler +
   // itinerary days are provided (role/status-gated by the caller). Otherwise the
   // Experiences step is unchanged.
@@ -1773,6 +2055,8 @@ export function ExperiencesStep({ experiences, currency, onUpdateDisplayText, cl
                 externalPackageApplyEnabled={externalPackageApplyEnabled}
                 onPreviewRemoveItem={onPreviewRemoveItem}
                 onRemoveItem={onRemoveItem}
+                onPreviewEditExternal={onPreviewEditExternal}
+                onEditExternal={onEditExternal}
               />
             ))}
           </div>

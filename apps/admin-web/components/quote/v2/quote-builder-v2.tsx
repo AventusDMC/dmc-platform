@@ -235,6 +235,26 @@ export interface QuoteBuilderV2Props {
   /** D-b: guarded item DELETE (replays the previewToken). Omitted → no Remove affordance. */
   onRemoveItem?: (itemId: string, previewToken: string) => void | Promise<unknown>
   /**
+   * E-b: guarded External Package COMMERCIAL edit (net cost + pricing basis only).
+   * Present only for finance-authorized users on a DRAFT quote with the dedicated gate
+   * ON (the caller decides). Preview projects current/projected item + quote totals + a
+   * v2e previewToken; apply replays the exact token + acknowledgement. Omitted → no edit
+   * affordance. The backend independently enforces flag + finance + strict DRAFT +
+   * external/matrix-less/override-free eligibility.
+   */
+  onPreviewEditExternal?: (itemId: string, payload: { netCost?: number; pricingBasis?: string }) => Promise<{
+    itemType?: string
+    pricingMode?: string
+    sellProjected?: boolean
+    currency?: string | null
+    changedFields?: string[]
+    item?: { current?: { totalCost?: number | null; totalSell?: number | null }; projected?: { totalCost?: number | null; totalSell?: number | null }; delta?: { totalCost?: number | null; totalSell?: number | null } }
+    quote?: { current?: { totalCost?: number | null; totalSell?: number | null }; projected?: { totalCost?: number | null; totalSell?: number | null }; delta?: { totalCost?: number | null; totalSell?: number | null } }
+    requiresAcknowledgement?: boolean
+    previewToken?: string
+  }>
+  onEditExternal?: (itemId: string, payload: { netCost?: number; pricingBasis?: string }, previewToken: string, acknowledgedDelta: boolean) => void | Promise<unknown>
+  /**
    * Booking Creation V2 (Slice 1D). When true, the "Create booking" card renders in
    * the sidebar. Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE + admin/operations +
    * convertible status (ACCEPTED/CONFIRMED). Backend re-enforces everything.
@@ -301,6 +321,8 @@ export function QuoteBuilderV2({
   onAddItem,
   onPreviewRemoveItem,
   onRemoveItem,
+  onPreviewEditExternal,
+  onEditExternal,
   canCreateBooking = false,
   canViewCostMargin = false,
   initialStep = "setup",
@@ -460,6 +482,8 @@ export function QuoteBuilderV2({
             onAddItem={onAddItem}
             onPreviewRemoveItem={onPreviewRemoveItem}
             onRemoveItem={onRemoveItem}
+            onPreviewEditExternal={onPreviewEditExternal}
+            onEditExternal={onEditExternal}
             itineraryDays={quote.itinerary}
             mealCostOverrideEnabled={canViewCostMargin}
             externalPackageCreateEnabled={canViewCostMargin}
