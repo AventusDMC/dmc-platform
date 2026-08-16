@@ -161,6 +161,21 @@ export default async function QuoteBuilderV2Page({
   const canAddItem =
     hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)
 
+  // E-b: guarded External Package COMMERCIAL edit affordance (net cost + pricing basis
+  // only) — a separate, build-time public flag, default OFF. When not 'true', external
+  // packages have no edit affordance. When 'true' AND the user is finance-authorized
+  // (canAccessFinance = admin/super_admin/finance — deliberately NOT operations/
+  // agent_admin/viewer/agent, since net cost is cost data) AND the quote status is exactly
+  // DRAFT (the backend requires strict DRAFT + acceptedVersionId null + latest revision),
+  // eligible external-package rows expose an "Edit commercial terms" panel via the NEW
+  // V2-scoped routes (POST /quotes/:id/v2/experiences/item/:itemId/edit[/preview]). The
+  // backend independently enforces QUOTE_EXTERNAL_PACKAGE_EDIT + finance + strict DRAFT +
+  // external/matrix-less/override-free eligibility, so this only controls the UI affordance
+  // — editing is never frontend-trusted.
+  const externalPackageEditFlag = process.env.NEXT_PUBLIC_QUOTE_EXTERNAL_PACKAGE_EDIT === 'true'
+  const canEditExternalPackage =
+    externalPackageEditFlag && canAccessFinance(role) && quoteStatusCode === "DRAFT"
+
   // VV-1: Save-proposal-version affordance. Mirrors the createVersion route's
   // @Roles('admin','viewer','finance'); gated to editable statuses (save a version
   // while building / before Mark-as-Sent). No flag — versioning is a shipped Classic
@@ -203,6 +218,7 @@ export default async function QuoteBuilderV2Page({
       canEditItinerary={canEditItinerary}
       itemCreateEnabled={itemCreateFlag}
       canAddItem={canAddItem}
+      canEditExternalPackage={canEditExternalPackage}
       canCreateBooking={canCreateBooking}
       canSaveVersion={canSaveVersion}
     />

@@ -37,6 +37,7 @@ export function BuilderV2Client({
   canEditItinerary = false,
   itemCreateEnabled = false,
   canAddItem = false,
+  canEditExternalPackage = false,
   canCreateBooking = false,
   canSaveVersion = false,
 }: {
@@ -168,6 +169,15 @@ export function BuilderV2Client({
    * withheld. Mirrors the backend V2 route @Roles; the backend stays source of truth.
    */
   canAddItem?: boolean
+  /**
+   * E-b: whether the current user may use the guarded External Package COMMERCIAL edit
+   * surface. Server-gated in page.tsx: NEXT_PUBLIC_QUOTE_EXTERNAL_PACKAGE_EDIT (default
+   * OFF) + finance (canAccessFinance: admin/super_admin/finance — NOT operations/
+   * agent_admin/viewer/agent) + strict DRAFT status. When false, the edit handlers are
+   * withheld so the affordance never renders. The backend V2 route re-enforces flag +
+   * finance + strict DRAFT + external/matrix-less/override-free eligibility.
+   */
+  canEditExternalPackage?: boolean
   /**
    * Booking Creation V2 (Slice 1D). Server-gated: NEXT_PUBLIC_QUOTE_BOOKING_CREATE +
    * admin/operations + convertible status (ACCEPTED/CONFIRMED). Controls whether the
@@ -824,6 +834,126 @@ export function BuilderV2Client({
     return parsed
   }
 
+  // E-b: map the guarded external-package EDIT error codes (PR #853) to concise, user-safe
+  // copy. Ineligible/unsupported cases point the user to Classic without leaking internals.
+  const editExternalErrorMessage = (code: unknown, parsed: any, text: string, status: number): string => {
+    switch (code) {
+      case "feature_disabled":
+        return "Editing external packages in V2 is not available."
+      case "external_package_finance_only":
+      case "forbidden":
+      case "Forbidden":
+        return "You don’t have permission to edit this package’s commercial terms."
+      case "quote_not_editable":
+      case "quote_not_found":
+        return "This quote is no longer editable (external packages can only be edited while the quote is a draft)."
+      case "item_not_found":
+        return "This item could not be found. It may have been changed or removed."
+      case "not_external_package":
+        return "This item is not an editable external package. Please use Classic."
+      case "matrix_pricing_unsupported":
+        return "This external package uses a pricing matrix and cannot be edited here. Please use Classic."
+      case "override_pricing_unsupported":
+        return "This external package uses a price override and cannot be edited here. Please use Classic."
+      case "item_not_editable":
+        return "This external package cannot be edited in V2. Please use Classic."
+      case "no_editable_fields":
+        return "Enter a new net cost or choose a new pricing basis to preview a change."
+      case "invalid_external_package_cost":
+        return "Net cost must be a number of zero or more."
+      case "invalid_pricing_basis":
+        return "Pricing basis must be per person or per group."
+      case "invalid_preview_token":
+        return "This preview expired or no longer matches. Please preview the change again."
+      case "stale_preview":
+        return "The quote changed after preview. Please preview the change again."
+      case "confirmation_required":
+        return "This change updates the selling price — confirm the acknowledgement, then apply."
+      case "post_write_integrity_mismatch":
+      case "compensation_failed":
+        return "Pricing changed while applying and the edit was reverted. Please preview again or review in Classic."
+      case "not_resolvable":
+        return "This package’s pricing could not be resolved. Please review it in Classic."
+      default: {
+        const message = Array.isArray(parsed?.message) ? parsed.message.join("; ") : parsed?.message || text
+        return message?.slice(0, 300) || `Could not edit the item (${status}).`
+      }
+    }
+  }
+
+  // E-b step 1 — READ-ONLY edit-preview. Forwards ONLY {netCost?, pricingBasis?}; the
+  // backend projects the item + quote totals and returns a signed v2e previewToken the
+  // apply replays. No write, no audit. Cost figures returned here are finance-only (the
+  // whole affordance is finance-gated).
+  const handlePreviewEditExternal = async (itemId: string, payload: { netCost?: number; pricingBasis?: string }) => {
+    if (!quote) throw new Error("Quote is not loaded.")
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item/${itemId}/edit/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(payload.netCost !== undefined ? { netCost: payload.netCost } : {}),
+        ...(payload.pricingBasis !== undefined ? { pricingBasis: payload.pricingBasis } : {}),
+      }),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      throw new Error(editExternalErrorMessage(parsed?.code, parsed, text, res.status))
+    }
+    return parsed as {
+      itemType?: string
+      pricingMode?: string
+      sellProjected?: boolean
+      currency?: string | null
+      changedFields?: string[]
+      item?: { current?: { totalCost?: number | null; totalSell?: number | null }; projected?: { totalCost?: number | null; totalSell?: number | null }; delta?: { totalCost?: number | null; totalSell?: number | null } }
+      quote?: { current?: { totalCost?: number | null; totalSell?: number | null }; projected?: { totalCost?: number | null; totalSell?: number | null }; delta?: { totalCost?: number | null; totalSell?: number | null } }
+      requiresAcknowledgement?: boolean
+      previewToken?: string
+    }
+  }
+
+  // E-b step 2 — guarded EDIT-apply. Replays the EXACT v2e previewToken + acknowledgement
+  // and the same {netCost?, pricingBasis?} payload. On success shows a client-safe toast
+  // and refreshes the V2 data (no optimistic pricing mutation). The backend owns the single
+  // quote.item.updated audit; this is never a pricing-apply.
+  const handleEditExternal = async (
+    itemId: string,
+    payload: { netCost?: number; pricingBasis?: string },
+    previewToken: string,
+    acknowledgedDelta: boolean,
+  ) => {
+    if (!quote) return
+    const res = await fetch(`/api/quotes/${quote.id}/v2/experiences/item/${itemId}/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(payload.netCost !== undefined ? { netCost: payload.netCost } : {}),
+        ...(payload.pricingBasis !== undefined ? { pricingBasis: payload.pricingBasis } : {}),
+        previewToken,
+        acknowledgedDelta,
+      }),
+    })
+    const text = await res.text().catch(() => "")
+    let parsed: any = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      throw new Error(editExternalErrorMessage(parsed?.code, parsed, text, res.status))
+    }
+    setApplyToast({ text: "External package commercial terms updated successfully." })
+    router.refresh()
+    return parsed
+  }
+
   // Share / public proposal link — reuse the EXISTING public-link endpoints.
   // Enable/disable only mutate the quote's public* fields (no status change, no
   // email, no audit). Each returns the new {publicEnabled, publicToken} so the
@@ -1043,6 +1173,8 @@ export function BuilderV2Client({
       onAddItem={canAddItem ? handleAddItem : undefined}
       onPreviewRemoveItem={canAddItem ? handlePreviewRemoveItem : undefined}
       onRemoveItem={canAddItem ? handleRemoveItem : undefined}
+      onPreviewEditExternal={canEditExternalPackage ? handlePreviewEditExternal : undefined}
+      onEditExternal={canEditExternalPackage ? handleEditExternal : undefined}
       canCreateBooking={canCreateBooking}
       proposalEmailSendEnabled={proposalEmailSendEnabled}
       onSendProposalEmail={
