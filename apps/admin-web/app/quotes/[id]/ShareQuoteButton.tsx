@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
@@ -11,6 +11,42 @@ type ShareQuoteButtonProps = {
   initialPublicToken?: string | null;
   initialPublicEnabled?: boolean;
 };
+
+/**
+ * CP-Tb recovery helper (exported for unit testing without a DOM). The
+ * authenticated quote hydration no longer carries publicToken; when a link is
+ * ALREADY enabled but no token is hydrated, fetch the current token once via the
+ * idempotent enable-public-link endpoint (returns the EXISTING token without
+ * mutating an already-enabled link). Returns null — issuing NO request — for a
+ * disabled link or when a token is already held, so a disabled link is never
+ * auto-enabled. Errors return null (fail closed, no throw, no retry, no detail).
+ */
+export async function fetchCurrentPublicToken(params: {
+  apiBaseUrl: string;
+  quoteId: string;
+  isPublicEnabled: boolean;
+  hasToken: boolean;
+  headers?: HeadersInit;
+  fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+  if (!params.isPublicEnabled || params.hasToken) {
+    return null;
+  }
+  const doFetch = params.fetchImpl ?? fetch;
+  try {
+    const response = await doFetch(`${params.apiBaseUrl}/quotes/${params.quoteId}/enable-public-link`, {
+      method: 'POST',
+      headers: params.headers ?? { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as Record<string, unknown>;
+    return Boolean(data?.publicEnabled) && typeof data?.publicToken === 'string' ? data.publicToken : null;
+  } catch {
+    return null;
+  }
+}
 
 export function ShareQuoteButton({
   apiBaseUrl,
@@ -25,6 +61,33 @@ export function ShareQuoteButton({
   const [publicToken, setPublicToken] = useState(initialPublicEnabled ? initialPublicToken : null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const recoveryAttempted = useRef(false);
+
+  // CP-Tb: authenticated quote hydration no longer carries publicToken. When the
+  // share link is ALREADY enabled but no token was hydrated, fetch the current
+  // token once via the idempotent enable-public-link endpoint — which returns the
+  // EXISTING token WITHOUT mutating an already-enabled link. This never runs for a
+  // disabled link and never auto-enables anything; it only re-populates a token
+  // the client is already authorized to hold. Errors are swallowed (fail closed,
+  // no retry loop, no token/internal detail surfaced).
+  useEffect(() => {
+    // Run at most once (ref guard survives re-renders) and only for an already-
+    // enabled link that has no hydrated token. Never auto-enables a disabled link.
+    if (recoveryAttempted.current) return;
+    if (!isPublicEnabled || publicToken) return;
+    recoveryAttempted.current = true;
+    void fetchCurrentPublicToken({
+      apiBaseUrl,
+      quoteId,
+      isPublicEnabled,
+      hasToken: Boolean(publicToken),
+      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+    }).then((token) => {
+      if (token) {
+        setPublicToken(token);
+      }
+    });
+  }, [isPublicEnabled, publicToken, apiBaseUrl, quoteId]);
 
   const shareUrl = useMemo(() => {
     if (!publicToken) {

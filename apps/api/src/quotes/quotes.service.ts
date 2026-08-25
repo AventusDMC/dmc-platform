@@ -12962,8 +12962,16 @@ export class QuotesService {
       } as any), null),
     ]);
 
+    // CP-Tb: never expose the capability-bearing publicToken through generic
+    // authenticated quote hydration. Omit the key entirely (not null/undefined)
+    // for every role, unconditionally and with no feature flag — the stored token
+    // is returned only by the dedicated enable/disable/regenerate endpoints. This
+    // is an immutable projection: the raw Prisma `quote` row is not mutated, and
+    // publicEnabled (safe, non-secret state) is preserved.
+    const { publicToken: _omittedPublicToken, ...quoteWithoutPublicToken } = quote;
+
     const hydratedQuote = {
-      ...quote,
+      ...quoteWithoutPublicToken,
       clientCompany,
       brandCompany,
       contact,
