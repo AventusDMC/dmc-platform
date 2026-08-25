@@ -9,12 +9,18 @@ import type { Quote } from "./quote-types"
  * the server-to-client payload so restricted roles never RECEIVE those values.
  *
  * Policy (same predicate as the UI, canAccessFinance — admin / super_admin /
- * finance): privileged viewers get the full payload; everyone else gets a copy
- * with the pricing breakdown's INTERNAL cost figures zeroed:
+ * finance): privileged viewers get the full payload; everyone else (operations,
+ * agent_admin, agent, viewer, and any unrecognized role — fail closed) gets a
+ * copy with the internal cost figures neutralized:
  *   - pricing.netCost
  *   - pricing.markupPercent
  *   - pricing.margin
- *   - pricing.lines[].amount   (per-component cost)
+ *   - pricing.lines[].amount     (per-component cost)
+ *   - experiences[].unitCost     (per-item supplier cost — meal items carry the
+ *     real cost here, reconstructed from costBaseAmount; every other kind is
+ *     already null. It was the only per-item supplier-cost field still riding the
+ *     hydration payload to restricted roles, so it is nulled here at the single
+ *     server-to-client choke point.)
  *
  * Deliberately NARROW — client-facing figures are preserved for ALL roles:
  *   - pricing.sellingPrice, pricing.perPerson, pricing.pax, pricing.currency
@@ -44,5 +50,12 @@ export function redactQuoteV2CostMargin(
       margin: 0,
       lines: quote.pricing.lines.map((line) => ({ ...line, amount: 0 })),
     },
+    // Per-item supplier cost (meal items carry it as unitCost; others are already
+    // null). Null it for restricted roles without touching any other Experience
+    // field — selling `amount`, itinerary data, and apply metadata are preserved.
+    experiences: quote.experiences.map((experience) => ({
+      ...experience,
+      unitCost: null,
+    })),
   }
 }
