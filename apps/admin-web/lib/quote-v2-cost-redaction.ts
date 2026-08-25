@@ -22,6 +22,23 @@ import type { Quote } from "./quote-types"
  *     hydration payload to restricted roles, so it is nulled here at the single
  *     server-to-client choke point.)
  *
+ * CP-N1b — additional internal-metadata fields that also reached restricted roles
+ * unredacted are neutralized here (still the same choke point, still fail-closed):
+ *   - transport[].supplier       (supplier IDENTITY — replaced with a
+ *     non-identifying, assignment-truthful sentinel: "Unassigned" stays
+ *     "Unassigned"; an assigned leg becomes "Assigned" so the transport step's
+ *     unassigned-state logic and contract badge keep working. supplierContract is
+ *     preserved — it is a low-sensitivity status enum, not identity.)
+ *   - pricing.lines[].note       (the engine pricingDescription — MIXED internal
+ *     rate/discount text + client routing, not reliably separable, so the whole
+ *     note is blanked to "" for restricted roles.)
+ *   - hotelCities[].options[].diagnostics.reasons  (free-form "Why?" lines that
+ *     embed the contract name + "Rate on file (from Classic)" text — dropped to
+ *     [] for restricted roles; the structured contractState / hasRate / source
+ *     readiness fields are preserved.)
+ * meta.publicToken is deliberately NOT touched here — it is a capability token
+ * handled on a separate security track.
+ *
  * Deliberately NARROW — client-facing figures are preserved for ALL roles:
  *   - pricing.sellingPrice, pricing.perPerson, pricing.pax, pricing.currency
  *   - every itinerary / hotel / experience / transport field, including the
@@ -33,6 +50,18 @@ import type { Quote } from "./quote-types"
  * PDF generation — those remain the client-facing source of truth and are
  * unchanged.
  */
+/**
+ * True when a transport supplier value represents "no supplier assigned". Fail
+ * closed: a non-string, blank, or malformed value is treated as unassigned so a
+ * real name is never leaked and `.trim()`/render never crashes. Only a clearly
+ * non-blank string that is not "unassigned" counts as an assigned supplier.
+ */
+function isUnassignedSupplier(supplier: unknown): boolean {
+  if (typeof supplier !== "string") return true
+  const normalized = supplier.trim().toLowerCase()
+  return normalized === "" || normalized === "unassigned"
+}
+
 export function redactQuoteV2CostMargin(
   quote: Quote | null,
   canViewCostMargin: boolean,
@@ -48,7 +77,10 @@ export function redactQuoteV2CostMargin(
       netCost: 0,
       markupPercent: 0,
       margin: 0,
-      lines: quote.pricing.lines.map((line) => ({ ...line, amount: 0 })),
+      // Per-component cost zeroed; the internal pricing note (pricingDescription —
+      // mixed internal rate/discount + client text, not reliably separable) is
+      // blanked to "" for restricted roles. Label / status / selling stay intact.
+      lines: quote.pricing.lines.map((line) => ({ ...line, amount: 0, note: "" })),
     },
     // Per-item supplier cost (meal items carry it as unitCost; others are already
     // null). Null it for restricted roles without touching any other Experience
@@ -56,6 +88,23 @@ export function redactQuoteV2CostMargin(
     experiences: quote.experiences.map((experience) => ({
       ...experience,
       unitCost: null,
+    })),
+    // Transport supplier IDENTITY → non-identifying, assignment-truthful sentinel.
+    // Keep supplierContract and every other transport field for read/review.
+    transport: quote.transport.map((service) => ({
+      ...service,
+      supplier: isUnassignedSupplier(service.supplier) ? "Unassigned" : "Assigned",
+    })),
+    // Hotel "Why?" diagnostics free-form reasons embed the contract name + Classic
+    // rate text (mixed/inseparable) → drop to [] for restricted roles; keep the
+    // structured contractState / hasRate / source readiness fields untouched.
+    hotelCities: quote.hotelCities.map((city) => ({
+      ...city,
+      options: city.options.map((option) =>
+        option.diagnostics
+          ? { ...option, diagnostics: { ...option.diagnostics, reasons: [] } }
+          : option,
+      ),
     })),
   }
 }
