@@ -90,4 +90,86 @@ nodeTestQuotes.test('findPublicProposalQuote returns null when public proposal i
   quotesAssert.equal(quote, null);
 });
 
+// CP-Tb: the authenticated quote hydration (loadQuoteState / findOne) must never
+// expose the capability-bearing publicToken, while preserving publicEnabled.
+// SYNTHETIC placeholder token only — never a real value.
+const CP_TB_SYNTHETIC_TOKEN = 'SYNTHETIC-CP-TB-PLACEHOLDER-TOKEN';
+
+function makeStoredQuote(overrides?: Record<string, any>) {
+  return {
+    id: 'quote-1',
+    publicToken: CP_TB_SYNTHETIC_TOKEN,
+    publicEnabled: true,
+    // Minimal fields so attach/foc do not throw; pricingType omitted => no price computation.
+    adults: 2,
+    children: 0,
+    focType: 'none',
+    focRatio: null,
+    focCount: null,
+    focRoomType: null,
+    pricingMode: null,
+    status: 'DRAFT',
+    ...overrides,
+  };
+}
+
+// findFirst that serves the main {where:{id}} lookup but returns null for the
+// latest-revision lookup ({where:{revisedFromId}}), so the revision field never
+// smuggles the raw token back into the response object.
+function quoteFindFirst(storedQuote: Record<string, any>) {
+  return async (args: any) => (args?.where?.revisedFromId ? null : storedQuote);
+}
+
+nodeTestQuotes.test('CP-Tb: findOne omits publicToken (own key absent) but preserves publicEnabled', async () => {
+  const stored = makeStoredQuote();
+  const service = createQuotesService({ quote: { findFirst: quoteFindFirst(stored) } });
+
+  const result: any = await service.findOne('quote-1', { companyId: 'company-1', role: 'operations' } as any);
+
+  // Real key-presence check (not value === undefined).
+  quotesAssert.equal(Object.prototype.hasOwnProperty.call(result, 'publicToken'), false);
+  quotesAssert.equal(result.publicEnabled, true);
+  quotesAssert.equal(result.id, 'quote-1');
+
+  // No token value and no token-bearing alias/URL introduced anywhere in the response.
+  const serialized = JSON.stringify(result);
+  quotesAssert.equal(serialized.includes(CP_TB_SYNTHETIC_TOKEN), false);
+  quotesAssert.equal(serialized.includes('publicToken'), false);
+  quotesAssert.equal(serialized.includes('/proposal/'), false);
+
+  // The underlying stored/model object is not mutated.
+  quotesAssert.equal(stored.publicToken, CP_TB_SYNTHETIC_TOKEN);
+  quotesAssert.equal(stored.publicEnabled, true);
+});
+
+nodeTestQuotes.test('CP-Tb: publicEnabled:false is preserved as false and token still omitted', async () => {
+  const stored = makeStoredQuote({ publicEnabled: false });
+  const service = createQuotesService({ quote: { findFirst: quoteFindFirst(stored) } });
+
+  const result: any = await service.findOne('quote-1', { companyId: 'company-1', role: 'admin' } as any);
+
+  quotesAssert.equal(Object.prototype.hasOwnProperty.call(result, 'publicToken'), false);
+  quotesAssert.equal(result.publicEnabled, false);
+});
+
+nodeTestQuotes.test('CP-Tb: omission is unconditional across every role and unknown/missing role', async () => {
+  const actors = [
+    { companyId: 'c1', role: 'admin' },
+    { companyId: 'c1', role: 'super_admin' },
+    { companyId: 'c1', role: 'finance' },
+    { companyId: 'c1', role: 'operations' },
+    { companyId: 'c1', role: 'agent_admin' },
+    { companyId: 'c1', role: 'agent' },
+    { companyId: 'c1', role: 'viewer' },
+    { companyId: 'c1', role: 'nonexistent-unknown-role' },
+    undefined, // missing actor
+  ];
+  for (const actor of actors) {
+    const service = createQuotesService({ quote: { findFirst: quoteFindFirst(makeStoredQuote()) } });
+    const result: any = await service.findOne('quote-1', actor as any);
+    quotesAssert.equal(Object.prototype.hasOwnProperty.call(result, 'publicToken'), false, `role ${actor?.role ?? 'missing'} must not receive publicToken`);
+    quotesAssert.equal(result.publicEnabled, true);
+  }
+});
+
 export {};
