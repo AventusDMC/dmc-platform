@@ -490,7 +490,11 @@ export class AgentService {
         title: quote.title,
         status: quote.status,
         quoteNumber: quote.quoteNumber ?? null,
-        publicToken: quote.publicToken,
+        // CP-Tb-agent: the raw capability-bearing publicToken must never be
+        // serialized to the agent portal. The token-bearing publicUrl (and the
+        // derived pdfUrl) are the intentional, authenticated share surfaces the
+        // agent frontend consumes; the bare token key is omitted here. This is an
+        // immutable projection into a fresh object — the Prisma row is not mutated.
         publicUrl: `/proposal/${quote.publicToken}`,
         pdfUrl: `/api/public/proposals/${quote.publicToken}/pdf`,
         updatedAt: quote.updatedAt,

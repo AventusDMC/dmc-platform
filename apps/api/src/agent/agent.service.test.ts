@@ -147,6 +147,138 @@ nodeTestAgent.test('agent proposals only include public-enabled quotes', async (
   agentAssert.equal(proposals[0].pdfUrl, '/api/public/proposals/token-1/pdf');
 });
 
+// CP-Tb-agent: the agent-portal response must never serialize the raw,
+// capability-bearing publicToken key, while retaining the intentional
+// token-bearing publicUrl share surface and preserving publicEnabled. SYNTHETIC
+// placeholder token only — never a real value.
+const CP_TB_AGENT_SYNTH_TOKEN = 'SYNTH-CP-TB-AGENT-TOKEN';
+
+nodeTestAgent.test('CP-Tb-agent: getProposals omits raw publicToken key, retains publicUrl/pdfUrl, no raw-token alias, no mutation', async () => {
+  const sourceEnabled: Record<string, any> = {
+    id: 'quote-public',
+    title: 'Public quote',
+    status: 'SENT',
+    quoteNumber: 'Q-1',
+    publicEnabled: true,
+    publicToken: CP_TB_AGENT_SYNTH_TOKEN,
+    updatedAt: '2026-04-25T10:00:00.000Z',
+  };
+  const sourceDisabled: Record<string, any> = {
+    id: 'quote-private',
+    title: 'Private quote',
+    status: 'DRAFT',
+    quoteNumber: 'Q-2',
+    publicEnabled: false,
+    publicToken: null,
+    updatedAt: '2026-04-25T10:00:00.000Z',
+  };
+  const seenWhere: any[] = [];
+  const service = createAgentService({
+    prisma: {
+      quote: {
+        findMany: async (args: any) => {
+          seenWhere.push(args?.where);
+          return [sourceEnabled, sourceDisabled];
+        },
+      },
+    },
+  });
+
+  const proposals = await service.getProposals({
+    id: 'user-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  });
+
+  // Only the public-enabled quote surfaces (disabled/null-token filtered out).
+  agentAssert.equal(proposals.length, 1);
+  const p = proposals[0];
+
+  // Raw token key must be entirely absent (real own-key check, not undefined value).
+  agentAssert.equal(Object.prototype.hasOwnProperty.call(p, 'publicToken'), false);
+
+  // publicUrl retained as a usable string contract; pdfUrl retained.
+  agentAssert.equal(typeof p.publicUrl, 'string');
+  agentAssert.equal(p.publicUrl, `/proposal/${CP_TB_AGENT_SYNTH_TOKEN}`);
+  agentAssert.equal(p.pdfUrl, `/api/public/proposals/${CP_TB_AGENT_SYNTH_TOKEN}/pdf`);
+
+  // No raw-token alias: no response key holds the bare token value (only the
+  // capability URLs embed it inside a path).
+  for (const [key, value] of Object.entries(p)) {
+    agentAssert.notEqual(value, CP_TB_AGENT_SYNTH_TOKEN, `key ${key} must not hold the raw token value`);
+  }
+  const serialized = JSON.stringify(p);
+  agentAssert.equal(serialized.includes('"publicToken"'), false);
+
+  // Authorization/isolation filter unchanged: still constrained to enabled + non-null token.
+  agentAssert.equal(seenWhere[0]?.publicEnabled, true);
+  agentAssert.deepEqual(seenWhere[0]?.publicToken, { not: null });
+
+  // Source Prisma objects are not mutated by the projection.
+  agentAssert.equal(sourceEnabled.publicToken, CP_TB_AGENT_SYNTH_TOKEN);
+  agentAssert.equal(sourceEnabled.publicEnabled, true);
+  agentAssert.equal(sourceDisabled.publicToken, null);
+  agentAssert.equal(sourceDisabled.publicEnabled, false);
+});
+
+nodeTestAgent.test('CP-Tb-agent: quote detail preserves publicEnabled + publicUrl, omits raw publicToken (enabled and disabled)', async () => {
+  function detailSource(overrides: Record<string, any>): Record<string, any> {
+    return {
+      id: 'quote-1',
+      agentId: 'user-1',
+      quoteNumber: 'Q-1001',
+      title: 'Jordan Travel Proposal',
+      description: 'Client-safe summary',
+      status: 'SENT',
+      quoteCurrency: 'USD',
+      totalSell: 3200,
+      pricePerPax: 1600,
+      totalCost: 2100,
+      markupPercent: 22,
+      quoteItems: [],
+      itineraries: [],
+      company: { id: 'company-1', name: 'Desert Compass' },
+      contact: { id: 'contact-1', firstName: 'Layla', lastName: 'Haddad', email: 'layla@example.com' },
+      ...overrides,
+    };
+  }
+  const actor = {
+    id: 'user-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  };
+
+  // Enabled: publicEnabled preserved true, publicUrl derived, raw token key absent, source not mutated.
+  const enabledSource = detailSource({ publicEnabled: true, publicToken: CP_TB_AGENT_SYNTH_TOKEN });
+  const enabledService = createAgentService({ quotesService: { findOne: async () => enabledSource } });
+  const enabled = await enabledService.getQuote('quote-1', actor);
+  agentAssert.ok(enabled);
+  agentAssert.equal(Object.prototype.hasOwnProperty.call(enabled, 'publicToken'), false);
+  agentAssert.equal(enabled?.publicEnabled, true);
+  agentAssert.equal(enabled?.publicUrl, `/proposal/${CP_TB_AGENT_SYNTH_TOKEN}`);
+  agentAssert.equal(JSON.stringify(enabled).includes('"publicToken"'), false);
+  agentAssert.equal(enabledSource.publicToken, CP_TB_AGENT_SYNTH_TOKEN);
+
+  // Disabled/null token: publicEnabled false, publicUrl null, raw token key absent, still compatible.
+  const disabledSource = detailSource({ publicEnabled: false, publicToken: null });
+  const disabledService = createAgentService({ quotesService: { findOne: async () => disabledSource } });
+  const disabled = await disabledService.getQuote('quote-1', actor);
+  agentAssert.ok(disabled);
+  agentAssert.equal(Object.prototype.hasOwnProperty.call(disabled, 'publicToken'), false);
+  agentAssert.equal(disabled?.publicEnabled, false);
+  agentAssert.equal(disabled?.publicUrl, null);
+});
+
 nodeTestAgent.test('agent portal phase one isolates visibility and exposes finance passenger documents and departures', async () => {
   const seenBookingWhere: any[] = [];
   const seenDepartureWhere: any[] = [];
