@@ -5,6 +5,8 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson } from '../lib/admin-server';
 import { UsersTable } from './UsersTable';
+import { DirectAgentCreateForm } from './DirectAgentCreateForm';
+import { isStagingDirectAgentCreateEnabled } from './direct-agent-create-flag';
 
 type User = {
   id: string;
@@ -36,6 +38,9 @@ async function getInvitations(): Promise<Invitation[]> {
 
 export default async function UsersPage() {
   const [users, invitations] = await Promise.all([getUsers(), getInvitations()]);
+  // Server-only gate: the direct Agent-create surface is rendered only when the
+  // (non-public) staging flag is exactly "true"; off everywhere by default.
+  const directAgentCreateEnabled = isStagingDirectAgentCreateEnabled();
 
   return (
     <main className="page">
@@ -71,6 +76,16 @@ export default async function UsersPage() {
         >
           <section className="section-stack">
             <WorkspaceSubheader eyebrow="Admin" title="Users" description="A minimal user management surface with basic add, edit, and delete actions." />
+
+            {directAgentCreateEnabled ? (
+              <TableSectionShell
+                title="Create temporary agent (staging)"
+                description="Server-gated staging-only surface for privately provisioning a temporary Agent account without the invitation email."
+                context={<p>Role fixed to agent</p>}
+              >
+                <DirectAgentCreateForm apiBaseUrl="/api" />
+              </TableSectionShell>
+            ) : null}
 
             <TableSectionShell
               title="Users"
