@@ -25,6 +25,18 @@ import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
  * Mirrors the Catalog V2 allowlist pattern. Does not broaden access.
  */
 const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'operations', 'viewer', 'finance'];
+
+/**
+ * CP-N3a′: EXPLICIT internal-role allowlist for the GENERIC authenticated quote
+ * read endpoints (GET /quotes and GET /quotes/:id). This is a plain `includes`
+ * (NOT the coalescing roles.guard), so `agent_admin` — which the guard would
+ * coalesce to `admin` — is BLOCKED here, alongside `agent` and any missing /
+ * unknown / future unlisted role (fail-closed). External Agent roles read quotes
+ * only through /agent/*. This role gate adds NO tenant `where` predicate:
+ * internal DMC roles keep managing quotes for client companies different from
+ * `actor.companyId` (see security/multi-company-isolation.test.ts).
+ */
+const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations', 'viewer'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 
@@ -291,8 +303,19 @@ export class QuotesController {
     private readonly proposalV3Service: ProposalV3Service,
   ) {}
 
+  // CP-N3a′: fail-closed internal-role gate for the generic quote read endpoints.
+  // Rejects disallowed/missing/unknown roles BEFORE any quote service call. Adds
+  // no tenant filtering and does not touch findAll/findOne/loadQuoteState.
+  private assertInternalQuoteReadAccess(actor: AuthenticatedActor | undefined) {
+    const role = actor?.role;
+    if (!role || !(INTERNAL_QUOTE_READ_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote endpoint is restricted to internal roles.');
+    }
+  }
+
   @Get()
   findAll(@Actor() actor: AuthenticatedActor) {
+    this.assertInternalQuoteReadAccess(actor);
     return this.quotesService.findAll(actor);
   }
 
@@ -350,6 +373,7 @@ export class QuotesController {
 
   @Get(':id')
   async findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertInternalQuoteReadAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
