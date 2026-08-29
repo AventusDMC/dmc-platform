@@ -40,6 +40,7 @@ const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', '
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
+import { mapQuoteToOperational } from './quote-operational.mapper';
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
@@ -382,6 +383,24 @@ export class QuotesController {
     }
 
     return quote;
+  }
+
+  // CP-N3b2a: additive, non-finance operational projection of the quote detail.
+  // Same explicit internal-role gate as the raw read (fail-closed BEFORE any
+  // service call); returns the closed OperationalQuoteDetail allowlist — identical
+  // for every authorized role, with no cost / margin / supplier identity / contract
+  // identity / token / snapshot / PII beyond { id, firstName, lastName }. The raw
+  // GET :id endpoint is intentionally left unchanged (tightened only in a later slice).
+  @Get(':id/operational')
+  async findOneOperational(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertInternalQuoteReadAccess(actor);
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return mapQuoteToOperational(quote);
   }
 
   @Get(':id/pdf')
