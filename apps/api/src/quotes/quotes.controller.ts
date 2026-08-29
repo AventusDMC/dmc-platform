@@ -39,6 +39,7 @@ const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin'
 const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations', 'viewer'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
+import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
@@ -1166,6 +1167,10 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
+    // CP-N3b1: strip restricted buy-side cost/provenance fields for non-finance
+    // actors before mapping (fresh object; request DTO not mutated).
+    body = stripRestrictedQuoteCostWriteFields(body, actor);
+
     return this.quotesService.createItem({
       quoteId: id,
       packageTemplateId: body.packageTemplateId === undefined ? undefined : body.packageTemplateId || null,
@@ -1335,6 +1340,9 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
+    // CP-N3b1: strip restricted buy-side cost fields (e.g. markupPercent) for non-finance actors.
+    body = stripRestrictedQuoteCostWriteFields(body, actor);
+
     return this.quotesService.expandExcursionTemplateIntoQuote({
       quoteId: id,
       excursionTemplateId: templateId,
@@ -1374,7 +1382,8 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.updateItem(itemId, this.buildUpdateItemServiceInput(id, body), actor);
+    // CP-N3b1: strip restricted buy-side cost/provenance fields for non-finance actors.
+    return this.quotesService.updateItem(itemId, this.buildUpdateItemServiceInput(id, stripRestrictedQuoteCostWriteFields(body, actor)), actor);
   }
 
   /**
@@ -1484,7 +1493,8 @@ export class QuotesController {
     return this.quotesService.previewUpdateQuoteItem(
       id,
       itemId,
-      this.buildUpdateItemServiceInput(id, body),
+      // CP-N3b1: non-finance actors cannot inject cost/provenance via the dry-run.
+      this.buildUpdateItemServiceInput(id, stripRestrictedQuoteCostWriteFields(body, actor)),
       actor,
     );
   }
@@ -1507,7 +1517,9 @@ export class QuotesController {
     return this.quotesService.applyPreviewQuoteItem(
       id,
       itemId,
-      this.buildUpdateItemServiceInput(id, editBody),
+      // CP-N3b1: client cost values are not trusted on apply just because they were
+      // echoed from a prior server response — strip them for non-finance actors.
+      this.buildUpdateItemServiceInput(id, stripRestrictedQuoteCostWriteFields(editBody, actor)),
       previewToken,
       Boolean(acknowledgedDelta),
       actor,
@@ -1773,6 +1785,9 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
+    // CP-N3b1: strip restricted buy-side cost/provenance fields for non-finance actors.
+    body = stripRestrictedQuoteCostWriteFields(body, actor);
+
     return this.quotesService.createOptionItem(optionId, {
       quoteId: id,
       serviceId: body.serviceId || null,
@@ -1874,6 +1889,9 @@ export class QuotesController {
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
+
+    // CP-N3b1: strip restricted buy-side cost/provenance fields for non-finance actors.
+    body = stripRestrictedQuoteCostWriteFields(body, actor);
 
     return this.quotesService.updateOptionItem(optionId, itemId, {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
