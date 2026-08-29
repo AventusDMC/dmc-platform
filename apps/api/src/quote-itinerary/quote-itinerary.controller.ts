@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
-import { AuthenticatedActor } from '../auth/auth.types';
+import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
+import { mapItineraryToOperational } from '../quotes/quote-operational-secondary.mapper';
 import {
   CreateQuoteItineraryDayDto,
   CreateQuoteItineraryDayItemDto,
@@ -84,6 +85,12 @@ type HotelStayOptionsBody = {
   serviceDate?: string;
 };
 
+// CP-N3b2a2: explicit fail-closed internal-role allowlist for the operational
+// itinerary companion. Mirrors QuotesController.INTERNAL_QUOTE_READ_ROLES; denies
+// agent/agent_admin/missing/unknown BEFORE any service call. Not the coalescing
+// @Roles guard (which lets agent_admin satisfy @Roles('admin')).
+const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations', 'viewer'];
+
 @Controller()
 export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
@@ -91,6 +98,28 @@ export class QuoteItineraryController {
   @Get('quotes/:quoteId/itinerary')
   async findByQuoteId(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.findByQuoteId(quoteId, this.toCompanyActor(actor));
+  }
+
+  // CP-N3b2a2: additive non-finance operational companion for the day-by-day
+  // itinerary. Resolves to GET /quotes/:id/operational/itinerary (empty controller
+  // prefix + this method's full path). Explicit internal-role gate BEFORE the
+  // service call; reuses the existing findByQuoteId read and returns a projection
+  // that drops pricingDescription / overrideReason / contract identity / rate-variant
+  // ids / POI relations (contract state via presence sentinel). The raw
+  // GET /quotes/:id/itinerary endpoint is intentionally left unchanged.
+  @Get('quotes/:quoteId/operational/itinerary')
+  async findOperationalByQuoteId(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    this.assertInternalQuoteReadAccess(actor);
+    const itinerary = await this.quoteItineraryService.findByQuoteId(quoteId, this.toCompanyActor(actor));
+
+    return mapItineraryToOperational(itinerary);
+  }
+
+  private assertInternalQuoteReadAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(INTERNAL_QUOTE_READ_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote endpoint is restricted to internal roles.');
+    }
   }
 
   @Post('quotes/:quoteId/itinerary/day')
