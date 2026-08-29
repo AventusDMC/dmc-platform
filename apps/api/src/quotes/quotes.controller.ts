@@ -41,6 +41,7 @@ import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
 import { mapQuoteToOperational } from './quote-operational.mapper';
+import { mapPassengersToOperational, mapRoomingToOperational } from './quote-operational-secondary.mapper';
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
@@ -401,6 +402,32 @@ export class QuotesController {
     }
 
     return mapQuoteToOperational(quote);
+  }
+
+  // CP-N3b2a2: additive non-finance operational companion for the passenger list.
+  // Same explicit internal-role gate BEFORE the service call; reuses the existing
+  // findPassengers read and returns the name-only { id, firstName, lastName }
+  // projection — identical for every authorized role, no PII beyond the three keys.
+  // The raw GET :id/passengers endpoint is intentionally left unchanged.
+  @Get(':id/operational/passengers')
+  async findOperationalPassengers(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertInternalQuoteReadAccess(actor);
+    const passengers = await this.quotesService.findPassengers(id, actor);
+
+    return mapPassengersToOperational(passengers);
+  }
+
+  // CP-N3b2a2: additive non-finance operational companion for rooming groups.
+  // Same explicit internal-role gate BEFORE the service call; reuses the existing
+  // findRoomingGroups read and returns a projection that drops the internal pricing
+  // note + contract identity and reduces assignment passengers to name-only.
+  // The raw GET :id/rooming endpoint is intentionally left unchanged.
+  @Get(':id/operational/rooming')
+  async findOperationalRooming(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertInternalQuoteReadAccess(actor);
+    const rooming = await this.quotesService.findRoomingGroups(id, actor);
+
+    return mapRoomingToOperational(rooming);
   }
 
   @Get(':id/pdf')
