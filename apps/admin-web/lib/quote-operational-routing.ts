@@ -17,7 +17,16 @@ import type { SessionRole } from '../app/lib/auth-session';
 
 export type CostRoutedEndpoint = 'raw' | 'operational';
 export type PiiRoutedEndpoint = 'raw' | 'operational';
-export type VersionRoutedEndpoint = 'raw' | 'summary';
+
+// NOTE (CP-N3b2b correction): version-detail routing is intentionally NOT provided
+// here. The raw GET /quotes/:id/versions/:versionId response embeds snapshotJson — a
+// full raw-quote clone carrying raw passenger PII, supplier identity, cost/margin,
+// internal notes, Booking.accessToken (a capability token), and arbitrary nested JSON.
+// Token/capability safety cannot be proven for any frontend role, and the curated
+// /summary endpoint does not carry snapshotJson (so it cannot support the existing
+// full-reconstruction version-detail page). A safe role matrix therefore cannot be
+// established here; version routing is deferred to a separately assessed CP-N3b2c
+// sub-slice. Operations and Viewer must never receive raw version snapshots.
 
 /** Main quote detail — cost axis. Cost-visible → raw; everyone else → operational. */
 export function quoteDetailEndpoint(role?: SessionRole | null): CostRoutedEndpoint {
@@ -42,11 +51,6 @@ export function quotePassengersEndpoint(role?: SessionRole | null): PiiRoutedEnd
  */
 export function quoteRoomingEndpoint(_role?: SessionRole | null): 'operational' {
   return 'operational';
-}
-
-/** Version detail — cost axis. Cost-visible → raw snapshot detail; else → safe summary. */
-export function quoteVersionEndpoint(role?: SessionRole | null): VersionRoutedEndpoint {
-  return canAccessFinance(role) ? 'raw' : 'summary';
 }
 
 // ---------------------------------------------------------------------------
@@ -74,10 +78,4 @@ export function quotePassengersPath(id: string, role?: SessionRole | null): stri
 
 export function quoteRoomingPath(id: string, _role?: SessionRole | null): string {
   return `/api/quotes/${id}/operational/rooming`;
-}
-
-export function quoteVersionPath(id: string, versionId: string, role?: SessionRole | null): string {
-  return quoteVersionEndpoint(role) === 'raw'
-    ? `/api/quotes/${id}/versions/${versionId}`
-    : `/api/quotes/${id}/versions/${versionId}/summary`;
 }
