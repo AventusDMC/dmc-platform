@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { BuilderV2Client } from "./builder-v2-client"
 import { loadQuoteV2 } from "../../../../lib/quote-v2-adapter"
 import { redactQuoteV2CostMargin } from "../../../../lib/quote-v2-cost-redaction"
-import { readSessionActor, hasRequiredRole, canAccessFinance } from "../../../lib/auth-session"
+import { readSessionActor, hasRequiredRole, canAccessFinance, canViewFullPassengerPii } from "../../../lib/auth-session"
 
 export const metadata: Metadata = {
   title: "Quote Builder V2 — Aventus DMC",
@@ -23,23 +23,26 @@ export default async function QuoteBuilderV2Page({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const { quote, error } = await loadQuoteV2(id)
 
-  // Frontend permission guard for the passenger Edit affordance — reuses the
-  // existing session-role signal (same as app/template.tsx). Mirrors the backend
-  // PATCH /quotes/:id/passengers/:passengerId @Roles('admin','operations','viewer')
-  // (hasRequiredRole also grants super_admin always + agent_admin when 'admin' is
-  // allowed). Users who can open V2 but cannot update passengers (e.g. finance,
-  // agent) see the passengers read-only — no misleading Edit button. The backend
-  // remains the source of truth; this only avoids a button that would 403.
+  // CP-N3b2b: the server-trusted session role is read BEFORE the quote load so the
+  // per-request-class selectors inside loadQuoteV2 can route each fetch (main /
+  // itinerary by the cost axis; passengers by the PII axis; rooming always
+  // operational). Role comes only from the dmc_session cookie — never client input.
   const sessionToken = (await cookies()).get("dmc_session")?.value || ""
   const role = readSessionActor(sessionToken)?.role ?? null
-  const canEditPassengers = hasRequiredRole(role, ["admin", "operations", "viewer"])
-  // Rooming assignment endpoints share the same backend @Roles set as passengers.
+  const { quote, error } = await loadQuoteV2(id, role)
+
+  // CP-N3b2b: passenger PII display + mutation affordances are gated by the
+  // full-PII predicate (canViewFullPassengerPii = admin/super_admin/operations),
+  // INDEPENDENTLY of cost visibility. viewer/finance receive name-only passenger
+  // data and no passenger mutation controls; operations retains its full-PII
+  // passenger workflow. The backend remains the source of truth.
+  const canEditPassengers = canViewFullPassengerPii(role)
+  // Rooming assignment authority is unchanged (operational, names-only) — same
+  // backend @Roles set; not a passenger-PII control.
   const canEditRooming = hasRequiredRole(role, ["admin", "operations", "viewer"])
-  // Passenger DELETE is destructive — intentionally STRICTER than the backend
-  // (admin/operations only; backend still allows viewer, pre-existing/unchanged).
-  const canDeletePassenger = hasRequiredRole(role, ["admin", "operations"])
+  // Passenger DELETE is a full-PII control (admin/super_admin/operations).
+  const canDeletePassenger = canViewFullPassengerPii(role)
 
   // Read-only pricing preview affordance — admin/operations only (mirrors the
   // backend POST /quotes/:id/items/:itemId/preview @Roles). Additionally gated by

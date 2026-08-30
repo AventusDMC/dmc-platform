@@ -457,7 +457,10 @@ describe('quote detail page regression', () => {
       "import type { QuotePassenger } from './QuotePassengersPanel';",
       '<QuoteItineraryWorkspace',
       'passengers: QuotePassenger[];',
-      'passengers: Array.isArray(quote.passengers) ? quote.passengers : []',
+      // CP-N3b2b: passengers are no longer sourced from the main quote body —
+      // they are fetched via the PII-routed passenger selector and injected after
+      // normalization (Classic no longer reads passenger PII from quote.passengers).
+      'quote.passengers = await quotePassengersPromise',
       'quote={quote}',
       'totalPax={totalPax}',
     ]);
@@ -488,8 +491,9 @@ describe('quote detail page regression', () => {
     expectSourceContains(pageSource, [
       "import type { QuoteRoomingGroup } from './QuoteRoomingPanel';",
       'type QuoteRoomingFetchResult =',
-      'async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult>',
-      "`${DATA_API_BASE_URL}/quotes/${id}/rooming`",
+      'async function getQuoteRooming(id: string, role: SessionRole | null): Promise<QuoteRoomingFetchResult>',
+      // CP-N3b2b: rooming READ routed through the always-operational selector.
+      'quoteRoomingPath(id, role)',
       'const quoteRoomingGroups = quoteRoomingResult.roomingGroups;',
       'quoteRoomingGroups={quoteRoomingGroups}',
     ]);

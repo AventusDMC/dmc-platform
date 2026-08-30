@@ -70,6 +70,15 @@ export function canAccessOperations(role?: SessionRole | null) {
   return role === 'admin' || role === 'super_admin' || role === 'operations';
 }
 
+// CP-N3b2b: full passenger-PII predicate. Mirrors the backend PII_FULL_ROLES
+// (apps/api/src/auth/pii-roles.ts) EXACTLY: admin / super_admin / operations.
+// Deliberately SEPARATE from canAccessFinance (cost axis) — cost visibility and
+// passenger-PII visibility are independent. A missing/unknown/agent/agent_admin
+// role is never full-PII (fail-closed).
+export function canViewFullPassengerPii(role?: SessionRole | null) {
+  return role === 'admin' || role === 'super_admin' || role === 'operations';
+}
+
 export function hasRequiredRole(role: SessionRole | null | undefined, allowedRoles: SessionRole[]) {
   if (!role) {
     return false;

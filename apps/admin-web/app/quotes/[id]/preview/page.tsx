@@ -9,6 +9,9 @@ import { QuoteHotelOptionSummary, type ProposalReadyQuoteOption } from '../Quote
 import { getQuoteItemOriginAwareExcursionName } from '../excursion-origin-display';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../../lib/admin-server';
+import { cookies } from 'next/headers';
+import { readSessionActor, canAccessFinance, type SessionRole } from '../../../lib/auth-session';
+import { quoteDetailPath } from '../../../../lib/quote-operational-routing';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -239,8 +242,10 @@ type QuotePreviewPageProps = {
   }>;
 };
 
-async function getQuote(id: string): Promise<Quote | null> {
-  return adminPageFetchJson<Quote | null>(`${DATA_API_BASE_URL}/quotes/${id}`, 'Quote preview', {
+async function getQuote(id: string, role: SessionRole | null): Promise<Quote | null> {
+  // CP-N3b2b: main detail routed by the cost axis (cost-visible → raw, else
+  // operational). No raw fallback on failure.
+  return adminPageFetchJson<Quote | null>(quoteDetailPath(id, role), 'Quote preview', {
     cache: 'no-store',
     allow404: true,
   });
@@ -327,7 +332,22 @@ function getPriceSummary(quote: Quote) {
   };
 }
 
-function getItemSummary(item: QuoteItem) {
+function getItemSummary(item: QuoteItem, canViewCost: boolean) {
+  // CP-N3b2b: cost-blind roles receive operational (cost/provenance-free) data;
+  // present only non-restricted operational labels (hotel / route / vehicle names,
+  // qty) — never a contract name, reconstructed cost, pricing description, or
+  // override flag.
+  if (!canViewCost) {
+    if (item.hotel) {
+      return item.hotel.name ?? '';
+    }
+    if (item.appliedVehicleRate) {
+      const routeLabel = item.transportLabel?.trim() || item.appliedVehicleRate.routeName;
+      return `${routeLabel} | ${item.appliedVehicleRate.vehicle.name}`;
+    }
+    return `Qty ${item.quantity}`;
+  }
+
   let summary = '';
 
   if (item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan) {
@@ -411,7 +431,7 @@ function getReconfirmationWarning(reconfirmationDueAt: string | null) {
   return dueAt - now <= 48 * 60 * 60 * 1000 ? 'Reconfirmation due soon' : null;
 }
 
-function renderServices(items: QuoteItem[], emptyLabel: string, quote: Pick<Quote, 'travelStartDate' | 'itineraries'>) {
+function renderServices(items: QuoteItem[], emptyLabel: string, quote: Pick<Quote, 'travelStartDate' | 'itineraries'>, canViewCost: boolean) {
   if (items.length === 0) {
     return <p className="empty-state">{emptyLabel}</p>;
   }
@@ -425,7 +445,7 @@ function renderServices(items: QuoteItem[], emptyLabel: string, quote: Pick<Quot
             {item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan ? null : (
               <>
                 <p>
-                  {item.service.category} | {getItemSummary(item)}
+                  {item.service.category} | {getItemSummary(item, canViewCost)}
                 </p>
                 {resolveQuoteItemServiceDate(quote.travelStartDate, quote.itineraries, item) ||
                 item.startTime ||
@@ -481,7 +501,10 @@ function renderServices(items: QuoteItem[], emptyLabel: string, quote: Pick<Quot
 
 export default async function QuotePreviewPage({ params }: QuotePreviewPageProps) {
   const { id } = await params;
-  const quote = await getQuote(id);
+  const sessionToken = (await cookies()).get('dmc_session')?.value || '';
+  const role = readSessionActor(sessionToken)?.role ?? null;
+  const canViewCost = canAccessFinance(role);
+  const quote = await getQuote(id, role);
 
   if (!quote) {
     notFound();
@@ -584,7 +607,7 @@ export default async function QuotePreviewPage({ params }: QuotePreviewPageProps
                         <img src={primaryImage.imageUrl} alt={primaryImage.title} className="quote-preview-day-image-asset" />
                       </figure>
                     ) : null}
-                    {renderServices(dayItems, 'No services assigned to this day.', quote)}
+                    {renderServices(dayItems, 'No services assigned to this day.', quote, canViewCost)}
                   </article>
                 );
               })
@@ -595,7 +618,7 @@ export default async function QuotePreviewPage({ params }: QuotePreviewPageProps
         {hasItineraryDays ? (
           <section className="detail-card">
             <p className="eyebrow">Services Outside Itinerary</p>
-            {renderServices(unassignedItems, 'No extra services outside the itinerary.', quote)}
+            {renderServices(unassignedItems, 'No extra services outside the itinerary.', quote, canViewCost)}
           </section>
         ) : null}
 

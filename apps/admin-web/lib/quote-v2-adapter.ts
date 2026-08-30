@@ -48,6 +48,13 @@ import { buildHotelDiagnostics, type MatchedHotelLine } from "./quote-hotel-diag
 import { matchPricedHotelLine, resolveBackendHotelOptionMatch, type PricedHotelLine } from "./quote-hotel-line-match"
 import { resolveDayTransportAndVisits } from "./quote-v2-itinerary-transport"
 import { adminPageFetchJson, isNextRedirectError } from "../app/lib/admin-server"
+import {
+  quoteDetailPath,
+  quoteItineraryPath,
+  quotePassengersPath,
+  quoteRoomingPath,
+} from "./quote-operational-routing"
+import type { SessionRole } from "../app/lib/auth-session"
 
 /* ------------------------------------------------------------------ */
 /* Raw ERP payload contract                                            */
@@ -1462,8 +1469,13 @@ function mapErpQuoteToRaw(
 const BUILDER_V2_QUOTE_TIMEOUT_MS = 20_000
 const BUILDER_V2_ITINERARY_TIMEOUT_MS = 15_000
 
-async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
-  const main = await adminPageFetchJson<ApiQuote | null>(`/api/quotes/${id}`, "Builder V2 quote", {
+async function fetchErpQuote(id: string, role: SessionRole | null): Promise<RawErpQuote | null> {
+  // CP-N3b2b: each request class is routed by its own server-trusted selector.
+  // Cost-blind roles (operations/viewer) get the operational main + itinerary;
+  // non-full-PII roles (viewer/finance) get the name-only operational passengers;
+  // rooming is always operational. A failed operational fetch NEVER falls back to
+  // the raw endpoint (the selectors return exactly one URL per role).
+  const main = await adminPageFetchJson<ApiQuote | null>(quoteDetailPath(id, role), "Builder V2 quote", {
     cache: "no-store",
     allow404: true,
     timeoutMs: BUILDER_V2_QUOTE_TIMEOUT_MS,
@@ -1474,7 +1486,7 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
   // Rich day-by-day itinerary is best-effort: its absence must not break render.
   let itinerary: ApiItinerary | null = null
   try {
-    itinerary = await adminPageFetchJson<ApiItinerary | null>(`/api/quotes/${id}/itinerary`, "Builder V2 itinerary", {
+    itinerary = await adminPageFetchJson<ApiItinerary | null>(quoteItineraryPath(id, role), "Builder V2 itinerary", {
       cache: "no-store",
       allow404: true,
       timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
@@ -1492,7 +1504,7 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
   let passengers: ApiPassenger[] = []
   let passengersLoadError = false
   try {
-    const res = await adminPageFetchJson<ApiPassenger[] | null>(`/api/quotes/${id}/passengers`, "Builder V2 passengers", {
+    const res = await adminPageFetchJson<ApiPassenger[] | null>(quotePassengersPath(id, role), "Builder V2 passengers", {
       cache: "no-store",
       allow404: true,
       timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
@@ -1507,7 +1519,7 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
   let rooming: ApiRoomingGroup[] = []
   let roomingLoadError = false
   try {
-    const res = await adminPageFetchJson<ApiRoomingGroup[] | null>(`/api/quotes/${id}/rooming`, "Builder V2 rooming", {
+    const res = await adminPageFetchJson<ApiRoomingGroup[] | null>(quoteRoomingPath(id, role), "Builder V2 rooming", {
       cache: "no-store",
       allow404: true,
       timeoutMs: BUILDER_V2_ITINERARY_TIMEOUT_MS,
@@ -1530,9 +1542,9 @@ async function fetchErpQuote(id: string): Promise<RawErpQuote | null> {
  *   production it returns `quote: null` so the UI shows the empty state.
  * - Thrown errors are caught and surfaced via the `error` field.
  */
-export async function loadQuoteV2(id: string): Promise<LoadQuoteResult> {
+export async function loadQuoteV2(id: string, role: SessionRole | null = null): Promise<LoadQuoteResult> {
   try {
-    const raw = await fetchErpQuote(id)
+    const raw = await fetchErpQuote(id, role)
 
     if (raw) {
       // Real ERP data exists — normalise and use it. Demo data is NOT shown.
