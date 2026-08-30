@@ -450,6 +450,10 @@ type QuoteServicePlannerProps = {
   preferredCatalogRateNote?: string;
   preferredCatalogRouteId?: string;
   sessionRole?: 'admin' | 'super_admin' | 'agent_admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
+  // CP-N3b2b: cost-visibility predicate (canAccessFinance). When false, per-service
+  // cost/profit/margin/supplier displays are hidden; the operational planning surface
+  // (scheduling, assignment, workflow) stays intact.
+  canViewCost: boolean;
 };
 
 type TransportDataStatus = {
@@ -2131,6 +2135,7 @@ function QuoteServiceLaneBoard({
   laneOrders,
   currency,
   canDetachContracts,
+  canViewCost,
   onEdit,
   onRemove,
   onDetachContract,
@@ -2147,6 +2152,7 @@ function QuoteServiceLaneBoard({
   laneOrders: ServiceLaneOrders;
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canViewCost: boolean;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
   onDetachContract: (item: QuoteItem) => void;
@@ -2179,6 +2185,7 @@ function QuoteServiceLaneBoard({
             label={group.label}
             orderedItems={orderedItems}
             currency={currency}
+            canViewCost={canViewCost}
             canDetachContracts={canDetachContracts}
             deletingItemId={deletingItemId}
             detachingContractItemId={detachingContractItemId}
@@ -2215,6 +2222,7 @@ function QuoteServiceLane({
   orderedItems,
   currency,
   canDetachContracts,
+  canViewCost,
   deletingItemId,
   detachingContractItemId,
   recentlyAddedItemId,
@@ -2232,6 +2240,7 @@ function QuoteServiceLane({
   orderedItems: QuoteItem[];
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canViewCost: boolean;
   deletingItemId?: string;
   detachingContractItemId?: string;
   recentlyAddedItemId?: string;
@@ -2290,6 +2299,7 @@ function QuoteServiceLane({
                 dayNumber={dayNumber}
                 category={category}
                 currency={currency}
+                canViewCost={canViewCost}
                 canDetachContracts={canDetachContracts}
                 deletingItemId={deletingItemId}
                 detachingContractItemId={detachingContractItemId}
@@ -2367,6 +2377,7 @@ function QuoteServiceCard({
   category,
   currency,
   canDetachContracts,
+  canViewCost,
   deletingItemId,
   detachingContractItemId,
   recentlyAddedItemId,
@@ -2381,6 +2392,7 @@ function QuoteServiceCard({
   category: ServicePlannerCategory;
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canViewCost: boolean;
   deletingItemId?: string;
   detachingContractItemId?: string;
   recentlyAddedItemId?: string;
@@ -2448,9 +2460,11 @@ function QuoteServiceCard({
           </div>
           <strong className={`${laneStyles.price} quote-service-card-price`}>{hasExternalMatrix ? 'Matrix pricing' : formatLiveMoney(item.totalSell, itemCurrency)}</strong>
         </div>
+        {canViewCost ? (
         <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
           {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
         </p>
+        ) : null}
         {item.appliedVehicleRate ? (
           <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
             {getTransportItemDetailLabel(item)}
@@ -2490,6 +2504,7 @@ function QuoteServiceCard({
           {item.externalHotelsOrSimilar ? <p>Hotels or Similar: {item.externalHotelsOrSimilar}</p> : null}
         </div>
       ) : null}
+      {canViewCost ? (
       <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`}>
         {hasExternalMatrix ? (
           <span>Fallback net <span className="quote-money">{item.externalNetCost !== null && item.externalNetCost !== undefined ? formatLiveMoney(item.externalNetCost, itemCurrency) : 'Not set'}</span></span>
@@ -2505,6 +2520,7 @@ function QuoteServiceCard({
         ) : null}
         {itemMarginWarning && !hasExternalMatrix ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
       </div>
+      ) : null}
       <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`} aria-label="Pricing diagnostics">
         {pricingDiagnostics.rows
           // Nights is inherited from quote duration and is not meaningful for a
@@ -3915,6 +3931,7 @@ function ScopePlanner({
                     items={summary.items}
                     laneOrders={laneOrders}
                     currency={plannerProps.quote.quoteCurrency}
+                    canViewCost={plannerProps.canViewCost}
                     canDetachContracts={canDetachContracts}
                     deletingItemId={deletingItemId || undefined}
                     detachingContractItemId={detachingContractItemId || undefined}
@@ -4163,7 +4180,9 @@ function ScopePlanner({
                   </div>
                 </header>
                 <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
+                {plannerProps.canViewCost ? (
                 <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
+                ) : null}
               </section>
             ) : null}
 

@@ -25,6 +25,11 @@ type QuotePassengersPanelProps = {
   quoteId: string;
   expectedPax: number;
   passengers: QuotePassenger[];
+  // CP-N3b2b: full passenger-PII predicate (admin/super_admin/operations). When
+  // false, the panel shows names only and hides all passenger PII columns + the
+  // add/edit/delete controls. The data itself is already name-only for these roles
+  // (routed to the operational passengers companion); this is precise field gating.
+  canViewPassengerPii: boolean;
 };
 
 type PassengerFormState = {
@@ -91,7 +96,7 @@ function buildPayload(form: PassengerFormState) {
   };
 }
 
-export function QuotePassengersPanel({ apiBaseUrl, quoteId, expectedPax, passengers }: QuotePassengersPanelProps) {
+export function QuotePassengersPanel({ apiBaseUrl, quoteId, expectedPax, passengers, canViewPassengerPii }: QuotePassengersPanelProps) {
   const router = useRouter();
   const [localPassengers, setLocalPassengers] = useState(passengers);
   const [editingPassengerId, setEditingPassengerId] = useState<string | null>(null);
@@ -202,6 +207,8 @@ export function QuotePassengersPanel({ apiBaseUrl, quoteId, expectedPax, passeng
       {error ? <p className="form-error">{error}</p> : null}
       {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
 
+      {canViewPassengerPii ? (
+      <>
       <div className="form-grid">
         <label>
           First name
@@ -260,48 +267,60 @@ export function QuotePassengersPanel({ apiBaseUrl, quoteId, expectedPax, passeng
           </button>
         ) : null}
       </div>
+      </>
+      ) : null}
 
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
               <th>Name</th>
-              <th>Nationality</th>
-              <th>Passport</th>
-              <th>Operations notes</th>
-              <th>Controls</th>
+              {canViewPassengerPii ? (
+                <>
+                  <th>Nationality</th>
+                  <th>Passport</th>
+                  <th>Operations notes</th>
+                  <th>Controls</th>
+                </>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {localPassengers.length === 0 ? (
               <tr>
-                <td colSpan={5}>No quote passengers added yet.</td>
+                <td colSpan={canViewPassengerPii ? 5 : 1}>No quote passengers added yet.</td>
               </tr>
             ) : (
               localPassengers.map((passenger) => (
                 <tr key={passenger.id}>
                   <td>
                     <strong>{passenger.firstName} {passenger.lastName}</strong>
-                    <p className="table-cell-copy">{[passenger.gender, dateInputValue(passenger.dateOfBirth)].filter(Boolean).join(' / ') || 'Personal details pending'}</p>
+                    {canViewPassengerPii ? (
+                      <p className="table-cell-copy">{[passenger.gender, dateInputValue(passenger.dateOfBirth)].filter(Boolean).join(' / ') || 'Personal details pending'}</p>
+                    ) : null}
                   </td>
-                  <td>{passenger.nationality || 'To confirm'}</td>
-                  <td>
-                    {passenger.passportNumber || 'To confirm'}
-                    {passenger.passportExpiry ? <p className="table-cell-copy">Expires {dateInputValue(passenger.passportExpiry)}</p> : null}
-                  </td>
-                  <td>
-                    {[passenger.dietaryNotes, passenger.mobilityNotes, passenger.emergencyContact, passenger.remarks].filter(Boolean).join(' | ') || 'None'}
-                  </td>
-                  <td>
-                    <div className="table-action-group">
-                      <button type="button" className="secondary-button" disabled={isSaving} onClick={() => startEdit(passenger)}>
-                        Edit
-                      </button>
-                      <button type="button" className="secondary-button secondary-button-danger" disabled={isSaving} onClick={() => removePassenger(passenger)}>
-                        Remove
-                      </button>
-                    </div>
-                  </td>
+                  {canViewPassengerPii ? (
+                    <>
+                      <td>{passenger.nationality || 'To confirm'}</td>
+                      <td>
+                        {passenger.passportNumber || 'To confirm'}
+                        {passenger.passportExpiry ? <p className="table-cell-copy">Expires {dateInputValue(passenger.passportExpiry)}</p> : null}
+                      </td>
+                      <td>
+                        {[passenger.dietaryNotes, passenger.mobilityNotes, passenger.emergencyContact, passenger.remarks].filter(Boolean).join(' | ') || 'None'}
+                      </td>
+                      <td>
+                        <div className="table-action-group">
+                          <button type="button" className="secondary-button" disabled={isSaving} onClick={() => startEdit(passenger)}>
+                            Edit
+                          </button>
+                          <button type="button" className="secondary-button secondary-button-danger" disabled={isSaving} onClick={() => removePassenger(passenger)}>
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  ) : null}
                 </tr>
               ))
             )}

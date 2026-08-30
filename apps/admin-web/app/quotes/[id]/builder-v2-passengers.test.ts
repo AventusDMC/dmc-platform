@@ -36,8 +36,11 @@ describe('Quote Builder V2 — read-only Passengers & Rooming step', () => {
       'function mapRooming',
       'passengers: mapPassengers(safeRaw)',
       'roomingGroups: mapRooming(safeRaw)',
-      '/api/quotes/${id}/passengers',
-      '/api/quotes/${id}/rooming',
+      // CP-N3b2b: passenger/rooming reads go through the server-trusted role-aware
+      // selectors (PII axis for passengers; rooming always operational), not raw
+      // URL literals. Still GET-only (no mutation added).
+      'quotePassengersPath(id, role)',
+      'quoteRoomingPath(id, role)',
       '"passengers"',
       'passengers: { label: "Passengers"',
     ]);

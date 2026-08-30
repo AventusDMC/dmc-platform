@@ -55,7 +55,13 @@ import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, classicQuoteBasePath
 import { selectGeneralTransportService } from './transport-service-select';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
-import { readSessionActor } from '../../lib/auth-session';
+import { readSessionActor, canAccessFinance, canViewFullPassengerPii, type SessionRole } from '../../lib/auth-session';
+import {
+  quoteDetailPath,
+  quoteItineraryPath,
+  quotePassengersPath,
+  quoteRoomingPath,
+} from '../../../lib/quote-operational-routing';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -908,9 +914,11 @@ function unwrapSettledQuoteDetail<T>(result: PromiseSettledResult<T>, fallback: 
   return fallback;
 }
 
-async function getQuote(id: string): Promise<QuoteFetchResult> {
+async function getQuote(id: string, role: SessionRole | null): Promise<QuoteFetchResult> {
   try {
-    const quote = await adminPageFetchJson<Quote | null>(`${DATA_API_BASE_URL}/quotes/${id}`, 'Quote detail', {
+    // CP-N3b2b: main detail routed by the cost axis (cost-visible → raw, else
+    // operational). No raw fallback on failure — the catch surfaces the error.
+    const quote = await adminPageFetchJson<Quote | null>(quoteDetailPath(id, role), 'Quote detail', {
       cache: 'no-store',
       allow404: true,
     });
@@ -1121,10 +1129,11 @@ async function getQuoteBlocks(): Promise<QuoteBlock[]> {
   return adminPageFetchJson<QuoteBlock[]>(`${DATA_API_BASE_URL}/quote-blocks`, 'Quote detail quote blocks', CATALOG_FETCH);
 }
 
-async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult> {
+async function getQuoteItinerary(id: string, role: SessionRole | null): Promise<QuoteItineraryFetchResult> {
   try {
+    // CP-N3b2b: itinerary routed by the cost axis (operational drops provenance).
     const itinerary =
-      (await adminPageFetchJson<QuoteItineraryResponse | null>(`${DATA_API_BASE_URL}/quotes/${id}/itinerary`, 'Quote detail itinerary', {
+      (await adminPageFetchJson<QuoteItineraryResponse | null>(quoteItineraryPath(id, role), 'Quote detail itinerary', {
         cache: 'no-store',
         allow404: true,
       })) || {
@@ -1392,7 +1401,10 @@ function normalizeQuoteDetail(quote: Quote): Quote {
     company: quote.company || { id: 'missing-company', name: 'Company unavailable' },
     contact: quote.contact || { id: 'missing-contact', companyId: '', firstName: 'Contact', lastName: 'Unavailable' },
     quoteItems: Array.isArray(quote.quoteItems) ? quote.quoteItems.map((item) => normalizeQuoteItem(item)) : [],
-    passengers: Array.isArray(quote.passengers) ? quote.passengers : [],
+    // CP-N3b2b: passengers are NOT sourced from the main quote body any more —
+    // they are fetched through the role-specific passenger selector and injected
+    // after normalization (PII axis). Start empty here.
+    passengers: [],
     quoteOptions: Array.isArray(quote.quoteOptions)
       ? quote.quoteOptions.map((option) => ({
           ...option,
@@ -1420,9 +1432,11 @@ function formatMoney(amount: number | null | undefined, currency = 'USD') {
   })}`;
 }
 
-async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult> {
+async function getQuoteRooming(id: string, role: SessionRole | null): Promise<QuoteRoomingFetchResult> {
   try {
-    const roomingGroups = await adminPageFetchJson<QuoteRoomingGroup[]>(`${DATA_API_BASE_URL}/quotes/${id}/rooming`, 'Quote detail rooming', {
+    // CP-N3b2b: rooming is ALWAYS operational (drops pricingDescription + contract
+    // identity; passenger name-only). No raw rooming for any role.
+    const roomingGroups = await adminPageFetchJson<QuoteRoomingGroup[]>(quoteRoomingPath(id, role), 'Quote detail rooming', {
       cache: 'no-store',
       allow404: true,
     });
@@ -1440,6 +1454,23 @@ async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult> {
       message,
       roomingGroups: [],
     };
+  }
+}
+
+// CP-N3b2b: passengers are fetched through the role-specific passenger selector
+// (PII axis: full-PII → raw; else → operational name-only), NOT from the main quote
+// body. No raw fallback on failure — a failed fetch yields an empty list.
+async function getQuotePassengers(id: string, role: SessionRole | null): Promise<QuotePassenger[]> {
+  try {
+    const passengers = await adminPageFetchJson<QuotePassenger[]>(quotePassengersPath(id, role), 'Quote detail passengers', {
+      cache: 'no-store',
+      allow404: true,
+    });
+    return Array.isArray(passengers) ? passengers : [];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown passengers fetch failure';
+    console.error(`[QuoteDetailsPage] Quote passengers fetch failed for ${id}: ${message}`);
+    return [];
   }
 }
 
@@ -1994,6 +2025,13 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = readSessionActor((await cookies()).get('dmc_session')?.value || '');
+  // CP-N3b2b: server-trusted role drives the per-request-class selectors and the
+  // independent cost / passenger-PII UI gates. Cost visibility and passenger-PII
+  // visibility are separate axes. Start the PII-routed passenger fetch in parallel.
+  const sessionRole = session?.role ?? null;
+  const canViewCost = canAccessFinance(sessionRole);
+  const canViewPassengerPii = canViewFullPassengerPii(sessionRole);
+  const quotePassengersPromise = getQuotePassengers(id, sessionRole);
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
   const shouldLoadHotelPlanningData =
@@ -2063,7 +2101,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
     quoteItinerarySettled,
     quoteRoomingSettled,
   ] = await Promise.allSettled([
-    getQuote(id),
+    getQuote(id, sessionRole),
     safeQuoteDetailFetch('services', [] as SupplierService[], getServices),
     shouldLoadActivityCatalogData
       ? safeQuoteDetailFetch('activities', [] as ActivityCatalogItem[], getActivities)
@@ -2101,8 +2139,8 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
       : skippedQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[]),
     safeQuoteDetailFetch('support text templates', [] as SupportTextTemplate[], getSupportTextTemplates),
     safeQuoteDetailFetch('quote blocks', [] as QuoteBlock[], getQuoteBlocks),
-    getQuoteItinerary(id),
-    getQuoteRooming(id),
+    getQuoteItinerary(id, sessionRole),
+    getQuoteRooming(id, sessionRole),
   ]);
   const quoteResult = unwrapSettledQuoteDetail<QuoteFetchResult>(quoteSettled, { status: 'error', message: 'Quote could not be loaded' }, 'quote');
   const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
@@ -2206,6 +2244,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
   }
 
   const quote = normalizeQuoteDetail(rawQuote);
+  // CP-N3b2b: inject the PII-routed passengers (full-PII → raw; else name-only) so
+  // Classic no longer reads passenger detail from the main quote body.
+  quote.passengers = await quotePassengersPromise;
   const quoteCancelled = quote.status === 'CANCELLED';
   const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
   // Phase R.6A-1/R.6A-2 — the representative HOTEL-type service the applied
@@ -2887,6 +2928,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
   const renderQuoteServicePlanner = (initialAddCategory?: ServicePlannerCategory) => (
     <QuoteServicePlanner
       apiBaseUrl={ACTION_API_BASE_URL}
+      canViewCost={canViewCost}
       quote={quote}
       quoteItinerary={quoteItinerary}
       quoteBlocks={quoteBlocks}
@@ -2950,7 +2992,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Sell</span>
                     <strong style={{ fontSize: '1.05rem', fontWeight: 700 }}>{quote.quoteCurrency} {Math.round(quote.totalSell).toLocaleString()}</strong>
                   </div>
-                  {(session?.role === 'admin' || session?.role === 'super_admin' || session?.role === 'finance' || session?.role === 'agent_admin') ? (
+                  {/* CP-N3b2b: command-bar Margin gated by the cost predicate
+                      (canAccessFinance). Sell stays visible to all roles. */}
+                  {canViewCost ? (
                     <>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <span className="eyebrow" style={{ fontSize: '0.6rem' }}>Margin</span>
@@ -3119,6 +3163,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               math mismatches, currency mix, and margin-floor breaches in
               plain language. Server-rendered; runs on already-loaded quote
               data so it adds no extra fetch. */}
+          {/* CP-N3b2b: cost/margin audit is gated by the cost-visibility predicate;
+              cost-blind roles receive operational (cost-free) data and never see it. */}
+          {canViewCost ? (
           <QuotePricingAudit
             quoteId={quote.id}
             quoteCurrency={quote.quoteCurrency}
@@ -3135,6 +3182,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
             quoteTotalSell={quote.totalSell}
             quoteTotalCost={quote.totalCost}
           />
+          ) : null}
             </div>
           </details>
 
@@ -3375,6 +3423,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               transportServiceTypes={transportServiceTypes}
               transportServiceId={tailorMadeTransportServiceId}
               guideServiceId={tailorMadeGuideServiceId}
+              canViewPassengerPii={canViewPassengerPii}
             />
           ) : null}
 
@@ -3521,6 +3570,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                       ]}
                     />
 
+                    {/* CP-N3b2b: cost/margin summary + table gated by cost visibility;
+                        cost-blind roles keep the operational SummaryStrip only. */}
+                    {canViewCost ? (
                     <QuoteSummaryPanel
                       items={allQuotePricingItems}
                       totalCost={quote.totalCost}
@@ -3528,7 +3580,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                       pax={totalPax}
                       currency={quote.quoteCurrency}
                     />
+                    ) : null}
 
+                    {canViewCost ? (
                     <QuotePricingTable
                       apiBaseUrl={ACTION_API_BASE_URL}
                       quoteId={quote.id}
@@ -3558,6 +3612,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                       focImpactLabel={getFocImpactLabel(quote)}
                       supplementsImpactLabel={getSupplementImpactLabel(quote)}
                     />
+                    ) : null}
                   </div>
 
                   {/* Consolidation pass 2/N: removed the "Pricing Check"
@@ -4067,6 +4122,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
             </div>
 
             <aside className="quote-builder-sidebar app-sticky-panel">
+              {/* CP-N3b2b: the Financial summary (cost/profit/margin/markup) is gated
+                  by cost visibility; cost-blind roles keep the status + action cards. */}
+              {canViewCost ? (
               <QuotePricingSummaryCard
                 className="quote-pricing-summary-card-dominant app-financial-panel"
                 eyebrow="Internal"
@@ -4082,6 +4140,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                   { label: 'Markup %', value: formatMarginPercent(quoteMarkupPercent), helper: 'Profit / cost' },
                 ]}
               />
+              ) : null}
 
               <QuotePricingSummaryCard
                 eyebrow="Status"
