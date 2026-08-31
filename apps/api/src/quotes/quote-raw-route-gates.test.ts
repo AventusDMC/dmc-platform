@@ -1,6 +1,6 @@
 import assert = require('node:assert/strict');
 import test = require('node:test');
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { QuotesController } from './quotes.controller';
 
 // CP-N3b2c1 — Secondary Raw-Route Gates (quotes.controller).
@@ -149,14 +149,15 @@ for (const role of INTERNAL_READ) {
 }
 
 // ---------------------------------------------------------------------------
-// Regression: the RAW main detail (findOne) is untouched — still open to every
-// internal-read role (finance/operations/viewer are NOT newly tightened here).
+// CP-N3b2c2c: the RAW main detail (findOne) is now RETIRED fail-closed — 404 for
+// every role before any service call (cost-visible roles use /finance-detail,
+// non-finance internal roles use /operational). This supersedes the CP-N3b2c1
+// "still open" regression.
 // ---------------------------------------------------------------------------
 for (const role of INTERNAL_READ) {
-  test(`raw main detail (findOne) still open to internal role "${role}" (unchanged by this slice)`, async () => {
+  test(`raw main detail (findOne) is retired — 404 before service for internal role "${role}"`, async () => {
     const { controller, calls } = createController();
-    const res: any = await controller.findOne('quote-1', makeActor(role));
-    assert.equal(calls.findOne, 1);
-    assert.deepEqual(res, { id: 'quote-1', clientCompanyId: 'client-company' });
+    await assert.rejects(() => controller.findOne('quote-1', makeActor(role)), NotFoundException);
+    assert.equal(calls.findOne, 0);
   });
 }

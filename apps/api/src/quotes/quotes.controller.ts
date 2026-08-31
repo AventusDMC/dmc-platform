@@ -405,16 +405,19 @@ export class QuotesController {
     return result;
   }
 
+  // CP-N3b2c2c: raw main quote-detail retired fail-closed. The route declaration is
+  // KEPT so the path still resolves to this handler, but the handler returns 404 for
+  // EVERY role — admin/super_admin/finance/operations/viewer/agent/agent_admin and
+  // missing/unknown/future — BEFORE any service or database call (no
+  // assertInternalQuoteReadAccess, no quotesService.findOne). It never serializes the
+  // old raw quote, never redirects, never falls back to /finance-detail or
+  // /operational (callers select the correct safe endpoint), and logs nothing.
+  // Cost-visible roles read GET :id/finance-detail; non-finance internal roles read
+  // GET :id/operational. quotesService.findOne / loadQuoteState are unchanged and still
+  // used by the other quote sub-routes.
   @Get(':id')
-  async findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
-    this.assertInternalQuoteReadAccess(actor);
-    const quote = await this.quotesService.findOne(id, actor);
-
-    if (!quote) {
-      throw new NotFoundException('Quote not found');
-    }
-
-    return quote;
+  async findOne(@Param('id') _id: string, @Actor() _actor: AuthenticatedActor) {
+    throw new NotFoundException('Quote not found');
   }
 
   // CP-N3b2a: additive, non-finance operational projection of the quote detail.
