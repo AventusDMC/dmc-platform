@@ -52,6 +52,8 @@ import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
 import { mapQuoteToOperational } from './quote-operational.mapper';
 import { mapPassengersToOperational, mapRoomingToOperational } from './quote-operational-secondary.mapper';
 import { isFullPiiRole } from '../auth/pii-roles';
+import { canViewQuoteCostMargin } from '../auth/cost-visibility';
+import { mapQuoteToFinanceDetail, FinanceRawQuote } from './quote-finance-detail.mapper';
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
@@ -457,6 +459,31 @@ export class QuotesController {
     const rooming = await this.quotesService.findRoomingGroups(id, actor);
 
     return mapRoomingToOperational(rooming);
+  }
+
+  // CP-N3b2c2a: additive cost-visible projection of the quote detail. Fail-closed
+  // cost-visibility gate (admin/super_admin/finance, via canViewQuoteCostMargin) BEFORE
+  // the service call; returns the closed FinanceQuoteDetail allowlist — one identical
+  // shape for every allowed role. It carries cost/margin/override/supplier+contract
+  // identity + typed matrix/promotion + string-list fact sheet, but never a token /
+  // snapshot / arbitrary JSON / passenger PII beyond { id, firstName, lastName }. The raw
+  // GET :id endpoint is intentionally left unchanged (still used by current frontends).
+  @Get(':id/finance-detail')
+  async findOneFinanceDetail(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertCostVisibleFinanceReadAccess(actor);
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return mapQuoteToFinanceDetail(quote as FinanceRawQuote);
+  }
+
+  private assertCostVisibleFinanceReadAccess(actor: AuthenticatedActor | null | undefined) {
+    if (!canViewQuoteCostMargin(actor?.role)) {
+      throw new ForbiddenException('This finance quote-detail endpoint is restricted to cost-visible roles.');
+    }
   }
 
   @Get(':id/pdf')
