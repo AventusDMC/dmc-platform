@@ -46,6 +46,15 @@ const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', '
 // exactly {admin, super_admin}, so it is declared explicitly. Not the coalescing
 // @Roles guard (which would let agent_admin satisfy @Roles('admin')).
 const RAW_ROOMING_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin'];
+
+// CP-N3b2c3a: explicit fail-closed allowlist for the GENERIC quote-version routes
+// (list / readiness / create / raw detail / summary / convert-to-booking / status).
+// These are internal quote-lifecycle routes; external agent_admin must NOT retain
+// access merely because the coalescing @Roles guard treats it as admin. This runs as
+// an in-handler assertion BEFORE any service call, alongside (not replacing) the
+// existing @Roles decorators — super_admin is admitted explicitly, agent_admin /
+// operations / agent / missing / unknown / future are denied. NOT the coalescing guard.
+const VERSION_ROUTE_ACCESS_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'viewer'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
@@ -344,6 +353,17 @@ export class QuotesController {
     const role = actor?.role;
     if (!role || !(RAW_ROOMING_READ_ROLES as readonly string[]).includes(role)) {
       throw new ForbiddenException('This raw quote rooming endpoint is restricted to admin and super_admin.');
+    }
+  }
+
+  // CP-N3b2c3a: fail-closed gate for the generic quote-version routes — admin /
+  // super_admin / finance / viewer only. Excludes agent_admin (which the coalescing
+  // @Roles guard would otherwise admit), operations, agent, missing, unknown, and
+  // future-unlisted. Runs BEFORE any service call.
+  private assertVersionRouteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(VERSION_ROUTE_ACCESS_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote-version endpoint is restricted to internal quote-management roles.');
     }
   }
 
@@ -803,6 +823,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertVersionRouteAccess(actor);
     return this.quotesService.updateStatus(id, {
       status: body.status,
       acceptedVersionId: body.acceptedVersionId === undefined ? undefined : body.acceptedVersionId || null,
@@ -951,6 +972,7 @@ export class QuotesController {
     // (role admin/viewer/finance + actor company context via findOne(id, actor)).
     // Previously ungated and called findOne without the actor. Response shape
     // (metadata only) is unchanged.
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -963,6 +985,7 @@ export class QuotesController {
   @Get(':id/version-readiness')
   @Roles('admin', 'viewer', 'finance')
   async getVersionReadiness(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -975,6 +998,7 @@ export class QuotesController {
   @Post(':id/convert-to-booking')
   @Roles('admin', 'viewer', 'finance')
   async convertToBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -992,16 +1016,30 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.createVersion({
+    // CP-N3b2c3a: persist the snapshot as before, but project the RESPONSE at the
+    // controller boundary to metadata only — the raw QuoteVersion row carries
+    // snapshotJson (a full quote clone incl. Booking.accessToken / nested snapshots /
+    // PII / cost / arbitrary JSON) and must never be serialized to the caller. Built
+    // by explicit literal assignment (no spread / Object.assign / JSON clone).
+    const created = await this.quotesService.createVersion({
       quoteId: id,
       label: body.label,
     }, actor);
+
+    return {
+      id: created.id,
+      quoteId: created.quoteId,
+      versionNumber: created.versionNumber,
+      label: created.label,
+      createdAt: created.createdAt,
+    };
   }
 
   @Get(':id/versions/:versionId')
@@ -1016,6 +1054,7 @@ export class QuotesController {
     // ungated and called findOne without the actor. findVersion still filters the
     // version to this quote (404 if it belongs to another quote). Response shape
     // is unchanged — surfacing a redacted summary is a later, separate slice.
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1042,6 +1081,7 @@ export class QuotesController {
     // snapshotJson. Same gate + actor scoping as the hardened version routes; the
     // version is scoped to the quote (404 cross-quote). The cost block is included
     // only for cost-visible roles (handled in getVersionSummary). Read-only.
+    this.assertVersionRouteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
