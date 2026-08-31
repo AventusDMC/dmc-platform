@@ -12,15 +12,19 @@ const mainRoute = require('./route') as typeof import('./route');
 const itineraryRoute = require('./itinerary/route') as typeof import('./itinerary/route');
 const passengersRoute = require('./passengers/route') as typeof import('./passengers/route');
 const roomingRoute = require('./rooming/route') as typeof import('./rooming/route');
+// CP-N3b2c2b: the cost-visible finance-detail proxy lives one level up (../finance-detail).
+const financeDetailRoute = require('../finance-detail/route') as typeof import('../finance-detail/route');
 
-// The four CP-N3b2b operational proxies + the exact backend operational path each
-// must forward to. `raw` is the corresponding raw endpoint a fail-closed proxy must
-// NEVER call as a fallback.
+// The four CP-N3b2b operational proxies + the CP-N3b2c2b finance-detail proxy, and the
+// exact backend path each must forward to. `raw` is the corresponding raw endpoint a
+// fail-closed proxy must NEVER call as a fallback (finance-detail must never fall back
+// to raw main /quotes/q1).
 const PROXIES = [
   { name: 'main', mod: mainRoute as Record<string, unknown>, backend: `${API_BASE}/quotes/q1/operational`, raw: `${API_BASE}/quotes/q1`, search: '' },
   { name: 'itinerary', mod: itineraryRoute as Record<string, unknown>, backend: `${API_BASE}/quotes/q1/operational/itinerary`, raw: `${API_BASE}/quotes/q1/itinerary`, search: '' },
   { name: 'passengers', mod: passengersRoute as Record<string, unknown>, backend: `${API_BASE}/quotes/q1/operational/passengers`, raw: `${API_BASE}/quotes/q1/passengers`, search: '' },
   { name: 'rooming', mod: roomingRoute as Record<string, unknown>, backend: `${API_BASE}/quotes/q1/operational/rooming`, raw: `${API_BASE}/quotes/q1/rooming`, search: '' },
+  { name: 'finance-detail', mod: financeDetailRoute as Record<string, unknown>, backend: `${API_BASE}/quotes/q1/finance-detail`, raw: `${API_BASE}/quotes/q1`, search: '' },
 ] as const;
 
 const SESSION_TOKEN = 'v1.SYNTHETIC_SESSION_TOKEN';

@@ -17,6 +17,10 @@ import type { SessionRole } from '../app/lib/auth-session';
 
 export type CostRoutedEndpoint = 'raw' | 'operational';
 export type PiiRoutedEndpoint = 'raw' | 'operational';
+// CP-N3b2c2b: the main quote-detail cost-visible branch now routes to the additive,
+// cost-visible finance-detail projection (never raw main). This axis is distinct from
+// the itinerary cost axis, which still legitimately uses the raw itinerary endpoint.
+export type MainDetailEndpoint = 'finance-detail' | 'operational';
 
 // NOTE (CP-N3b2b correction): version-detail routing is intentionally NOT provided
 // here. The raw GET /quotes/:id/versions/:versionId response embeds snapshotJson — a
@@ -28,9 +32,14 @@ export type PiiRoutedEndpoint = 'raw' | 'operational';
 // established here; version routing is deferred to a separately assessed CP-N3b2c
 // sub-slice. Operations and Viewer must never receive raw version snapshots.
 
-/** Main quote detail — cost axis. Cost-visible → raw; everyone else → operational. */
-export function quoteDetailEndpoint(role?: SessionRole | null): CostRoutedEndpoint {
-  return canAccessFinance(role) ? 'raw' : 'operational';
+/**
+ * Main quote detail — cost axis. Cost-visible (admin/super_admin/finance) → the
+ * additive finance-detail projection; every other role (operations/viewer and, via the
+ * backend gate, agent/agent_admin/missing/unknown/future) → operational. No role
+ * selects raw main; there is no raw-main fallback on any error.
+ */
+export function quoteDetailEndpoint(role?: SessionRole | null): MainDetailEndpoint {
+  return canAccessFinance(role) ? 'finance-detail' : 'operational';
 }
 
 /** Day-by-day itinerary — cost axis (carries pricingDescription/contract provenance). */
@@ -59,8 +68,8 @@ export function quoteRoomingEndpoint(_role?: SessionRole | null): 'operational' 
 // ---------------------------------------------------------------------------
 
 export function quoteDetailPath(id: string, role?: SessionRole | null): string {
-  return quoteDetailEndpoint(role) === 'raw'
-    ? `/api/quotes/${id}`
+  return quoteDetailEndpoint(role) === 'finance-detail'
+    ? `/api/quotes/${id}/finance-detail`
     : `/api/quotes/${id}/operational`;
 }
 
