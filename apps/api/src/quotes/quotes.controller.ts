@@ -37,11 +37,21 @@ const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin'
  * `actor.companyId` (see security/multi-company-isolation.test.ts).
  */
 const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations', 'viewer'];
+
+// CP-N3b2c1: explicit fail-closed allowlist for the RAW rooming read. Rooming
+// groups carry the internal pricing note + contract identity, so the raw list is
+// restricted to admin / super_admin only; every other role (finance, operations,
+// viewer, agent, agent_admin, missing, unknown, future unlisted) is denied here
+// and uses the operational rooming companion instead. No canonical constant covers
+// exactly {admin, super_admin}, so it is declared explicitly. Not the coalescing
+// @Roles guard (which would let agent_admin satisfy @Roles('admin')).
+const RAW_ROOMING_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
 import { mapQuoteToOperational } from './quote-operational.mapper';
 import { mapPassengersToOperational, mapRoomingToOperational } from './quote-operational-secondary.mapper';
+import { isFullPiiRole } from '../auth/pii-roles';
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
@@ -313,6 +323,25 @@ export class QuotesController {
     const role = actor?.role;
     if (!role || !(INTERNAL_QUOTE_READ_ROLES as readonly string[]).includes(role)) {
       throw new ForbiddenException('This quote endpoint is restricted to internal roles.');
+    }
+  }
+
+  // CP-N3b2c1: fail-closed gate for the RAW passenger list — full-PII roles only
+  // (admin / super_admin / operations, via the canonical PII_FULL_ROLES allowlist).
+  // finance / viewer / agent / agent_admin / missing / unknown / future roles are
+  // denied here and read the name-only operational passenger companion instead.
+  // Explicit allowlist membership (isFullPiiRole) — never the coalescing @Roles guard.
+  private assertFullPiiQuoteReadAccess(actor: AuthenticatedActor | null | undefined) {
+    if (!isFullPiiRole(actor?.role)) {
+      throw new ForbiddenException('This raw quote passenger endpoint is restricted to full-PII roles.');
+    }
+  }
+
+  // CP-N3b2c1: fail-closed gate for the RAW rooming list — admin / super_admin only.
+  private assertRawRoomingReadAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(RAW_ROOMING_READ_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This raw quote rooming endpoint is restricted to admin and super_admin.');
     }
   }
 
@@ -1047,6 +1076,9 @@ export class QuotesController {
 
   @Get(':id/passengers')
   async findPassengers(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    // CP-N3b2c1: fail-closed BEFORE any service call — denied roles 403 without
+    // invoking findOne or findPassengers.
+    this.assertFullPiiQuoteReadAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1107,6 +1139,9 @@ export class QuotesController {
 
   @Get(':id/rooming')
   async findRoomingGroups(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    // CP-N3b2c1: fail-closed BEFORE any service call — denied roles 403 without
+    // invoking findOne or findRoomingGroups.
+    this.assertRawRoomingReadAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {

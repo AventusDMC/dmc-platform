@@ -332,7 +332,7 @@ test('controller: existing RAW handlers remain unchanged (pass-through, still ca
   const rawPax: any = await q.controller.findPassengers('q1', makeActor('operations'));
   assert.equal(rawPax[0].passportNumber, PII); // raw passengers still full PII
   const i = itineraryController();
-  const rawItin: any = await i.controller.findByQuoteId('q1', makeActor('operations'));
+  const rawItin: any = await i.controller.findByQuoteId('q1', makeActor('finance'));
   assert.equal(rawItin.days[0].dayItems[0].quoteService.pricingDescription, NOTE); // raw itinerary unchanged
 });
 
