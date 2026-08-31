@@ -1,6 +1,6 @@
 import assert = require('node:assert/strict');
 import test = require('node:test');
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { QuotesController } from './quotes.controller';
 import { mapQuoteToOperational } from './quote-operational.mapper';
 
@@ -588,13 +588,15 @@ test('controller: missing role fails closed (403) before the quote service is ca
   assert.equal(calls.findOne, 0);
 });
 
-test('controller: raw GET :id remains unchanged — same internal-role gate, raw pass-through', async () => {
-  const allowed = createController();
-  const raw: any = await allowed.controller.findOne('q1', makeActor('operations'));
-  // raw endpoint returns the untouched raw quote (still carries buy-side fields).
-  assert.equal(raw.totalCost, COST);
-  assert.equal(raw.publicToken, TOKEN);
+test('controller: raw GET :id is retired (CP-N3b2c2c) — 404 for every role before findOne', async () => {
+  // CP-N3b2c2c: the raw main handler no longer serializes the raw quote for any role.
+  const a = createController();
+  await assert.rejects(() => a.controller.findOne('q1', makeActor('operations')), NotFoundException);
+  const b = createController();
+  await assert.rejects(() => b.controller.findOne('q1', makeActor('admin')), NotFoundException);
   const denied = createController();
-  await assert.rejects(() => denied.controller.findOne('q1', makeActor('agent')), ForbiddenException);
+  await assert.rejects(() => denied.controller.findOne('q1', makeActor('agent')), NotFoundException);
+  assert.equal(a.calls.findOne, 0);
+  assert.equal(b.calls.findOne, 0);
   assert.equal(denied.calls.findOne, 0);
 });
