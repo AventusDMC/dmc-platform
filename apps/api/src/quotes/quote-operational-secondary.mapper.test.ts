@@ -327,12 +327,16 @@ test('controller: missing role fails closed (403) before service (all 3 companio
   assert.equal(i.calls.itinerary, 0);
 });
 
-test('controller: existing RAW handlers remain unchanged (pass-through, still carry raw fields)', async () => {
+test('controller: existing RAW handlers still carry raw fields for an allowed role (pass-through)', async () => {
   const q = quotesController();
+  // operations is a full-PII role → still allowed on the raw passenger read.
   const rawPax: any = await q.controller.findPassengers('q1', makeActor('operations'));
   assert.equal(rawPax[0].passportNumber, PII); // raw passengers still full PII
   const i = itineraryController();
-  const rawItin: any = await i.controller.findByQuoteId('q1', makeActor('operations'));
+  // CP-N3b2c1: raw itinerary is now restricted to cost-visible roles (operations is
+  // denied and uses the operational companion); assert unredacted pass-through with a
+  // still-allowed cost-visible role (finance). The projection itself is unchanged.
+  const rawItin: any = await i.controller.findByQuoteId('q1', makeActor('finance'));
   assert.equal(rawItin.days[0].dayItems[0].quoteService.pricingDescription, NOTE); // raw itinerary unchanged
 });
 

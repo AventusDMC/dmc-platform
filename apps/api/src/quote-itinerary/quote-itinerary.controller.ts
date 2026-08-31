@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
+import { canViewQuoteCostMargin } from '../auth/cost-visibility';
 import { mapItineraryToOperational } from '../quotes/quote-operational-secondary.mapper';
 import {
   CreateQuoteItineraryDayDto,
@@ -95,9 +96,23 @@ const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', '
 export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
 
+  // CP-N3b2c1: the raw day-by-day itinerary carries pricingDescription /
+  // overrideReason / contract identity / rate-variant ids, so it is restricted to
+  // cost-visible roles (admin / super_admin / finance, via the canonical
+  // QUOTE_COST_VISIBLE_ROLES allowlist). operations / viewer / agent / agent_admin /
+  // missing / unknown / future roles are denied here and read the operational
+  // itinerary companion instead. Fail-closed BEFORE the service call; explicit
+  // allowlist membership (canViewQuoteCostMargin) — never the coalescing @Roles guard.
   @Get('quotes/:quoteId/itinerary')
   async findByQuoteId(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    this.assertCostVisibleQuoteReadAccess(actor);
     return this.quoteItineraryService.findByQuoteId(quoteId, this.toCompanyActor(actor));
+  }
+
+  private assertCostVisibleQuoteReadAccess(actor: AuthenticatedActor | null | undefined) {
+    if (!canViewQuoteCostMargin(actor?.role)) {
+      throw new ForbiddenException('This raw quote itinerary endpoint is restricted to cost-visible roles.');
+    }
   }
 
   // CP-N3b2a2: additive non-finance operational companion for the day-by-day
