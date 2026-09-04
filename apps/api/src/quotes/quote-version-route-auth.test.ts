@@ -1,18 +1,25 @@
 import assert = require('node:assert/strict');
 import test = require('node:test');
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { QuotesController } from './quotes.controller';
 
 // CP-N3b2c3a — generic quote-version route authorization hardening + create-response
-// projection. Synthetic actors/quotes only. The seven version-lifecycle handlers are
+// projection. Synthetic actors/quotes only. The version-lifecycle handlers are
 // restricted to admin/super_admin/finance/viewer (agent_admin — which the coalescing
 // @Roles guard would admit — plus operations/agent/missing/unknown/future fail closed
 // BEFORE any service call). The POST /versions response is projected to metadata only.
+//
+// CP-N3b2c3c UPDATE: the raw version-DETAIL route (findVersion) is now RETIRED — it
+// returns an unconditional 404 for every role and no longer participates in the
+// allowlist matrix (it carries no @Roles and never calls a service). It is therefore
+// excluded from HANDLERS below and covered by its own retirement assertions (test 9
+// here + the dedicated quote-raw-version-detail-retired.test.ts). The remaining six
+// lifecycle handlers keep their explicit allowlist behavior unchanged.
 
 const ALLOWED = ['admin', 'super_admin', 'finance', 'viewer'] as const;
 const DENIED = ['operations', 'agent', 'agent_admin', 'some-unknown-future-role'] as const;
 const HANDLERS = [
-  'findVersions', 'getVersionReadiness', 'createVersion', 'findVersion',
+  'findVersions', 'getVersionReadiness', 'createVersion',
   'findVersionSummary', 'convertToBooking', 'updateStatus',
 ] as const;
 
@@ -151,13 +158,17 @@ test('8. findVersionSummary returns the service summary unchanged (incl. its cos
   assert.deepEqual(sum.cost, { totalCost: 1, margin: 1, marginPercent: 10 });
 });
 
-// 9. Raw version detail remains UNCHANGED for allowed roles in this temporary stage.
-test('9. findVersion still returns the raw version row (retirement is a later stage)', async () => {
-  const { controller } = createController();
-  const v: any = await controller.findVersion('q1', 'v1', makeActor('finance'));
-  assert.equal(v.id, 'v1');
-  assert.equal(v.quoteId, 'q1');
-  assert.deepEqual(v.snapshotJson, { totalCost: 1 }); // unchanged pass-through this stage
+// 9. Raw version detail is RETIRED (CP-N3b2c3c): 404 for every role, no service call.
+test('9. findVersion is retired — 404 for every role, reaches no service method', async () => {
+  for (const role of [...ALLOWED, ...DENIED, undefined]) {
+    const { controller, calls } = createController();
+    await assert.rejects(
+      () => (controller as any).findVersion('q1', 'v1', makeActor(role)),
+      NotFoundException,
+      `findVersion/${role ?? 'missing'} must 404`,
+    );
+    assert.equal(calls.total, 0, `findVersion/${role ?? 'missing'} must not call any service method`);
+  }
 });
 
 // 10. Accepted-version status + booking conversion behavior unchanged for allowed roles.
