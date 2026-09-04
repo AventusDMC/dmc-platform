@@ -832,8 +832,13 @@ describe('quote detail page regression', () => {
       'const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);',
     ]);
 
-    assert.match(versionPageSource, /formatMoney\(item\.totalSell, item\.currency\)/);
-    assert.doesNotMatch(versionPageSource, /supplier cost|Supplier cost|gross profit|Gross profit|margin|Margin/);
+    // CP-N3b2c3b: the historical-version page renders the SAFE curated summary (backend
+    // /versions/:versionId/summary), not the raw snapshot. It shows the sell-side summary
+    // total, and the cost/margin block ONLY when the backend includes it (finance-gated) —
+    // it never derives cost/margin client-side.
+    assert.match(versionPageSource, /formatMoney\(summary\.totalSell, summary\.quoteCurrency\)/);
+    assert.match(versionPageSource, /\{summary\.cost \? \(/);
+    assert.doesNotMatch(versionPageSource, /summary\.totalSell\s*[-*/]|totalSell\s*-\s*totalCost|const\s+\w*[Mm]argin\s*=/);
   });
 
   it('separates operator costing from client sell summary on the quote commercial panel', () => {
@@ -1280,7 +1285,9 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteSummaryPanelSource, ['getQuoteItemOriginAwareExcursionName']);
     expectSourceContains(quotePreviewPageSource, ['getQuoteItemOriginAwareExcursionName']);
     expectSourceContains(quoteClientItineraryViewSource, ['getQuoteItemOriginAwareExcursionName']);
-    expectSourceContains(versionPageSource, ['getQuoteItemOriginAwareExcursionName']);
+    // CP-N3b2c3b: the historical-version page no longer renders per-item excursion labels —
+    // it renders the safe curated summary (counts/totals), so it does not use the
+    // origin-aware excursion-name helper.
   });
 
   it('ranks QuoteTransportPicker vehicles by pax without hiding manual overrides', () => {
