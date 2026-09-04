@@ -18,13 +18,14 @@ function createService(prisma: any = {}) {
   return new QuotesService(prisma, { log: async () => null } as any, {} as any, {} as any, new QuotePricingService());
 }
 
-test('both version read routes are gated to admin/viewer/finance (operations excluded)', () => {
-  for (const handler of ['findVersions', 'findVersion']) {
-    const roles = (Reflect as any).getMetadata(ROLES_KEY, QuotesController.prototype[handler]);
-    assert.deepEqual(roles, ['admin', 'viewer', 'finance'], `${handler} roles`);
-    assert.equal(roles.includes('operations'), false, `${handler} excludes operations`);
-    assert.equal(roles.includes('agent'), false, `${handler} excludes agent`);
-  }
+test('version LIST route is gated to admin/viewer/finance (operations excluded)', () => {
+  // CP-N3b2c3c: findVersion (the raw version-DETAIL route) is now RETIRED and
+  // deliberately carries NO @Roles metadata (see the retirement test below); only the
+  // LIST route retains the explicit allowlist. Its role-gating is unchanged.
+  const roles = (Reflect as any).getMetadata(ROLES_KEY, QuotesController.prototype.findVersions);
+  assert.deepEqual(roles, ['admin', 'viewer', 'finance'], 'findVersions roles');
+  assert.equal(roles.includes('operations'), false, 'findVersions excludes operations');
+  assert.equal(roles.includes('agent'), false, 'findVersions excludes agent');
 });
 
 test('version read routes keep their existing paths', () => {
@@ -58,34 +59,23 @@ test('findVersions: allowed actor lists versions; out-of-scope/nonexistent quote
   assert.equal(called, 0);
 });
 
-test('findVersion: scoped to the quote; 404 when quote out-of-scope or version not in quote', async () => {
-  // In-scope + version belongs to quote → returns the version row unchanged.
-  const okController = new QuotesController(
+test('findVersion (raw version DETAIL route) is RETIRED — unconditional 404, no service call', async () => {
+  // CP-N3b2c3c: the raw version-detail route no longer scopes, loads, or returns a
+  // version. It fails closed with a 404 and never reaches findOne or findVersion,
+  // regardless of the actor. (Comprehensive per-role coverage lives in
+  // quote-raw-version-detail-retired.test.ts.)
+  let findOneCalled = 0;
+  let findVersionCalled = 0;
+  const controller = new QuotesController(
     {
-      findOne: async () => ({ id: 'quote-1' }),
-      findVersion: async (quoteId: string, versionId: string) => ({ id: versionId, quoteId, versionNumber: 2, label: 'x', snapshotJson: { totalCost: 1 } }),
+      findOne: async () => { findOneCalled += 1; return { id: 'quote-1' }; },
+      findVersion: async () => { findVersionCalled += 1; return { id: 'ver-2', quoteId: 'quote-1', snapshotJson: { totalCost: 1 } }; },
     } as any,
     {} as any,
   );
-  const v = await okController.findVersion('quote-1', 'ver-2', ACTOR as any);
-  assert.equal(v.id, 'ver-2');
-  assert.equal(v.quoteId, 'quote-1');
-
-  // Out-of-scope quote → 404 before touching the version.
-  let vCalled = 0;
-  const denyQuote = new QuotesController(
-    { findOne: async () => null, findVersion: async () => { vCalled += 1; return {}; } } as any,
-    {} as any,
-  );
-  await assert.rejects(() => denyQuote.findVersion('quote-x', 'ver-2', ACTOR as any), /Quote not found/);
-  assert.equal(vCalled, 0);
-
-  // Quote in scope but version belongs to another quote → service returns null → 404.
-  const denyVersion = new QuotesController(
-    { findOne: async () => ({ id: 'quote-1' }), findVersion: async () => null } as any,
-    {} as any,
-  );
-  await assert.rejects(() => denyVersion.findVersion('quote-1', 'ver-other', ACTOR as any), /Quote version not found/);
+  await assert.rejects(() => (controller as any).findVersion('quote-1', 'ver-2', ACTOR as any), /Quote version not found/);
+  assert.equal(findOneCalled, 0, 'retired route must not call findOne');
+  assert.equal(findVersionCalled, 0, 'retired route must not call findVersion');
 });
 
 test('service findVersion filters by BOTH versionId and quoteId (version cannot cross quotes)', async () => {

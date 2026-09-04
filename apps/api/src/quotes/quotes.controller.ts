@@ -1043,31 +1043,23 @@ export class QuotesController {
   }
 
   @Get(':id/versions/:versionId')
-  @Roles('admin', 'viewer', 'finance')
-  async findVersion(
-    @Param('id') id: string,
-    @Param('versionId') versionId: string,
-    @Actor() actor: AuthenticatedActor,
-  ) {
-    // Scope + gate the version DETAIL (which returns the raw QuoteVersion incl.
-    // snapshotJson): same policy as createVersion / version-readiness. Previously
-    // ungated and called findOne without the actor. findVersion still filters the
-    // version to this quote (404 if it belongs to another quote). Response shape
-    // is unchanged — surfacing a redacted summary is a later, separate slice.
-    this.assertVersionRouteAccess(actor);
-    const quote = await this.quotesService.findOne(id, actor);
-
-    if (!quote) {
-      throw new NotFoundException('Quote not found');
-    }
-
-    const version = await this.quotesService.findVersion(id, versionId);
-
-    if (!version) {
-      throw new NotFoundException('Quote version not found');
-    }
-
-    return version;
+  async findVersion() {
+    // CP-N3b2c3c: the raw historical version-DETAIL route is RETIRED. It previously
+    // returned the full QuoteVersion row incl. snapshotJson — a complete quote clone
+    // carrying Booking.accessToken (a live capability token), nested *SnapshotJson
+    // blobs, passenger/contact PII, cost/margin, supplier/contract identity, internal
+    // notes and arbitrary JSON. The route DECLARATION is kept so the path still
+    // resolves, but the handler now fails closed: its first and only behavior is an
+    // unconditional 404 for every authenticated role. There is deliberately NO @Roles
+    // metadata on this handler (so route-level role metadata cannot single out a role
+    // for a 403 before the handler runs); no assertVersionRouteAccess; no findOne /
+    // findVersion / snapshot load / any other service or database call; no redirect or
+    // fallback to /summary; no logging; and nothing is serialized. The safe,
+    // whitelist-curated summary remains at GET /quotes/:id/versions/:versionId/summary.
+    // Snapshot persistence and the server-side use of snapshotJson (accepted-version
+    // application, booking conversion) are unchanged. Global authentication is
+    // unchanged, so unauthenticated requests still receive the normal auth rejection.
+    throw new NotFoundException('Quote version not found');
   }
 
   @Get(':id/versions/:versionId/summary')
