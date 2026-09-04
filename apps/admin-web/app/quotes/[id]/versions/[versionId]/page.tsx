@@ -1,241 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatNightCountLabel } from '../../../../lib/formatters';
-import { getItineraryDayDisplay } from '../../../../lib/itineraryDayDisplay';
-import { getValidatedTripSummary } from '../../../../lib/tripSummary';
-import { getAutoItineraryDayCount } from '../../QuoteAutoItineraryBuilder.logic';
-import { QuoteHotelOptionSummary, type ProposalReadyQuoteOption } from '../../QuoteHotelOptionSummary';
-import { getQuoteItemOriginAwareExcursionName } from '../../excursion-origin-display';
-
+import type { VersionSummary } from '../../../../../lib/quote-types';
 import { adminPageFetchJson } from '../../../../lib/admin-server';
 
-const DATA_API_BASE_URL = '/api';
-
-type Company = {
-  id: string;
-  name: string;
-};
-
-type Contact = {
-  id: string;
-  firstName: string;
-  lastName: string;
-};
-
-type Itinerary = {
-  id: string;
-  dayNumber: number;
-  title: string;
-  description: string | null;
-  images: {
-    id: string;
-    sortOrder: number;
-    galleryImage: {
-      id: string;
-      title: string;
-      imageUrl: string;
-      destination: string | null;
-      category: string | null;
-    };
-  }[];
-};
-
-type QuoteItem = {
-  id: string;
-  itineraryId: string | null;
-  serviceDate: string | null;
-  startTime: string | null;
-  pickupTime: string | null;
-  pickupLocation: string | null;
-  meetingPoint: string | null;
-  participantCount: number | null;
-  adultCount: number | null;
-  childCount: number | null;
-  reconfirmationRequired: boolean;
-  reconfirmationDueAt: string | null;
-  hotelId: string | null;
-  contractId: string | null;
-  seasonName: string | null;
-  roomCategoryId: string | null;
-  occupancyType: 'SGL' | 'DBL' | 'TPL' | null;
-  mealPlan: 'BB' | 'HB' | 'FB' | null;
-  quantity: number;
-  baseCost: number;
-  overrideCost: number | null;
-  overrideReason?: string | null;
-  useOverride: boolean;
-  unitCost?: number;
-  currency: string;
-  pricingDescription: string | null;
-  totalSell: number;
-  service: {
-    id: string;
-    name: string;
-    category: string;
-  };
-  appliedVehicleRate: {
-    id: string;
-    routeName: string;
-    vehicle: {
-      name: string;
-    };
-    serviceType: {
-      name: string;
-    };
-  } | null;
-  touringRoute?: {
-    id?: string;
-    name?: string | null;
-    startCity?: string | null;
-  } | null;
-  hotel: {
-    name: string;
-  } | null;
-  contract: {
-    name: string;
-  } | null;
-  roomCategory: {
-    name: string;
-  } | null;
-};
-
-type QuoteOption = {
-  id: string;
-  kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION' | string | null;
-  name: string;
-  notes: string | null;
-  totalSell: number;
-  pricePerPax: number;
-  quoteItems: QuoteItem[];
-  hotelOptions?: ProposalReadyQuoteOption['hotelOptions'];
-};
-
-type QuoteScenario = {
-  id: string;
-  paxCount: number;
-  totalCost: number;
-  totalSell: number;
-  pricePerPax: number;
-};
-
-type QuoteSnapshot = {
-  id: string;
-  title: string;
-  description: string | null;
-  inclusionsText?: string | null;
-  exclusionsText?: string | null;
-  termsNotesText?: string | null;
-  pricingMode: 'SLAB' | 'FIXED';
-  pricingType: 'simple' | 'group';
-  fixedPricePerPerson: number;
-  pricingSlabs: Array<{
-    id: string;
-    minPax: number;
-    maxPax: number | null;
-    price: number;
-    actualPax?: number;
-    focPax?: number;
-    payingPax?: number;
-    totalCost?: number;
-    totalSell?: number;
-    pricePerPayingPax?: number;
-    pricePerActualPax?: number | null;
-    notes?: string | null;
-  }>;
-  focType: 'none' | 'ratio' | 'fixed';
-  focRatio: number | null;
-  focCount: number | null;
-  focRoomType: 'single' | 'double' | null;
-  resolvedFocCount: number;
-  resolvedFocRoomType: 'single' | 'double' | null;
-  adults: number;
-  children: number;
-  roomCount: number;
-  nightCount: number;
-  travelStartDate: string | null;
-  singleSupplement?: number | null;
-  totalSell: number;
-  pricePerPax: number;
-  currentPricing?: {
-    pricingType: 'simple' | 'group';
-    pricingMode: 'SLAB' | 'FIXED';
-    paxCount: number;
-    isAvailable: boolean;
-    label: string;
-    value: number | null;
-    message: string | null;
-      matchedSlab: {
-        id?: string;
-        minPax: number;
-        maxPax: number | null;
-        price: number;
-        label: string;
-        actualPax?: number;
-        focPax?: number;
-        payingPax?: number;
-        totalCost?: number;
-        totalSell?: number;
-        pricePerPayingPax?: number;
-        pricePerActualPax?: number | null;
-      } | null;
-    } | null;
-  priceComputation?: {
-    status: 'ok' | 'missing_coverage' | 'invalid_config';
-    mode: 'simple' | 'group';
-    requestedPax: number;
-    matchedSlab?: {
-      id?: string;
-      minPax: number;
-      maxPax: number | null;
-      pricePerPayingPax: number;
-      label: string;
-      actualPax: number;
-      focPax: number;
-      payingPax: number;
-      totalCost?: number;
-      totalSell?: number;
-      pricePerActualPax?: number | null;
-    };
-    totals?: {
-      pricePerPayingPax?: number;
-      pricePerActualPax?: number;
-      totalPrice?: number;
-      totalCost?: number;
-      totalSell?: number;
-      actualPax?: number;
-      focPax?: number;
-      payingPax?: number;
-      focCount?: number;
-      payablePax?: number;
-      singleSupplement?: number;
-    };
-    display: {
-      summaryLabel: string;
-      summaryValue?: string | null;
-      pricingText?: string;
-      focText?: string;
-      singleSupplementText?: string;
-      slabLines?: Array<{ label: string; value: string; detail?: string }>;
-      contextLines?: string[];
-    };
-    warnings: string[];
-  } | null;
-  company: Company;
-  contact: Contact;
-  itineraries: Itinerary[];
-  quoteItems: QuoteItem[];
-  quoteOptions: QuoteOption[];
-  scenarios: QuoteScenario[];
-};
-
-type QuoteVersion = {
-  id: string;
-  quoteId: string;
-  versionNumber: number;
-  label: string | null;
-  createdAt: string;
-  snapshotJson: QuoteSnapshot;
-};
+// CP-N3b2c3b: the Classic historical-version page renders ONLY the safe,
+// whitelist-curated version summary (backend GET /quotes/:id/versions/:versionId
+// /summary via the /summary admin proxy). It never fetches, and never falls back
+// to, the raw version-detail route (…/versions/:versionId) that returns the full
+// snapshotJson — that payload carries cost/margin, PII, contact/company, supplier
+// identity, internal notes, capability tokens and arbitrary JSON. This page shows
+// none of that. The `cost` block is rendered purely on backend presence (finance
+// roles); the page never computes cost and never trusts a client-side role.
 
 type QuoteVersionPageProps = {
   params: Promise<{
@@ -244,276 +20,86 @@ type QuoteVersionPageProps = {
   }>;
 };
 
-async function getQuoteVersion(id: string, versionId: string): Promise<QuoteVersion | null> {
-  return adminPageFetchJson<QuoteVersion | null>(`${DATA_API_BASE_URL}/quotes/${id}/versions/${versionId}`, 'Quote version', {
-    cache: 'no-store',
-    allow404: true,
-  });
+async function getVersionSummary(id: string, versionId: string): Promise<VersionSummary | null> {
+  // Fetch ONLY the safe summary. No fallback to raw detail on any outcome:
+  //  - 404 → allow404 returns null → notFound() below.
+  //  - 401 → adminPageFetchJson redirects to the session-expired page.
+  //  - 403 / malformed / non-JSON / empty / timeout → it throws (surfaced by the
+  //    Next error boundary). None of these paths retry the raw route.
+  return adminPageFetchJson<VersionSummary | null>(
+    `/api/quotes/${id}/versions/${versionId}/summary`,
+    'Quote version summary',
+    { cache: 'no-store', allow404: true },
+  );
 }
 
-function formatMoney(amount: number, currency = 'USD') {
-  const safeAmount = Number.isFinite(amount) ? amount : 0;
+function formatMoney(amount: number | null | undefined, currency: string | null | undefined) {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) {
+    return '—';
+  }
 
-  return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
+  return `${currency || 'USD'} ${amount.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function parseSupportText(text: string | null | undefined) {
-  return (text || '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^[\s*-]+/, '').trim())
-    .filter((line) => Boolean(line));
+function formatPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+
+  return `${value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
-function getPriceSummary(quote: QuoteSnapshot) {
-  if (quote.priceComputation) {
-    return {
-      label: quote.priceComputation.display.summaryLabel,
-      value: quote.priceComputation.display.summaryValue ?? null,
-      slabLines: quote.priceComputation.display.slabLines || [],
-      contextLines: quote.priceComputation.display.contextLines || [],
-      notes: Array.from(
-        new Set([
-          ...(quote.priceComputation.display.pricingText && quote.priceComputation.status === 'invalid_config'
-            ? [quote.priceComputation.display.pricingText]
-            : []),
-          ...(quote.priceComputation.display.singleSupplementText ? [quote.priceComputation.display.singleSupplementText] : []),
-          ...(quote.priceComputation.display.focText ? [quote.priceComputation.display.focText] : []),
-          ...quote.priceComputation.warnings,
-        ]),
-      ),
-    };
+function formatCount(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '—';
   }
 
-  const guestCount = Math.max(quote.adults + quote.children, 1);
-  if (quote.pricingMode === 'SLAB') {
-    return {
-      label: 'Group pricing',
-      value:
-        quote.currentPricing?.isAvailable && quote.currentPricing.value !== null
-          ? formatMoney(quote.currentPricing.value)
-          : null,
-      slabLines: (quote.pricingSlabs || []).map((slab) => ({
-        label:
-          `${slab.maxPax === null ? `${slab.minPax}+ guests` : slab.minPax === slab.maxPax ? `${slab.minPax} guest` : `${slab.minPax}\u2013${slab.maxPax} guests`}${slab.focPax ? ` + ${slab.focPax} FOC` : ''}`,
-        value: formatMoney(slab.pricePerPayingPax ?? slab.price),
-        detail:
-          slab.actualPax !== undefined
-            ? `${slab.actualPax} actual | ${slab.focPax ?? 0} FOC | ${slab.payingPax ?? slab.actualPax} paying`
-            : undefined,
-      })),
-      contextLines: [
-        ...(quote.currentPricing?.matchedSlab
-          ? [`Selected group size: ${quote.currentPricing.paxCount} pax (${quote.currentPricing.matchedSlab.label})`]
-          : []),
-        'Accommodation in double/twin sharing room',
-      ],
-      notes: [
-        ...(!quote.currentPricing?.isAvailable ? [quote.currentPricing?.message || 'Price unavailable for selected passenger count.'] : []),
-        quote.singleSupplement !== null && quote.singleSupplement !== undefined
-          ? `Single supplement: ${formatMoney(quote.singleSupplement)} per person`
-          : 'Single supplement available on request',
-      ],
-    };
-  }
-
-  return {
-    label: quote.currentPricing?.label || 'Fixed price',
-    value: formatMoney(quote.currentPricing?.value ?? quote.fixedPricePerPerson),
-    slabLines: [] as Array<{ label: string; value: string; detail?: string }>,
-    contextLines: [`Based on ${guestCount} guests sharing`, 'Accommodation in double/twin sharing room'],
-    notes: [
-      quote.singleSupplement !== null && quote.singleSupplement !== undefined
-        ? `Single supplement: ${formatMoney(quote.singleSupplement)} per person`
-        : 'Single supplement available on request',
-    ],
-  };
+  return value.toLocaleString('en-US');
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return '—';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(parsed);
 }
 
-function getItemSummary(item: QuoteItem) {
-  let summary = '';
-
-  if (item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan) {
-    summary = `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
-  } else if (item.appliedVehicleRate) {
-    summary = `${item.appliedVehicleRate.routeName} | ${item.appliedVehicleRate.vehicle.name} | ${item.appliedVehicleRate.serviceType.name}`;
-  } else {
-    const finalCost =
-      item.useOverride && item.overrideCost !== null ? item.overrideCost : (item.baseCost ?? item.unitCost ?? 0);
-    summary = item.pricingDescription || `Qty ${item.quantity} at ${formatMoney(finalCost, item.currency)}`;
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return '—';
   }
 
-  if (item.useOverride && item.overrideCost !== null) {
-    return `${summary} | Override active`;
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
   }
 
-  return summary;
-}
-
-function getItemDisplayTitle(item: QuoteItem) {
-  if (item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan) {
-    return `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
-  }
-
-  if (item.touringRoute) {
-    return getQuoteItemOriginAwareExcursionName({
-      serviceName: item.service.name,
-      overrideReason: item.overrideReason,
-      touringRoute: item.touringRoute,
-    });
-  }
-
-  return item.service.name;
-}
-
-function resolveQuoteItemServiceDate(
-  travelStartDate: string | null,
-  itineraries: Itinerary[],
-  item: Pick<QuoteItem, 'serviceDate' | 'itineraryId'>,
-) {
-  if (item.serviceDate) {
-    return item.serviceDate;
-  }
-
-  if (!travelStartDate || !item.itineraryId) {
-    return null;
-  }
-
-  const itinerary = itineraries.find((day) => day.id === item.itineraryId);
-
-  if (!itinerary) {
-    return null;
-  }
-
-  const resolvedDate = new Date(travelStartDate);
-  resolvedDate.setUTCDate(resolvedDate.getUTCDate() + (itinerary.dayNumber - 1));
-
-  return resolvedDate.toISOString();
-}
-
-function getReconfirmationWarning(reconfirmationDueAt: string | null) {
-  if (!reconfirmationDueAt) {
-    return null;
-  }
-
-  const dueAt = new Date(reconfirmationDueAt).getTime();
-
-  if (Number.isNaN(dueAt)) {
-    return null;
-  }
-
-  const now = Date.now();
-  if (dueAt <= now) {
-    return 'Reconfirmation overdue';
-  }
-
-  return dueAt - now <= 48 * 60 * 60 * 1000 ? 'Reconfirmation due soon' : null;
-}
-
-function renderServices(items: QuoteItem[], emptyLabel: string, quote: Pick<QuoteSnapshot, 'travelStartDate' | 'itineraries'>) {
-  if (items.length === 0) {
-    return <p className="empty-state">{emptyLabel}</p>;
-  }
-
-  return (
-    <div className="quote-preview-service-list">
-      {items.map((item) => (
-        <article key={item.id} className="quote-preview-service-row">
-          <div>
-            <strong>{getItemDisplayTitle(item)}</strong>
-            {item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan ? null : (
-              <>
-                <p>
-                  {item.service.category} | {getItemSummary(item)}
-                </p>
-                {resolveQuoteItemServiceDate(quote.travelStartDate, quote.itineraries, item) ||
-                item.startTime ||
-                item.pickupTime ||
-                item.pickupLocation ||
-                item.meetingPoint ||
-                item.participantCount !== null ||
-                item.reconfirmationRequired ? (
-                  <div>
-                    <p>
-                      {[
-                        resolveQuoteItemServiceDate(quote.travelStartDate, quote.itineraries, item)
-                          ? `Date ${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(resolveQuoteItemServiceDate(quote.travelStartDate, quote.itineraries, item)!))}`
-                          : null,
-                        item.startTime ? `Start ${item.startTime}` : null,
-                        item.pickupTime ? `Pickup ${item.pickupTime}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' | ')}
-                    </p>
-                    {(item.pickupLocation || item.meetingPoint) ? (
-                      <p>
-                        {[item.pickupLocation ? `Pickup ${item.pickupLocation}` : null, item.meetingPoint ? `Meeting ${item.meetingPoint}` : null]
-                          .filter(Boolean)
-                          .join(' | ')}
-                      </p>
-                    ) : null}
-                    {(item.participantCount !== null || item.adultCount !== null || item.childCount !== null) ? (
-                      <p>
-                        {[item.participantCount !== null ? `${item.participantCount} pax` : null, item.adultCount !== null ? `${item.adultCount} adults` : null, item.childCount !== null ? `${item.childCount} children` : null]
-                          .filter(Boolean)
-                          .join(' | ')}
-                      </p>
-                    ) : null}
-                    {item.reconfirmationRequired ? (
-                      <p>
-                        Reconfirmation required
-                        {item.reconfirmationDueAt ? ` | Due ${formatDateTime(item.reconfirmationDueAt)}` : ''}
-                        {getReconfirmationWarning(item.reconfirmationDueAt) ? ` | ${getReconfirmationWarning(item.reconfirmationDueAt)}` : ''}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
-          <strong>{formatMoney(item.totalSell, item.currency)}</strong>
-        </article>
-      ))}
-    </div>
-  );
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 }
 
 export default async function QuoteVersionPage({ params }: QuoteVersionPageProps) {
   const { id, versionId } = await params;
-  const version = await getQuoteVersion(id, versionId);
+  const summary = await getVersionSummary(id, versionId);
 
-  if (!version) {
+  if (!summary) {
     notFound();
   }
 
-  const quote = version.snapshotJson;
-
-  if (!quote) {
-    notFound();
-  }
-
-  const totalPax = quote.adults + quote.children;
-  const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
-  const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
-  const unassignedItems = quote.quoteItems.filter((item) => !item.itineraryId);
-  const priceSummary = getPriceSummary(quote);
-  const hasItineraryDays = sortedDays.length > 0;
-  const tripSummary = getValidatedTripSummary({
-    quoteTitle: quote.title,
-    quoteDescription: quote.description,
-    dayTitles: sortedDays.map((day) => day.title),
-    totalPax,
-    nightCount: quote.nightCount,
-  });
+  const totalPax =
+    summary.adults !== null || summary.children !== null
+      ? (summary.adults ?? 0) + (summary.children ?? 0)
+      : null;
 
   return (
     <main className="page">
@@ -526,19 +112,21 @@ export default async function QuoteVersionPage({ params }: QuoteVersionPageProps
           <div>
             <p className="eyebrow">Saved Quote Version</p>
             <h1 className="section-title quote-title">
-              {quote.title} | v{version.versionNumber}
+              {summary.title || 'Untitled quote'} | v{summary.versionNumber}
             </h1>
-            <p className="detail-copy">{tripSummary}</p>
+            <p className="detail-copy">
+              {[
+                summary.quoteNumber ? `Quote ${summary.quoteNumber}` : null,
+                summary.statusAtSnapshot ? `Status ${summary.statusAtSnapshot}` : null,
+              ]
+                .filter(Boolean)
+                .join(' | ') || 'Read-only summary of this saved version.'}
+            </p>
           </div>
           <div className="quote-preview-meta">
-            <strong>{quote.company.name}</strong>
-            <p>
-              {quote.contact.firstName} {quote.contact.lastName}
-            </p>
-            <p>
-              {totalPax} pax | {quote.roomCount} rooms | {formatNightCountLabel(quote.nightCount)}
-            </p>
-            <p>Saved {formatDateTime(version.createdAt)}</p>
+            <strong>Version {summary.versionNumber}</strong>
+            {summary.label ? <p>{summary.label}</p> : null}
+            <p>Saved {formatDateTime(summary.createdAt)}</p>
           </div>
         </header>
 
@@ -548,152 +136,137 @@ export default async function QuoteVersionPage({ params }: QuoteVersionPageProps
             <div className="quote-preview-total-list">
               <div>
                 <span>Version</span>
-                <strong>{version.versionNumber}</strong>
+                <strong>{summary.versionNumber}</strong>
+              </div>
+              <div>
+                <span>Label</span>
+                <strong>{summary.label || '—'}</strong>
               </div>
               <div>
                 <span>Saved at</span>
-                <strong>{formatDateTime(version.createdAt)}</strong>
+                <strong>{formatDateTime(summary.createdAt)}</strong>
+              </div>
+              <div>
+                <span>Status at snapshot</span>
+                <strong>{summary.statusAtSnapshot || '—'}</strong>
               </div>
             </div>
-            <p className="detail-copy">{version.label || 'Snapshot saved from the quote state at that time.'}</p>
+            <p className="detail-copy">
+              Read-only summary saved from the quote state at that time. Full historical detail is not shown.
+            </p>
+          </article>
+
+          <article className="detail-card">
+            <p className="eyebrow">Trip Summary</p>
+            <div className="quote-preview-total-list">
+              <div>
+                <span>Travel start</span>
+                <strong>{formatDate(summary.travelStartDate)}</strong>
+              </div>
+              <div>
+                <span>Valid until</span>
+                <strong>{formatDate(summary.validUntil)}</strong>
+              </div>
+              <div>
+                <span>Nights</span>
+                <strong>{summary.nightCount !== null ? formatNightCountLabel(summary.nightCount) : '—'}</strong>
+              </div>
+              <div>
+                <span>Rooms</span>
+                <strong>{formatCount(summary.roomCount)}</strong>
+              </div>
+              <div>
+                <span>Passengers</span>
+                <strong>
+                  {totalPax !== null
+                    ? `${formatCount(totalPax)} (${formatCount(summary.adults)} adults | ${formatCount(summary.children)} children)`
+                    : '—'}
+                </strong>
+              </div>
+              <div>
+                <span>Services</span>
+                <strong>{formatCount(summary.itemCount)}</strong>
+              </div>
+              <div>
+                <span>Itinerary days</span>
+                <strong>{formatCount(summary.dayCount)}</strong>
+              </div>
+            </div>
           </article>
 
           <article className="detail-card">
             <p className="eyebrow">Price Summary</p>
-            <p className="detail-copy">{priceSummary.label}</p>
-            {priceSummary.value ? <h2 className="section-title">{priceSummary.value}</h2> : null}
-            {priceSummary.slabLines.map((slab) => (
-              <p key={slab.label} className="detail-copy">
-                <strong>{slab.label}</strong> {slab.value}
-                {slab.detail ? <span> | {slab.detail}</span> : null}
-              </p>
-            ))}
-            {priceSummary.contextLines.map((line) => (
-              <p key={line} className="detail-copy">
-                {line}
-              </p>
-            ))}
-            {priceSummary.notes.map((note) => (
-              <p key={note} className="detail-copy">
-                {note}
-              </p>
-            ))}
-          </article>
-
-          <article className="detail-card">
-            <p className="eyebrow">Option Summary</p>
-            <div className="quote-preview-option-list">
-              <QuoteHotelOptionSummary options={quote.quoteOptions} formatMoney={formatMoney} />
+            <div className="quote-preview-total-list">
+              <div>
+                <span>Currency</span>
+                <strong>{summary.quoteCurrency || '—'}</strong>
+              </div>
+              <div>
+                <span>Total sell</span>
+                <strong>{formatMoney(summary.totalSell, summary.quoteCurrency)}</strong>
+              </div>
+              <div>
+                <span>Price per pax</span>
+                <strong>{formatMoney(summary.pricePerPax, summary.quoteCurrency)}</strong>
+              </div>
+              <div>
+                <span>Fixed price / person</span>
+                <strong>{formatMoney(summary.fixedPricePerPerson, summary.quoteCurrency)}</strong>
+              </div>
             </div>
           </article>
         </section>
+
+        {summary.cost ? (
+          <section className="detail-card">
+            <p className="eyebrow">Cost &amp; Margin</p>
+            <div className="quote-preview-total-list">
+              <div>
+                <span>Total cost</span>
+                <strong>{formatMoney(summary.cost.totalCost, summary.quoteCurrency)}</strong>
+              </div>
+              <div>
+                <span>Margin</span>
+                <strong>{formatMoney(summary.cost.margin, summary.quoteCurrency)}</strong>
+              </div>
+              <div>
+                <span>Margin %</span>
+                <strong>{formatPercent(summary.cost.marginPercent)}</strong>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <section className="detail-card">
-          <p className="eyebrow">Itinerary By Day</p>
-          <div className="quote-preview-day-list">
-            {!hasItineraryDays ? (
-              <p className="empty-state">Detailed day-by-day itinerary will be provided upon confirmation.</p>
-            ) : (
-              sortedDays.map((day) => {
-                const dayItems = quote.quoteItems.filter((item) => item.itineraryId === day.id);
-                const primaryImage = day.images[0]?.galleryImage || null;
-                const displayDay = getItineraryDayDisplay(day);
-                return (
-                  <article key={day.id} className="quote-preview-day-card">
-                    <div className="quote-preview-day-head">
-                      <div>
-                        <p className="eyebrow">{displayDay.dayLabel}</p>
-                        <p className="detail-copy">{displayDay.city}</p>
-                        <strong>{displayDay.title}</strong>
-                        <p>{displayDay.description}</p>
-                      </div>
-                    </div>
-                    {primaryImage ? (
-                      <figure className="quote-preview-day-image">
-                        <img src={primaryImage.imageUrl} alt={primaryImage.title} className="quote-preview-day-image-asset" />
-                      </figure>
-                    ) : null}
-                    {renderServices(dayItems, 'No services assigned to this day.', quote)}
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        {hasItineraryDays ? (
-          <section className="detail-card">
-            <p className="eyebrow">Services Outside Itinerary</p>
-            {renderServices(unassignedItems, 'No extra services outside the itinerary.', quote)}
-          </section>
-        ) : null}
-
-        {parseSupportText(quote.inclusionsText).length > 0 ? (
-          <section className="detail-card">
-            <p className="eyebrow">Inclusions</p>
-            {parseSupportText(quote.inclusionsText).map((line) => (
-              <p key={line} className="detail-copy">
-                {line}
-              </p>
-            ))}
-          </section>
-        ) : null}
-
-        {parseSupportText(quote.exclusionsText).length > 0 ? (
-          <section className="detail-card">
-            <p className="eyebrow">Exclusions</p>
-            {parseSupportText(quote.exclusionsText).map((line) => (
-              <p key={line} className="detail-copy">
-                {line}
-              </p>
-            ))}
-          </section>
-        ) : null}
-
-        {parseSupportText(quote.termsNotesText).length > 0 ? (
-          <section className="detail-card">
-            <p className="eyebrow">Terms & Notes</p>
-            {parseSupportText(quote.termsNotesText).map((line) => (
-              <p key={line} className="detail-copy">
-                {line}
-              </p>
-            ))}
-          </section>
-        ) : null}
-
-        {quote.pricingMode === 'SLAB' ? (
-          <section className="detail-card">
-            <p className="eyebrow">Group Pricing Table</p>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Pax count</th>
-                    <th>Total sell</th>
-                    <th>Price per pax</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quote.scenarios.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="empty-state">
-                        No group pricing generated yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    quote.scenarios.map((scenario) => (
-                      <tr key={scenario.id}>
-                        <td>{scenario.paxCount}</td>
-                        <td>{formatMoney(scenario.totalSell)}</td>
-                        <td>{formatMoney(scenario.pricePerPax)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          <p className="eyebrow">Readiness</p>
+          <div className="quote-preview-total-list">
+            <div>
+              <span>Inclusions</span>
+              <strong>{summary.hasInclusions ? 'Present' : 'None'}</strong>
             </div>
-          </section>
-        ) : null}
+            <div>
+              <span>Exclusions</span>
+              <strong>{summary.hasExclusions ? 'Present' : 'None'}</strong>
+            </div>
+            <div>
+              <span>Completeness</span>
+              <strong>{summary.completeness.ok ? 'Ready' : 'Needs review'}</strong>
+            </div>
+            <div>
+              <span>Accept will succeed</span>
+              <strong>{summary.acceptWillSucceed ? 'Yes' : 'No'}</strong>
+            </div>
+          </div>
+          {!summary.completeness.ok && summary.completeness.reasons.length > 0 ? (
+            <>
+              {summary.completeness.reasons.map((reason) => (
+                <p key={reason} className="detail-copy">
+                  {reason}
+                </p>
+              ))}
+            </>
+          ) : null}
+        </section>
       </section>
     </main>
   );
