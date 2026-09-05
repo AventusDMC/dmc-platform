@@ -16,12 +16,15 @@ import { QuotesController } from './quotes.controller';
 // here + the dedicated quote-raw-version-detail-retired.test.ts). The remaining six
 // lifecycle handlers keep their explicit allowlist behavior unchanged.
 
-const ALLOWED = ['admin', 'super_admin', 'finance', 'viewer'] as const;
-const DENIED = ['operations', 'agent', 'agent_admin', 'some-unknown-future-role'] as const;
-const HANDLERS = [
-  'findVersions', 'getVersionReadiness', 'createVersion',
-  'findVersionSummary', 'convertToBooking', 'updateStatus',
-] as const;
+// CP-N4a UPDATE: strict read-only Viewer. Version READS stay open to Viewer; version
+// WRITES (create / convert-to-booking / status) are now quote-write roles only and deny
+// Viewer before any service call.
+const READ_HANDLERS = ['findVersions', 'getVersionReadiness', 'findVersionSummary'] as const;
+const WRITE_HANDLERS = ['createVersion', 'convertToBooking', 'updateStatus'] as const;
+const READ_ALLOWED = ['admin', 'super_admin', 'finance', 'viewer'] as const;
+const WRITE_ALLOWED = ['admin', 'super_admin', 'finance'] as const;
+const READ_DENIED = ['operations', 'agent', 'agent_admin', 'some-unknown-future-role'] as const;
+const WRITE_DENIED = ['viewer', 'operations', 'agent', 'agent_admin', 'some-unknown-future-role'] as const;
 
 function makeActor(role: string | undefined) {
   return (role === undefined ? { id: 'u1', companyId: 'dmc' } : { id: 'u1', companyId: 'dmc', role }) as any;
@@ -74,10 +77,20 @@ async function invoke(controller: any, name: string, actor: any) {
   }
 }
 
-// 1. Each handler allows admin/super_admin/finance/viewer (reaches the service).
-for (const handler of HANDLERS) {
-  for (const role of ALLOWED) {
-    test(`1. "${handler}" allows role "${role}" (reaches service)`, async () => {
+// 1. Version READ handlers allow admin/super_admin/finance/viewer (reach the service);
+//    version WRITE handlers allow admin/super_admin/finance only (Viewer denied).
+for (const handler of READ_HANDLERS) {
+  for (const role of READ_ALLOWED) {
+    test(`1. read "${handler}" allows role "${role}" (reaches service)`, async () => {
+      const { controller, calls } = createController();
+      await invoke(controller, handler, makeActor(role));
+      assert.ok(calls.total >= 1, `${handler}/${role} should reach a service method`);
+    });
+  }
+}
+for (const handler of WRITE_HANDLERS) {
+  for (const role of WRITE_ALLOWED) {
+    test(`1. write "${handler}" allows role "${role}" (reaches service)`, async () => {
       const { controller, calls } = createController();
       await invoke(controller, handler, makeActor(role));
       assert.ok(calls.total >= 1, `${handler}/${role} should reach a service method`);
@@ -85,24 +98,29 @@ for (const handler of HANDLERS) {
   }
 }
 
-// 2. Each handler rejects operations/agent/agent_admin/missing/unknown/future BEFORE any service call.
-for (const handler of HANDLERS) {
-  for (const role of DENIED) {
-    test(`2. "${handler}" rejects role "${role}" before any service call`, async () => {
+// 2. READ handlers reject operations/agent/agent_admin/missing/unknown/future; WRITE
+//    handlers additionally reject viewer — all BEFORE any service call.
+for (const handler of READ_HANDLERS) {
+  for (const role of [...READ_DENIED, undefined]) {
+    test(`2. read "${handler}" rejects role "${role ?? 'missing'}" before any service call`, async () => {
       const { controller, calls } = createController();
       await assert.rejects(() => invoke(controller, handler, makeActor(role)), ForbiddenException);
-      assert.equal(calls.total, 0, `${handler}/${role} must not call any service method`);
+      assert.equal(calls.total, 0, `${handler}/${role ?? 'missing'} must not call any service method`);
     });
   }
-  test(`2. "${handler}" rejects missing role before any service call`, async () => {
-    const { controller, calls } = createController();
-    await assert.rejects(() => invoke(controller, handler, makeActor(undefined)), ForbiddenException);
-    assert.equal(calls.total, 0);
-  });
+}
+for (const handler of WRITE_HANDLERS) {
+  for (const role of [...WRITE_DENIED, undefined]) {
+    test(`2. write "${handler}" rejects role "${role ?? 'missing'}" before any service call`, async () => {
+      const { controller, calls } = createController();
+      await assert.rejects(() => invoke(controller, handler, makeActor(role)), ForbiddenException);
+      assert.equal(calls.total, 0, `${handler}/${role ?? 'missing'} must not call any service method`);
+    });
+  }
 }
 
-// 3. Version creation still calls the service once for allowed roles.
-for (const role of ALLOWED) {
+// 3. Version creation still calls the service once for each write-allowed role.
+for (const role of WRITE_ALLOWED) {
   test(`3. createVersion calls the service exactly once for "${role}"`, async () => {
     const { controller, calls } = createController();
     await controller.createVersion('q1', { label: 'x' }, {}, makeActor(role));
@@ -134,10 +152,11 @@ test('5. createVersion response leaks no snapshotJson/accessToken/PII/nested/arb
   }
 });
 
-// 6. Builder V2's versionNumber consumer + Classic's response-ignored save flow remain compatible.
+// 6. Builder V2's versionNumber consumer + Classic's response-ignored save flow remain
+//    compatible for a write-allowed role (CP-N4a: viewer can no longer create versions).
 test('6. create response exposes a numeric versionNumber (builder-v2 consumer) and is body-safe (Classic)', async () => {
   const { controller } = createController();
-  const res: any = await controller.createVersion('q1', { label: 'x' }, {}, makeActor('viewer'));
+  const res: any = await controller.createVersion('q1', { label: 'x' }, {}, makeActor('finance'));
   assert.equal(typeof res.versionNumber, 'number');
   assert.equal(res.versionNumber, 3);
 });
@@ -160,7 +179,7 @@ test('8. findVersionSummary returns the service summary unchanged (incl. its cos
 
 // 9. Raw version detail is RETIRED (CP-N3b2c3c): 404 for every role, no service call.
 test('9. findVersion is retired — 404 for every role, reaches no service method', async () => {
-  for (const role of [...ALLOWED, ...DENIED, undefined]) {
+  for (const role of ['admin', 'super_admin', 'finance', 'viewer', 'operations', 'agent', 'agent_admin', 'some-unknown-future-role', undefined]) {
     const { controller, calls } = createController();
     await assert.rejects(
       () => (controller as any).findVersion('q1', 'v1', makeActor(role)),

@@ -55,6 +55,26 @@ const RAW_ROOMING_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin'];
 // existing @Roles decorators — super_admin is admitted explicitly, agent_admin /
 // operations / agent / missing / unknown / future are denied. NOT the coalescing guard.
 const VERSION_ROUTE_ACCESS_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'viewer'];
+
+// CP-N4a: strict read-only Viewer. Explicit fail-closed allowlists for the generic
+// internal quote WRITE / CAPABILITY / EXPORT paths. Viewer (read-only), agent,
+// agent_admin (which the coalescing @Roles guard would admit via 'admin'), missing,
+// unknown and future-unlisted roles are denied BEFORE any service / snapshot / token /
+// PDF / email / booking / invoice / database call. These preserve — never widen — the
+// existing Admin / Super Admin / Finance / Operations authority on each path:
+//   * QUOTE_WRITE_ROLES        — quote/content/status/version-write/invoice/convert/
+//                                pricing/options/items/templates/scenarios + public-link
+//                                capability + item display-text (admin/super_admin/finance).
+//   * QUOTE_DELETE_ROLES       — hard quote delete (admin/super_admin only).
+//   * QUOTE_OPERATIONAL_WRITE_ROLES — passenger/rooming mutations + pricing preview/apply
+//                                + proposal-email send (admin/super_admin/operations),
+//                                mirroring the endpoints' existing Operations authority.
+//   * QUOTE_EXPORT_ROLES       — proposal / PDF / export downloads (admin/super_admin/
+//                                finance/operations); Viewer fails closed this slice.
+const QUOTE_WRITE_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance'];
+const QUOTE_DELETE_ROLES: readonly DmcRole[] = ['admin', 'super_admin'];
+const QUOTE_OPERATIONAL_WRITE_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'operations'];
+const QUOTE_EXPORT_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations'];
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 import { stripRestrictedQuoteCostWriteFields } from './quote-cost-write-policy';
@@ -367,6 +387,48 @@ export class QuotesController {
     }
   }
 
+  // CP-N4a: fail-closed gate for generic quote WRITE + public-link CAPABILITY paths.
+  // admin / super_admin / finance only. Viewer (read-only), operations, agent,
+  // agent_admin, missing, unknown, future-unlisted are denied BEFORE any service call.
+  // Explicit allowlist membership — never the coalescing @Roles guard.
+  private assertQuoteWriteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(QUOTE_WRITE_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote endpoint is restricted to quote-management roles.');
+    }
+  }
+
+  // CP-N4a: fail-closed gate for hard quote deletion — admin / super_admin only.
+  private assertQuoteDeleteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(QUOTE_DELETE_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('Deleting a quote is restricted to admin and super_admin.');
+    }
+  }
+
+  // CP-N4a: fail-closed gate for operational quote WRITE paths (passenger / rooming
+  // mutations, pricing preview/apply, proposal-email send) — admin / super_admin /
+  // operations only, preserving each endpoint's existing Operations authority. Viewer,
+  // finance (where it lacked access), agent, agent_admin, missing, unknown, future are
+  // denied BEFORE any service call. Explicit allowlist — never the coalescing guard.
+  private assertQuoteOperationalWriteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(QUOTE_OPERATIONAL_WRITE_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote operational endpoint is restricted to admin, super_admin and operations.');
+    }
+  }
+
+  // CP-N4a: fail-closed gate for generic quote proposal / PDF / export downloads —
+  // admin / super_admin / finance / operations only (preserving current access). Viewer
+  // fails closed this slice; agent / agent_admin / missing / unknown / future are denied
+  // BEFORE any PDF/HTML generation or service call. Explicit allowlist — not the guard.
+  private assertQuoteExportAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(QUOTE_EXPORT_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote export endpoint is restricted to internal quote roles.');
+    }
+  }
+
   @Get()
   findAll(@Actor() actor: AuthenticatedActor) {
     this.assertInternalQuoteReadAccess(actor);
@@ -517,6 +579,7 @@ export class QuotesController {
     // Phase 3D.1I.1 — honour the proposal language selector for PDF downloads too.
     @Query('language') language?: string,
   ) {
+    this.assertQuoteExportAccess(actor);
     console.info('[proposal-v3] controller:pdf-request', { quoteId: id, language });
     const quote = await this.quotesService.findOne(id, actor);
 
@@ -552,6 +615,7 @@ export class QuotesController {
     // thread it through so the exported PDF matches the chosen language.
     @Query('language') language?: string,
   ) {
+    this.assertQuoteExportAccess(actor);
     console.info('[quote-export] controller:pdf-request', { quoteId: id, language });
     const quote = await this.quotesService.findOne(id, actor);
 
@@ -581,6 +645,9 @@ export class QuotesController {
   @Get(':id/proposal-v2.pdf')
   async downloadProposalV2Pdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
     // Temporary internal fallback only. Remove this route when Proposal V2 is retired.
+    // CP-N4a: legacy proposal-v2 PDF uses a NON-actor-aware generation path
+    // (quotesService.generatePdf(id)); fail closed for Viewer here regardless.
+    this.assertQuoteExportAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -609,6 +676,7 @@ export class QuotesController {
     @Actor() actor: AuthenticatedActor,
     @Query('language') language?: string,
   ) {
+    this.assertQuoteExportAccess(actor);
     console.info('[proposal-v3] controller:html-request', { quoteId, language });
     const html = await this.proposalV3Service.getProposalHtml(quoteId, actor, language);
 
@@ -628,6 +696,7 @@ export class QuotesController {
     @Actor() actor: AuthenticatedActor,
     @Query('language') language?: string,
   ) {
+    this.assertQuoteExportAccess(actor);
     const quote = await this.quotesService.findOne(quoteId, actor);
 
     if (!quote) {
@@ -657,6 +726,7 @@ export class QuotesController {
   @Post(':id/enable-public-link')
   @Roles('admin', 'viewer', 'finance')
   async enablePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -669,6 +739,7 @@ export class QuotesController {
   @Post(':id/disable-public-link')
   @Roles('admin', 'viewer', 'finance')
   async disablePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -681,6 +752,7 @@ export class QuotesController {
   @Post(':id/regenerate-public-link')
   @Roles('admin', 'viewer', 'finance')
   async regeneratePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -701,6 +773,7 @@ export class QuotesController {
     @Body() body: { attachPdf?: boolean; language?: string } | undefined,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     return this.quotesService.sendProposalEmail(id, actor, {
       attachPdf: body?.attachPdf === true,
       language: typeof body?.language === 'string' ? body.language : undefined,
@@ -715,6 +788,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.create({
       clientCompanyId: body.clientCompanyId || body.companyId,
       brandCompanyId: body.brandCompanyId === undefined ? undefined : body.brandCompanyId || null,
@@ -768,6 +842,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.update(id, {
       clientCompanyId: body.clientCompanyId || body.companyId,
       brandCompanyId: body.brandCompanyId === undefined ? undefined : body.brandCompanyId || null,
@@ -823,7 +898,9 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
-    this.assertVersionRouteAccess(actor);
+    // CP-N4a: status change is a WRITE — gate to quote-write roles (Viewer denied),
+    // superseding the version-route read/write allowlist for this mutation.
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.updateStatus(id, {
       status: body.status,
       acceptedVersionId: body.acceptedVersionId === undefined ? undefined : body.acceptedVersionId || null,
@@ -833,6 +910,7 @@ export class QuotesController {
   @Patch(':id/cancel')
   @Roles('admin', 'viewer', 'finance')
   cancelQuote(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.cancelQuote(id, actor);
   }
 
@@ -843,6 +921,7 @@ export class QuotesController {
     @Body() body: ReorderQuoteItemsBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -864,6 +943,7 @@ export class QuotesController {
     @Body() body: MoveQuoteItemBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -879,18 +959,21 @@ export class QuotesController {
   @Post(':id/requote')
   @Roles('admin', 'viewer', 'finance')
   requote(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.requote(id, actor);
   }
 
   @Post(':id/create-invoice')
   @Roles('admin', 'viewer', 'finance')
   createInvoice(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.createInvoice(id, actor);
   }
 
   @Delete(':id')
   @Roles('admin', 'viewer')
   remove(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    this.assertQuoteDeleteAccess(actor);
     return this.quotesService.remove(id, actor);
   }
 
@@ -913,6 +996,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -935,6 +1019,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -956,6 +1041,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -998,7 +1084,9 @@ export class QuotesController {
   @Post(':id/convert-to-booking')
   @Roles('admin', 'viewer', 'finance')
   async convertToBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
-    this.assertVersionRouteAccess(actor);
+    // CP-N4a: booking conversion is a WRITE (creates a booking) — gate to quote-write
+    // roles (Viewer denied), superseding the version-route allowlist for this mutation.
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1016,7 +1104,11 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
-    this.assertVersionRouteAccess(actor);
+    // CP-N4a: version creation is a WRITE (persists a snapshot) — gate to quote-write
+    // roles (Viewer denied), superseding the version-route allowlist for this mutation.
+    // Version READS (list / readiness / summary) keep the version-route allowlist so
+    // Viewer retains read access.
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1157,6 +1249,7 @@ export class QuotesController {
     @Body() body: QuotePassengerBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1174,6 +1267,7 @@ export class QuotesController {
     @Body() body: QuotePassengerBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1190,6 +1284,7 @@ export class QuotesController {
     @Param('passengerId') passengerId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1220,6 +1315,7 @@ export class QuotesController {
     @Body() body: QuoteRoomingGroupBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1237,6 +1333,7 @@ export class QuotesController {
     @Body() body: QuoteRoomingGroupBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1253,6 +1350,7 @@ export class QuotesController {
     @Param('roomingGroupId') roomingGroupId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1270,6 +1368,7 @@ export class QuotesController {
     @Body() body: QuoteRoomingAssignmentBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1287,6 +1386,7 @@ export class QuotesController {
     @Param('quotePassengerId') quotePassengerId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1304,6 +1404,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1427,6 +1528,7 @@ export class QuotesController {
     @Body() body: ApplyPackageTemplateBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1450,6 +1552,7 @@ export class QuotesController {
     @Body() body: ImportProgramTemplateBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1477,6 +1580,7 @@ export class QuotesController {
     @Body() body: ExpandExcursionTemplateBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1507,6 +1611,7 @@ export class QuotesController {
     @Body() body: { value?: boolean },
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     return this.quotesService.setExcursionPackageRate(id, Boolean(body?.value), actor);
   }
 
@@ -1519,6 +1624,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1630,6 +1736,7 @@ export class QuotesController {
     @Body() body: UpdateQuoteItemBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteOperationalWriteAccess(actor);
     // Dry-run pricing preview for editing one existing item. Persists nothing and
     // never recalculates the live quote. Flag-gated (default OFF) + status/role
     // guarded inside the service; reuses the same body mapping as the real edit.
@@ -1656,6 +1763,7 @@ export class QuotesController {
     // QUOTE_PRICING_APPLY, both default OFF) and status/role/meal guarded inside
     // the service. The same body mapping as the real edit is used so the applied
     // payload matches what was previewed.
+    this.assertQuoteOperationalWriteAccess(actor);
     const { previewToken, acknowledgedDelta, ...editBody } = body ?? {};
     return this.quotesService.applyPreviewQuoteItem(
       id,
@@ -1698,6 +1806,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id);
 
     if (!quote) {
@@ -1715,6 +1824,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1731,6 +1841,7 @@ export class QuotesController {
     @Param('itemId') itemId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1753,6 +1864,7 @@ export class QuotesController {
     @Body() body: UpdateQuoteItemDisplayTextBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1786,6 +1898,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1812,6 +1925,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1836,6 +1950,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1858,6 +1973,7 @@ export class QuotesController {
     @Body() body: CreateQuoteHotelOptionBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1876,6 +1992,7 @@ export class QuotesController {
     @Body() body: UpdateQuoteHotelOptionBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1893,6 +2010,7 @@ export class QuotesController {
     @Param('hotelOptionId') hotelOptionId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -1922,6 +2040,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -2027,6 +2146,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -2130,6 +2250,7 @@ export class QuotesController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
@@ -2145,7 +2266,11 @@ export class QuotesController {
     @Param('id') id: string,
     @Body() body: GenerateQuoteScenariosBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
+    // CP-N4a: generateScenarios is a WRITE (regenerates pricing scenarios). It
+    // previously took no actor; add one solely to run the fail-closed write gate.
+    this.assertQuoteWriteAccess(actor);
     const quote = await this.quotesService.findOne(id);
 
     if (!quote) {
