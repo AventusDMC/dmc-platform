@@ -7,6 +7,7 @@ import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppab
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import { canWriteQuote } from '../../lib/auth-session';
 import QuoteDayPoiAssignments from './QuoteDayPoiAssignments';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
@@ -2135,6 +2136,7 @@ function QuoteServiceLaneBoard({
   laneOrders,
   currency,
   canDetachContracts,
+  canEditItems,
   canViewCost,
   onEdit,
   onRemove,
@@ -2152,6 +2154,7 @@ function QuoteServiceLaneBoard({
   laneOrders: ServiceLaneOrders;
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canEditItems: boolean;
   canViewCost: boolean;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
@@ -2187,6 +2190,7 @@ function QuoteServiceLaneBoard({
             currency={currency}
             canViewCost={canViewCost}
             canDetachContracts={canDetachContracts}
+            canEditItems={canEditItems}
             deletingItemId={deletingItemId}
             detachingContractItemId={detachingContractItemId}
             recentlyAddedItemId={recentlyAddedItemId}
@@ -2222,6 +2226,7 @@ function QuoteServiceLane({
   orderedItems,
   currency,
   canDetachContracts,
+  canEditItems,
   canViewCost,
   deletingItemId,
   detachingContractItemId,
@@ -2240,6 +2245,7 @@ function QuoteServiceLane({
   orderedItems: QuoteItem[];
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canEditItems: boolean;
   canViewCost: boolean;
   deletingItemId?: string;
   detachingContractItemId?: string;
@@ -2301,6 +2307,7 @@ function QuoteServiceLane({
                 currency={currency}
                 canViewCost={canViewCost}
                 canDetachContracts={canDetachContracts}
+            canEditItems={canEditItems}
                 deletingItemId={deletingItemId}
                 detachingContractItemId={detachingContractItemId}
                 recentlyAddedItemId={recentlyAddedItemId}
@@ -2377,6 +2384,7 @@ function QuoteServiceCard({
   category,
   currency,
   canDetachContracts,
+  canEditItems,
   canViewCost,
   deletingItemId,
   detachingContractItemId,
@@ -2392,6 +2400,7 @@ function QuoteServiceCard({
   category: ServicePlannerCategory;
   currency: Quote['quoteCurrency'];
   canDetachContracts: boolean;
+  canEditItems: boolean;
   canViewCost: boolean;
   deletingItemId?: string;
   detachingContractItemId?: string;
@@ -2545,10 +2554,13 @@ function QuoteServiceCard({
             Voucher
           </Link>
         ) : null}
-        <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
-          {isImportedResolvableDraftItem(item) ? 'Resolve' : 'Edit'}
-        </button>
-        {canDetachContracts && item.contractId ? (
+        {/* CP-N4b: item edit/detach/remove are write actions — hidden for read-only roles. */}
+        {canEditItems ? (
+          <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
+            {isImportedResolvableDraftItem(item) ? 'Resolve' : 'Edit'}
+          </button>
+        ) : null}
+        {canEditItems && canDetachContracts && item.contractId ? (
           <button
             type="button"
             className="secondary-button"
@@ -2558,14 +2570,16 @@ function QuoteServiceCard({
             {detachingContractItemId === item.id ? 'Detaching...' : 'Detach contract'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className="secondary-button secondary-button-danger"
-          onClick={() => onRemove(item)}
-          disabled={deletingItemId === item.id}
-        >
-          {deletingItemId === item.id ? 'Removing...' : 'Remove'}
-        </button>
+        {canEditItems ? (
+          <button
+            type="button"
+            className="secondary-button secondary-button-danger"
+            onClick={() => onRemove(item)}
+            disabled={deletingItemId === item.id}
+          >
+            {deletingItemId === item.id ? 'Removing...' : 'Remove'}
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -2805,6 +2819,7 @@ function DayNarrativePanel({
   onPresetSelect,
   onTimelineEdit,
   onTimelineAdd,
+  canEdit,
 }: {
   day: QuoteReadinessDay;
   value: string;
@@ -2813,6 +2828,8 @@ function DayNarrativePanel({
   onPresetSelect: (preset: DayRoutePreset) => void;
   onTimelineEdit: (item: DayTimelineItem, index: number) => void;
   onTimelineAdd: () => void;
+  // CP-N4b: gate day title/narrative/timeline editing (itinerary mutation).
+  canEdit: boolean;
 }) {
   const parsed = parseDayContent(value);
   const hasDescription = parsed.description.trim().length > 0;
@@ -2824,44 +2841,50 @@ function DayNarrativePanel({
           <p className="eyebrow">Day title &amp; narrative</p>
           <h4>{day.title?.trim() || `Day ${day.dayNumber}`}</h4>
         </div>
-        <button type="button" className="secondary-button" onClick={onDescriptionEdit}>
-          Edit title &amp; narrative
-        </button>
+        {canEdit ? (
+          <button type="button" className="secondary-button" onClick={onDescriptionEdit}>
+            Edit title &amp; narrative
+          </button>
+        ) : null}
       </div>
 
       {/* Phase R.4b-1 — pick a structured route/day plan to prefill the title +
           narrative editor. Selecting a preset opens the editor pre-filled; it
           does NOT save until "Save title & narrative" is clicked, and "Custom"
           leaves the day as free text. No services applied, no pricing. */}
-      <label className="quote-day-route-preset">
-        <span className="eyebrow">Route / Day Plan</span>
-        <select
-          className="quote-day-route-preset-select"
-          value={CUSTOM_DAY_PRESET_KEY}
-          onChange={(event) => {
-            const preset = getDayRoutePreset(event.target.value);
-            // Reset back to "Custom" — this is a one-shot prefill action, not a
-            // persisted selection (we don't store a preset key in this phase).
-            event.target.value = CUSTOM_DAY_PRESET_KEY;
-            if (preset) {
-              onPresetSelect(preset);
-            }
-          }}
-        >
-          <option value={CUSTOM_DAY_PRESET_KEY}>Custom (free text)</option>
-          {DAY_ROUTE_PRESETS.map((preset) => (
-            <option key={preset.key} value={preset.key}>
-              {preset.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {canEdit ? (
+        <label className="quote-day-route-preset">
+          <span className="eyebrow">Route / Day Plan</span>
+          <select
+            className="quote-day-route-preset-select"
+            value={CUSTOM_DAY_PRESET_KEY}
+            onChange={(event) => {
+              const preset = getDayRoutePreset(event.target.value);
+              // Reset back to "Custom" — this is a one-shot prefill action, not a
+              // persisted selection (we don't store a preset key in this phase).
+              event.target.value = CUSTOM_DAY_PRESET_KEY;
+              if (preset) {
+                onPresetSelect(preset);
+              }
+            }}
+          >
+            <option value={CUSTOM_DAY_PRESET_KEY}>Custom (free text)</option>
+            {DAY_ROUTE_PRESETS.map((preset) => (
+              <option key={preset.key} value={preset.key}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {hasDescription ? (
         <p className="quote-day-description-copy">{parsed.description}</p>
-      ) : (
+      ) : canEdit ? (
         <button type="button" className="quote-day-empty-content" onClick={onDescriptionEdit}>
           Add a client-facing description for Day {day.dayNumber}.
         </button>
+      ) : (
+        <p className="quote-day-description-copy detail-copy">No client-facing description for Day {day.dayNumber}.</p>
       )}
       {error ? <p className="form-error">{error}</p> : null}
 
@@ -2871,14 +2894,16 @@ function DayNarrativePanel({
             <p className="eyebrow">Timeline</p>
             <h4>Optional schedule</h4>
           </div>
-          <button type="button" className="secondary-button" onClick={onTimelineAdd}>
-            Add item
-          </button>
+          {canEdit ? (
+            <button type="button" className="secondary-button" onClick={onTimelineAdd}>
+              Add item
+            </button>
+          ) : null}
         </div>
         {parsed.timeline.length > 0 ? (
           <div className="quote-day-timeline-list">
             {parsed.timeline.map((item, index) => (
-              <button key={`${item.id}-${index}`} type="button" className="quote-day-timeline-item" onClick={() => onTimelineEdit(item, index)}>
+              <button key={`${item.id}-${index}`} type="button" className="quote-day-timeline-item" onClick={() => canEdit && onTimelineEdit(item, index)} disabled={!canEdit}>
                 <span>{item.time || 'Time'}</span>
                 <strong>{item.title}</strong>
                 {item.description ? <em>{item.description}</em> : null}
@@ -3129,6 +3154,11 @@ function ScopePlanner({
     !plannerProps.quote.acceptedVersionId &&
     !plannerProps.quote.booking &&
     !plannerProps.quote.invoice;
+  // CP-N4b: item CRUD (add / edit / remove / assign / detach) is a quote-write action.
+  // Gate the planner's mutation affordances to write roles (admin/super_admin/finance),
+  // mirroring the deployed CP-N4a backend. Viewer / operations / agent / agent_admin /
+  // missing / unknown see the item cards read-only.
+  const canEditItems = canWriteQuote(plannerProps.sessionRole ?? null);
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
       summary.items.some((item) => getItemCategory(item) === rule.key),
@@ -3888,9 +3918,11 @@ function ScopePlanner({
                 <span className="page-tab-badge">Complete {summary.completionPercent}%</span>
                 {summary.unpricedCount > 0 ? <span className="page-tab-badge page-tab-badge-warning">Unpriced {summary.unpricedCount}</span> : null}
                 {summary.unresolvedCount > 0 ? <span className="page-tab-badge">Unresolved {summary.unresolvedCount}</span> : null}
-                <button type="button" className="primary-button quote-service-add-primary" onClick={() => openAddPanel(summary.day, dayCompletenessRules[0]?.key || 'activity')}>
-                  Add service
-                </button>
+                {canEditItems ? (
+                  <button type="button" className="primary-button quote-service-add-primary" onClick={() => openAddPanel(summary.day, dayCompletenessRules[0]?.key || 'activity')}>
+                    Add service
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -3933,6 +3965,7 @@ function ScopePlanner({
                     currency={plannerProps.quote.quoteCurrency}
                     canViewCost={plannerProps.canViewCost}
                     canDetachContracts={canDetachContracts}
+            canEditItems={canEditItems}
                     deletingItemId={deletingItemId || undefined}
                     detachingContractItemId={detachingContractItemId || undefined}
                     recentlyAddedItemId={recentlyAddedItemId || undefined}
@@ -3971,6 +4004,7 @@ function ScopePlanner({
                   day={summary.day}
                   value={getDayContent(summary.day)}
                   error={dayContentError}
+                  canEdit={canEditItems}
                   onDescriptionEdit={() => {
                     const parsed = parseDayContent(getDayContent(summary.day));
                     setActiveDayDescription({ day: summary.day, draft: parsed.description, titleDraft: summary.day.title || '' });
@@ -4151,14 +4185,14 @@ function ScopePlanner({
       />
 
       <DrawerPanel
-        open={Boolean(activeServicePanel)}
+        open={canEditItems && Boolean(activeServicePanel)}
         title={getActiveServiceDrawerTitle(activeServicePanel)}
         description={getActiveServiceDrawerDescription(activeServicePanel)}
         onClose={() => setActiveServicePanel(null)}
         closeLabel="Cancel"
         className="quote-service-editor-drawer"
       >
-        {activeServicePanel ? (
+        {canEditItems && activeServicePanel ? (
           <div
             ref={editorPanelRef}
             className="quote-service-editor-panel quote-service-editor-panel-drawer"
@@ -4968,18 +5002,23 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             totalPax={props.totalPax}
           />
         </div>
-        {/* Phase S.1 — anchor for the unified Quote Builder "Package Template" card. */}
-        <div id="qb-package-template">
-          <ProgramTemplateImportPanel
-            apiBaseUrl={props.apiBaseUrl}
-            quoteId={props.quote.id}
-            defaultPax={props.totalPax}
-            defaultStartDate={props.quote.travelStartDate}
-          />
-        </div>
-        <div className="table-action-group" style={{ margin: '0.5rem 0' }}>
-          <SaveQuoteAsTemplateButton apiBaseUrl={props.apiBaseUrl} quoteId={props.quote.id} />
-        </div>
+        {/* Phase S.1 — anchor for the unified Quote Builder "Package Template" card.
+            CP-N4b: applying/saving templates are write actions — write roles only. */}
+        {canWriteQuote(props.sessionRole ?? null) ? (
+          <>
+            <div id="qb-package-template">
+              <ProgramTemplateImportPanel
+                apiBaseUrl={props.apiBaseUrl}
+                quoteId={props.quote.id}
+                defaultPax={props.totalPax}
+                defaultStartDate={props.quote.travelStartDate}
+              />
+            </div>
+            <div className="table-action-group" style={{ margin: '0.5rem 0' }}>
+              <SaveQuoteAsTemplateButton apiBaseUrl={props.apiBaseUrl} quoteId={props.quote.id} />
+            </div>
+          </>
+        ) : null}
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <button
             type="button"

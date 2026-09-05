@@ -53,6 +53,9 @@ type QuotesTableProps = {
   apiBaseUrl: string;
   quotes: Quote[];
   companies: Company[];
+  // CP-N4b: gate per-row write actions (edit / delete / convert) to write roles.
+  // Fail closed — omitting this renders the table read-only.
+  canWrite?: boolean;
 };
 
 function formatQuoteStatus(status: QuoteStatus) {
@@ -101,7 +104,7 @@ function hasNavigableQuoteId(quoteId: string | null | undefined): quoteId is str
   return Boolean(quoteId && quoteId !== '[id]');
 }
 
-export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps) {
+export function QuotesTable({ apiBaseUrl, quotes, companies, canWrite = false }: QuotesTableProps) {
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -288,19 +291,23 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                             <Link href={`/quotes/${quoteId}`} prefetch={false} className="compact-button">
                               View
                             </Link>
-                            <Link href={`/quotes/${quoteId}?tab=overview`} prefetch={false} className="compact-button">
-                              Edit
-                            </Link>
+                            {canWrite ? (
+                              <Link href={`/quotes/${quoteId}?tab=overview`} prefetch={false} className="compact-button">
+                                Edit
+                              </Link>
+                            ) : null}
                           </>
                         ) : null}
-                        <button
-                          type="button"
-                          className="compact-button compact-button-danger"
-                          onClick={() => handleDelete(quote)}
-                          disabled={!quoteId || deletingId === quoteId}
-                        >
-                          {deletingId === quoteId ? 'Deleting...' : 'Delete'}
-                        </button>
+                        {canWrite ? (
+                          <button
+                            type="button"
+                            className="compact-button compact-button-danger"
+                            onClick={() => handleDelete(quote)}
+                            disabled={!quoteId || deletingId === quoteId}
+                          >
+                            {deletingId === quoteId ? 'Deleting...' : 'Delete'}
+                          </button>
+                        ) : null}
                         {quote.invoice ? (
                           <Link href={`/invoices/${quote.invoice.id}`} prefetch={false} className="compact-button">
                             Invoice
@@ -312,7 +319,7 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                           <Link href={`/bookings/${quote.booking.id}`} prefetch={false} className="compact-button">
                             Booking
                           </Link>
-                        ) : quoteId && (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') ? (
+                        ) : canWrite && quoteId && (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') ? (
                           <ConvertToBookingButton quoteId={quoteId} label="Create Booking" />
                         ) : null}
                       </div>

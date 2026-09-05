@@ -54,6 +54,9 @@ type QuoteItineraryWorkspaceProps = {
   // CP-N3b2b — full passenger-PII predicate (admin/super_admin/operations),
   // forwarded to the passengers panel to gate PII display + add/edit/delete.
   canViewPassengerPii: boolean;
+  // CP-N4b — operational-write predicate (admin/super_admin/operations), forwarded to
+  // the rooming panel to gate group create/edit/delete + passenger assignment.
+  canEditRooming: boolean;
 };
 
 // Phase R.7A-2 — map a day's applied QuoteItems to the client-safe service
@@ -98,6 +101,7 @@ export function QuoteItineraryWorkspace({
   transportServiceId,
   guideServiceId,
   canViewPassengerPii,
+  canEditRooming,
 }: QuoteItineraryWorkspaceProps) {
   // Phase R.6A-2 — itinerary days that ALREADY have a hotel item, so the panel's
   // conflict guard is stay-level (a stay is blocked only when its first day has a
@@ -224,6 +228,7 @@ export function QuoteItineraryWorkspace({
             itinerary={quoteItinerary}
             roomingGroups={quoteRoomingGroups}
             singleSupplement={quote.singleSupplement}
+            canEdit={canEditRooming}
           />
         </details>
 
