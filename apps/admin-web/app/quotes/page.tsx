@@ -10,6 +10,8 @@ import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { QuotesTable } from './QuotesTable';
 
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+import { cookies } from 'next/headers';
+import { readSessionActor, canWriteQuote } from '../lib/auth-session';
 
 const ACTION_API_BASE_URL = '/api';
 
@@ -119,6 +121,9 @@ export default async function QuotesPage() {
   let quotes: Quote[] = [];
   let companies: Company[] = [];
   let loadError = false;
+  // CP-N4b: quote create/edit/delete/convert are write actions — gate the create
+  // affordances and the per-row actions to write roles (admin/super_admin/finance).
+  const canWrite = canWriteQuote(readSessionActor((await cookies()).get('dmc_session')?.value || '')?.role ?? null);
 
   try {
     [quotes, companies] = await Promise.all([
@@ -175,9 +180,11 @@ export default async function QuotesPage() {
               description="Use this page as a fast list-and-filter workspace, then open the quote detail page for editing and review."
               actions={
                 <>
-                  <Link href="/quotes/new" className="primary-button">
-                    Create Quote
-                  </Link>
+                  {canWrite ? (
+                    <Link href="/quotes/new" className="primary-button">
+                      Create Quote
+                    </Link>
+                  ) : null}
                   <Link href="/leads" className="dashboard-toolbar-link">
                     View leads
                   </Link>
@@ -203,9 +210,11 @@ export default async function QuotesPage() {
               description="Keep the page focused on finding quotes quickly while related sales tools stay one click away."
             >
               <div className="operations-filter-row">
-                <Link href="/quotes/new" className="secondary-button">
-                  Create quote
-                </Link>
+                {canWrite ? (
+                  <Link href="/quotes/new" className="secondary-button">
+                    Create quote
+                  </Link>
+                ) : null}
                 <Link href="/leads" className="secondary-button">
                   Leads
                 </Link>
@@ -238,7 +247,7 @@ export default async function QuotesPage() {
                 ) : undefined
               }
             >
-              {quotes.length > 0 ? <QuotesTable apiBaseUrl={ACTION_API_BASE_URL} quotes={quotes} companies={companies} /> : null}
+              {quotes.length > 0 ? <QuotesTable apiBaseUrl={ACTION_API_BASE_URL} quotes={quotes} companies={companies} canWrite={canWrite} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

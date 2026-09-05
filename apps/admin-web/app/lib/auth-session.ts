@@ -70,6 +70,47 @@ export function canAccessOperations(role?: SessionRole | null) {
   return role === 'admin' || role === 'super_admin' || role === 'operations';
 }
 
+// CP-N4b: canonical, fail-closed frontend permission helpers that MIRROR the deployed
+// CP-N4a backend allowlists (apps/api/src/quotes/quotes.controller.ts) EXACTLY. These
+// gate whether the UI renders/mounts action controls; the backend gate remains
+// authoritative (client checks are UX defense only). Authority is derived ONLY from the
+// trusted authenticated session role — never from query params, quote data, DOM, client
+// storage, or user-controlled props. Missing / unknown / agent / agent_admin / future
+// roles are false for every action permission (fail closed).
+
+// Quote WRITE + public-link CAPABILITY authority (QUOTE_WRITE_ROLES): create/update/
+// delete quote, item CRUD, pricing/options/templates/scenarios, status/cancel/requote,
+// invoice, convert-to-booking, version WRITE, public-link enable/disable/regenerate,
+// item display-text.
+export function canWriteQuote(role?: SessionRole | null) {
+  return role === 'admin' || role === 'super_admin' || role === 'finance';
+}
+
+// Operational quote WRITE authority (QUOTE_OPERATIONAL_WRITE_ROLES): passenger + rooming
+// mutations, item pricing preview/apply, proposal-email send.
+export function canPerformOperationalQuoteWrites(role?: SessionRole | null) {
+  return role === 'admin' || role === 'super_admin' || role === 'operations';
+}
+
+// Quote proposal / PDF / export download authority (QUOTE_EXPORT_ROLES). Viewer fails
+// closed this slice.
+export function canExportQuote(role?: SessionRole | null) {
+  return role === 'admin' || role === 'super_admin' || role === 'finance' || role === 'operations';
+}
+
+// Safe internal quote READ authority (INTERNAL_QUOTE_READ_ROLES): who may view a quote at
+// all. Viewer is included — its access is read-only (the write/capability/export helpers
+// above all return false for viewer).
+export function canReadQuoteAsViewer(role?: SessionRole | null) {
+  return (
+    role === 'admin' ||
+    role === 'super_admin' ||
+    role === 'finance' ||
+    role === 'operations' ||
+    role === 'viewer'
+  );
+}
+
 // CP-N3b2b: full passenger-PII predicate. Mirrors the backend PII_FULL_ROLES
 // (apps/api/src/auth/pii-roles.ts) EXACTLY: admin / super_admin / operations.
 // Deliberately SEPARATE from canAccessFinance (cost axis) — cost visibility and

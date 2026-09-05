@@ -55,7 +55,7 @@ import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, classicQuoteBasePath
 import { selectGeneralTransportService } from './transport-service-select';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
-import { readSessionActor, canAccessFinance, canViewFullPassengerPii, type SessionRole } from '../../lib/auth-session';
+import { readSessionActor, canAccessFinance, canViewFullPassengerPii, canWriteQuote, canExportQuote, canPerformOperationalQuoteWrites, type SessionRole } from '../../lib/auth-session';
 import {
   quoteDetailPath,
   quoteItineraryPath,
@@ -2249,6 +2249,14 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
   quote.passengers = await quotePassengersPromise;
   const quoteCancelled = quote.status === 'CANCELLED';
   const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
+  // CP-N4b: strict read-only Viewer. Role-based UI gates mirroring the deployed CP-N4a
+  // backend allowlists (client checks are UX defense only; the backend remains
+  // authoritative). Viewer / agent / agent_admin / missing / unknown → false for every
+  // action gate. `showWriteControls` additionally requires an editable quote status.
+  const canWrite = canWriteQuote(sessionRole);
+  const canExport = canExportQuote(sessionRole);
+  const canOpsWrite = canPerformOperationalQuoteWrites(sessionRole);
+  const showWriteControls = canWrite && !quoteReadOnly;
   // Phase R.6A-1/R.6A-2 — the representative HOTEL-type service the applied
   // tailor-made hotel item attaches to (canonical createItem path). The stay-level
   // conflict guard's day data is derived in the workspace from the itinerary.
@@ -2905,7 +2913,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
             Back
           </button>
         )}
-        {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+        {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
         {nextStep ? (
           nextStepBlockedReason ? (
             <button type="button" className="secondary-button" disabled title={nextStepBlockedReason}>
@@ -3059,9 +3067,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                   Beta
                 </span>
               </Link>
-              {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
-              <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-              {!quoteReadOnly ? (
+              {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+              {canExport ? <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+              {showWriteControls ? (
                 <RowDetailsPanel
                   summary="Accept"
                   description="Update status"
@@ -3080,7 +3088,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               ) : null}
               {quote.booking ? (
                 <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
-              ) : quoteReadOnly ? (
+              ) : !canWrite ? null : quoteReadOnly ? (
                 <button type="button" className="secondary-button" disabled>Convert</button>
               ) : convertBlocked ? (
                 // The disabled button signals "blocked"; the full blocker
@@ -3092,8 +3100,8 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               ) : (
                 <ConvertToBookingButton quoteId={quote.id} label="Convert" />
               )}
-              <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
-              {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
+              {canWrite ? <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} /> : null}
+              {showWriteControls ? <CancelQuoteButton quoteId={quote.id} /> : null}
             </AdminHeaderActions>
           </section>
 
@@ -3127,8 +3135,11 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               <span className="eyebrow">Quote insights</span>
               <span style={{ fontSize: '0.84rem', color: 'var(--rd-ink-muted, #5C6370)' }}>
                 {quote.quoteItems.length} service{quote.quoteItems.length === 1 ? '' : 's'} · {quote.quoteCurrency}{' '}
-                {Math.round(quote.totalSell).toLocaleString()} sell ·{' '}
-                {quote.totalSell > 0 ? Math.round(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100) : 0}% margin
+                {Math.round(quote.totalSell).toLocaleString()} sell
+                {/* CP-N4b: margin% is a cost figure — shown only to cost-visible roles. */}
+                {canViewCost
+                  ? ` · ${quote.totalSell > 0 ? Math.round(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100) : 0}% margin`
+                  : ''}
                 {reviewBlockingIssues.length > 0 ? ` · ${reviewBlockingIssues.length} check${reviewBlockingIssues.length === 1 ? '' : 's'}` : ''}
               </span>
               <span style={{ marginLeft: 'auto', fontSize: '0.76rem', fontWeight: 600, color: 'var(--rd-ink-faint, #8A909B)' }}>
@@ -3293,6 +3304,12 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     <h2>Quote setup</h2>
                   </div>
                 </div>
+                {/* CP-N4b: quote edit + delete are write actions — hidden for read-only
+                    roles (viewer / operations / non-write). Read roles see quote setup
+                    via the hero, trip summary and itinerary read surfaces. */}
+                {!canWrite ? (
+                  <p className="detail-copy">Read-only access — quote setup cannot be edited with your role.</p>
+                ) : (
                 <InlineEntityActions
                   apiBaseUrl={ACTION_API_BASE_URL}
                   deletePath={`/quotes/${quote.id}`}
@@ -3349,6 +3366,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     }}
                   />
                 </InlineEntityActions>
+                )}
               </article>
 
               <div className="section-stack">
@@ -3424,6 +3442,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
               transportServiceId={tailorMadeTransportServiceId}
               guideServiceId={tailorMadeGuideServiceId}
               canViewPassengerPii={canViewPassengerPii}
+              canEditRooming={canOpsWrite}
             />
           ) : null}
 
@@ -3441,12 +3460,14 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                   </Link>
                 </div>
               </section>
-              <QuoteHotelOptionSets
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                quoteOptions={quote.quoteOptions}
-                hotels={hotels}
-              />
+              {canWrite ? (
+                <QuoteHotelOptionSets
+                  apiBaseUrl={ACTION_API_BASE_URL}
+                  quoteId={quote.id}
+                  quoteOptions={quote.quoteOptions}
+                  hotels={hotels}
+                />
+              ) : null}
               {renderQuoteServicePlanner('hotel')}
               {guidedStepFooter}
             </div>
@@ -3466,13 +3487,15 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                   </Link>
                 </div>
               </section>
-              <QuoteTransportBulkAssign
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                services={services}
-                quoteItems={quote.quoteItems}
-                quoteOptions={quote.quoteOptions}
-              />
+              {canWrite ? (
+                <QuoteTransportBulkAssign
+                  apiBaseUrl={ACTION_API_BASE_URL}
+                  quoteId={quote.id}
+                  services={services}
+                  quoteItems={quote.quoteItems}
+                  quoteOptions={quote.quoteOptions}
+                />
+              ) : null}
               {renderQuoteServicePlanner('transport')}
               {guidedStepFooter}
             </div>
@@ -3548,16 +3571,20 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     ]}
                   />
 
-                  <QuoteGroupPricing
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    initialMode={quote.pricingMode}
-                    initialSlabs={quote.pricingSlabs}
-                    initialFixedPricePerPerson={quote.fixedPricePerPerson}
-                    initialGroupSize={totalPax}
-                    packageTotalCost={quote.totalCost}
-                    costCurrency={quote.quoteCurrency}
-                  />
+                  {/* CP-N4b: group-pricing (slab/package CRUD + cost inputs) is a write
+                      control — hidden for read-only roles. */}
+                  {canWrite ? (
+                    <QuoteGroupPricing
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialMode={quote.pricingMode}
+                      initialSlabs={quote.pricingSlabs}
+                      initialFixedPricePerPerson={quote.fixedPricePerPerson}
+                      initialGroupSize={totalPax}
+                      packageTotalCost={quote.totalCost}
+                      costCurrency={quote.quoteCurrency}
+                    />
+                  ) : null}
                 </>
               ) : (
                 <div className="quote-pricing-review-layout">
@@ -3657,19 +3684,26 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     Save a snapshot, preview the proposal, download a PDF, or share the public link without changing the quote pricing logic.
                   </p>
                   <div className="workspace-document-actions">
-                    <ProposalDocumentActions
-                      apiBaseUrl={ACTION_API_BASE_URL}
-                      quoteId={quote.id}
-                      initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
-                      dayNotes={proposalDayNotes}
-                    />
-                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
-                    <ShareQuoteButton
-                      apiBaseUrl={ACTION_API_BASE_URL}
-                      quoteId={quote.id}
-                      initialPublicToken={quote.publicToken}
-                      initialPublicEnabled={quote.publicEnabled}
-                    />
+                    {/* CP-N4b: proposal/PDF export gated to export roles. */}
+                    {canExport ? (
+                      <ProposalDocumentActions
+                        apiBaseUrl={ACTION_API_BASE_URL}
+                        quoteId={quote.id}
+                        initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                        dayNotes={proposalDayNotes}
+                      />
+                    ) : null}
+                    {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                    {/* CP-N4b: public-link/Share is a capability control — it must NOT
+                        mount for read-only roles (it can auto-request/expose a token). */}
+                    {canWrite ? (
+                      <ShareQuoteButton
+                        apiBaseUrl={ACTION_API_BASE_URL}
+                        quoteId={quote.id}
+                        initialPublicToken={quote.publicToken}
+                        initialPublicEnabled={quote.publicEnabled}
+                      />
+                    ) : null}
                     <Link href={buildTabHref('versions')} className="secondary-button">
                       Versions
                     </Link>
@@ -3716,13 +3750,15 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                 </div>
 
                 <div className="workspace-document-actions">
-                  <ProposalDocumentActions
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
-                    dayNotes={proposalDayNotes}
-                  />
-                  {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                  {canExport ? (
+                    <ProposalDocumentActions
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                      dayNotes={proposalDayNotes}
+                    />
+                  ) : null}
+                  {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                 </div>
 
                 {reviewBlockingIssues.length > 0 ? (
@@ -3808,7 +3844,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                       <strong>{quote.acceptedVersionId ? 'Linked to saved snapshot' : 'No accepted version yet'}</strong>
                     </div>
                   </div>
-                  {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                  {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                   <p className="detail-copy">
                     Accepted version: {quote.acceptedVersionId ? 'Saved snapshot linked to current accepted state.' : 'No accepted version yet. Save a version, then set the quote back to Accepted to restore the booking link.'}
                   </p>
@@ -3857,17 +3893,21 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     groupId="quote-review-actions"
                   >
                     <div className="section-stack">
-                      <SupportTextForm
-                        apiBaseUrl={ACTION_API_BASE_URL}
-                        quoteId={quote.id}
-                        templates={supportTextTemplates}
-                        initialValues={{
-                          inclusionsText: quote.inclusionsText || '',
-                          exclusionsText: quote.exclusionsText || '',
-                          termsNotesText: quote.termsNotesText || '',
-                        }}
-                      />
-                      {quoteReadOnly ? (
+                      {/* CP-N4b: inclusions/exclusions/terms editing + status change are
+                          write actions — hidden for read-only roles. */}
+                      {canWrite ? (
+                        <SupportTextForm
+                          apiBaseUrl={ACTION_API_BASE_URL}
+                          quoteId={quote.id}
+                          templates={supportTextTemplates}
+                          initialValues={{
+                            inclusionsText: quote.inclusionsText || '',
+                            exclusionsText: quote.exclusionsText || '',
+                            termsNotesText: quote.termsNotesText || '',
+                          }}
+                        />
+                      ) : null}
+                      {!canWrite ? null : quoteReadOnly ? (
                         <p className="detail-copy">
                           {quoteCancelled
                             ? 'This quote is cancelled. Status changes and booking conversion are disabled.'
@@ -3884,12 +3924,12 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                       )}
                     </div>
                   </RowDetailsPanel>
-                  {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                  {showWriteControls ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                   {quote.booking ? (
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
-                  ) : quoteReadOnly ? (
+                  ) : !canWrite ? null : quoteReadOnly ? (
                     <button type="button" className="secondary-button" disabled>
                       Convert to booking
                     </button>
@@ -3909,19 +3949,22 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                     </Link>
                   ) : null}
                   <QuotePreviewLink quoteId={quote.id} />
-                  <ShareQuoteButton
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    initialPublicToken={quote.publicToken}
-                    initialPublicEnabled={quote.publicEnabled}
-                  />
-                  <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
-                  {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
-                  <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                  {canWrite ? (
+                    <ShareQuoteButton
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialPublicToken={quote.publicToken}
+                      initialPublicEnabled={quote.publicEnabled}
+                    />
+                  ) : null}
+                  {canWrite ? <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} /> : null}
+                  {showWriteControls ? <CancelQuoteButton quoteId={quote.id} /> : null}
+                  {canExport ? <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                 </div>
               </CompactFilterBar>
 
-              <QuoteInvoiceSection apiBaseUrl={ACTION_API_BASE_URL} invoice={quote.invoice} />
+              {/* CP-N4b: invoice management (mark paid / cancel) is a write action. */}
+              {canWrite ? <QuoteInvoiceSection apiBaseUrl={ACTION_API_BASE_URL} invoice={quote.invoice} /> : null}
 
               <TableSectionShell
                 title="Blocking issues"
@@ -4153,6 +4196,9 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                 ]}
               />
 
+              {/* CP-N4b: the primary Save/Send/Export action card only renders when the
+                  role has a write or export action; read-only roles see no action card. */}
+              {(canWrite || canExport) ? (
               <QuotePricingSummaryCard
                 className="quote-pricing-summary-card-actions quote-primary-action-card"
                 eyebrow="Actions"
@@ -4163,17 +4209,19 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                 ]}
                 footer={
                   <div className="quote-builder-sidebar-actions">
-                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
-                    {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
-                    <ProposalDocumentActions
-                      apiBaseUrl={ACTION_API_BASE_URL}
-                      quoteId={quote.id}
-                      initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
-                      dayNotes={proposalDayNotes}
-                    />
+                    {showWriteControls ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                    {showWriteControls ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                    {canExport ? (
+                      <ProposalDocumentActions
+                        apiBaseUrl={ACTION_API_BASE_URL}
+                        quoteId={quote.id}
+                        initialLanguage={(quote as { proposalLanguage?: string | null }).proposalLanguage ?? 'en'}
+                        dayNotes={proposalDayNotes}
+                      />
+                    ) : null}
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
-                    ) : quoteReadOnly ? (
+                    ) : !canWrite ? null : quoteReadOnly ? (
                       <button type="button" className="primary-button" disabled>Convert</button>
                     ) : convertBlocked ? (
                       <div className="section-stack">
@@ -4186,6 +4234,7 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                   </div>
                 }
               />
+              ) : null}
 
               <QuotePricingSummaryCard
                 className="quote-pricing-summary-card-actions"
@@ -4198,14 +4247,16 @@ export async function ClassicQuoteWorkspace({ params, searchParams }: QuoteDetai
                 footer={
                   <div className="quote-builder-sidebar-actions">
                     <QuotePreviewLink quoteId={quote.id} />
-                    <ShareQuoteButton
-                      apiBaseUrl={ACTION_API_BASE_URL}
-                      quoteId={quote.id}
-                      initialPublicToken={quote.publicToken}
-                      initialPublicEnabled={quote.publicEnabled}
-                    />
-                    <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
-                    {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
+                    {canWrite ? (
+                      <ShareQuoteButton
+                        apiBaseUrl={ACTION_API_BASE_URL}
+                        quoteId={quote.id}
+                        initialPublicToken={quote.publicToken}
+                        initialPublicEnabled={quote.publicEnabled}
+                      />
+                    ) : null}
+                    {canWrite ? <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} /> : null}
+                    {showWriteControls ? <CancelQuoteButton quoteId={quote.id} /> : null}
                   </div>
                 }
               />

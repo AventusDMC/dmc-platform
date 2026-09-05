@@ -142,7 +142,8 @@ describe('quote detail page regression', () => {
       'activeConvertBlockers JSON',
       'quote.convertBlockers JSON',
       '{conversionDebugPanel}',
-      ') : quoteReadOnly ? (',
+      // CP-N4b: booking conversion is now gated by canWrite (read-only roles see no Convert).
+      ') : !canWrite ? null : quoteReadOnly ? (',
       ') : convertBlocked ? (',
     ]);
     assert.doesNotMatch(pageSource, /Resolve blocking issues before conversion/);
@@ -295,12 +296,14 @@ describe('quote detail page regression', () => {
       "const quoteAcceptedForConversion = quote.status === 'ACCEPTED';",
       "Accept the quote before converting to booking.",
       "Save/accept a version before converting.",
-      ') : quoteReadOnly ? (',
+      // CP-N4b: booking conversion is now gated by canWrite (read-only roles see no Convert).
+      ') : !canWrite ? null : quoteReadOnly ? (',
       ') : convertBlocked ? (',
       '<button type="button" className="secondary-button" disabled>Convert</button>',
       'Cancelled quotes cannot be converted to bookings.',
       '<ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />',
-      '{!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}',
+      // CP-N4b: cancel is a write action — gated by showWriteControls (write role + editable status).
+      '{showWriteControls ? <CancelQuoteButton quoteId={quote.id} /> : null}',
       'This quote is cancelled. Status changes and booking conversion are disabled.',
     ]);
   });

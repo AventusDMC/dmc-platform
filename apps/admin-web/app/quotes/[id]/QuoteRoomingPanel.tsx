@@ -50,6 +50,10 @@ type QuoteRoomingPanelProps = {
   itinerary: QuoteItineraryResponse;
   roomingGroups: QuoteRoomingGroup[];
   singleSupplement?: number | null;
+  // CP-N4b: gate rooming mutations (create/edit/delete group, assign/remove passenger)
+  // to operational-write roles. Fail closed — a caller that omits this hides the
+  // mutation UI and renders the panel read-only.
+  canEdit?: boolean;
 };
 
 type RoomingHotelOption = {
@@ -177,7 +181,7 @@ function getGroupHotelLabel(group: QuoteRoomingGroup) {
     .join(' | ') || 'Hotel stay';
 }
 
-export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, roomingGroups, singleSupplement = null }: QuoteRoomingPanelProps) {
+export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, roomingGroups, singleSupplement = null, canEdit = false }: QuoteRoomingPanelProps) {
   const router = useRouter();
   const hotelOptions = useMemo(() => buildHotelOptions(itinerary), [itinerary]);
   const roomingIntelligence = useMemo(
@@ -368,6 +372,7 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
         </div>
       </section>
 
+      {canEdit ? (
       <form className="entity-form compact-form quote-rooming-edit-form" onSubmit={saveRoomingGroup}>
         <div className="workspace-section-head">
           <div>
@@ -429,6 +434,7 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
           {isSaving ? 'Saving...' : editingRoomingGroupId ? 'Save rooming changes' : 'Create room group'}
         </button>
       </form>
+      ) : null}
 
       {roomingGroups.length === 0 ? <p className="empty-state">No room groups yet.</p> : null}
 
@@ -491,14 +497,16 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
                     {group.leaderRoom ? ' | Leader room' : ''}
                   </p>
                 </div>
-                <div className="table-action-row">
-                  <button type="button" className="compact-button" onClick={() => startEditRoomingGroup(group)}>
-                    Edit Rooming
-                  </button>
-                  <button type="button" className="compact-button compact-button-danger" onClick={() => deleteRoomingGroup(group)}>
-                    Delete
-                  </button>
-                </div>
+                {canEdit ? (
+                  <div className="table-action-row">
+                    <button type="button" className="compact-button" onClick={() => startEditRoomingGroup(group)}>
+                      Edit Rooming
+                    </button>
+                    <button type="button" className="compact-button compact-button-danger" onClick={() => deleteRoomingGroup(group)}>
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {group.notes ? <p className="table-subcopy">{group.notes}</p> : null}
@@ -521,9 +529,11 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
                         <tr key={assignment.id}>
                           <td>{getPassengerName(assignment.quotePassenger)}</td>
                           <td>
-                            <button type="button" className="compact-button" onClick={() => removePassenger(group, assignment.quotePassengerId)}>
-                              Remove
-                            </button>
+                            {canEdit ? (
+                              <button type="button" className="compact-button" onClick={() => removePassenger(group, assignment.quotePassengerId)}>
+                                Remove
+                              </button>
+                            ) : <span className="detail-copy">—</span>}
                           </td>
                         </tr>
                       ))
@@ -532,25 +542,27 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
                 </table>
               </div>
 
-              <div className="form-row">
-                <label>
-                  Unassigned passengers
-                  <select
-                    value={assignmentDrafts[group.id] || ''}
-                    onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [group.id]: event.target.value }))}
-                  >
-                    <option value="">Select passenger</option>
-                    {unassignedPassengers.map((passenger) => (
-                      <option key={passenger.id} value={passenger.id}>
-                        {getPassengerName(passenger)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" className="secondary-button" onClick={() => assignPassenger(group)} disabled={!assignmentDrafts[group.id]}>
-                  Assign passenger
-                </button>
-              </div>
+              {canEdit ? (
+                <div className="form-row">
+                  <label>
+                    Unassigned passengers
+                    <select
+                      value={assignmentDrafts[group.id] || ''}
+                      onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [group.id]: event.target.value }))}
+                    >
+                      <option value="">Select passenger</option>
+                      {unassignedPassengers.map((passenger) => (
+                        <option key={passenger.id} value={passenger.id}>
+                          {getPassengerName(passenger)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" className="secondary-button" onClick={() => assignPassenger(group)} disabled={!assignmentDrafts[group.id]}>
+                    Assign passenger
+                  </button>
+                </div>
+              ) : null}
               <p className="table-subcopy">Unassigned for this hotel stay: {unassignedPassengers.length}</p>
             </article>
           );
