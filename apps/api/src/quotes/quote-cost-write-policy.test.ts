@@ -1,5 +1,6 @@
 import assert = require('node:assert/strict');
 import test = require('node:test');
+import { ForbiddenException } from '@nestjs/common';
 import { QuotesController } from './quotes.controller';
 import {
   NON_FINANCE_RESTRICTED_QUOTE_ITEM_WRITE_KEYS,
@@ -101,20 +102,17 @@ function createController() {
   return { controller, captured };
 }
 
-test('wiring: viewer createItem strips restricted cost, preserves sellPrice', async () => {
+// CP-N4a: strict read-only Viewer. Viewer no longer reaches the item WRITE handlers at
+// all — the fail-closed write gate rejects before the service, so the CP-N3b1 cost-strip
+// (still unit-tested above, and still applied for operations on preview/apply below) is
+// never even reached on this path for a viewer.
+test('wiring: CP-N4a viewer createItem is denied (403) before the service', async () => {
   const { controller, captured } = createController();
-  await controller.createItem('quote-1', restrictedBody() as any, {}, makeActor('viewer'));
-  const i = captured.createItem;
-  assert.equal(i.overrideCost, undefined);
-  assert.equal(i.useOverride, undefined);
-  assert.equal(i.netCost, undefined);
-  assert.equal(i.unitCost, undefined);
-  assert.equal(i.supplierName, undefined);
-  assert.equal(i.internalNotes, undefined);
-  assert.equal(i.pricingMatrixJson, undefined);
-  assert.equal(i.markupPercent, 0); // stripped -> default 0, never the sentinel
-  assert.notEqual(i.markupPercent, COST_SENTINEL);
-  assert.equal(i.sellPrice, SELL_SENTINEL); // sell-side preserved
+  await assert.rejects(
+    () => controller.createItem('quote-1', restrictedBody() as any, {}, makeActor('viewer')),
+    ForbiddenException,
+  );
+  assert.equal(captured.createItem, undefined);
 });
 
 test('wiring: finance createItem passes restricted cost through unchanged', async () => {
@@ -128,19 +126,13 @@ test('wiring: finance createItem passes restricted cost through unchanged', asyn
   assert.equal(i.sellPrice, SELL_SENTINEL);
 });
 
-test('wiring: viewer updateItem omits restricted cost (undefined => preserve stored), keeps operational', async () => {
+test('wiring: CP-N4a viewer updateItem is denied (403) before the service', async () => {
   const { controller, captured } = createController();
-  await controller.updateItem('quote-1', 'item-1', restrictedBody() as any, {}, makeActor('viewer'));
-  const i = captured.updateItem;
-  assert.equal(i.overrideCost, undefined);
-  assert.equal(i.useOverride, undefined);
-  assert.equal(i.markupPercent, undefined);
-  assert.equal(i.markupAmount, undefined);
-  assert.equal(i.netCost, undefined);
-  assert.equal(i.supplierName, undefined);
-  assert.equal(i.internalNotes, undefined);
-  assert.equal(i.sellPrice, SELL_SENTINEL);
-  assert.equal(i.pickupLocation, 'Airport');
+  await assert.rejects(
+    () => controller.updateItem('quote-1', 'item-1', restrictedBody() as any, {}, makeActor('viewer')),
+    ForbiddenException,
+  );
+  assert.equal(captured.updateItem, undefined);
 });
 
 test('wiring: finance updateItem passes restricted cost through', async () => {
@@ -163,22 +155,25 @@ test('wiring: operations previewItem + applyPreviewItem strip restricted cost (n
   }
 });
 
-test('wiring: viewer expandExcursionTemplate strips markupPercent, keeps operational', async () => {
+test('wiring: CP-N4a viewer expandExcursionTemplate is denied (403) before the service', async () => {
   const { controller, captured } = createController();
-  await controller.expandExcursionTemplate('quote-1', 'tmpl-1', { markupPercent: COST_SENTINEL, paxCount: 3, quantity: 1 } as any, makeActor('viewer'));
-  assert.equal(captured.expand.markupPercent, undefined);
-  assert.equal(captured.expand.paxCount, 3);
+  await assert.rejects(
+    () => controller.expandExcursionTemplate('quote-1', 'tmpl-1', { markupPercent: COST_SENTINEL, paxCount: 3, quantity: 1 } as any, makeActor('viewer')),
+    ForbiddenException,
+  );
+  assert.equal(captured.expand, undefined);
 });
 
-test('wiring: viewer create/updateOptionItem strip restricted cost, keep sellPrice', async () => {
+test('wiring: CP-N4a viewer create/updateOptionItem are denied (403) before the service', async () => {
   const { controller, captured } = createController();
-  await controller.createOptionItem('quote-1', 'opt-1', restrictedBody() as any, {}, makeActor('viewer'));
-  await controller.updateOptionItem('quote-1', 'opt-1', 'oi-1', restrictedBody() as any, {}, makeActor('viewer'));
-  for (const cap of [captured.createOptionItem, captured.updateOptionItem]) {
-    assert.equal(cap.overrideCost, undefined);
-    assert.equal(cap.netCost, undefined);
-    assert.equal(cap.supplierName, undefined);
-    assert.equal(cap.internalNotes, undefined);
-    assert.equal(cap.sellPrice, SELL_SENTINEL);
-  }
+  await assert.rejects(
+    () => controller.createOptionItem('quote-1', 'opt-1', restrictedBody() as any, {}, makeActor('viewer')),
+    ForbiddenException,
+  );
+  await assert.rejects(
+    () => controller.updateOptionItem('quote-1', 'opt-1', 'oi-1', restrictedBody() as any, {}, makeActor('viewer')),
+    ForbiddenException,
+  );
+  assert.equal(captured.createOptionItem, undefined);
+  assert.equal(captured.updateOptionItem, undefined);
 });
