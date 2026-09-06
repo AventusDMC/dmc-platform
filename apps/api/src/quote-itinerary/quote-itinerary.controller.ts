@@ -92,6 +92,17 @@ type HotelStayOptionsBody = {
 // @Roles guard (which lets agent_admin satisfy @Roles('admin')).
 const INTERNAL_QUOTE_READ_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance', 'operations', 'viewer'];
 
+// CP-N4d: explicit fail-closed allowlist for the LEGACY quote-itinerary WRITE
+// handlers (day / day-item create-update-delete, day POIs, tailor-made-draft apply).
+// These handlers previously carried only @Roles('admin','viewer','finance') with no
+// explicit assertion, so the coalescing roles.guard admitted `viewer` (a read-only
+// role) and `agent_admin` (coalesced to 'admin') into itinerary mutations. This
+// mirrors the canonical QuotesController.QUOTE_WRITE_ROLES (quote-content writers):
+// admin / super_admin / finance only. Enforced by explicit membership BEFORE the
+// service call — never the coalescing @Roles guard — so viewer / operations / agent /
+// agent_admin / missing / unknown / future-unlisted are denied first.
+const LEGACY_ITINERARY_WRITE_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance'];
+
 @Controller()
 export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
@@ -137,15 +148,29 @@ export class QuoteItineraryController {
     }
   }
 
+  // CP-N4d: fail-closed gate for the LEGACY quote-itinerary WRITE handlers. Runs as
+  // the FIRST statement of each mutation handler on the ORIGINAL AuthenticatedActor
+  // (before it is reduced to the service's { id, auditLabel } / { companyId } shape),
+  // so denied roles never reach the service. Explicit allowlist membership — never the
+  // coalescing @Roles guard (which would admit agent_admin via 'admin').
+  private assertLegacyItineraryWriteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(LEGACY_ITINERARY_WRITE_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote itinerary endpoint is restricted to admin, super_admin and finance.');
+    }
+  }
+
   @Post('quotes/:quoteId/itinerary/day')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async createDay(@Param('quoteId') quoteId: string, @Body() body: CreateDayBody, @Actor() actor: AuthenticatedActor | null) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.createDay(quoteId, this.toCreateDayDto(body), this.toActor(actor));
   }
 
   @Patch('itinerary/day/:dayId')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async updateDay(@Param('dayId') dayId: string, @Body() body: UpdateDayBody, @Actor() actor: AuthenticatedActor | null) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.updateDay(dayId, this.toUpdateDayDto(body), this.toActor(actor));
   }
 
@@ -216,12 +241,13 @@ export class QuoteItineraryController {
   // Phase R.1b — persist the tailor-made draft as editable QuoteItineraryDay
   // rows (no QuoteItems / pricing). Conflicts unless replaceExisting:true.
   @Post('quotes/:quoteId/tailor-made-draft/apply')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async applyTailorMadeDraft(
     @Param('quoteId') quoteId: string,
     @Body() body: TailorMadeDraftBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.applyTailorMadeDraft(
       quoteId,
       this.toDraftInput(body),
@@ -232,39 +258,43 @@ export class QuoteItineraryController {
   }
 
   @Delete('itinerary/day/:dayId')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async removeDay(@Param('dayId') dayId: string, @Actor() actor: AuthenticatedActor | null) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.removeDay(dayId, this.toActor(actor));
   }
 
   @Post('itinerary/day/:dayId/items')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async createDayItem(
     @Param('dayId') dayId: string,
     @Body() body: CreateDayItemBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.createDayItem(dayId, this.toCreateDayItemDto(body), this.toActor(actor));
   }
 
   @Patch('itinerary/day/:dayId/items/:itemId')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async updateDayItem(
     @Param('dayId') dayId: string,
     @Param('itemId') itemId: string,
     @Body() body: UpdateDayItemBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.updateDayItem(dayId, itemId, this.toUpdateDayItemDto(body), this.toActor(actor));
   }
 
   @Delete('itinerary/day/:dayId/items/:itemId')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async removeDayItem(
     @Param('dayId') dayId: string,
     @Param('itemId') itemId: string,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.removeDayItem(dayId, itemId, this.toActor(actor));
   }
 
@@ -275,12 +305,13 @@ export class QuoteItineraryController {
   }
 
   @Put('itinerary/day/:dayId/pois')
-  @Roles('admin', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async setDayPois(
     @Param('dayId') dayId: string,
     @Body() body: SetDayPoisBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertLegacyItineraryWriteAccess(actor);
     return this.quoteItineraryService.setDayPois(dayId, this.toSetDayPoisDto(body), this.toActor(actor));
   }
 
