@@ -209,6 +209,13 @@ function HotelOption({
   // "View contract/rate" is offered ONLY for a matched priced hotel line (stable
   // pricedQuoteItemId). Ambiguous/unmatched rows have none → no button (they keep the
   // existing "resolve in Classic" note).
+  //
+  // CP-N4c: the drawer surfaces hotel-contract IDENTITY / provenance, so it is
+  // finance-only. `onViewHotelContract` is passed by the client ONLY when the
+  // server-derived finance capability (canViewCostMargin: admin/super_admin/finance)
+  // is true; for operations/viewer it arrives undefined, so `canViewContract` is
+  // false — the trigger does not render and the drawer never opens or fetches. The
+  // early return below is a defensive backstop for the same gate.
   const canViewContract = Boolean(onViewHotelContract && hotel.pricedQuoteItemId)
   const handleViewContract = async () => {
     if (!onViewHotelContract || !hotel.pricedQuoteItemId) return

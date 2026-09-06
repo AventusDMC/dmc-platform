@@ -18,13 +18,22 @@ import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
 
 /**
- * HC-1A: EXPLICIT exact-role allowlist for the read-only hotel contract/rate
- * summary. This is a plain `includes` (NOT the coalescing roles.guard), so
- * `agent_admin` — which the guard coalesces to `admin` because the route @Roles
- * includes 'admin' — is BLOCKED here, and `super_admin` is listed explicitly.
- * Mirrors the Catalog V2 allowlist pattern. Does not broaden access.
+ * HC-1A / CP-N4c: EXPLICIT exact-role allowlist for the read-only hotel
+ * contract/rate summary. This is a plain `includes` (NOT the coalescing
+ * roles.guard), so `agent_admin` — which the guard coalesces to `admin` because
+ * the route @Roles includes 'admin' — is BLOCKED here, and `super_admin` is
+ * listed explicitly.
+ *
+ * CP-N4c: narrowed to the canonical cost-visible roles (admin / super_admin /
+ * finance). The endpoint returns contract IDENTITY / provenance (contract name,
+ * validity window, currency, confidence, last-verified date, policy presence),
+ * which the non-finance operational projection deliberately reduces to the
+ * `{}` presence sentinel. Exposing that identity to `operations` / `viewer`
+ * bypassed the contract-provenance restriction, so those roles — plus
+ * `agent` / `agent_admin` / missing / unknown / future-unlisted — now receive
+ * 403 before any service call. Mirrors QUOTE_COST_VISIBLE_ROLES exactly.
  */
-const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'operations', 'viewer', 'finance'];
+const HOTEL_CONTRACT_SUMMARY_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'finance'];
 
 /**
  * CP-N3a′: EXPLICIT internal-role allowlist for the GENERIC authenticated quote
@@ -1182,7 +1191,7 @@ export class QuotesController {
   }
 
   @Get(':id/v2/items/:itemId/hotel-contract-summary')
-  @Roles('admin', 'super_admin', 'operations', 'viewer', 'finance')
+  @Roles('admin', 'super_admin', 'finance')
   async findHotelContractSummary(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
@@ -1194,10 +1203,14 @@ export class QuotesController {
     // quote (cross-quote/missing/non-hotel → 404). The cost block is included only
     // for cost-visible roles (handled in getHotelContractSummary). Read-only.
     //
-    // HC-1A: explicit exact-role allowlist fail-closed. The roles.guard coalesces
-    // agent_admin → admin (because @Roles includes 'admin'), so it would otherwise
-    // reach this endpoint; this check blocks agent_admin/agent by their ACTUAL role
-    // before any quote is loaded. Does not change cost-gating (still via canActorViewCost).
+    // HC-1A / CP-N4c: explicit exact-role allowlist fail-closed, narrowed to the
+    // canonical cost-visible roles (admin / super_admin / finance). This is the
+    // FIRST statement — it runs BEFORE findOne / getHotelContractSummary / any
+    // service call. The roles.guard coalesces agent_admin → admin (because @Roles
+    // includes 'admin'), so it would otherwise reach this endpoint; this check
+    // blocks by ACTUAL role. operations / viewer / agent / agent_admin / missing /
+    // unknown / future-unlisted → 403 with zero service calls (the contract
+    // identity this returns would otherwise bypass the operational `{}` sentinel).
     if (!actor || !HOTEL_CONTRACT_SUMMARY_ROLES.includes(actor.role as DmcRole)) {
       throw new ForbiddenException('You do not have permission to view hotel contract details');
     }

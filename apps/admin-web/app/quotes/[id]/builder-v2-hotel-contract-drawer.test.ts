@@ -48,11 +48,23 @@ describe('Quote Builder V2 — hotel contract/rate drawer (HC-2)', () => {
     contains(clientSrc, [
       'const handleViewHotelContract = async',
       '`/api/quotes/${q.id}/v2/items/${itemId}/hotel-contract-summary`',
-      'onViewHotelContract={(itemId: string) => handleViewHotelContract(quote!, itemId)}',
     ]);
     assert.ok(/hotel-contract-summary`,[\s\S]{0,40}method:\s*"GET"/.test(clientSrc), 'summary fetch must be GET');
     assert.ok(!/\/api\/hotels\/|\/api\/hotel-contracts\/|\/hotel-rates\//.test(clientSrc), 'client must not call a raw hotel endpoint');
     assert.ok(!/\.ratePolicies|\.verificationNotes/.test(clientSrc), 'client must not read raw contract internals');
+  });
+
+  it('CP-N4c: onViewHotelContract callback is gated on the server-derived finance capability (canViewCostMargin)', () => {
+    // The callback is passed ONLY when canViewCostMargin (admin/super_admin/finance) is
+    // true; otherwise it is undefined, so non-finance roles cannot fetch the endpoint.
+    contains(clientSrc, [
+      'onViewHotelContract={canViewCostMargin ? (itemId: string) => handleViewHotelContract(quote!, itemId) : undefined}',
+    ]);
+    // It must NOT be passed unconditionally.
+    assert.ok(
+      !clientSrc.includes('onViewHotelContract={(itemId: string) => handleViewHotelContract(quote!, itemId)}'),
+      'onViewHotelContract must not be wired ungated',
+    );
   });
 
   it('builder threads onViewHotelContract to HotelsStep', () => {
