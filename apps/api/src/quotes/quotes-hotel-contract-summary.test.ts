@@ -76,9 +76,13 @@ function deepKeys(obj: any, acc = new Set<string>()) {
   return acc;
 }
 
-test('route is gated to admin/super_admin/operations/viewer/finance and keeps its path', () => {
+test('CP-N4c: route is gated to the cost-visible roles admin/super_admin/finance and keeps its path', () => {
   const roles = (Reflect as any).getMetadata(ROLES_KEY, QuotesController.prototype.findHotelContractSummary);
-  assert.deepEqual(roles, ['admin', 'super_admin', 'operations', 'viewer', 'finance']);
+  assert.deepEqual(roles, ['admin', 'super_admin', 'finance']);
+  // Non-finance internal roles and external/unknown roles are NOT in the metadata,
+  // so the coalescing roles.guard cannot grant them access.
+  assert.equal(roles.includes('operations'), false);
+  assert.equal(roles.includes('viewer'), false);
   assert.equal(roles.includes('agent'), false);
   assert.equal(roles.includes('agent_admin'), false);
   assert.equal(
@@ -87,7 +91,7 @@ test('route is gated to admin/super_admin/operations/viewer/finance and keeps it
   );
 });
 
-test('HC-1A: explicit exact-role allowlist — allowed roles reach the service, agent/agent_admin are 403', async () => {
+test('CP-N4c HC-1A: cost-visible roles reach the service; operations/viewer/agent/agent_admin/unknown are 403 with zero service calls', async () => {
   const build = () => {
     const calls: string[] = [];
     const controller = new QuotesController(
@@ -100,17 +104,18 @@ test('HC-1A: explicit exact-role allowlist — allowed roles reach the service, 
     return { controller, calls };
   };
 
-  // Allowed roles reach the service (guard coalescing of super_admin is preserved here explicitly).
-  for (const role of ['admin', 'super_admin', 'operations', 'viewer', 'finance']) {
+  // Allowed roles reach the service (super_admin admitted explicitly by the allowlist).
+  for (const role of ['admin', 'super_admin', 'finance']) {
     const { controller, calls } = build();
     const res = await controller.findHotelContractSummary('quote-1', 'item-1', { id: 'u1', role, companyId: 'c1' } as any);
     assert.deepEqual(res, { itemId: 'item-1' }, `${role} should receive the summary`);
     assert.deepEqual(calls, ['findOne', 'summary'], `${role} should reach findOne + service`);
   }
 
-  // agent_admin — coalesced to admin by the roles.guard, but blocked by the explicit
-  // exact-role check BEFORE any quote is loaded.
-  for (const role of ['agent_admin', 'agent']) {
+  // operations + viewer (contract-identity would bypass the operational `{}` sentinel),
+  // agent_admin (coalesced to admin by the roles.guard), agent, and any unknown/future
+  // role are blocked by the explicit exact-role check BEFORE any quote is loaded.
+  for (const role of ['operations', 'viewer', 'agent_admin', 'agent', 'unknown_future_role']) {
     const { controller, calls } = build();
     await assert.rejects(
       () => controller.findHotelContractSummary('quote-1', 'item-1', { id: 'u1', role, companyId: 'c1' } as any),
@@ -120,7 +125,7 @@ test('HC-1A: explicit exact-role allowlist — allowed roles reach the service, 
     assert.deepEqual(calls, [], `${role} must not reach findOne or the service`);
   }
 
-  // No actor at all → also blocked (defensive).
+  // No actor at all → also blocked (defensive), zero service calls.
   const { controller, calls } = build();
   await assert.rejects(() => controller.findHotelContractSummary('quote-1', 'item-1', null as any), /permission/);
   assert.deepEqual(calls, []);
@@ -162,21 +167,25 @@ test('finance also receives the cost block', async () => {
   assert.equal(s.cost.costCurrency, 'USD');
 });
 
-test('viewer receives curated summary WITHOUT cost (omitted, not zeroed/null)', async () => {
+// CP-N4c: the CONTROLLER now denies viewer/operations at the boundary (see the
+// HC-1A test above). The service is UNCHANGED, so calling it directly still omits
+// the cost block for a non-cost-visible role — this is retained as defense-in-depth
+// coverage, not a reachable HTTP path for these roles.
+test('defense-in-depth: service called directly for viewer still omits the cost block (controller denies the role)', async () => {
   const service = createService(hotelPrisma([HOTEL_ITEM]));
   const s = await service.getHotelContractSummary('quote-1', 'item-1', { role: 'viewer', companyId: 'c1' });
   assert.equal('cost' in s, false);
-  // No monetary value anywhere for non-finance.
+  // No monetary value anywhere for a non-finance role.
   const keys = [...deepKeys(s)];
   for (const k of ['baseCost', 'costBaseAmount', 'salesTaxPercent', 'serviceChargePercent', 'tourismFeeAmount']) {
-    assert.equal(keys.includes(k), false, `viewer must not receive ${k}`);
+    assert.equal(keys.includes(k), false, `non-finance must not receive ${k}`);
   }
-  // Contract/room/policy story still present.
+  // Contract/room/policy story still present at the service layer.
   assert.equal(s.contract.status, 'contracted');
   assert.equal(s.policies.supplementsCount, 3);
 });
 
-test('operations receives curated summary WITHOUT cost', async () => {
+test('defense-in-depth: service called directly for operations still omits the cost block (controller denies the role)', async () => {
   const service = createService(hotelPrisma([HOTEL_ITEM]));
   const s = await service.getHotelContractSummary('quote-1', 'item-1', { role: 'operations', companyId: 'c1' });
   assert.equal('cost' in s, false);

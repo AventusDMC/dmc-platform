@@ -1147,7 +1147,7 @@ export function BuilderV2Client({
       onUpdateDisplayText={handleUpdateDisplayText}
       onPreviewItem={canPreviewPricing ? handlePreviewItem : undefined}
       onApplyItemPricing={canPreviewPricing ? handleApplyItemPricing : undefined}
-      onViewHotelContract={(itemId: string) => handleViewHotelContract(quote!, itemId)}
+      onViewHotelContract={canViewCostMargin ? (itemId: string) => handleViewHotelContract(quote!, itemId) : undefined}
       transportPreviewEnabled={canPreviewPricing && transportPreviewEnabled}
       transportApplyEnabled={canPreviewPricing && transportPreviewEnabled && transportApplyEnabled}
       hotelPreviewEnabled={canPreviewPricing && hotelPreviewEnabled}
