@@ -79,7 +79,11 @@ describe('Quote Builder V2 — Classic guidance banners', () => {
     contains(transportSrc, [
       'import { ClassicGuidance } from "./classic-guidance"',
       '<ClassicGuidance',
-      'Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. V2 currently supports limited client text editing only where available.',
+      // The Classic-managed transport guidance banner is still present; its second
+      // sentence now reflects the shipped preview-only transport pricing (PR #565)
+      // instead of "limited client text editing only". The intent — transport
+      // authoring/pricing is Classic-managed — is unchanged.
+      'Adding, removing, supplier/rate assignment, touring routes, transfers, and priced transport changes are managed in Classic Builder. V2 transport pricing is preview-only (read-only) — there is no apply.',
       'classicHref={classicHref}',
       'classicHref?: string',
     ]);

@@ -70,8 +70,10 @@ describe('Quote Builder V2 — read-only pricing preview modal', () => {
         'EditInClassicLink',
         'DisplayTextEditor',
       ]);
-      // The step itself performs no mutation fetch.
-      excludes(src, ['fetch(']);
+      // The step itself performs no mutation fetch — item mutations are delegated to
+      // handler props. (Reference-data dropdowns fetch GET-only, so the guard is on
+      // mutation METHODS, not a blanket "no fetch".)
+      excludes(src, ["method: 'POST'", "method: 'PATCH'", "method: 'DELETE'", 'method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
     }
     // Experiences keeps the generic read-only preview label.
     contains(experiencesSrc, ['Preview pricing']);

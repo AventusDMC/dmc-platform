@@ -17,8 +17,12 @@ function excludes(src: string, fragments: string[]) {
   }
 }
 
+// The step components remain mutation-inert: any item create/remove is delegated to
+// handler PROPS (onAddItem/onPreviewAddItem/onRemoveItem/…), never a direct step fetch.
+// The shipped Add-item forms DO perform GET-only reference reads (/api/activities,
+// /api/services) to populate dropdowns — so a blanket "no fetch(" is superseded; the
+// meaningful guard is "no mutation method + no item-mutation endpoint wiring".
 const MUTATION_TOKENS = [
-  'fetch(',
   "method: 'POST'",
   "method: 'PATCH'",
   "method: 'DELETE'",
@@ -49,8 +53,10 @@ describe('Quote Builder V2 — contextual "Edit in Classic" item links', () => {
       '<EditInClassicLink href={classicItemHref} />',
       'classicHref={classicHref}',
     ]);
-    // Still pricing-inert: no mutation introduced in the experiences step.
+    // Still mutation-inert: no mutation method in the experiences step (item create/
+    // remove is delegated to handler props). Reference-data dropdowns are GET-only.
     excludes(experiencesSrc, MUTATION_TOKENS);
+    contains(experiencesSrc, ['fetch("/api/activities"', 'fetch("/api/services"']);
     // The existing limited client-text editor must remain.
     contains(experiencesSrc, ['DisplayTextEditor', 'onUpdateDisplayText']);
   });
@@ -69,8 +75,11 @@ describe('Quote Builder V2 — contextual "Edit in Classic" item links', () => {
   });
 
   it('does NOT add any service/transport add/edit/delete or rate/supplier controls', () => {
-    // No item-CRUD endpoints, no recalculation, no reorder are wired from these steps.
-    excludes(experiencesSrc, ['/items', 'recalc', 'reorder', 'assign-service', 'detach-contract']);
-    excludes(transportSrc, ['/items', 'recalc', 'reorder', 'assign-service', 'detach-contract']);
+    // No item-CRUD endpoints, no recalculation CALL, no reorder ENDPOINT are wired from
+    // these steps. Tokens target actual calls/endpoints, not the words "recalculation"/
+    // "reordering" that appear in explanatory comments: 'recalculateQuoteTotals' (the
+    // real recalc call) and 'items/reorder' (the real reorder endpoint).
+    excludes(experiencesSrc, ['/items', 'recalculateQuoteTotals', 'items/reorder', 'assign-service', 'detach-contract']);
+    excludes(transportSrc, ['/items', 'recalculateQuoteTotals', 'items/reorder', 'assign-service', 'detach-contract']);
   });
 });
