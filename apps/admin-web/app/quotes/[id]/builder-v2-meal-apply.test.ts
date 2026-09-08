@@ -170,7 +170,10 @@ describe('Quote Builder V2 — meal + activity pricing apply UI', () => {
       'DisplayTextEditor',
       'PricingPreviewModal',
     ]);
-    excludes(experiencesSrc, ['fetch(']);
+    // Mutation-inert: no mutation method in the experiences step (item mutations are
+    // delegated to handler props). Reference-data dropdowns are GET-only, so the guard
+    // is on mutation METHODS rather than a blanket "no fetch".
+    excludes(experiencesSrc, ["method: 'POST'", "method: 'PATCH'", "method: 'DELETE'", 'method: "POST"', 'method: "PATCH"', 'method: "DELETE"']);
   });
 
   it('Experiences step shows the V2 apply scope guidance banner, gated on apply being enabled', () => {
@@ -278,9 +281,13 @@ describe('Quote Builder V2 — read-only pricing apply audit viewer', () => {
       .find((l) => l.includes('const canViewPricingApplyAudit =')) ?? '';
     assert.ok(!auditLine.includes('PREVIEW_EDITABLE_STATUSES'), 'audit gate must not depend on editable status');
     assert.ok(!auditLine.includes('quoteStatusCode'), 'audit gate must not depend on quote status');
-    // Apply/preview gate is UNCHANGED — still role AND editable status.
+    // Apply/preview gate is UNCHANGED — still role AND editable status. Asserted as two
+    // adjacent single-line fragments so the check is robust to CRLF/LF line endings
+    // (the multi-line form previously failed only on the source's CRLF newline, not on
+    // any behavior change).
     contains(pageSrc, [
-      'const canPreviewPricing =\n    hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)',
+      'const canPreviewPricing =',
+      'hasRequiredRole(role, ["admin", "operations"]) && PREVIEW_EDITABLE_STATUSES.has(quoteStatusCode)',
     ]);
   });
 
@@ -327,8 +334,9 @@ describe('Quote Builder V2 — entrance / Jordan Pass pricing apply (separate fl
       // entrance rows never show the read-only preview affordance
       '&& !exp.isEntrance',
       'Preview & apply entrance pricing',
-      // banner mentions Entrance/Jordan Pass only when the flag is ON
-      'entrancePricingEnabled ? ", and Entrance / Jordan Pass" : ""',
+      // banner mentions Entrance/Jordan Pass only when the flag is ON (the feature gate
+      // is preserved; only the surrounding wording dropped the "and " prefix).
+      'entrancePricingEnabled ? ", Entrance / Jordan Pass" : ""',
     ]);
   });
 
