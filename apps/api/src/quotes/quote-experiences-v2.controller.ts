@@ -1,12 +1,26 @@
-import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Param, Post } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
-import { AuthenticatedActor } from '../auth/auth.types';
+import { AuthenticatedActor, DmcRole } from '../auth/auth.types';
 import {
   AddActivityItemInput,
   EditExternalPackageInput,
   QuoteExperiencesV2Service,
   QuoteItemCreateActor,
 } from './quote-experiences-v2.service';
+
+// CP-N4e: explicit fail-closed allowlist for the GENERIC V2 Experience item
+// create + remove handlers (activity / guide / meal / entrance / external_package),
+// covering both the mutation and its create/remove PREVIEW (which issues a signed
+// replay token). Before CP-N4e these handlers carried only @Roles('admin',
+// 'operations','finance') with no explicit assertion, so the coalescing RolesGuard
+// admitted `agent_admin` (via @Roles('admin')) into item create/remove — an external
+// agency-admin role in neither the canonical quote-write nor operational-write set.
+// This allowlist admits ONLY admin / super_admin / operations / finance and is
+// asserted by explicit membership on the ORIGINAL actor BEFORE actor conversion /
+// flag / service / db / token issuance — never the coalescing guard. It does NOT
+// widen the narrower external_package (create/edit) or meal cost-override gates,
+// which remain cost-visible-only at the SERVICE level.
+const EXPERIENCE_ITEM_WRITE_ROLES: readonly DmcRole[] = ['admin', 'super_admin', 'operations', 'finance'];
 
 type AddItemBody = {
   itemType?: string | null;
@@ -76,22 +90,24 @@ export class QuoteExperiencesV2Controller {
   // writes and returns a signed previewToken the client must replay on create.
   // Same flag/role/status gating as create (enforced in the service).
   @Post('item/preview')
-  @Roles('admin', 'operations', 'finance')
+  @Roles('admin', 'super_admin', 'operations', 'finance')
   async previewItem(
     @Param('quoteId') quoteId: string,
     @Body() body: AddItemBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertExperienceItemWriteAccess(actor);
     return this.service.previewActivityItem(quoteId, this.toInput(body), this.toActor(actor));
   }
 
   @Post('item')
-  @Roles('admin', 'operations', 'finance')
+  @Roles('admin', 'super_admin', 'operations', 'finance')
   async addItem(
     @Param('quoteId') quoteId: string,
     @Body() body: AddItemBody,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertExperienceItemWriteAccess(actor);
     return this.service.addActivityItem(quoteId, this.toInput(body), this.toActor(actor), {
       previewToken: body?.previewToken,
       acknowledgedDelta: body?.acknowledgedDelta === true,
@@ -103,12 +119,13 @@ export class QuoteExperiencesV2Controller {
   // (enforced in the service). Selling total/delta always visible; cost redacted for
   // non-finance roles.
   @Post('item/:itemId/remove/preview')
-  @Roles('admin', 'operations', 'finance')
+  @Roles('admin', 'super_admin', 'operations', 'finance')
   async removeItemPreview(
     @Param('quoteId') quoteId: string,
     @Param('itemId') itemId: string,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertExperienceItemWriteAccess(actor);
     return this.service.previewRemoveItem(quoteId, itemId, this.toActor(actor));
   }
 
@@ -116,13 +133,14 @@ export class QuoteExperiencesV2Controller {
   // on staleness, then delegates to the UNCHANGED, deterministic removeItem. Delete
   // exposes no cost, so there is NO extra external-package finance-only gate here.
   @Delete('item/:itemId')
-  @Roles('admin', 'operations', 'finance')
+  @Roles('admin', 'super_admin', 'operations', 'finance')
   async removeItem(
     @Param('quoteId') quoteId: string,
     @Param('itemId') itemId: string,
     @Body() body: { previewToken?: unknown } | null,
     @Actor() actor: AuthenticatedActor | null,
   ) {
+    this.assertExperienceItemWriteAccess(actor);
     return this.service.removeExperienceItem(quoteId, itemId, this.toActor(actor), {
       previewToken: body?.previewToken,
     });
@@ -160,6 +178,21 @@ export class QuoteExperiencesV2Controller {
       previewToken: body?.previewToken,
       acknowledgedDelta: body?.acknowledgedDelta === true,
     });
+  }
+
+  // CP-N4e: fail-closed gate for the GENERIC Experience item create + remove handlers
+  // (and their preview handlers). Runs as the FIRST statement on the ORIGINAL
+  // AuthenticatedActor (before toActor reduces it, before the service's flag / company /
+  // status checks, and before any token issuance), so denied roles never reach the
+  // service, the QUOTE_ITEM_CREATE flag, or a preview token. Explicit allowlist
+  // membership — never the coalescing @Roles guard (which would admit agent_admin via
+  // 'admin'). The narrower external_package + meal cost-override gates stay in the
+  // service and are unaffected.
+  private assertExperienceItemWriteAccess(actor: AuthenticatedActor | null | undefined) {
+    const role = actor?.role;
+    if (!role || !(EXPERIENCE_ITEM_WRITE_ROLES as readonly string[]).includes(role)) {
+      throw new ForbiddenException('This quote experience-item endpoint is restricted to admin, super_admin, operations and finance.');
+    }
   }
 
   // Strict allowlist projection: ONLY netCost + pricingBasis reach the service. Every other
