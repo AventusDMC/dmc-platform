@@ -933,13 +933,19 @@ test('external_package: an unknown itemType is still rejected out_of_scope', asy
   assert.equal(calls.createItem.length, 0);
 });
 
-test('external_package: the route @Roles is widened to include finance (admin, operations, finance)', () => {
+test('CP-N4e: the generic item routes carry @Roles admin/super_admin/operations/finance', () => {
   const src = readFileSync(join(__dirname, 'quote-experiences-v2.controller.ts'), 'utf8');
-  assert.ok(src.includes("@Roles('admin', 'operations', 'finance')"), 'route must admit finance');
-  // All V2 item-mutation endpoints carry the widened roles: create item + item/preview
-  // (M-3a) and remove/preview + DELETE (D-a) = 4.
-  const count = src.split("@Roles('admin', 'operations', 'finance')").length - 1;
-  assert.equal(count, 4, 'create + create-preview + remove-preview + DELETE routes all widened');
+  // CP-N4e aligned @Roles to the explicit allowlist (super_admin listed explicitly so the
+  // metadata matches the fail-closed assertion). The superseded 3-role form is gone.
+  assert.ok(src.includes("@Roles('admin', 'super_admin', 'operations', 'finance')"), 'route must carry the CP-N4e allowlist');
+  assert.ok(!src.includes("@Roles('admin', 'operations', 'finance')"), 'the superseded 3-role @Roles must be gone');
+  // The four generic item-mutation endpoints carry the allowlist: create item + item/preview
+  // (M-3a) and remove/preview + DELETE (D-a) = 4. The two external-package EDIT routes keep
+  // their narrower @Roles('admin', 'finance').
+  const count = src.split("@Roles('admin', 'super_admin', 'operations', 'finance')").length - 1;
+  assert.equal(count, 4, 'create + create-preview + remove-preview + DELETE routes all carry the allowlist');
+  const editCount = src.split("@Roles('admin', 'finance')").length - 1;
+  assert.equal(editCount, 2, 'external-package edit-preview + edit keep the narrower finance-only @Roles');
 });
 
 for (const actor of [ACTOR, FINANCE_ACTOR, SUPER_ACTOR]) {
